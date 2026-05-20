@@ -7,8 +7,8 @@ type LoginLog struct {
 	Username      string    `json:"username" gorm:"size:64"`
 	IPAddress     string    `json:"ipAddress" gorm:"size:64"`
 	LoginLocation string    `json:"loginLocation" gorm:"size:128"`
-	Browser       string    `json:"browser" gorm:"size:64"`
-	OS            string    `json:"os" gorm:"size:64"`
+	Browser       string    `json:"browser" gorm:"size:128"`
+	OS            string    `json:"os" gorm:"size:128"`
 	LoginStatus   int       `json:"loginStatus" gorm:"default:1;not null"`
 	Message       string    `json:"message" gorm:"size:255"`
 	LoginTime     time.Time `json:"loginTime"`

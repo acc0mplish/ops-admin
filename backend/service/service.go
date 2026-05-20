@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -214,16 +215,19 @@ func (s *Service) UpdateSystemConfig(payload SystemConfigPayload) (model.SystemC
 }
 
 func (s *Service) createLoginLog(username, ip, browser, osName string, status int, message string) {
-	_ = s.db.Create(&model.LoginLog{
+	entry := model.LoginLog{
 		Username:      username,
 		IPAddress:     ip,
 		LoginLocation: "local",
-		Browser:       browser,
-		OS:            osName,
+		Browser:       normalizeBrowser(browser),
+		OS:            normalizeOS(browser, osName),
 		LoginStatus:   status,
 		Message:       message,
 		LoginTime:     time.Now(),
-	}).Error
+	}
+	if err := s.db.Create(&entry).Error; err != nil {
+		log.Printf("create login log failed: %v", err)
+	}
 }
 
 func (s *Service) ensureSystemConfig() (model.SystemConfig, error) {
@@ -748,4 +752,51 @@ func (s *Service) paginateLogs(entity any, pageNum, pageSize int, field string, 
 
 func Trimmed(s string) string {
 	return strings.TrimSpace(s)
+}
+
+func normalizeBrowser(userAgent string) string {
+	ua := strings.ToLower(userAgent)
+	switch {
+	case strings.Contains(ua, "edg/"):
+		return "Edge"
+	case strings.Contains(ua, "chrome/"):
+		return "Chrome"
+	case strings.Contains(ua, "firefox/"):
+		return "Firefox"
+	case strings.Contains(ua, "safari/") && !strings.Contains(ua, "chrome/"):
+		return "Safari"
+	case strings.Contains(ua, "micromessenger"):
+		return "WeChat"
+	default:
+		return shortenText(strings.TrimSpace(userAgent), 120)
+	}
+}
+
+func normalizeOS(userAgent string, fallback string) string {
+	ua := strings.ToLower(userAgent)
+	switch {
+	case strings.Contains(ua, "windows"):
+		return "Windows"
+	case strings.Contains(ua, "mac os x"), strings.Contains(ua, "macintosh"):
+		return "macOS"
+	case strings.Contains(ua, "android"):
+		return "Android"
+	case strings.Contains(ua, "iphone"), strings.Contains(ua, "ipad"), strings.Contains(ua, "ios"):
+		return "iOS"
+	case strings.Contains(ua, "linux"):
+		return "Linux"
+	default:
+		return shortenText(strings.TrimSpace(fallback), 120)
+	}
+}
+
+func shortenText(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
