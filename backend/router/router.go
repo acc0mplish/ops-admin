@@ -1,0 +1,99 @@
+package router
+
+import (
+	"ops-admin/backend/config"
+	"ops-admin/backend/controller"
+	"ops-admin/backend/middleware"
+	"ops-admin/backend/service"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+)
+
+func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
+	if cfg.App.Mode == gin.ReleaseMode {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	engine := gin.New()
+	engine.Use(gin.Logger(), gin.Recovery(), middleware.CORS())
+	_ = os.MkdirAll("uploads", 0o755)
+	engine.Static("/uploads", "./uploads")
+
+	svc := service.New(db)
+	ctl := controller.New(svc)
+
+	engine.GET("/ping", ctl.Ping)
+
+	api := engine.Group("/api/v1")
+	{
+		api.POST("/login", ctl.Login)
+		api.GET("/systemConfig/public", ctl.GetSystemConfig)
+	}
+
+	authGroup := api.Group("")
+	authGroup.Use(middleware.Auth(), middleware.OperationLog(db))
+	{
+		authGroup.GET("/profile", ctl.Profile)
+		authGroup.GET("/systemConfig", ctl.GetSystemConfig)
+		authGroup.PUT("/systemConfig", ctl.UpdateSystemConfig)
+		authGroup.POST("/systemConfig/upload", ctl.UploadSystemAsset)
+
+		authGroup.GET("/admin/list", ctl.GetSysAdminList)
+		authGroup.GET("/admin/info", ctl.GetSysAdminInfo)
+		authGroup.POST("/admin/add", ctl.CreateSysAdmin)
+		authGroup.PUT("/admin/update", ctl.UpdateSysAdmin)
+		authGroup.DELETE("/admin/delete", ctl.DeleteSysAdmin)
+		authGroup.PUT("/admin/updateStatus", ctl.UpdateSysAdminStatus)
+		authGroup.PUT("/admin/updatePassword", ctl.ResetSysAdminPassword)
+		authGroup.PUT("/admin/updatePersonal", ctl.UpdatePersonal)
+		authGroup.PUT("/admin/updatePersonalPassword", ctl.UpdatePersonalPassword)
+
+		authGroup.GET("/role/list", ctl.GetRoleList)
+		authGroup.GET("/role/vo/list", ctl.QuerySysRoleVoList)
+		authGroup.GET("/role/info", ctl.GetRoleInfo)
+		authGroup.POST("/role/add", ctl.CreateRole)
+		authGroup.PUT("/role/update", ctl.UpdateRole)
+		authGroup.DELETE("/role/delete", ctl.DeleteRole)
+		authGroup.PUT("/role/updateStatus", ctl.UpdateRoleStatus)
+		authGroup.GET("/role/vo/idList", ctl.QueryRoleMenuIDList)
+		authGroup.PUT("/role/assignPermissions", ctl.AssignPermissions)
+
+		authGroup.GET("/menu/list", ctl.GetMenuList)
+		authGroup.GET("/menu/vo/list", ctl.QuerySysMenuVoList)
+		authGroup.GET("/menu/info", ctl.GetMenuInfo)
+		authGroup.POST("/menu/add", ctl.CreateMenu)
+		authGroup.PUT("/menu/update", ctl.UpdateMenu)
+		authGroup.DELETE("/menu/delete", ctl.DeleteMenu)
+
+		authGroup.GET("/dept/list", ctl.GetDeptList)
+		authGroup.GET("/dept/vo/list", ctl.QuerySysDeptVoList)
+		authGroup.GET("/dept/info", ctl.GetDeptInfo)
+		authGroup.GET("/dept/users", ctl.GetDeptUsers)
+		authGroup.POST("/dept/add", ctl.CreateDept)
+		authGroup.PUT("/dept/update", ctl.UpdateDept)
+		authGroup.DELETE("/dept/delete", ctl.DeleteDept)
+
+		authGroup.GET("/post/list", ctl.GetPostList)
+		authGroup.GET("/post/vo/list", ctl.QuerySysPostVoList)
+		authGroup.GET("/post/info", ctl.GetPostInfo)
+		authGroup.POST("/post/add", ctl.CreatePost)
+		authGroup.PUT("/post/update", ctl.UpdatePost)
+		authGroup.PUT("/post/updateStatus", ctl.UpdatePostStatus)
+		authGroup.DELETE("/post/delete", ctl.DeletePost)
+		authGroup.DELETE("/post/batch/delete", ctl.BatchDeletePost)
+
+		authGroup.GET("/sysLoginInfo/list", ctl.GetLoginLogList)
+		authGroup.DELETE("/sysLoginInfo/delete", ctl.DeleteLoginLog)
+		authGroup.DELETE("/sysLoginInfo/batch/delete", ctl.BatchDeleteLoginLog)
+		authGroup.DELETE("/sysLoginInfo/clean", ctl.CleanLoginLog)
+
+		authGroup.GET("/sysOperationLog/list", ctl.GetOperationLogList)
+		authGroup.DELETE("/sysOperationLog/delete", ctl.DeleteOperationLog)
+		authGroup.DELETE("/sysOperationLog/batch/delete", ctl.BatchDeleteOperationLog)
+		authGroup.DELETE("/sysOperationLog/clean", ctl.CleanOperationLog)
+	}
+
+	return engine
+}
