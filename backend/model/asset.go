@@ -18,6 +18,15 @@ func (AssetHostGroup) TableName() string {
 	return "asset_host_group"
 }
 
+type AssetHostGroupRelation struct {
+	HostID  uint `json:"hostId" gorm:"primaryKey"`
+	GroupID uint `json:"groupId" gorm:"primaryKey"`
+}
+
+func (AssetHostGroupRelation) TableName() string {
+	return "asset_host_group_rel"
+}
+
 type AssetCredential struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"size:128;not null"`
@@ -59,6 +68,7 @@ type AssetHost struct {
 	Alias          string            `json:"alias" gorm:"size:128"`
 	GroupID        uint              `json:"groupId" gorm:"index"`
 	Group          AssetHostGroup    `json:"group" gorm:"foreignKey:GroupID"`
+	HostGroups     []AssetHostGroup  `json:"hostGroups" gorm:"many2many:asset_host_group_rel;joinForeignKey:HostID;joinReferences:GroupID"`
 	CredentialID   uint              `json:"credentialId" gorm:"index"`
 	Credential     AssetCredential   `json:"credential" gorm:"foreignKey:CredentialID"`
 	CloudAccountID *uint             `json:"cloudAccountId" gorm:"index"`
@@ -76,6 +86,7 @@ type AssetHost struct {
 	Environment    string            `json:"environment" gorm:"size:64;index"`
 	Provider       string            `json:"provider" gorm:"size:64"`
 	Region         string            `json:"region" gorm:"size:128"`
+	InstanceID     string            `json:"instanceId" gorm:"size:128;index"`
 	Status         int               `json:"status" gorm:"default:1;not null"`
 	AliveStatus    int               `json:"aliveStatus" gorm:"default:2;not null"`
 	AuthStatus     int               `json:"authStatus" gorm:"default:2;not null"`

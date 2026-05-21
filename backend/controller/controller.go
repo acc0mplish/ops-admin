@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/xuri/excelize/v2"
 )
 
 type Controller struct {
@@ -116,6 +117,29 @@ func (ctl *Controller) UploadSystemAsset(c *gin.Context) {
 	httpx.Success(c, gin.H{
 		"url": "/" + filepath.ToSlash(target),
 	})
+}
+
+func (ctl *Controller) DownloadAssetHostTemplate(c *gin.Context) {
+	file := excelize.NewFile()
+	sheet := file.GetSheetName(0)
+	headers := []string{"主机名称", "SSH地址", "SSH端口", "SSH用户", "认证凭据", "备注"}
+	for idx, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(idx+1, 1)
+		_ = file.SetCellValue(sheet, cell, header)
+	}
+	_ = file.SetCellValue(sheet, "A2", "web-01")
+	_ = file.SetCellValue(sheet, "B2", "192.168.101.159")
+	_ = file.SetCellValue(sheet, "C2", 22)
+	_ = file.SetCellValue(sheet, "D2", "root")
+	_ = file.SetCellValue(sheet, "E2", "default-ssh")
+	_ = file.SetCellValue(sheet, "F2", "excel导入示例")
+	buffer, err := file.WriteToBuffer()
+	if err != nil {
+		httpx.Failed(c, 500, "failed to generate template")
+		return
+	}
+	c.Header("Content-Disposition", "attachment; filename=asset-host-template.xlsx")
+	c.Data(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
 }
 
 func (ctl *Controller) GetSysAdminList(c *gin.Context) {
@@ -732,6 +756,86 @@ func (ctl *Controller) UpdateAssetHost(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) ImportAssetHosts(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		httpx.Failed(c, 400, "please upload excel file")
+		return
+	}
+	groupID := uint(mustAtoi(c.PostForm("groupId")))
+	if groupID == 0 {
+		httpx.Failed(c, 400, "groupId is required")
+		return
+	}
+	if err := os.MkdirAll("uploads/temp", 0o755); err != nil {
+		httpx.Failed(c, 500, "failed to create temp dir")
+		return
+	}
+	tempPath := filepath.Join("uploads", "temp", fmt.Sprintf("asset-host-import-%d%s", time.Now().UnixNano(), filepath.Ext(file.Filename)))
+	if err := c.SaveUploadedFile(file, tempPath); err != nil {
+		httpx.Failed(c, 500, "failed to save excel file")
+		return
+	}
+	defer os.Remove(tempPath)
+
+	workbook, err := excelize.OpenFile(tempPath)
+	if err != nil {
+		httpx.Failed(c, 400, "failed to parse excel file")
+		return
+	}
+	defer workbook.Close()
+
+	sheets := workbook.GetSheetList()
+	if len(sheets) == 0 {
+		httpx.Failed(c, 400, "excel sheet is empty")
+		return
+	}
+	rows, err := workbook.GetRows(sheets[0])
+	if err != nil {
+		httpx.Failed(c, 400, "failed to read excel rows")
+		return
+	}
+
+	importRows := make([]service.AssetHostImportRow, 0)
+	for index, row := range rows {
+		if index == 0 {
+			continue
+		}
+		if len(row) < 5 {
+			continue
+		}
+		importRows = append(importRows, service.AssetHostImportRow{
+			HostName:       strings.TrimSpace(row[0]),
+			SSHIP:          strings.TrimSpace(row[1]),
+			SSHPort:        mustAtoi(strings.TrimSpace(row[2])),
+			SSHUser:        strings.TrimSpace(row[3]),
+			CredentialName: strings.TrimSpace(row[4]),
+			Description:    safeExcelCell(row, 5),
+		})
+	}
+
+	data, err := ctl.service.ImportAssetHosts(groupID, importRows)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SyncAssetHostsFromCloud(c *gin.Context) {
+	var payload service.AssetCloudSyncPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid cloud sync payload")
+		return
+	}
+	data, err := ctl.service.SyncAssetHostsFromCloud(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) SyncAssetHost(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -739,6 +843,20 @@ func (ctl *Controller) SyncAssetHost(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.SyncAssetHost(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) BatchSyncAssetHosts(c *gin.Context) {
+	var payload service.BatchIDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid batch sync payload")
+		return
+	}
+	data, err := ctl.service.BatchSyncAssetHosts(payload.IDs)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
@@ -810,6 +928,32 @@ func (ctl *Controller) DeleteAssetHost(c *gin.Context) {
 		return
 	}
 	if err := ctl.service.DeleteAssetHost(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) BatchDeleteAssetHosts(c *gin.Context) {
+	var payload service.BatchIDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid batch delete payload")
+		return
+	}
+	if err := ctl.service.BatchDeleteAssetHosts(payload.IDs); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) BatchReplaceAssetHostCredential(c *gin.Context) {
+	var payload service.AssetHostBatchCredentialPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid batch credential payload")
+		return
+	}
+	if err := ctl.service.BatchReplaceAssetHostCredential(payload.IDs, payload.CredentialID); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
@@ -1012,6 +1156,13 @@ func (ctl *Controller) DeleteAssetCloudAccount(c *gin.Context) {
 func mustAtoi(v string) int {
 	n, _ := strconv.Atoi(v)
 	return n
+}
+
+func safeExcelCell(row []string, index int) string {
+	if index < len(row) {
+		return strings.TrimSpace(row[index])
+	}
+	return ""
 }
 
 func BuildMenuTree(list []model.Menu) []gin.H {

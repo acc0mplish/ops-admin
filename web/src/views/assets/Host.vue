@@ -1,15 +1,22 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addAssetHost,
   assetHostInfo,
+  batchDeleteAssetHosts,
+  batchReplaceAssetHostCredential,
+  batchSyncAssetHosts,
   deleteAssetHost,
+  downloadAssetHostTemplate,
+  importAssetHosts,
+  queryAssetCloudAccountOptions,
   queryAssetCredentialOptions,
   queryAssetHostGroupList,
   queryAssetHostList,
   syncAssetHost,
+  syncAssetHostsFromCloud,
   updateAssetHost
 } from '../../api/asset'
 
@@ -17,16 +24,25 @@ const router = useRouter()
 const loading = ref(false)
 const syncingId = ref()
 const dialogVisible = ref(false)
+const importDialogVisible = ref(false)
+const cloudSyncDialogVisible = ref(false)
+const batchCredentialDialogVisible = ref(false)
+const importSubmitting = ref(false)
+const cloudSyncSubmitting = ref(false)
+const batchCredentialSubmitting = ref(false)
 const isEdit = ref(false)
 const tableData = ref([])
+const selectedRows = ref([])
 const groupOptions = ref([])
 const credentialOptions = ref([])
+const cloudAccountOptions = ref([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '' })
+const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined })
 const form = reactive({
   id: undefined,
   hostName: '',
   groupId: undefined,
+  groupIds: [],
   sshUser: '',
   sshIp: '',
   sshPort: 22,
@@ -34,12 +50,35 @@ const form = reactive({
   status: 1,
   description: ''
 })
+const importForm = reactive({
+  groupId: undefined,
+  file: null
+})
+const cloudSyncForm = reactive({
+  groupId: undefined,
+  provider: 'tencent',
+  useExistingAccount: true,
+  cloudAccountId: undefined,
+  accessKey: '',
+  secretKey: '',
+  region: '',
+  saveAccount: false,
+  accountName: ''
+})
+const batchCredentialForm = reactive({
+  credentialId: undefined
+})
+
+const filteredCloudAccounts = computed(() =>
+  cloudAccountOptions.value.filter((item) => (item.provider || '').toLowerCase() === cloudSyncForm.provider)
+)
 
 function resetForm() {
   Object.assign(form, {
     id: undefined,
     hostName: '',
     groupId: undefined,
+    groupIds: [],
     sshUser: '',
     sshIp: '',
     sshPort: 22,
@@ -49,19 +88,53 @@ function resetForm() {
   })
 }
 
+function resetImportForm() {
+  Object.assign(importForm, {
+    groupId: undefined,
+    file: null
+  })
+}
+
+function resetCloudSyncForm() {
+  Object.assign(cloudSyncForm, {
+    groupId: undefined,
+    provider: 'tencent',
+    useExistingAccount: true,
+    cloudAccountId: undefined,
+    accessKey: '',
+    secretKey: '',
+    region: '',
+    saveAccount: false,
+    accountName: ''
+  })
+}
+
+function resetBatchCredentialForm() {
+  batchCredentialForm.credentialId = undefined
+}
+
 async function loadOptions() {
-  const [groups, credentials] = await Promise.all([
+  const [groups, credentials, cloudAccounts] = await Promise.all([
     queryAssetHostGroupList(),
-    queryAssetCredentialOptions()
+    queryAssetCredentialOptions(),
+    queryAssetCloudAccountOptions()
   ])
   groupOptions.value = groups.list || []
   credentialOptions.value = credentials || []
+  cloudAccountOptions.value = cloudAccounts || []
 }
 
 async function loadData() {
   loading.value = true
   try {
-    const data = await queryAssetHostList(query)
+    const keyword = [query.keyword, query.ipKeyword].filter(Boolean).join(' ')
+    const data = await queryAssetHostList({
+      pageNum: query.pageNum,
+      pageSize: query.pageSize,
+      keyword,
+      status: query.status,
+      groupId: query.groupId
+    })
     tableData.value = data.list || []
     total.value = data.total || 0
   } finally {
@@ -71,7 +144,9 @@ async function loadData() {
 
 function resetQuery() {
   query.keyword = ''
+  query.ipKeyword = ''
   query.status = ''
+  query.groupId = undefined
   query.pageNum = 1
   loadData()
 }
@@ -82,6 +157,25 @@ function openCreate() {
   dialogVisible.value = true
 }
 
+function openImportDialog() {
+  resetImportForm()
+  importDialogVisible.value = true
+}
+
+function openCloudSyncDialog() {
+  resetCloudSyncForm()
+  cloudSyncDialogVisible.value = true
+}
+
+function openBatchCredentialDialog() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择主机')
+    return
+  }
+  resetBatchCredentialForm()
+  batchCredentialDialogVisible.value = true
+}
+
 async function openEdit(row) {
   isEdit.value = true
   const data = await assetHostInfo(row.id)
@@ -90,6 +184,7 @@ async function openEdit(row) {
     id: data.id,
     hostName: data.hostName,
     groupId: data.groupId,
+    groupIds: (data.hostGroups || []).map((item) => item.id).length ? (data.hostGroups || []).map((item) => item.id) : (data.groupId ? [data.groupId] : []),
     sshUser: data.sshUser,
     sshIp: data.sshIp,
     sshPort: data.sshPort || 22,
@@ -101,10 +196,11 @@ async function openEdit(row) {
 }
 
 async function submit() {
-  if (!form.hostName || !form.groupId || !form.sshUser || !form.sshIp || !form.credentialId) {
-    ElMessage.warning('请填写主机名称、所属分组、SSH 连接和认证凭据')
+  if (!form.hostName || !form.groupIds.length || !form.sshUser || !form.sshIp || !form.credentialId) {
+    ElMessage.warning('请填写主机名称、所属主机组、SSH 连接和认证凭据')
     return
   }
+  form.groupId = form.groupIds[0]
 
   if (isEdit.value) {
     await updateAssetHost(form)
@@ -135,7 +231,129 @@ async function handleDelete(row) {
   await loadData()
 }
 
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+function selectedIds() {
+  return selectedRows.value.map((item) => item.id)
+}
+
+async function handleBatchSync() {
+  const ids = selectedIds()
+  if (!ids.length) {
+    ElMessage.warning('请先选择主机')
+    return
+  }
+  const data = await batchSyncAssetHosts(ids)
+  ElMessage.success(`批量同步完成：成功 ${data.success} 台，失败 ${data.fail} 台`)
+  await loadData()
+}
+
+async function handleBatchDelete() {
+  const ids = selectedIds()
+  if (!ids.length) {
+    ElMessage.warning('请先选择主机')
+    return
+  }
+  await ElMessageBox.confirm(`确认批量删除已选中的 ${ids.length} 台主机吗？`, '提示', { type: 'warning' })
+  await batchDeleteAssetHosts(ids)
+  ElMessage.success('批量删除成功')
+  selectedRows.value = []
+  await loadData()
+}
+
+async function submitBatchCredential() {
+  const ids = selectedIds()
+  if (!ids.length) {
+    ElMessage.warning('请先选择主机')
+    return
+  }
+  if (!batchCredentialForm.credentialId) {
+    ElMessage.warning('请选择认证凭据')
+    return
+  }
+  batchCredentialSubmitting.value = true
+  try {
+    await batchReplaceAssetHostCredential({
+      ids,
+      credentialId: batchCredentialForm.credentialId
+    })
+    ElMessage.success('批量替换认证凭据成功')
+    batchCredentialDialogVisible.value = false
+    await loadData()
+  } finally {
+    batchCredentialSubmitting.value = false
+  }
+}
+
+async function handleTemplateDownload() {
+  const response = await downloadAssetHostTemplate()
+  const blob = new Blob([response.data], { type: response.headers['content-type'] })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'asset-host-template.xlsx'
+  link.click()
+  window.URL.revokeObjectURL(url)
+}
+
+function handleFileChange(uploadFile) {
+  importForm.file = uploadFile.raw || null
+}
+
+function clearImportFile() {
+  importForm.file = null
+}
+
+async function submitImport() {
+  if (!importForm.groupId || !importForm.file) {
+    ElMessage.warning('请选择分组并上传 Excel 文件')
+    return
+  }
+  importSubmitting.value = true
+  try {
+    const formData = new FormData()
+    formData.append('groupId', importForm.groupId)
+    formData.append('file', importForm.file)
+    const data = await importAssetHosts(formData)
+    ElMessage.success(`导入完成：成功 ${data.success} 台，失败 ${data.fail} 台`)
+    importDialogVisible.value = false
+    await loadData()
+  } finally {
+    importSubmitting.value = false
+  }
+}
+
+async function submitCloudSync() {
+  if (!cloudSyncForm.groupId || !cloudSyncForm.provider) {
+    ElMessage.warning('请选择分组和云厂商')
+    return
+  }
+  if (cloudSyncForm.useExistingAccount && !cloudSyncForm.cloudAccountId) {
+    ElMessage.warning('请选择已有云账号')
+    return
+  }
+  if (!cloudSyncForm.useExistingAccount && (!cloudSyncForm.accessKey || !cloudSyncForm.secretKey)) {
+    ElMessage.warning('请填写 AccessKey 和 SecretKey')
+    return
+  }
+  cloudSyncSubmitting.value = true
+  try {
+    const data = await syncAssetHostsFromCloud(cloudSyncForm)
+    ElMessage.success(`同步完成：新增 ${data.added} 台，更新 ${data.updated} 台，跳过 ${data.skipped} 台`)
+    cloudSyncDialogVisible.value = false
+    await loadData()
+  } finally {
+    cloudSyncSubmitting.value = false
+  }
+}
+
 function groupName(row) {
+  const groups = row.hostGroups || []
+  if (groups.length) {
+    return groups.map((item) => item.name).join(' / ')
+  }
   return row.group?.name || '-'
 }
 
@@ -164,6 +382,18 @@ function goTerminal() {
   router.push('/assets/terminal')
 }
 
+function handleCreateCommand(command) {
+  if (command === 'create') openCreate()
+  if (command === 'excel') openImportDialog()
+  if (command === 'cloud') openCloudSyncDialog()
+}
+
+function handleMoreCommand(command) {
+  if (command === 'batch-sync') handleBatchSync()
+  if (command === 'batch-delete') handleBatchDelete()
+  if (command === 'batch-credential') openBatchCredentialDialog()
+}
+
 onMounted(async () => {
   await loadOptions()
   await loadData()
@@ -178,28 +408,61 @@ onMounted(async () => {
           <el-input v-model="query.keyword" clearable placeholder="请输入主机名称" style="width: 160px" @keyup.enter="loadData" />
         </el-form-item>
         <el-form-item label="IP地址">
-          <el-input v-model="query.keyword" clearable placeholder="请输入IP地址" style="width: 160px" @keyup.enter="loadData" />
+          <el-input v-model="query.ipKeyword" clearable placeholder="请输入IP地址" style="width: 160px" @keyup.enter="loadData" />
         </el-form-item>
         <el-form-item label="主机状态">
           <el-select v-model="query.status" clearable placeholder="请选择状态" style="width: 140px">
-            <el-option label="正常" value="1" />
-            <el-option label="停用" value="2" />
+            <el-option label="在线" value="1" />
+            <el-option label="离线" value="2" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="主机组">
+          <el-select v-model="query.groupId" clearable filterable placeholder="请选择主机组" style="width: 180px">
+            <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
       </el-form>
       <div class="query-actions">
         <el-button type="primary" @click="loadData">搜索</el-button>
         <el-button color="#f0a43a" @click="resetQuery">重置</el-button>
-        <el-button type="success" @click="openCreate">新增</el-button>
+        <el-dropdown split-button type="success" @click="openCreate" @command="handleCreateCommand">
+          新增
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="create">导入主机</el-dropdown-item>
+              <el-dropdown-item command="excel">Excel导入</el-dropdown-item>
+              <el-dropdown-item command="cloud">云主机同步</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button color="#6f58c9" @click="goTerminal">终端</el-button>
+        <el-dropdown
+          placement="bottom-end"
+          popper-class="host-more-dropdown"
+          :disabled="!selectedRows.length"
+          @command="handleMoreCommand"
+        >
+          <el-button class="more-action-trigger" :disabled="!selectedRows.length">
+            更多操作
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="batch-sync">批量同步</el-dropdown-item>
+              <el-dropdown-item command="batch-delete">批量删除</el-dropdown-item>
+              <el-dropdown-item command="batch-credential">批量替换认证凭据</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </section>
 
-    <el-table v-loading="loading" :data="tableData" class="host-table">
+    <el-table v-loading="loading" :data="tableData" class="host-table" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="52" />
       <el-table-column label="主机名称" min-width="180">
         <template #default="{ row }">
           <div class="host-name">
-            <span class="linux-icon">🐧</span>
+            <span class="linux-icon">L</span>
             <span>{{ row.hostName }}</span>
           </div>
         </template>
@@ -222,7 +485,7 @@ onMounted(async () => {
       <el-table-column label="磁盘使用" width="120">
         <template #default>0%</template>
       </el-table-column>
-      <el-table-column label="配置 信息" min-width="160">
+      <el-table-column label="配置信息" min-width="170">
         <template #default="{ row }">
           <div class="config-info">
             <span>{{ configText(row) }}</span>
@@ -279,8 +542,8 @@ onMounted(async () => {
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="所属分组" required>
-              <el-select v-model="form.groupId" filterable placeholder="请选择分组" style="width: 100%">
+            <el-form-item label="所属主机组" required>
+              <el-select v-model="form.groupIds" multiple collapse-tags collapse-tags-tooltip filterable placeholder="请选择主机组" style="width: 100%">
                 <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
               </el-select>
             </el-form-item>
@@ -318,6 +581,102 @@ onMounted(async () => {
         <el-button type="primary" @click="submit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="importDialogVisible" title="Excel导入主机" width="520px">
+      <el-form label-width="92px">
+        <el-form-item label="模板下载">
+          <el-button type="primary" @click="handleTemplateDownload">下载模板</el-button>
+        </el-form-item>
+        <el-form-item label="选择分组">
+          <el-select v-model="importForm.groupId" filterable placeholder="请选择分组" style="width: 100%">
+            <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="上传Excel">
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="true"
+            :limit="1"
+            accept=".xlsx,.xls"
+            :on-change="handleFileChange"
+            :on-remove="clearImportFile"
+          >
+            <el-button type="primary">选择文件</el-button>
+          </el-upload>
+        </el-form-item>
+        <div class="dialog-tip">请上传 Excel 文件，模板列为：主机名称、SSH地址、SSH端口、SSH用户、认证凭据、备注。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importSubmitting" @click="submitImport">导入主机</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="cloudSyncDialogVisible" title="云主机同步" width="620px">
+      <el-form label-width="108px">
+        <el-form-item label="目标分组">
+          <el-select v-model="cloudSyncForm.groupId" filterable placeholder="请选择同步分组" style="width: 100%">
+            <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="云厂商">
+          <el-select v-model="cloudSyncForm.provider" placeholder="请选择云厂商" style="width: 100%">
+            <el-option label="腾讯云" value="tencent" />
+            <el-option label="阿里云" value="aliyun" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="认证方式">
+          <el-radio-group v-model="cloudSyncForm.useExistingAccount">
+            <el-radio :value="true">选择已有云账号</el-radio>
+            <el-radio :value="false">直接输入凭据</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="cloudSyncForm.useExistingAccount" label="已有云账号">
+          <el-select v-model="cloudSyncForm.cloudAccountId" filterable clearable placeholder="请选择云账号" style="width: 100%">
+            <el-option v-for="item in filteredCloudAccounts" :key="item.id" :value="item.id" :label="item.name" />
+          </el-select>
+        </el-form-item>
+        <template v-else>
+          <el-form-item label="账号名称">
+            <el-input v-model="cloudSyncForm.accountName" placeholder="可选，保存账号时使用" />
+          </el-form-item>
+          <el-form-item label="AccessKey">
+            <el-input v-model="cloudSyncForm.accessKey" placeholder="请输入 AccessKey" />
+          </el-form-item>
+          <el-form-item label="SecretKey">
+            <el-input v-model="cloudSyncForm.secretKey" show-password placeholder="请输入 SecretKey" />
+          </el-form-item>
+          <el-form-item label="保存为云账号">
+            <el-switch v-model="cloudSyncForm.saveAccount" />
+          </el-form-item>
+        </template>
+        <el-form-item label="区域">
+          <el-input v-model="cloudSyncForm.region" placeholder="例如 ap-guangzhou、cn-hangzhou，可选" />
+        </el-form-item>
+        <div class="dialog-tip">当前 `ops-admin` 已接入腾讯云同步流程，阿里云入口已预留，后端 SDK 接入后即可无缝启用。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="cloudSyncDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="cloudSyncSubmitting" @click="submitCloudSync">开始同步</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="batchCredentialDialogVisible" title="批量替换认证凭据" width="480px">
+      <el-form label-width="96px">
+        <el-form-item label="已选主机">
+          <span>{{ selectedRows.length }} 台</span>
+        </el-form-item>
+        <el-form-item label="认证凭据">
+          <el-select v-model="batchCredentialForm.credentialId" filterable placeholder="请选择认证凭据" style="width: 100%">
+            <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchCredentialDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchCredentialSubmitting" @click="submitBatchCredential">确定替换</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -339,6 +698,7 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
   margin-top: 10px;
+  align-items: center;
 }
 
 .host-table {
@@ -356,7 +716,16 @@ onMounted(async () => {
 }
 
 .linux-icon {
-  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #111827;
+  color: #facc15;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .ip-list {
@@ -369,14 +738,6 @@ onMounted(async () => {
 
 .ip {
   line-height: 1.2;
-}
-
-.public::first-letter {
-  color: #f59e0b;
-}
-
-.private::first-letter {
-  color: #54c46a;
 }
 
 .config-info {
@@ -416,5 +777,57 @@ onMounted(async () => {
 
 .credential-line .el-select {
   flex: 1;
+}
+
+.dialog-tip {
+  color: #7c87a6;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.more-action-trigger {
+  min-width: 110px;
+  height: 34px;
+  border: 1px solid #bfd5ff;
+  border-radius: 8px;
+  background: #f7fbff;
+  color: #5e78b4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.more-action-trigger:hover,
+.more-action-trigger:focus {
+  color: #4e67a2;
+  border-color: #9fbdf7;
+  background: #edf4ff;
+}
+
+.more-action-trigger.is-disabled {
+  color: #aeb8cf;
+  border-color: #dce5f6;
+  background: #f7f9fd;
+}
+
+:deep(.host-more-dropdown.el-popper) {
+  border: 1px solid #dbe6ff;
+  border-radius: 10px;
+  box-shadow: 0 16px 32px rgba(42, 68, 132, 0.14);
+  overflow: hidden;
+}
+
+:deep(.host-more-dropdown .el-dropdown-menu) {
+  padding: 6px 0;
+}
+
+:deep(.host-more-dropdown .el-dropdown-menu__item) {
+  min-width: 152px;
+  padding: 10px 14px;
+  color: #53688f;
+  font-size: 13px;
+}
+
+:deep(.host-more-dropdown .el-dropdown-menu__item:hover) {
+  background: #eef4ff;
+  color: #4669c9;
 }
 </style>

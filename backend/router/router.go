@@ -97,10 +97,16 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 		authGroup.GET("/asset/host/list", ctl.GetAssetHostList)
 		authGroup.GET("/asset/host/info", ctl.GetAssetHostInfo)
+		authGroup.GET("/asset/host/template", ctl.DownloadAssetHostTemplate)
 		authGroup.POST("/asset/host/add", ctl.CreateAssetHost)
+		authGroup.POST("/asset/host/import", ctl.ImportAssetHosts)
+		authGroup.POST("/asset/host/cloudSync", ctl.SyncAssetHostsFromCloud)
 		authGroup.PUT("/asset/host/update", ctl.UpdateAssetHost)
 		authGroup.POST("/asset/host/sync", ctl.SyncAssetHost)
+		authGroup.POST("/asset/host/batch/sync", ctl.BatchSyncAssetHosts)
+		authGroup.PUT("/asset/host/batch/credential", ctl.BatchReplaceAssetHostCredential)
 		authGroup.DELETE("/asset/host/delete", ctl.DeleteAssetHost)
+		authGroup.DELETE("/asset/host/batch/delete", ctl.BatchDeleteAssetHosts)
 
 		authGroup.GET("/asset/hostGroup/list", ctl.GetAssetHostGroupList)
 		authGroup.GET("/asset/hostGroup/info", ctl.GetAssetHostGroupInfo)

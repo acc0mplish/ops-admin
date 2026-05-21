@@ -102,6 +102,11 @@ type BatchIDPayload struct {
 	IDs []uint `json:"ids"`
 }
 
+type AssetHostBatchCredentialPayload struct {
+	IDs          []uint `json:"ids"`
+	CredentialID uint   `json:"credentialId"`
+}
+
 type AdminStatusPayload struct {
 	ID     uint `json:"id"`
 	Status int  `json:"status"`
@@ -135,6 +140,7 @@ type AssetHostPayload struct {
 	HostName       string `json:"hostName"`
 	Alias          string `json:"alias"`
 	GroupID        uint   `json:"groupId"`
+	GroupIDs       []uint `json:"groupIds"`
 	CredentialID   uint   `json:"credentialId"`
 	CloudAccountID uint   `json:"cloudAccountId"`
 	PrivateIP      string `json:"privateIp"`
@@ -152,6 +158,27 @@ type AssetHostPayload struct {
 	Region         string `json:"region"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
+}
+
+type AssetHostImportRow struct {
+	HostName       string `json:"hostName"`
+	SSHIP          string `json:"sshIp"`
+	SSHPort        int    `json:"sshPort"`
+	SSHUser        string `json:"sshUser"`
+	CredentialName string `json:"credentialName"`
+	Description    string `json:"description"`
+}
+
+type AssetCloudSyncPayload struct {
+	GroupID            uint   `json:"groupId"`
+	Provider           string `json:"provider"`
+	Region             string `json:"region"`
+	CloudAccountID     uint   `json:"cloudAccountId"`
+	UseExistingAccount bool   `json:"useExistingAccount"`
+	AccessKey          string `json:"accessKey"`
+	SecretKey          string `json:"secretKey"`
+	AccountName        string `json:"accountName"`
+	SaveAccount        bool   `json:"saveAccount"`
 }
 
 type AssetHostGroupPayload struct {
@@ -794,31 +821,37 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 	if pageSize < 1 {
 		pageSize = 10
 	}
-	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("Credential").Preload("CloudAccount")
+	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("HostGroups").Preload("Credential").Preload("CloudAccount")
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where("host_name like ? or alias like ? or private_ip like ? or public_ip like ? or ssh_ip like ?", like, like, like, like, like)
 	}
 	if groupID > 0 {
-		query = query.Where("group_id = ?", groupID)
+		query = query.Joins("LEFT JOIN asset_host_group_rel rel ON rel.host_id = asset_host.id").
+			Where("asset_host.group_id = ? OR rel.group_id = ?", groupID, groupID)
 	}
 	if status != "" {
-		query = query.Where("status = ?", status)
+		query = query.Where("alive_status = ?", status)
 	}
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Distinct("asset_host.id").Count(&total).Error; err != nil {
 		return nil, err
 	}
 	var list []model.AssetHost
-	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
+	if err := query.Select("asset_host.*").Distinct().Order("asset_host.id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
 		return nil, err
 	}
+	ensureHostGroupFallbackList(list)
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
 
 func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
 	var item model.AssetHost
-	return &item, s.db.Preload("Group").Preload("Credential").Preload("CloudAccount").First(&item, id).Error
+	if err := s.db.Preload("Group").Preload("HostGroups").Preload("Credential").Preload("CloudAccount").First(&item, id).Error; err != nil {
+		return &item, err
+	}
+	ensureHostGroupFallback(&item)
+	return &item, nil
 }
 
 func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
@@ -829,12 +862,22 @@ func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 	if host.Status == 0 {
 		host.Status = 1
 	}
-	return s.db.Create(&host).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&host).Error; err != nil {
+			return err
+		}
+		return syncAssetHostGroups(tx, host.ID, payload.GroupIDs, host.GroupID)
+	})
 }
 
 func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 	updates := assetHostUpdates(payload)
-	return s.db.Model(&model.AssetHost{}).Where("id = ?", payload.ID).Updates(updates).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AssetHost{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		return syncAssetHostGroups(tx, payload.ID, payload.GroupIDs, payload.GroupID)
+	})
 }
 
 func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
@@ -877,6 +920,194 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 		return nil, err
 	}
 	return s.GetAssetHost(id)
+}
+
+func (s *Service) ImportAssetHosts(groupID uint, rows []AssetHostImportRow) (map[string]any, error) {
+	var group model.AssetHostGroup
+	if err := s.db.First(&group, groupID).Error; err != nil {
+		return nil, errors.New("host group not found")
+	}
+
+	successCount := 0
+	failed := make([]string, 0)
+
+	for _, row := range rows {
+		hostName := Trimmed(row.HostName)
+		sshIP := Trimmed(row.SSHIP)
+		sshUser := Trimmed(row.SSHUser)
+		credentialName := Trimmed(row.CredentialName)
+		if hostName == "" || sshIP == "" || sshUser == "" || credentialName == "" {
+			failed = append(failed, hostName+"(missing fields)")
+			continue
+		}
+
+		var credential model.AssetCredential
+		if err := s.db.Where("name = ?", credentialName).First(&credential).Error; err != nil {
+			failed = append(failed, hostName+"(credential not found)")
+			continue
+		}
+
+		var existing model.AssetHost
+		if err := s.db.Where("ssh_ip = ?", sshIP).First(&existing).Error; err == nil {
+			failed = append(failed, hostName+"(ssh ip exists)")
+			continue
+		}
+
+		host := model.AssetHost{
+			HostName:     hostName,
+			GroupID:      groupID,
+			CredentialID: credential.ID,
+			SSHIP:        sshIP,
+			SSHUser:      sshUser,
+			SSHPort:      defaultSSHPort(row.SSHPort),
+			Status:       1,
+			AuthStatus:   2,
+			AliveStatus:  2,
+			Description:  Trimmed(row.Description),
+			Provider:     "自建",
+		}
+		if err := s.db.Create(&host).Error; err != nil {
+			failed = append(failed, hostName+"(create failed)")
+			continue
+		}
+		_ = syncAssetHostGroups(s.db, host.ID, []uint{groupID}, groupID)
+		successCount++
+	}
+
+	return map[string]any{
+		"success":     successCount,
+		"fail":        len(failed),
+		"total":       len(rows),
+		"failedHosts": failed,
+	}, nil
+}
+
+func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[string]any, error) {
+	provider := strings.ToLower(Trimmed(payload.Provider))
+	if payload.GroupID == 0 {
+		return nil, errors.New("groupId is required")
+	}
+
+	accessKey := Trimmed(payload.AccessKey)
+	secretKey := Trimmed(payload.SecretKey)
+	region := Trimmed(payload.Region)
+	var accountID *uint
+
+	if payload.UseExistingAccount {
+		var account model.AssetCloudAccount
+		if err := s.db.First(&account, payload.CloudAccountID).Error; err != nil {
+			return nil, errors.New("cloud account not found")
+		}
+		provider = strings.ToLower(Trimmed(account.Provider))
+		accessKey = Trimmed(account.AccessKey)
+		secretKey = Trimmed(account.SecretKey)
+		if region == "" {
+			region = Trimmed(account.Region)
+		}
+		accountID = &account.ID
+	} else {
+		if accessKey == "" || secretKey == "" {
+			return nil, errors.New("accessKey and secretKey are required")
+		}
+		if payload.SaveAccount {
+			account := model.AssetCloudAccount{
+				Name:        firstNonEmpty(Trimmed(payload.AccountName), provider+"-sync"),
+				Provider:    provider,
+				AccessKey:   accessKey,
+				SecretKey:   secretKey,
+				Region:      region,
+				Status:      1,
+				Description: "created by cloud sync",
+			}
+			if err := s.db.Create(&account).Error; err == nil {
+				accountID = &account.ID
+			}
+		}
+	}
+
+	instances, err := fetchCloudInstances(provider, accessKey, secretKey, region)
+	if err != nil {
+		return nil, err
+	}
+	if len(instances) == 0 {
+		return nil, errors.New("no instances found")
+	}
+
+	added := 0
+	updated := 0
+	skipped := 0
+	for _, item := range instances {
+		sshIP := firstNonEmpty(item.PublicIP, item.PrivateIP)
+		if sshIP == "" {
+			skipped++
+			continue
+		}
+
+		updates := map[string]any{
+			"host_name":        firstNonEmpty(item.HostName, item.InstanceID, sshIP),
+			"group_id":         payload.GroupID,
+			"private_ip":       item.PrivateIP,
+			"public_ip":        item.PublicIP,
+			"ssh_ip":           sshIP,
+			"ssh_user":         firstNonEmpty(item.SSHUser, "root"),
+			"ssh_port":         defaultSSHPort(item.SSHPort),
+			"os":               item.OS,
+			"cpu":              item.CPU,
+			"memory":           item.Memory,
+			"disk":             item.Disk,
+			"provider":         provider,
+			"region":           item.Region,
+			"instance_id":      item.InstanceID,
+			"status":           1,
+			"alive_status":     2,
+			"auth_status":      2,
+			"cloud_account_id": accountID,
+		}
+
+		var host model.AssetHost
+		err := s.db.Where("instance_id = ? AND instance_id <> ''", item.InstanceID).Or("ssh_ip = ?", sshIP).First(&host).Error
+		switch {
+		case err == nil:
+			if err := s.db.Model(&host).Updates(updates).Error; err == nil {
+				updated++
+			}
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			newHost := model.AssetHost{
+				HostName:       firstNonEmpty(item.HostName, item.InstanceID, sshIP),
+				GroupID:        payload.GroupID,
+				PrivateIP:      item.PrivateIP,
+				PublicIP:       item.PublicIP,
+				SSHIP:          sshIP,
+				SSHUser:        firstNonEmpty(item.SSHUser, "root"),
+				SSHPort:        defaultSSHPort(item.SSHPort),
+				OS:             item.OS,
+				CPU:            item.CPU,
+				Memory:         item.Memory,
+				Disk:           item.Disk,
+				Provider:       provider,
+				Region:         item.Region,
+				InstanceID:     item.InstanceID,
+				CloudAccountID: accountID,
+				Status:         1,
+				AliveStatus:    2,
+				AuthStatus:     2,
+			}
+			if err := s.db.Create(&newHost).Error; err == nil {
+				_ = syncAssetHostGroups(s.db, newHost.ID, []uint{payload.GroupID}, payload.GroupID)
+				added++
+			}
+		default:
+			skipped++
+		}
+	}
+
+	return map[string]any{
+		"provider": provider,
+		"total":    len(instances),
+		"added":    added,
+		"updated":  updated,
+		"skipped":  skipped,
+	}, nil
 }
 
 func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSession, error) {
@@ -948,6 +1179,50 @@ func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSess
 
 func (s *Service) DeleteAssetHost(id uint) error {
 	return s.db.Delete(&model.AssetHost{}, id).Error
+}
+
+func (s *Service) BatchDeleteAssetHosts(ids []uint) error {
+	if len(ids) == 0 {
+		return errors.New("no host selected")
+	}
+	return s.db.Where("id IN ?", ids).Delete(&model.AssetHost{}).Error
+}
+
+func (s *Service) BatchSyncAssetHosts(ids []uint) (map[string]any, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("no host selected")
+	}
+	successCount := 0
+	failed := make([]uint, 0)
+	for _, id := range ids {
+		if _, err := s.SyncAssetHost(id); err != nil {
+			failed = append(failed, id)
+			continue
+		}
+		successCount++
+	}
+	return map[string]any{
+		"success":   successCount,
+		"fail":      len(failed),
+		"failedIds": failed,
+	}, nil
+}
+
+func (s *Service) BatchReplaceAssetHostCredential(ids []uint, credentialID uint) error {
+	if len(ids) == 0 {
+		return errors.New("no host selected")
+	}
+	if credentialID == 0 {
+		return errors.New("credentialId is required")
+	}
+	var credential model.AssetCredential
+	if err := s.db.First(&credential, credentialID).Error; err != nil {
+		return errors.New("credential not found")
+	}
+	return s.db.Model(&model.AssetHost{}).Where("id IN ?", ids).Updates(map[string]any{
+		"credential_id": credentialID,
+		"auth_status":   2,
+	}).Error
 }
 
 func (s *Service) ListAssetHostGroups(keyword string) ([]model.AssetHostGroup, error) {
@@ -1258,10 +1533,11 @@ func shortenText(value string, limit int) string {
 }
 
 func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
+	groupIDs := normalizeGroupIDs(payload.GroupIDs, payload.GroupID)
 	return model.AssetHost{
 		HostName:       Trimmed(payload.HostName),
 		Alias:          Trimmed(payload.Alias),
-		GroupID:        payload.GroupID,
+		GroupID:        firstGroupID(groupIDs),
 		CredentialID:   payload.CredentialID,
 		CloudAccountID: optionalUint(payload.CloudAccountID),
 		PrivateIP:      Trimmed(payload.PrivateIP),
@@ -1318,6 +1594,65 @@ func assetHostUpdates(payload AssetHostPayload) map[string]any {
 		"region":           host.Region,
 		"status":           host.Status,
 		"description":      host.Description,
+	}
+}
+
+func normalizeGroupIDs(groupIDs []uint, fallback uint) []uint {
+	result := make([]uint, 0, len(groupIDs)+1)
+	seen := map[uint]struct{}{}
+	for _, id := range groupIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	if len(result) == 0 && fallback > 0 {
+		result = append(result, fallback)
+	}
+	return result
+}
+
+func firstGroupID(groupIDs []uint) uint {
+	if len(groupIDs) > 0 {
+		return groupIDs[0]
+	}
+	return 0
+}
+
+func syncAssetHostGroups(db *gorm.DB, hostID uint, groupIDs []uint, fallback uint) error {
+	normalized := normalizeGroupIDs(groupIDs, fallback)
+	if len(normalized) == 0 {
+		return nil
+	}
+	if err := db.Where("host_id = ?", hostID).Delete(&model.AssetHostGroupRelation{}).Error; err != nil {
+		return err
+	}
+	relations := make([]model.AssetHostGroupRelation, 0, len(normalized))
+	for _, groupID := range normalized {
+		relations = append(relations, model.AssetHostGroupRelation{
+			HostID:  hostID,
+			GroupID: groupID,
+		})
+	}
+	return db.Create(&relations).Error
+}
+
+func ensureHostGroupFallback(host *model.AssetHost) {
+	if host == nil {
+		return
+	}
+	if len(host.HostGroups) == 0 && host.GroupID > 0 && host.Group.ID > 0 {
+		host.HostGroups = []model.AssetHostGroup{host.Group}
+	}
+}
+
+func ensureHostGroupFallbackList(list []model.AssetHost) {
+	for index := range list {
+		ensureHostGroupFallback(&list[index])
 	}
 }
 
@@ -1388,9 +1723,10 @@ func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, err
 func collectHostInfo(client *ssh.Client) map[string]string {
 	result := map[string]string{}
 	commands := map[string]string{
-		"os":         "uname -srm 2>/dev/null || true",
+		"os":         ". /etc/os-release 2>/dev/null && printf '%s' \"$PRETTY_NAME\" || lsb_release -ds 2>/dev/null || uname -sr 2>/dev/null || true",
+		"arch":       "uname -m 2>/dev/null || true",
 		"cpu":        "nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null || true",
-		"memory":     "free -m 2>/dev/null | awk '/Mem:/ {print $2\"MB\"}' || true",
+		"memory":     "free -m 2>/dev/null | awk '/Mem:/ {printf \"%dG\", int(($2 + 1023) / 1024)}' || true",
 		"disk":       "df -h / 2>/dev/null | awk 'NR==2 {print $2}' || true",
 		"private_ip": "hostname -I 2>/dev/null | awk '{print $1}' || true",
 		"public_ip":  "curl -s --max-time 2 ifconfig.me 2>/dev/null || wget -qO- -T 2 ifconfig.me 2>/dev/null || true",
@@ -1399,9 +1735,6 @@ func collectHostInfo(client *ssh.Client) map[string]string {
 		value := runSSHCommand(client, command)
 		if field == "cpu" && value != "" {
 			value = value + "核"
-		}
-		if field == "os" && value != "" {
-			result["arch"] = lastField(value)
 		}
 		result[field] = value
 	}
@@ -1444,4 +1777,66 @@ func formatConfig(host model.AssetHost) string {
 		return "-"
 	}
 	return strings.Join(parts, " / ")
+}
+
+type cloudInstance struct {
+	InstanceID string
+	HostName   string
+	PrivateIP  string
+	PublicIP   string
+	CPU        string
+	Memory     string
+	Disk       string
+	OS         string
+	Region     string
+	SSHUser    string
+	SSHPort    int
+}
+
+func fetchCloudInstances(provider, accessKey, secretKey, region string) ([]cloudInstance, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "tencent", "tencentcloud":
+		service := util.NewTencentCloudService(accessKey, secretKey)
+		instances, err := service.GetInstances()
+		if err != nil {
+			return nil, err
+		}
+		result := make([]cloudInstance, 0, len(instances))
+		for _, item := range instances {
+			result = append(result, cloudInstance{
+				InstanceID: item.InstanceID,
+				HostName:   firstNonEmpty(item.HostName, item.InstanceID),
+				PrivateIP:  item.PrivateIP,
+				PublicIP:   item.PublicIP,
+				CPU:        fmt.Sprintf("%d核", item.CPU),
+				Memory:     fmt.Sprintf("%dGB", item.Memory/1024),
+				Disk:       fmt.Sprintf("%dGB", item.Disk),
+				OS:         item.OS,
+				Region:     item.Region,
+				SSHUser:    "root",
+				SSHPort:    22,
+			})
+		}
+		return result, nil
+	case "aliyun", "alicloud":
+		return nil, errors.New("aliyun sync is not wired in this module yet")
+	default:
+		return nil, fmt.Errorf("unsupported cloud provider: %s", provider)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func defaultSSHPort(port int) int {
+	if port > 0 {
+		return port
+	}
+	return 22
 }

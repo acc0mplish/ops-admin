@@ -60,9 +60,14 @@ function buildTree(groups, hosts) {
       host,
       children: []
     }
-    const group = nodes.get(host.groupId)
-    if (group) {
-      group.children.push(hostNode)
+    const hostGroups = Array.isArray(host.hostGroups) && host.hostGroups.length ? host.hostGroups : host.groupId ? [{ id: host.groupId }] : []
+    if (hostGroups.length) {
+      hostGroups.forEach((item) => {
+        const group = nodes.get(item.id)
+        if (group) {
+          group.children.push({ ...hostNode, id: `${hostNode.id}-g-${item.id}` })
+        }
+      })
     } else {
       roots.push(hostNode)
     }

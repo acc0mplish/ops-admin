@@ -2,10 +2,19 @@ import http from './http'
 
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })
 export const assetHostInfo = (id) => http.get('/api/v1/asset/host/info', { params: { id } })
+export const downloadAssetHostTemplate = () => http.get('/api/v1/asset/host/template', { responseType: 'blob' })
 export const addAssetHost = (data) => http.post('/api/v1/asset/host/add', data)
+export const importAssetHosts = (data) =>
+  http.post('/api/v1/asset/host/import', data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 export const updateAssetHost = (data) => http.put('/api/v1/asset/host/update', data)
+export const syncAssetHostsFromCloud = (data) => http.post('/api/v1/asset/host/cloudSync', data)
 export const syncAssetHost = (id) => http.post('/api/v1/asset/host/sync', { id })
 export const deleteAssetHost = (id) => http.delete('/api/v1/asset/host/delete', { data: { id } })
+export const batchSyncAssetHosts = (ids) => http.post('/api/v1/asset/host/batch/sync', { ids })
+export const batchDeleteAssetHosts = (ids) => http.delete('/api/v1/asset/host/batch/delete', { data: { ids } })
+export const batchReplaceAssetHostCredential = (data) => http.put('/api/v1/asset/host/batch/credential', data)
 
 export const queryAssetHostGroupList = (params) => http.get('/api/v1/asset/hostGroup/list', { params })
 export const assetHostGroupInfo = (id) => http.get('/api/v1/asset/hostGroup/info', { params: { id } })
