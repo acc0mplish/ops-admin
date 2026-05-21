@@ -966,7 +966,7 @@ func (ctl *Controller) GetAssetHostGroupList(c *gin.Context) {
 		httpx.Failed(c, 500, err.Error())
 		return
 	}
-	httpx.Success(c, map[string]any{"list": data, "total": len(data)})
+	httpx.Success(c, data)
 }
 
 func (ctl *Controller) GetAssetHostGroupInfo(c *gin.Context) {

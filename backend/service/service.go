@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -212,6 +213,26 @@ type AssetCloudAccountPayload struct {
 	Region      string `json:"region"`
 	Status      int    `json:"status"`
 	Description string `json:"description"`
+}
+
+type AssetHostGroupNode struct {
+	ID          uint                  `json:"id"`
+	ParentID    uint                  `json:"parentId"`
+	Name        string                `json:"name"`
+	Code        string                `json:"code"`
+	Sort        int                   `json:"sort"`
+	Status      int                   `json:"status"`
+	Description string                `json:"description"`
+	HostCount   int64                 `json:"hostCount"`
+	CreatedAt   time.Time             `json:"createTime"`
+	UpdatedAt   time.Time             `json:"updateTime"`
+	Children    []*AssetHostGroupNode `json:"children,omitempty"`
+}
+
+type AssetHostGroupListResult struct {
+	List  []AssetHostGroupNode  `json:"list"`
+	Tree  []*AssetHostGroupNode `json:"tree"`
+	Total int                   `json:"total"`
 }
 
 type profileRow struct {
@@ -1225,24 +1246,55 @@ func (s *Service) BatchReplaceAssetHostCredential(ids []uint, credentialID uint)
 	}).Error
 }
 
-func (s *Service) ListAssetHostGroups(keyword string) ([]model.AssetHostGroup, error) {
-	var list []model.AssetHostGroup
+func (s *Service) ListAssetHostGroups(keyword string) (*AssetHostGroupListResult, error) {
+	var groups []model.AssetHostGroup
 	query := s.db.Model(&model.AssetHostGroup{})
 	if keyword != "" {
-		query = query.Where("name like ? or code like ?", "%"+keyword+"%", "%"+keyword+"%")
+		like := "%" + keyword + "%"
+		query = query.Where("name like ? or code like ?", like, like)
 	}
-	return list, query.Order("sort asc, id asc").Find(&list).Error
+	if err := query.Order("sort asc, id asc").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	countMap, err := s.assetHostGroupHostCountMap()
+	if err != nil {
+		return nil, err
+	}
+	list := make([]AssetHostGroupNode, 0, len(groups))
+	for _, item := range groups {
+		list = append(list, s.newAssetHostGroupNode(item, countMap[item.ID]))
+	}
+	return &AssetHostGroupListResult{
+		List:  list,
+		Tree:  buildAssetHostGroupTree(list),
+		Total: len(list),
+	}, nil
 }
 
-func (s *Service) GetAssetHostGroup(id uint) (*model.AssetHostGroup, error) {
+func (s *Service) GetAssetHostGroup(id uint) (*AssetHostGroupNode, error) {
 	var item model.AssetHostGroup
-	return &item, s.db.First(&item, id).Error
+	if err := s.db.First(&item, id).Error; err != nil {
+		return nil, err
+	}
+	countMap, err := s.assetHostGroupHostCountMap()
+	if err != nil {
+		return nil, err
+	}
+	result := s.newAssetHostGroupNode(item, countMap[item.ID])
+	return &result, nil
 }
 
 func (s *Service) CreateAssetHostGroup(payload AssetHostGroupPayload) error {
+	name := Trimmed(payload.Name)
+	if name == "" {
+		return errors.New("主机组名称不能为空")
+	}
+	if err := s.validateAssetHostGroupParent(0, payload.ParentID); err != nil {
+		return err
+	}
 	item := model.AssetHostGroup{
 		ParentID:    payload.ParentID,
-		Name:        Trimmed(payload.Name),
+		Name:        name,
 		Code:        Trimmed(payload.Code),
 		Sort:        payload.Sort,
 		Status:      payload.Status,
@@ -1255,9 +1307,19 @@ func (s *Service) CreateAssetHostGroup(payload AssetHostGroupPayload) error {
 }
 
 func (s *Service) UpdateAssetHostGroup(payload AssetHostGroupPayload) error {
+	name := Trimmed(payload.Name)
+	if payload.ID == 0 {
+		return errors.New("主机组不存在")
+	}
+	if name == "" {
+		return errors.New("主机组名称不能为空")
+	}
+	if err := s.validateAssetHostGroupParent(payload.ID, payload.ParentID); err != nil {
+		return err
+	}
 	return s.db.Model(&model.AssetHostGroup{}).Where("id = ?", payload.ID).Updates(map[string]any{
 		"parent_id":   payload.ParentID,
-		"name":        Trimmed(payload.Name),
+		"name":        name,
 		"code":        Trimmed(payload.Code),
 		"sort":        payload.Sort,
 		"status":      payload.Status,
@@ -1266,6 +1328,24 @@ func (s *Service) UpdateAssetHostGroup(payload AssetHostGroupPayload) error {
 }
 
 func (s *Service) DeleteAssetHostGroup(id uint) error {
+	if id == 0 {
+		return errors.New("主机组不存在")
+	}
+	hostCount, err := s.assetHostGroupHostCount(id)
+	if err != nil {
+		return err
+	}
+	if hostCount > 0 {
+		return errors.New("当前主机组下仍有关联主机，不能删除")
+	}
+	var childCount int64
+	if err := s.db.Model(&model.AssetHostGroup{}).Where("parent_id = ?", id).Count(&childCount).Error; err != nil {
+		return err
+	}
+	if childCount > 0 {
+		return errors.New("当前主机组下仍有子分组，不能删除")
+	}
+	return s.db.Delete(&model.AssetHostGroup{}, id).Error
 	var count int64
 	s.db.Model(&model.AssetHost{}).Where("group_id = ?", id).Count(&count)
 	if count > 0 {
@@ -1276,6 +1356,138 @@ func (s *Service) DeleteAssetHostGroup(id uint) error {
 		return errors.New("主机组下存在子分组，不能删除")
 	}
 	return s.db.Delete(&model.AssetHostGroup{}, id).Error
+}
+
+func (s *Service) validateAssetHostGroupParent(id uint, parentID uint) error {
+	if parentID == 0 {
+		return nil
+	}
+	if id != 0 && id == parentID {
+		return errors.New("上级主机组不能选择自己")
+	}
+	var parent model.AssetHostGroup
+	if err := s.db.First(&parent, parentID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("上级主机组不存在")
+		}
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	var groups []model.AssetHostGroup
+	if err := s.db.Select("id", "parent_id").Find(&groups).Error; err != nil {
+		return err
+	}
+	parentMap := make(map[uint]uint, len(groups))
+	for _, item := range groups {
+		parentMap[item.ID] = item.ParentID
+	}
+	for current := parentID; current != 0; {
+		if current == id {
+			return errors.New("上级主机组不能选择当前分组或其子分组")
+		}
+		next, ok := parentMap[current]
+		if !ok || next == current {
+			break
+		}
+		current = next
+	}
+	return nil
+}
+
+func (s *Service) assetHostGroupHostCount(id uint) (int64, error) {
+	countMap, err := s.assetHostGroupHostCountMap()
+	if err != nil {
+		return 0, err
+	}
+	return countMap[id], nil
+}
+
+func (s *Service) assetHostGroupHostCountMap() (map[uint]int64, error) {
+	type countRow struct {
+		GroupID uint  `gorm:"column:group_id"`
+		Count   int64 `gorm:"column:count"`
+	}
+
+	countMap := map[uint]int64{}
+
+	var relRows []countRow
+	if err := s.db.Model(&model.AssetHostGroupRelation{}).
+		Select("group_id, count(distinct host_id) as count").
+		Group("group_id").
+		Scan(&relRows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range relRows {
+		countMap[item.GroupID] += item.Count
+	}
+
+	var fallbackRows []countRow
+	if err := s.db.Model(&model.AssetHost{}).
+		Select("asset_host.group_id as group_id, count(distinct asset_host.id) as count").
+		Joins("LEFT JOIN asset_host_group_rel rel ON rel.host_id = asset_host.id AND rel.group_id = asset_host.group_id").
+		Where("asset_host.group_id <> 0 AND rel.host_id IS NULL").
+		Group("asset_host.group_id").
+		Scan(&fallbackRows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range fallbackRows {
+		countMap[item.GroupID] += item.Count
+	}
+
+	return countMap, nil
+}
+
+func (s *Service) newAssetHostGroupNode(item model.AssetHostGroup, hostCount int64) AssetHostGroupNode {
+	return AssetHostGroupNode{
+		ID:          item.ID,
+		ParentID:    item.ParentID,
+		Name:        item.Name,
+		Code:        item.Code,
+		Sort:        item.Sort,
+		Status:      item.Status,
+		Description: item.Description,
+		HostCount:   hostCount,
+		CreatedAt:   item.CreatedAt,
+		UpdatedAt:   item.UpdatedAt,
+	}
+}
+
+func buildAssetHostGroupTree(list []AssetHostGroupNode) []*AssetHostGroupNode {
+	nodes := make(map[uint]*AssetHostGroupNode, len(list))
+	roots := make([]*AssetHostGroupNode, 0)
+	for _, item := range list {
+		node := item
+		node.Children = nil
+		nodes[node.ID] = &node
+	}
+	for _, item := range list {
+		node := nodes[item.ID]
+		if node.ParentID != 0 {
+			if parent, ok := nodes[node.ParentID]; ok {
+				parent.Children = append(parent.Children, node)
+				continue
+			}
+		}
+		roots = append(roots, node)
+	}
+	sortAssetHostGroupNodes(roots)
+	return roots
+}
+
+func sortAssetHostGroupNodes(nodes []*AssetHostGroupNode) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].Sort == nodes[j].Sort {
+			return nodes[i].ID < nodes[j].ID
+		}
+		return nodes[i].Sort < nodes[j].Sort
+	})
+	for _, node := range nodes {
+		if len(node.Children) > 0 {
+			sortAssetHostGroupNodes(node.Children)
+		}
+	}
 }
 
 func (s *Service) ListAssetCredentials(pageNum, pageSize int, keyword string, authType string) (map[string]any, error) {
