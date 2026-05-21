@@ -2,7 +2,10 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -10,11 +13,21 @@ import (
 	"ops-admin/backend/model"
 	"ops-admin/backend/util"
 
+	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
 type Service struct {
 	db *gorm.DB
+}
+
+type AssetTerminalSession struct {
+	Host    model.AssetHost
+	Client  *ssh.Client
+	Session *ssh.Session
+	Stdin   io.WriteCloser
+	Stdout  io.Reader
+	Stderr  io.Reader
 }
 
 func New(db *gorm.DB) *Service {
@@ -115,6 +128,63 @@ type SystemConfigPayload struct {
 	LoginBackground    string `json:"loginBackground"`
 	PrimaryColor       string `json:"primaryColor"`
 	SidebarTheme       string `json:"sidebarTheme"`
+}
+
+type AssetHostPayload struct {
+	ID             uint   `json:"id"`
+	HostName       string `json:"hostName"`
+	Alias          string `json:"alias"`
+	GroupID        uint   `json:"groupId"`
+	CredentialID   uint   `json:"credentialId"`
+	CloudAccountID uint   `json:"cloudAccountId"`
+	PrivateIP      string `json:"privateIp"`
+	PublicIP       string `json:"publicIp"`
+	SSHUser        string `json:"sshUser"`
+	SSHIP          string `json:"sshIp"`
+	SSHPort        int    `json:"sshPort"`
+	OS             string `json:"os"`
+	Arch           string `json:"arch"`
+	CPU            string `json:"cpu"`
+	Memory         string `json:"memory"`
+	Disk           string `json:"disk"`
+	Environment    string `json:"environment"`
+	Provider       string `json:"provider"`
+	Region         string `json:"region"`
+	Status         int    `json:"status"`
+	Description    string `json:"description"`
+}
+
+type AssetHostGroupPayload struct {
+	ID          uint   `json:"id"`
+	ParentID    uint   `json:"parentId"`
+	Name        string `json:"name"`
+	Code        string `json:"code"`
+	Sort        int    `json:"sort"`
+	Status      int    `json:"status"`
+	Description string `json:"description"`
+}
+
+type AssetCredentialPayload struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	AuthType    string `json:"authType"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	PrivateKey  string `json:"privateKey"`
+	Passphrase  string `json:"passphrase"`
+	Status      int    `json:"status"`
+	Description string `json:"description"`
+}
+
+type AssetCloudAccountPayload struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Provider    string `json:"provider"`
+	AccessKey   string `json:"accessKey"`
+	SecretKey   string `json:"secretKey"`
+	Region      string `json:"region"`
+	Status      int    `json:"status"`
+	Description string `json:"description"`
 }
 
 type profileRow struct {
@@ -717,6 +787,392 @@ func (s *Service) CleanOperationLogs() error {
 	return s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.OperationLog{}).Error
 }
 
+func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID uint, status string) (map[string]any, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("Credential").Preload("CloudAccount")
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("host_name like ? or alias like ? or private_ip like ? or public_ip like ? or ssh_ip like ?", like, like, like, like, like)
+	}
+	if groupID > 0 {
+		query = query.Where("group_id = ?", groupID)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var list []model.AssetHost
+	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
+	var item model.AssetHost
+	return &item, s.db.Preload("Group").Preload("Credential").Preload("CloudAccount").First(&item, id).Error
+}
+
+func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
+	host := assetHostFromPayload(payload)
+	if host.SSHPort == 0 {
+		host.SSHPort = 22
+	}
+	if host.Status == 0 {
+		host.Status = 1
+	}
+	return s.db.Create(&host).Error
+}
+
+func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
+	updates := assetHostUpdates(payload)
+	return s.db.Model(&model.AssetHost{}).Where("id = ?", payload.ID).Updates(updates).Error
+}
+
+func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
+	var host model.AssetHost
+	if err := s.db.Preload("Credential").First(&host, id).Error; err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	updates := map[string]any{
+		"alive_status":    2,
+		"auth_status":     2,
+		"last_check_time": &now,
+	}
+
+	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
+	if conn, err := net.DialTimeout("tcp", address, 3*time.Second); err == nil {
+		_ = conn.Close()
+		updates["alive_status"] = 1
+	}
+
+	client, err := newSSHClient(host)
+	if err != nil {
+		_ = s.db.Model(&host).Updates(updates).Error
+		return s.GetAssetHost(id)
+	}
+	defer client.Close()
+	updates["auth_status"] = 1
+	updates["status"] = 1
+
+	if info := collectHostInfo(client); len(info) > 0 {
+		for key, value := range info {
+			if strings.TrimSpace(value) != "" {
+				updates[key] = value
+			}
+		}
+	}
+
+	if err := s.db.Model(&host).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return s.GetAssetHost(id)
+}
+
+func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSession, error) {
+	var host model.AssetHost
+	if err := s.db.Preload("Credential").First(&host, id).Error; err != nil {
+		return nil, err
+	}
+	if rows <= 0 {
+		rows = 30
+	}
+	if cols <= 0 {
+		cols = 120
+	}
+
+	client, err := newSSHClient(host)
+	if err != nil {
+		return nil, err
+	}
+	session, err := client.NewSession()
+	if err != nil {
+		client.Close()
+		return nil, err
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		session.Close()
+		client.Close()
+		return nil, err
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		client.Close()
+		return nil, err
+	}
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		session.Close()
+		client.Close()
+		return nil, err
+	}
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+	if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
+		session.Close()
+		client.Close()
+		return nil, err
+	}
+	if err := session.Shell(); err != nil {
+		session.Close()
+		client.Close()
+		return nil, err
+	}
+
+	return &AssetTerminalSession{
+		Host:    host,
+		Client:  client,
+		Session: session,
+		Stdin:   stdin,
+		Stdout:  stdout,
+		Stderr:  stderr,
+	}, nil
+}
+
+func (s *Service) DeleteAssetHost(id uint) error {
+	return s.db.Delete(&model.AssetHost{}, id).Error
+}
+
+func (s *Service) ListAssetHostGroups(keyword string) ([]model.AssetHostGroup, error) {
+	var list []model.AssetHostGroup
+	query := s.db.Model(&model.AssetHostGroup{})
+	if keyword != "" {
+		query = query.Where("name like ? or code like ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	return list, query.Order("sort asc, id asc").Find(&list).Error
+}
+
+func (s *Service) GetAssetHostGroup(id uint) (*model.AssetHostGroup, error) {
+	var item model.AssetHostGroup
+	return &item, s.db.First(&item, id).Error
+}
+
+func (s *Service) CreateAssetHostGroup(payload AssetHostGroupPayload) error {
+	item := model.AssetHostGroup{
+		ParentID:    payload.ParentID,
+		Name:        Trimmed(payload.Name),
+		Code:        Trimmed(payload.Code),
+		Sort:        payload.Sort,
+		Status:      payload.Status,
+		Description: Trimmed(payload.Description),
+	}
+	if item.Status == 0 {
+		item.Status = 1
+	}
+	return s.db.Create(&item).Error
+}
+
+func (s *Service) UpdateAssetHostGroup(payload AssetHostGroupPayload) error {
+	return s.db.Model(&model.AssetHostGroup{}).Where("id = ?", payload.ID).Updates(map[string]any{
+		"parent_id":   payload.ParentID,
+		"name":        Trimmed(payload.Name),
+		"code":        Trimmed(payload.Code),
+		"sort":        payload.Sort,
+		"status":      payload.Status,
+		"description": Trimmed(payload.Description),
+	}).Error
+}
+
+func (s *Service) DeleteAssetHostGroup(id uint) error {
+	var count int64
+	s.db.Model(&model.AssetHost{}).Where("group_id = ?", id).Count(&count)
+	if count > 0 {
+		return errors.New("主机组下存在主机，不能删除")
+	}
+	s.db.Model(&model.AssetHostGroup{}).Where("parent_id = ?", id).Count(&count)
+	if count > 0 {
+		return errors.New("主机组下存在子分组，不能删除")
+	}
+	return s.db.Delete(&model.AssetHostGroup{}, id).Error
+}
+
+func (s *Service) ListAssetCredentials(pageNum, pageSize int, keyword string, authType string) (map[string]any, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	query := s.db.Model(&model.AssetCredential{})
+	if keyword != "" {
+		query = query.Where("name like ? or username like ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if authType != "" {
+		query = query.Where("auth_type = ?", authType)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var list []model.AssetCredential
+	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	for i := range list {
+		maskCredential(&list[i])
+	}
+	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+func (s *Service) ListAssetCredentialOptions() ([]model.AssetCredential, error) {
+	var list []model.AssetCredential
+	err := s.db.Where("status = ?", 1).Order("id desc").Find(&list).Error
+	for i := range list {
+		maskCredential(&list[i])
+	}
+	return list, err
+}
+
+func (s *Service) GetAssetCredential(id uint) (*model.AssetCredential, error) {
+	var item model.AssetCredential
+	return &item, s.db.First(&item, id).Error
+}
+
+func (s *Service) CreateAssetCredential(payload AssetCredentialPayload) error {
+	item := model.AssetCredential{
+		Name:        Trimmed(payload.Name),
+		AuthType:    normalizedAuthType(payload.AuthType),
+		Username:    Trimmed(payload.Username),
+		Password:    payload.Password,
+		PrivateKey:  payload.PrivateKey,
+		Passphrase:  payload.Passphrase,
+		Status:      payload.Status,
+		Description: Trimmed(payload.Description),
+	}
+	if item.Status == 0 {
+		item.Status = 1
+	}
+	return s.db.Create(&item).Error
+}
+
+func (s *Service) UpdateAssetCredential(payload AssetCredentialPayload) error {
+	updates := map[string]any{
+		"name":        Trimmed(payload.Name),
+		"auth_type":   normalizedAuthType(payload.AuthType),
+		"username":    Trimmed(payload.Username),
+		"status":      payload.Status,
+		"description": Trimmed(payload.Description),
+	}
+	if payload.Password != "" {
+		updates["password"] = payload.Password
+	}
+	if payload.PrivateKey != "" {
+		updates["private_key"] = payload.PrivateKey
+	}
+	if payload.Passphrase != "" {
+		updates["passphrase"] = payload.Passphrase
+	}
+	return s.db.Model(&model.AssetCredential{}).Where("id = ?", payload.ID).Updates(updates).Error
+}
+
+func (s *Service) DeleteAssetCredential(id uint) error {
+	var count int64
+	s.db.Model(&model.AssetHost{}).Where("credential_id = ?", id).Count(&count)
+	if count > 0 {
+		return errors.New("凭据已被主机关联，不能删除")
+	}
+	return s.db.Delete(&model.AssetCredential{}, id).Error
+}
+
+func (s *Service) ListAssetCloudAccounts(pageNum, pageSize int, keyword string, provider string) (map[string]any, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	query := s.db.Model(&model.AssetCloudAccount{})
+	if keyword != "" {
+		query = query.Where("name like ? or access_key like ?", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if provider != "" {
+		query = query.Where("provider = ?", provider)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var list []model.AssetCloudAccount
+	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	for i := range list {
+		list[i].SecretKey = maskedSecret(list[i].SecretKey)
+	}
+	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+func (s *Service) ListAssetCloudAccountOptions() ([]model.AssetCloudAccount, error) {
+	var list []model.AssetCloudAccount
+	err := s.db.Where("status = ?", 1).Order("id desc").Find(&list).Error
+	for i := range list {
+		list[i].SecretKey = maskedSecret(list[i].SecretKey)
+	}
+	return list, err
+}
+
+func (s *Service) GetAssetCloudAccount(id uint) (*model.AssetCloudAccount, error) {
+	var item model.AssetCloudAccount
+	return &item, s.db.First(&item, id).Error
+}
+
+func (s *Service) CreateAssetCloudAccount(payload AssetCloudAccountPayload) error {
+	item := model.AssetCloudAccount{
+		Name:        Trimmed(payload.Name),
+		Provider:    Trimmed(payload.Provider),
+		AccessKey:   Trimmed(payload.AccessKey),
+		SecretKey:   payload.SecretKey,
+		Region:      Trimmed(payload.Region),
+		Status:      payload.Status,
+		Description: Trimmed(payload.Description),
+	}
+	if item.Status == 0 {
+		item.Status = 1
+	}
+	return s.db.Create(&item).Error
+}
+
+func (s *Service) UpdateAssetCloudAccount(payload AssetCloudAccountPayload) error {
+	updates := map[string]any{
+		"name":        Trimmed(payload.Name),
+		"provider":    Trimmed(payload.Provider),
+		"access_key":  Trimmed(payload.AccessKey),
+		"region":      Trimmed(payload.Region),
+		"status":      payload.Status,
+		"description": Trimmed(payload.Description),
+	}
+	if payload.SecretKey != "" {
+		updates["secret_key"] = payload.SecretKey
+	}
+	return s.db.Model(&model.AssetCloudAccount{}).Where("id = ?", payload.ID).Updates(updates).Error
+}
+
+func (s *Service) DeleteAssetCloudAccount(id uint) error {
+	var count int64
+	s.db.Model(&model.AssetHost{}).Where("cloud_account_id = ?", id).Count(&count)
+	if count > 0 {
+		return errors.New("云账号已被主机关联，不能删除")
+	}
+	return s.db.Delete(&model.AssetCloudAccount{}, id).Error
+}
+
 func (s *Service) paginateLogs(entity any, pageNum, pageSize int, field string, keyword string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
@@ -799,4 +1255,193 @@ func shortenText(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
+}
+
+func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
+	return model.AssetHost{
+		HostName:       Trimmed(payload.HostName),
+		Alias:          Trimmed(payload.Alias),
+		GroupID:        payload.GroupID,
+		CredentialID:   payload.CredentialID,
+		CloudAccountID: optionalUint(payload.CloudAccountID),
+		PrivateIP:      Trimmed(payload.PrivateIP),
+		PublicIP:       Trimmed(payload.PublicIP),
+		SSHUser:        Trimmed(payload.SSHUser),
+		SSHIP:          Trimmed(payload.SSHIP),
+		SSHPort:        payload.SSHPort,
+		OS:             Trimmed(payload.OS),
+		Arch:           Trimmed(payload.Arch),
+		CPU:            Trimmed(payload.CPU),
+		Memory:         Trimmed(payload.Memory),
+		Disk:           Trimmed(payload.Disk),
+		Environment:    Trimmed(payload.Environment),
+		Provider:       Trimmed(payload.Provider),
+		Region:         Trimmed(payload.Region),
+		Status:         payload.Status,
+		Description:    Trimmed(payload.Description),
+	}
+}
+
+func optionalUint(value uint) *uint {
+	if value == 0 {
+		return nil
+	}
+	return &value
+}
+
+func assetHostUpdates(payload AssetHostPayload) map[string]any {
+	host := assetHostFromPayload(payload)
+	if host.SSHPort == 0 {
+		host.SSHPort = 22
+	}
+	if host.Status == 0 {
+		host.Status = 1
+	}
+	return map[string]any{
+		"host_name":        host.HostName,
+		"alias":            host.Alias,
+		"group_id":         host.GroupID,
+		"credential_id":    host.CredentialID,
+		"cloud_account_id": host.CloudAccountID,
+		"private_ip":       host.PrivateIP,
+		"public_ip":        host.PublicIP,
+		"ssh_user":         host.SSHUser,
+		"ssh_ip":           host.SSHIP,
+		"ssh_port":         host.SSHPort,
+		"os":               host.OS,
+		"arch":             host.Arch,
+		"cpu":              host.CPU,
+		"memory":           host.Memory,
+		"disk":             host.Disk,
+		"environment":      host.Environment,
+		"provider":         host.Provider,
+		"region":           host.Region,
+		"status":           host.Status,
+		"description":      host.Description,
+	}
+}
+
+func normalizedAuthType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "key", "private_key", "密钥认证":
+		return "key"
+	default:
+		return "password"
+	}
+}
+
+func maskCredential(item *model.AssetCredential) {
+	item.Password = maskedSecret(item.Password)
+	item.PrivateKey = maskedSecret(item.PrivateKey)
+	item.Passphrase = maskedSecret(item.Passphrase)
+}
+
+func maskedSecret(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "******"
+}
+
+func newSSHClient(host model.AssetHost) (*ssh.Client, error) {
+	if host.SSHIP == "" {
+		return nil, errors.New("主机未配置 SSH 地址")
+	}
+	if host.SSHUser == "" {
+		return nil, errors.New("主机未配置 SSH 用户")
+	}
+	authMethod, err := credentialAuthMethod(host.Credential)
+	if err != nil {
+		return nil, err
+	}
+	config := &ssh.ClientConfig{
+		User:            host.SSHUser,
+		Auth:            []ssh.AuthMethod{authMethod},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort), config)
+}
+
+func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, error) {
+	switch normalizedAuthType(credential.AuthType) {
+	case "key":
+		var signer ssh.Signer
+		var err error
+		if strings.TrimSpace(credential.Passphrase) != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(credential.PrivateKey), []byte(credential.Passphrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey([]byte(credential.PrivateKey))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return ssh.PublicKeys(signer), nil
+	default:
+		if credential.Password == "" {
+			return nil, errors.New("密码凭据为空")
+		}
+		return ssh.Password(credential.Password), nil
+	}
+}
+
+func collectHostInfo(client *ssh.Client) map[string]string {
+	result := map[string]string{}
+	commands := map[string]string{
+		"os":         "uname -srm 2>/dev/null || true",
+		"cpu":        "nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null || true",
+		"memory":     "free -m 2>/dev/null | awk '/Mem:/ {print $2\"MB\"}' || true",
+		"disk":       "df -h / 2>/dev/null | awk 'NR==2 {print $2}' || true",
+		"private_ip": "hostname -I 2>/dev/null | awk '{print $1}' || true",
+		"public_ip":  "curl -s --max-time 2 ifconfig.me 2>/dev/null || wget -qO- -T 2 ifconfig.me 2>/dev/null || true",
+	}
+	for field, command := range commands {
+		value := runSSHCommand(client, command)
+		if field == "cpu" && value != "" {
+			value = value + "核"
+		}
+		if field == "os" && value != "" {
+			result["arch"] = lastField(value)
+		}
+		result[field] = value
+	}
+	return result
+}
+
+func runSSHCommand(client *ssh.Client, command string) string {
+	session, err := client.NewSession()
+	if err != nil {
+		return ""
+	}
+	defer session.Close()
+	output, err := session.CombinedOutput(command)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func lastField(value string) string {
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+func formatConfig(host model.AssetHost) string {
+	parts := make([]string, 0, 3)
+	if host.CPU != "" {
+		parts = append(parts, host.CPU)
+	}
+	if host.Memory != "" {
+		parts = append(parts, host.Memory)
+	}
+	if host.Disk != "" {
+		parts = append(parts, host.Disk)
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " / ")
 }

@@ -30,6 +30,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	{
 		api.POST("/login", ctl.Login)
 		api.GET("/systemConfig/public", ctl.GetSystemConfig)
+		api.GET("/asset/terminal/ws", ctl.AssetTerminalWS)
 	}
 
 	authGroup := api.Group("")
@@ -93,6 +94,33 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.DELETE("/sysOperationLog/delete", ctl.DeleteOperationLog)
 		authGroup.DELETE("/sysOperationLog/batch/delete", ctl.BatchDeleteOperationLog)
 		authGroup.DELETE("/sysOperationLog/clean", ctl.CleanOperationLog)
+
+		authGroup.GET("/asset/host/list", ctl.GetAssetHostList)
+		authGroup.GET("/asset/host/info", ctl.GetAssetHostInfo)
+		authGroup.POST("/asset/host/add", ctl.CreateAssetHost)
+		authGroup.PUT("/asset/host/update", ctl.UpdateAssetHost)
+		authGroup.POST("/asset/host/sync", ctl.SyncAssetHost)
+		authGroup.DELETE("/asset/host/delete", ctl.DeleteAssetHost)
+
+		authGroup.GET("/asset/hostGroup/list", ctl.GetAssetHostGroupList)
+		authGroup.GET("/asset/hostGroup/info", ctl.GetAssetHostGroupInfo)
+		authGroup.POST("/asset/hostGroup/add", ctl.CreateAssetHostGroup)
+		authGroup.PUT("/asset/hostGroup/update", ctl.UpdateAssetHostGroup)
+		authGroup.DELETE("/asset/hostGroup/delete", ctl.DeleteAssetHostGroup)
+
+		authGroup.GET("/asset/credential/list", ctl.GetAssetCredentialList)
+		authGroup.GET("/asset/credential/options", ctl.GetAssetCredentialOptions)
+		authGroup.GET("/asset/credential/info", ctl.GetAssetCredentialInfo)
+		authGroup.POST("/asset/credential/add", ctl.CreateAssetCredential)
+		authGroup.PUT("/asset/credential/update", ctl.UpdateAssetCredential)
+		authGroup.DELETE("/asset/credential/delete", ctl.DeleteAssetCredential)
+
+		authGroup.GET("/asset/cloudAccount/list", ctl.GetAssetCloudAccountList)
+		authGroup.GET("/asset/cloudAccount/options", ctl.GetAssetCloudAccountOptions)
+		authGroup.GET("/asset/cloudAccount/info", ctl.GetAssetCloudAccountInfo)
+		authGroup.POST("/asset/cloudAccount/add", ctl.CreateAssetCloudAccount)
+		authGroup.PUT("/asset/cloudAccount/update", ctl.UpdateAssetCloudAccount)
+		authGroup.DELETE("/asset/cloudAccount/delete", ctl.DeleteAssetCloudAccount)
 	}
 
 	return engine

@@ -24,18 +24,46 @@ export const appDefinitions = [
         children: []
       },
       {
-        title: '主机管理',
-        titleKey: 'assetsHosts',
-        path: '/assets/hosts',
-        icon: 'Cpu',
+        title: '终端登录',
+        path: '/assets/terminal',
+        icon: 'Platform',
         children: []
       },
       {
-        title: '标签分组',
-        titleKey: 'assetsTags',
-        path: '/assets/tags',
-        icon: 'CollectionTag',
-        children: []
+        title: '服务器管理',
+        titleKey: 'serverManagement',
+        path: '/assets/server',
+        icon: 'Cpu',
+        children: [
+          {
+            title: '主机管理',
+            titleKey: 'hostManagement',
+            path: '/assets/server/hosts',
+            icon: 'Monitor',
+            children: []
+          },
+          {
+            title: '主机组管理',
+            titleKey: 'hostGroupManagement',
+            path: '/assets/server/groups',
+            icon: 'FolderOpened',
+            children: []
+          },
+          {
+            title: '凭据管理',
+            titleKey: 'credentialManagement',
+            path: '/assets/server/credentials',
+            icon: 'Key',
+            children: []
+          },
+          {
+            title: '云账号管理',
+            titleKey: 'cloudAccountManagement',
+            path: '/assets/server/cloud-accounts',
+            icon: 'Cloudy',
+            children: []
+          }
+        ]
       }
     ]
   },

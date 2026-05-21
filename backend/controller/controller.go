@@ -2,23 +2,33 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"ops-admin/backend/auth"
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/model"
 	"ops-admin/backend/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type Controller struct {
 	service *service.Service
+}
+
+var terminalUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 func New(svc *service.Service) *Controller {
@@ -671,6 +681,329 @@ func (ctl *Controller) BatchDeleteOperationLog(c *gin.Context) {
 func (ctl *Controller) CleanOperationLog(c *gin.Context) {
 	if err := ctl.service.CleanOperationLogs(); err != nil {
 		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) GetAssetHostList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListAssetHosts(pageNum, pageSize, c.Query("keyword"), uint(mustAtoi(c.Query("groupId"))), c.Query("status"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetHostInfo(c *gin.Context) {
+	data, err := ctl.service.GetAssetHost(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) CreateAssetHost(c *gin.Context) {
+	var payload service.AssetHostPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid host payload")
+		return
+	}
+	if err := ctl.service.CreateAssetHost(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateAssetHost(c *gin.Context) {
+	var payload service.AssetHostPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid host payload")
+		return
+	}
+	if err := ctl.service.UpdateAssetHost(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) SyncAssetHost(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid sync payload")
+		return
+	}
+	data, err := ctl.service.SyncAssetHost(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
+	token := c.Query("token")
+	if _, err := auth.ParseToken(token); err != nil {
+		httpx.Failed(c, 401, "token invalid")
+		return
+	}
+
+	hostID := uint(mustAtoi(c.Query("hostId")))
+	rows := mustAtoi(c.DefaultQuery("rows", "30"))
+	cols := mustAtoi(c.DefaultQuery("cols", "120"))
+	terminal, err := ctl.service.OpenAssetTerminal(hostID, rows, cols)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	defer terminal.Session.Close()
+	defer terminal.Client.Close()
+
+	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	var writeMu sync.Mutex
+	writePipe := func(reader io.Reader) {
+		buf := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buf)
+			if n > 0 {
+				writeMu.Lock()
+				_ = conn.WriteMessage(websocket.TextMessage, buf[:n])
+				writeMu.Unlock()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+	go writePipe(terminal.Stdout)
+	go writePipe(terminal.Stderr)
+	go func() {
+		_ = terminal.Session.Wait()
+		_ = conn.Close()
+	}()
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if _, err := terminal.Stdin.Write(message); err != nil {
+			return
+		}
+	}
+}
+
+func (ctl *Controller) DeleteAssetHost(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteAssetHost(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) GetAssetHostGroupList(c *gin.Context) {
+	data, err := ctl.service.ListAssetHostGroups(c.Query("keyword"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, map[string]any{"list": data, "total": len(data)})
+}
+
+func (ctl *Controller) GetAssetHostGroupInfo(c *gin.Context) {
+	data, err := ctl.service.GetAssetHostGroup(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) CreateAssetHostGroup(c *gin.Context) {
+	var payload service.AssetHostGroupPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid host group payload")
+		return
+	}
+	if err := ctl.service.CreateAssetHostGroup(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateAssetHostGroup(c *gin.Context) {
+	var payload service.AssetHostGroupPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid host group payload")
+		return
+	}
+	if err := ctl.service.UpdateAssetHostGroup(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteAssetHostGroup(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteAssetHostGroup(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) GetAssetCredentialList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListAssetCredentials(pageNum, pageSize, c.Query("keyword"), c.Query("authType"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetCredentialOptions(c *gin.Context) {
+	data, err := ctl.service.ListAssetCredentialOptions()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetCredentialInfo(c *gin.Context) {
+	data, err := ctl.service.GetAssetCredential(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) CreateAssetCredential(c *gin.Context) {
+	var payload service.AssetCredentialPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid credential payload")
+		return
+	}
+	if err := ctl.service.CreateAssetCredential(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateAssetCredential(c *gin.Context) {
+	var payload service.AssetCredentialPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid credential payload")
+		return
+	}
+	if err := ctl.service.UpdateAssetCredential(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteAssetCredential(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteAssetCredential(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) GetAssetCloudAccountList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListAssetCloudAccounts(pageNum, pageSize, c.Query("keyword"), c.Query("provider"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetCloudAccountOptions(c *gin.Context) {
+	data, err := ctl.service.ListAssetCloudAccountOptions()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetCloudAccountInfo(c *gin.Context) {
+	data, err := ctl.service.GetAssetCloudAccount(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) CreateAssetCloudAccount(c *gin.Context) {
+	var payload service.AssetCloudAccountPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid cloud account payload")
+		return
+	}
+	if err := ctl.service.CreateAssetCloudAccount(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateAssetCloudAccount(c *gin.Context) {
+	var payload service.AssetCloudAccountPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid cloud account payload")
+		return
+	}
+	if err := ctl.service.UpdateAssetCloudAccount(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteAssetCloudAccount(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteAssetCloudAccount(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
 		return
 	}
 	httpx.Success(c, true)

@@ -12,24 +12,44 @@ import Post from '../views/system/Post.vue'
 import LoginLog from '../views/system/LoginLog.vue'
 import OperationLog from '../views/system/OperationLog.vue'
 import BasicConfig from '../views/system/BasicConfig.vue'
+import Host from '../views/assets/Host.vue'
+import HostGroup from '../views/assets/HostGroup.vue'
+import Credential from '../views/assets/Credential.vue'
+import CloudAccount from '../views/assets/CloudAccount.vue'
+import TerminalLogin from '../views/assets/Terminal.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
+  assetOverview: [
+    { title: '资产总览', description: '展示服务器、云账号、凭据和主机组的整体规模。' },
+    { title: '资源分布', description: '按环境、区域和业务线查看资产分布情况。' },
+    { title: '健康状态', description: '聚合展示认证异常、离线和待维护资产。' }
+  ],
   hosts: [
-    { title: '主机清单', description: '统一管理主机编号、IP、环境和所属业务。' },
-    { title: '资产详情', description: '查看主机配置、登录方式和维护责任人。' },
-    { title: '批量维护', description: '为导入、标签和生命周期管理预留入口。' }
+    { title: '主机清单', description: '统一管理主机名、IP、系统版本、环境和所属业务。' },
+    { title: '连接信息', description: '维护 SSH 地址、端口、账号和关联凭据。' },
+    { title: '批量维护', description: '为导入、同步、分组和生命周期管理预留入口。' }
   ],
-  jobs: [
-    { title: '作业模板', description: '沉淀巡检、发布、变更和回收模板。' },
-    { title: '执行记录', description: '追踪作业开始、结束、耗时和结果。' },
-    { title: '流程编排', description: '为审批流和责任确认预留空间。' }
+  hostGroups: [
+    { title: '分组树', description: '按业务线、环境、集群或区域组织服务器资产。' },
+    { title: '主机关联', description: '维护主机和主机组之间的归属关系。' },
+    { title: '批量授权', description: '为后续任务执行和权限范围控制打基础。' }
   ],
-  monitor: [
-    { title: '健康概览', description: '展示主机、服务和任务的总体健康状态。' },
-    { title: '趋势分析', description: '按时间维度查看异常趋势和波动。' },
-    { title: '值班视角', description: '为后续扩展 NOC 和值班视角打基础。' }
+  passwordCredentials: [
+    { title: '账号密码', description: '集中维护 SSH 用户名、密码和适用范围。' },
+    { title: '安全存储', description: '后续可接入加密存储、脱敏展示和审计记录。' },
+    { title: '认证校验', description: '为批量测试主机连通性和凭据有效性预留入口。' }
+  ],
+  keyCredentials: [
+    { title: '密钥托管', description: '集中维护私钥、公钥指纹和关联账号。' },
+    { title: '密钥认证', description: '用于免密登录、任务执行和自动化发布场景。' },
+    { title: '轮换计划', description: '后续可接入密钥过期提醒和轮换流程。' }
+  ],
+  cloudAccounts: [
+    { title: '云厂商账号', description: '维护阿里云、腾讯云、华为云等访问密钥。' },
+    { title: '资产同步', description: '为云主机自动发现和同步任务预留入口。' },
+    { title: '同步记录', description: '沉淀每次云资产同步结果和异常信息。' }
   ]
 }
 
@@ -52,43 +72,64 @@ const routes = [
       { path: '/logs/operation', component: OperationLog, meta: { title: '操作日志', app: 'console' } },
 
       {
-        path: '/assets/hosts',
-        component: ModuleWorkspace,
-        meta: {
-          title: '主机管理',
-          app: 'assets',
-          summary: '集中维护服务器、云主机和网络设备台账。',
-          cards: moduleCards.hosts
-        }
-      },
-      {
         path: '/assets/overview',
         component: ModuleWorkspace,
         meta: {
           title: '资产概览',
           app: 'assets',
-          summary: '统一查看资产分布、资源使用和资产健康状态。',
-          cards: [
-            { title: '资产总览', description: '展示主机、网络、云资源和标签的整体规模。' },
-            { title: '资源分布', description: '按环境、区域和业务线查看资产分布情况。' },
-            { title: '健康状态', description: '聚合展示资产异常、离线和待维护情况。' }
-          ]
+          summary: '统一查看服务器资产、凭据、云账号和主机组的整体状态。',
+          cards: moduleCards.assetOverview
         }
       },
       {
-        path: '/assets/tags',
-        component: ModuleWorkspace,
+        path: '/assets/terminal',
+        component: TerminalLogin,
         meta: {
-          title: '标签分组',
+          title: '终端登录',
           app: 'assets',
-          summary: '通过标签、分组和业务域整理资产结构。',
-          cards: [
-            { title: '标签体系', description: '设计应用、环境、区域等多维标签。' },
-            { title: '分组视图', description: '按项目、团队和集群组织资产。' },
-            { title: '检索过滤', description: '为资产搜索和批量运维提供筛选条件。' }
-          ]
+          summary: '通过主机关联凭据发起 SSH Web 终端连接。'
         }
       },
+      {
+        path: '/assets/server/hosts',
+        component: Host,
+        meta: {
+          title: '主机管理',
+          app: 'assets',
+          summary: '集中维护服务器、云主机和网络设备台账。'
+        }
+      },
+      {
+        path: '/assets/server/groups',
+        component: HostGroup,
+        meta: {
+          title: '主机组管理',
+          app: 'assets',
+          summary: '通过主机组组织资产范围，为批量运维和权限控制提供边界。'
+        }
+      },
+      {
+        path: '/assets/server/credentials',
+        component: Credential,
+        meta: {
+          title: '凭据管理',
+          app: 'assets',
+          summary: '集中维护密码认证和密钥认证两类服务器登录凭据。'
+        }
+      },
+      {
+        path: '/assets/server/cloud-accounts',
+        component: CloudAccount,
+        meta: {
+          title: '云账号管理',
+          app: 'assets',
+          summary: '维护云厂商访问账号，并为云资产同步提供凭证来源。'
+        }
+      },
+      { path: '/assets/server/credentials/password', redirect: '/assets/server/credentials' },
+      { path: '/assets/server/credentials/key', redirect: '/assets/server/credentials' },
+      { path: '/assets/hosts', redirect: '/assets/server/hosts' },
+      { path: '/assets/tags', redirect: '/assets/server/groups' },
 
       {
         path: '/ops/jobs',
@@ -97,7 +138,11 @@ const routes = [
           title: '作业中心',
           app: 'ops',
           summary: '管理标准化运维作业和自动化编排流程。',
-          cards: moduleCards.jobs
+          cards: [
+            { title: '作业模板', description: '沉淀巡检、发布、变更和回收模板。' },
+            { title: '执行记录', description: '追踪作业开始、结束、耗时和结果。' },
+            { title: '流程编排', description: '为审批流和责任确认预留空间。' }
+          ]
         }
       },
       {
@@ -150,7 +195,11 @@ const routes = [
           title: '监控大盘',
           app: 'monitor',
           summary: '统一查看系统健康、可用性和告警趋势。',
-          cards: moduleCards.monitor
+          cards: [
+            { title: '健康概览', description: '展示主机、服务和任务的总体健康状态。' },
+            { title: '趋势分析', description: '按时间维度查看异常趋势和波动。' },
+            { title: '值班视角', description: '为后续扩展 NOC 和值班视角打基础。' }
+          ]
         }
       },
       {

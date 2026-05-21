@@ -125,7 +125,7 @@ function isAppEntryMenu(item) {
 function normalizeStaticMenus(raw) {
   return (raw || []).map((item) => ({
     ...item,
-    children: (item.children || []).map((child) => ({ ...child }))
+    children: normalizeStaticMenus(item.children || [])
   }))
 }
 
@@ -156,29 +156,34 @@ function buildBreadcrumbs(menuList, path, fallbackTitle) {
     ]
   }
 
-  for (const item of menuList) {
-    if (item.path === path) {
-      return [
-        { title: currentAppLabel.value, path: currentApp.value.defaultRoute },
-        { title: displayTitle(item), path: item.path }
-      ]
-    }
-    if (item.children?.length) {
-      const child = item.children.find((entry) => entry.path === path)
-      if (child) {
-        return [
-          { title: currentAppLabel.value, path: currentApp.value.defaultRoute },
-          { title: displayTitle(item), path: item.path || path },
-          { title: displayTitle(child), path: child.path }
-        ]
-      }
-    }
+  const trail = findMenuTrail(menuList, path)
+  if (trail.length) {
+    return [
+      { title: currentAppLabel.value, path: currentApp.value.defaultRoute },
+      ...trail.map((item) => ({ title: displayTitle(item), path: item.path || path }))
+    ]
   }
 
   return [
     { title: currentAppLabel.value, path: currentApp.value.defaultRoute },
     { title: fallbackTitle, path }
   ]
+}
+
+function findMenuTrail(menuList, path, parents = []) {
+  for (const item of menuList) {
+    const trail = [...parents, item]
+    if (item.path === path) {
+      return trail
+    }
+    if (item.children?.length) {
+      const childTrail = findMenuTrail(item.children, path, trail)
+      if (childTrail.length) {
+        return childTrail
+      }
+    }
+  }
+  return []
 }
 
 function currentLogoText() {
@@ -420,10 +425,22 @@ onMounted(() => {
                 <el-icon><component :is="menu.icon || 'Menu'" /></el-icon>
                 <span>{{ displayTitle(menu) }}</span>
               </template>
-              <el-menu-item v-for="child in menu.children" :key="child.path" :index="child.path">
-                <el-icon><component :is="child.icon || 'Document'" /></el-icon>
-                <template #title>{{ displayTitle(child) }}</template>
-              </el-menu-item>
+              <template v-for="child in menu.children" :key="child.path || child.title">
+                <el-menu-item v-if="!child.children?.length" :index="child.path">
+                  <el-icon><component :is="child.icon || 'Document'" /></el-icon>
+                  <template #title>{{ displayTitle(child) }}</template>
+                </el-menu-item>
+                <el-sub-menu v-else :index="child.path || child.title">
+                  <template #title>
+                    <el-icon><component :is="child.icon || 'Document'" /></el-icon>
+                    <span>{{ displayTitle(child) }}</span>
+                  </template>
+                  <el-menu-item v-for="grandChild in child.children" :key="grandChild.path" :index="grandChild.path">
+                    <el-icon><component :is="grandChild.icon || 'Document'" /></el-icon>
+                    <template #title>{{ displayTitle(grandChild) }}</template>
+                  </el-menu-item>
+                </el-sub-menu>
+              </template>
             </el-sub-menu>
           </template>
         </el-menu>
