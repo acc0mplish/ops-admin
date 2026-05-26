@@ -17,39 +17,17 @@ import HostGroup from '../views/assets/HostGroup.vue'
 import Credential from '../views/assets/Credential.vue'
 import CloudAccount from '../views/assets/CloudAccount.vue'
 import TerminalLogin from '../views/assets/Terminal.vue'
+import K8s from '../views/assets/K8s.vue'
+import K8sClusterManage from '../views/assets/K8sClusterManage.vue'
+import K8sPodTerminal from '../views/assets/K8sPodTerminal.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
   assetOverview: [
-    { title: '资产总览', description: '展示服务器、云账号、凭据和主机组的整体规模。' },
-    { title: '资源分布', description: '按环境、区域和业务线查看资产分布情况。' },
-    { title: '健康状态', description: '聚合展示认证异常、离线和待维护资产。' }
-  ],
-  hosts: [
-    { title: '主机清单', description: '统一管理主机名、IP、系统版本、环境和所属业务。' },
-    { title: '连接信息', description: '维护 SSH 地址、端口、账号和关联凭据。' },
-    { title: '批量维护', description: '为导入、同步、分组和生命周期管理预留入口。' }
-  ],
-  hostGroups: [
-    { title: '分组树', description: '按业务线、环境、集群或区域组织服务器资产。' },
-    { title: '主机关联', description: '维护主机和主机组之间的归属关系。' },
-    { title: '批量授权', description: '为后续任务执行和权限范围控制打基础。' }
-  ],
-  passwordCredentials: [
-    { title: '账号密码', description: '集中维护 SSH 用户名、密码和适用范围。' },
-    { title: '安全存储', description: '后续可接入加密存储、脱敏展示和审计记录。' },
-    { title: '认证校验', description: '为批量测试主机连通性和凭据有效性预留入口。' }
-  ],
-  keyCredentials: [
-    { title: '密钥托管', description: '集中维护私钥、公钥指纹和关联账号。' },
-    { title: '密钥认证', description: '用于免密登录、任务执行和自动化发布场景。' },
-    { title: '轮换计划', description: '后续可接入密钥过期提醒和轮换流程。' }
-  ],
-  cloudAccounts: [
-    { title: '云厂商账号', description: '维护阿里云、腾讯云、华为云等访问密钥。' },
-    { title: '资产同步', description: '为云主机自动发现和同步任务预留入口。' },
-    { title: '同步记录', description: '沉淀每次云资产同步结果和异常信息。' }
+    { title: '资产总览', description: '统一查看主机、凭据、云账号和分组的整体情况。' },
+    { title: '资源分布', description: '按环境、区域和业务维度查看资源分布。' },
+    { title: '健康状态', description: '聚合展示异常、离线和待处理资源。' }
   ]
 }
 
@@ -77,7 +55,7 @@ const routes = [
         meta: {
           title: '资产概览',
           app: 'assets',
-          summary: '统一查看服务器资产、凭据、云账号和主机组的整体状态。',
+          summary: '统一查看主机资产、凭据、云账号和主机组的整体状态。',
           cards: moduleCards.assetOverview
         }
       },
@@ -114,7 +92,7 @@ const routes = [
         meta: {
           title: '凭据管理',
           app: 'assets',
-          summary: '集中维护密码认证和密钥认证两类服务器登录凭据。'
+          summary: '集中维护密码认证和密钥认证两类主机登录凭据。'
         }
       },
       {
@@ -123,8 +101,25 @@ const routes = [
         meta: {
           title: '云账号管理',
           app: 'assets',
-          summary: '维护云厂商访问账号，并为云资产同步提供凭证来源。'
+          summary: '维护云厂商访问账号，为云资产同步提供凭证来源。'
         }
+      },
+      { path: '/assets/k8s', redirect: '/assets/k8s/clusters' },
+      { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: 'Clusters', app: 'assets' } },
+      { path: '/assets/k8s/overview', component: K8s, meta: { title: 'Overview', app: 'assets' } },
+      { path: '/assets/k8s/nodes', component: K8s, meta: { title: 'Nodes', app: 'assets' } },
+      { path: '/assets/k8s/namespaces', component: K8s, meta: { title: 'Namespaces', app: 'assets' } },
+      { path: '/assets/k8s/workloads', component: K8s, meta: { title: 'Workloads', app: 'assets' } },
+      { path: '/assets/k8s/pods', component: K8s, meta: { title: 'Pods', app: 'assets' } },
+      { path: '/assets/k8s/network', redirect: '/assets/k8s/services' },
+      { path: '/assets/k8s/services', component: K8s, meta: { title: 'Services', app: 'assets' } },
+      { path: '/assets/k8s/ingresses', component: K8s, meta: { title: 'Ingress', app: 'assets' } },
+      { path: '/assets/k8s/config-storage', component: K8s, meta: { title: 'Config & Storage', app: 'assets' } },
+      {
+        path: '/assets/k8s/pod-terminal/:clusterId/:namespace/:podName',
+        name: 'K8sPodTerminal',
+        component: K8sPodTerminal,
+        meta: { title: 'Pod Terminal', app: 'assets' }
       },
       { path: '/assets/server/credentials/password', redirect: '/assets/server/credentials' },
       { path: '/assets/server/credentials/key', redirect: '/assets/server/credentials' },
@@ -197,7 +192,7 @@ const routes = [
           summary: '统一查看系统健康、可用性和告警趋势。',
           cards: [
             { title: '健康概览', description: '展示主机、服务和任务的总体健康状态。' },
-            { title: '趋势分析', description: '按时间维度查看异常趋势和波动。' },
+            { title: '趋势分析', description: '按时间维度查看异常波动和抖动。' },
             { title: '值班视角', description: '为后续扩展 NOC 和值班视角打基础。' }
           ]
         }

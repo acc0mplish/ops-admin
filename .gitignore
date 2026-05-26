@@ -2,3 +2,5 @@ backend/.gocache/
 backend/.gomodcache/
 web/node_modules/
 web/dist/
+AutoOps/
+.gocache/

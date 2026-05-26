@@ -64,6 +64,67 @@ export const appDefinitions = [
             children: []
           }
         ]
+      },
+      {
+        title: 'K8s 管理',
+        path: '/assets/k8s',
+        icon: 'Connection',
+        children: [
+          {
+            title: 'Clusters',
+            path: '/assets/k8s/clusters',
+            icon: 'FolderOpened',
+            children: []
+          },
+          {
+            title: 'Overview',
+            path: '/assets/k8s/overview',
+            icon: 'DataAnalysis',
+            children: []
+          },
+          {
+            title: 'Nodes',
+            path: '/assets/k8s/nodes',
+            icon: 'Monitor',
+            children: []
+          },
+          {
+            title: 'Namespaces',
+            path: '/assets/k8s/namespaces',
+            icon: 'Grid',
+            children: []
+          },
+          {
+            title: 'Workloads',
+            path: '/assets/k8s/workloads',
+            icon: 'SetUp',
+            children: []
+          },
+          {
+            title: 'Pods',
+            path: '/assets/k8s/pods',
+            icon: 'Box',
+            children: []
+          },
+          {
+            title: 'Services',
+            path: '/assets/k8s/services',
+            icon: 'Share',
+            children: []
+          },
+          {
+            title: 'Ingress',
+            path: '/assets/k8s/ingresses',
+            icon: 'Connection',
+            children: []
+          },
+          {
+            title: 'Config & Storage',
+            path: '/assets/k8s/config-storage',
+            icon: 'Files',
+            children: []
+          }
+        ]
       }
     ]
   },

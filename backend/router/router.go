@@ -31,6 +31,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		api.POST("/login", ctl.Login)
 		api.GET("/systemConfig/public", ctl.GetSystemConfig)
 		api.GET("/asset/terminal/ws", ctl.AssetTerminalWS)
+		api.GET("/k8s/pod/terminal/ws", ctl.K8sPodTerminalWS)
 	}
 
 	authGroup := api.Group("")
@@ -127,6 +128,30 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/asset/cloudAccount/add", ctl.CreateAssetCloudAccount)
 		authGroup.PUT("/asset/cloudAccount/update", ctl.UpdateAssetCloudAccount)
 		authGroup.DELETE("/asset/cloudAccount/delete", ctl.DeleteAssetCloudAccount)
+
+		authGroup.GET("/k8s/cluster/list", ctl.GetK8sClusterList)
+		authGroup.GET("/k8s/cluster/info", ctl.GetK8sClusterInfo)
+		authGroup.POST("/k8s/cluster/add", ctl.CreateK8sCluster)
+		authGroup.PUT("/k8s/cluster/update", ctl.UpdateK8sCluster)
+		authGroup.DELETE("/k8s/cluster/delete", ctl.DeleteK8sCluster)
+		authGroup.GET("/k8s/cluster/detail", ctl.GetK8sClusterDetail)
+		authGroup.GET("/k8s/node/detail", ctl.GetK8sNodeDetail)
+		authGroup.GET("/k8s/node/pods", ctl.GetK8sNodePods)
+		authGroup.GET("/k8s/namespace/detail", ctl.GetK8sNamespaceDetail)
+		authGroup.GET("/k8s/namespace/events", ctl.GetK8sNamespaceEvents)
+		authGroup.GET("/k8s/service/detail", ctl.GetK8sServiceDetail)
+		authGroup.GET("/k8s/ingress/detail", ctl.GetK8sIngressDetail)
+		authGroup.GET("/k8s/configmap/detail", ctl.GetK8sConfigMapDetail)
+		authGroup.GET("/k8s/secret/detail", ctl.GetK8sSecretDetail)
+		authGroup.GET("/k8s/storage/detail", ctl.GetK8sStorageDetail)
+		authGroup.GET("/k8s/pod/detail", ctl.GetK8sPodDetail)
+		authGroup.GET("/k8s/pod/containers", ctl.GetK8sPodContainers)
+		authGroup.GET("/k8s/pod/logs", ctl.GetK8sPodLogs)
+		authGroup.GET("/k8s/pod/events", ctl.GetK8sPodEvents)
+		authGroup.GET("/k8s/workload/detail", ctl.GetK8sWorkloadDetail)
+		authGroup.POST("/k8s/workload/scale", ctl.ScaleK8sWorkload)
+		authGroup.POST("/k8s/workload/restart", ctl.RestartK8sWorkload)
+		authGroup.PUT("/k8s/resource/yaml", ctl.UpdateK8sResourceYAML)
 	}
 
 	return engine

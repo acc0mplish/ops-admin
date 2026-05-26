@@ -1,0 +1,2572 @@
+package service
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"ops-admin/backend/model"
+
+	"gopkg.in/yaml.v3"
+	"gorm.io/gorm"
+	ksyaml "sigs.k8s.io/yaml"
+)
+
+const k8sClusterConnectError = "集群连接失败，请检查kubeconfig"
+
+type kubeConfig struct {
+	APIVersion     string `yaml:"apiVersion"`
+	CurrentContext string `yaml:"current-context"`
+	Clusters       []struct {
+		Name    string `yaml:"name"`
+		Cluster struct {
+			Server                   string `yaml:"server"`
+			CertificateAuthorityData string `yaml:"certificate-authority-data"`
+			InsecureSkipTLSVerify    bool   `yaml:"insecure-skip-tls-verify"`
+		} `yaml:"cluster"`
+	} `yaml:"clusters"`
+	Contexts []struct {
+		Name    string `yaml:"name"`
+		Context struct {
+			Cluster string `yaml:"cluster"`
+			User    string `yaml:"user"`
+		} `yaml:"context"`
+	} `yaml:"contexts"`
+	Users []struct {
+		Name string `yaml:"name"`
+		User struct {
+			Token                 string `yaml:"token"`
+			Username              string `yaml:"username"`
+			Password              string `yaml:"password"`
+			ClientCertificateData string `yaml:"client-certificate-data"`
+			ClientKeyData         string `yaml:"client-key-data"`
+		} `yaml:"user"`
+	} `yaml:"users"`
+}
+
+type kubeClusterRuntime struct {
+	Server                string
+	InsecureSkipTLSVerify bool
+	CertificateAuthority  string
+	Token                 string
+	Username              string
+	Password              string
+	ClientCertificateData string
+	ClientKeyData         string
+}
+
+type kubeVersionResponse struct {
+	GitVersion string `json:"gitVersion"`
+}
+
+type kubeNodeListResponse struct {
+	Items []kubeNode `json:"items"`
+}
+
+type kubeNamespaceListResponse struct {
+	Items []kubeNamespace `json:"items"`
+}
+
+type kubePodListResponse struct {
+	Items []kubePod `json:"items"`
+}
+
+type kubeServiceListResponse struct {
+	Items []kubeService `json:"items"`
+}
+
+type kubeIngressListResponse struct {
+	Items []kubeIngress `json:"items"`
+}
+
+type kubeConfigMapListResponse struct {
+	Items []kubeConfigMap `json:"items"`
+}
+
+type kubeSecretListResponse struct {
+	Items []kubeSecret `json:"items"`
+}
+
+type kubePVCListResponse struct {
+	Items []kubePersistentVolumeClaim `json:"items"`
+}
+
+type kubePVListResponse struct {
+	Items []kubePersistentVolume `json:"items"`
+}
+
+type kubeDeploymentListResponse struct {
+	Items []kubeDeployment `json:"items"`
+}
+
+type kubeStatefulSetListResponse struct {
+	Items []kubeStatefulSet `json:"items"`
+}
+
+type kubeDaemonSetListResponse struct {
+	Items []kubeDaemonSet `json:"items"`
+}
+
+type kubeJobListResponse struct {
+	Items []kubeJob `json:"items"`
+}
+
+type kubeCronJobListResponse struct {
+	Items []kubeCronJob `json:"items"`
+}
+
+type kubeEndpointListResponse struct {
+	Items []kubeEndpoints `json:"items"`
+}
+
+type kubeMetadata struct {
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	CreationTimestamp string            `json:"creationTimestamp"`
+	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
+	OwnerReferences   []struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	} `json:"ownerReferences"`
+}
+
+type kubeNode struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Unschedulable bool `json:"unschedulable"`
+	} `json:"spec"`
+	Status struct {
+		NodeInfo struct {
+			KubeletVersion          string `json:"kubeletVersion"`
+			OSImage                 string `json:"osImage"`
+			KernelVersion           string `json:"kernelVersion"`
+			ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
+			Architecture            string `json:"architecture"`
+		} `json:"nodeInfo"`
+		Addresses []struct {
+			Type    string `json:"type"`
+			Address string `json:"address"`
+		} `json:"addresses"`
+		Conditions []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		} `json:"conditions"`
+		Capacity    map[string]string `json:"capacity"`
+		Allocatable map[string]string `json:"allocatable"`
+	} `json:"status"`
+}
+
+type kubeContainer struct {
+	Name      string `json:"name"`
+	Image     string `json:"image"`
+	Resources struct {
+		Requests map[string]string `json:"requests"`
+		Limits   map[string]string `json:"limits"`
+	} `json:"resources"`
+}
+
+type kubePod struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		NodeName           string          `json:"nodeName"`
+		ServiceAccountName string          `json:"serviceAccountName"`
+		Containers         []kubeContainer `json:"containers"`
+	} `json:"spec"`
+	Status struct {
+		Phase             string `json:"phase"`
+		PodIP             string `json:"podIP"`
+		HostIP            string `json:"hostIP"`
+		QoSClass          string `json:"qosClass"`
+		ContainerStatuses []struct {
+			Name         string `json:"name"`
+			RestartCount int    `json:"restartCount"`
+			Ready        bool   `json:"ready"`
+		} `json:"containerStatuses"`
+	} `json:"status"`
+}
+
+type kubeNamespace struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Status   struct {
+		Phase string `json:"phase"`
+	} `json:"status"`
+}
+
+type kubeService struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Type      string            `json:"type"`
+		ClusterIP string            `json:"clusterIP"`
+		Selector  map[string]string `json:"selector"`
+		Ports     []struct {
+			Name       string      `json:"name"`
+			Port       int         `json:"port"`
+			TargetPort interface{} `json:"targetPort"`
+		} `json:"ports"`
+	} `json:"spec"`
+}
+
+type kubeEndpoints struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Subsets  []struct {
+		Addresses         []struct{} `json:"addresses"`
+		NotReadyAddresses []struct{} `json:"notReadyAddresses"`
+	} `json:"subsets"`
+}
+
+type kubeIngress struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		IngressClassName string `json:"ingressClassName"`
+		Rules            []struct {
+			Host string `json:"host"`
+			HTTP struct {
+				Paths []struct {
+					Path    string `json:"path"`
+					Backend struct {
+						Service struct {
+							Name string `json:"name"`
+							Port struct {
+								Number int    `json:"number"`
+								Name   string `json:"name"`
+							} `json:"port"`
+						} `json:"service"`
+					} `json:"backend"`
+				} `json:"paths"`
+			} `json:"http"`
+		} `json:"rules"`
+		TLS []struct{} `json:"tls"`
+	} `json:"spec"`
+	Status struct {
+		LoadBalancer struct {
+			Ingress []struct {
+				IP       string `json:"ip"`
+				Hostname string `json:"hostname"`
+			} `json:"ingress"`
+		} `json:"loadBalancer"`
+	} `json:"status"`
+}
+
+type kubeConfigMap struct {
+	Metadata kubeMetadata      `json:"metadata"`
+	Data     map[string]string `json:"data"`
+	Binary   map[string]string `json:"binaryData"`
+}
+
+type kubeSecret struct {
+	Metadata kubeMetadata      `json:"metadata"`
+	Type     string            `json:"type"`
+	Data     map[string]string `json:"data"`
+}
+
+type kubePersistentVolumeClaim struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		StorageClassName string `json:"storageClassName"`
+	} `json:"spec"`
+	Status struct {
+		Phase    string            `json:"phase"`
+		Capacity map[string]string `json:"capacity"`
+	} `json:"status"`
+}
+
+type kubePersistentVolume struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		StorageClassName string `json:"storageClassName"`
+	} `json:"spec"`
+	Status struct {
+		Phase    string            `json:"phase"`
+		Capacity map[string]string `json:"capacity"`
+	} `json:"status"`
+}
+
+type kubeDeployment struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Replicas *int `json:"replicas"`
+		Selector struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
+		Template struct {
+			Spec struct {
+				Containers []kubeContainer `json:"containers"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
+	Status struct {
+		UpdatedReplicas   int `json:"updatedReplicas"`
+		ReadyReplicas     int `json:"readyReplicas"`
+		AvailableReplicas int `json:"availableReplicas"`
+	} `json:"status"`
+}
+
+type kubeStatefulSet struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Replicas *int `json:"replicas"`
+		Selector struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
+		Template struct {
+			Spec struct {
+				Containers []kubeContainer `json:"containers"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
+	Status struct {
+		UpdatedReplicas   int `json:"updatedReplicas"`
+		ReadyReplicas     int `json:"readyReplicas"`
+		AvailableReplicas int `json:"availableReplicas"`
+	} `json:"status"`
+}
+
+type kubeDaemonSet struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Selector struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
+		Template struct {
+			Spec struct {
+				Containers []kubeContainer `json:"containers"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
+	Status struct {
+		DesiredNumberScheduled int `json:"desiredNumberScheduled"`
+		UpdatedNumberScheduled int `json:"updatedNumberScheduled"`
+		NumberReady            int `json:"numberReady"`
+		NumberAvailable        int `json:"numberAvailable"`
+	} `json:"status"`
+}
+
+type kubeJob struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Completions *int `json:"completions"`
+		Selector    *struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
+		Template struct {
+			Spec struct {
+				Containers []kubeContainer `json:"containers"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
+	Status struct {
+		Active    int `json:"active"`
+		Succeeded int `json:"succeeded"`
+		Failed    int `json:"failed"`
+		Ready     int `json:"ready"`
+	} `json:"status"`
+}
+
+type kubeCronJob struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Schedule    string `json:"schedule"`
+		Suspend     *bool  `json:"suspend"`
+		JobTemplate struct {
+			Spec struct {
+				Template struct {
+					Spec struct {
+						Containers []kubeContainer `json:"containers"`
+					} `json:"spec"`
+				} `json:"template"`
+			} `json:"spec"`
+		} `json:"jobTemplate"`
+	} `json:"spec"`
+	Status struct {
+		Active []struct{} `json:"active"`
+	} `json:"status"`
+}
+
+type k8sClusterProbe struct {
+	APIServer string
+	Version   string
+	NodeCount int
+	Status    string
+}
+
+type k8sFetchedData struct {
+	Nodes       []kubeNode
+	Namespaces  []kubeNamespace
+	Pods        []kubePod
+	Services    []kubeService
+	Endpoints   []kubeEndpoints
+	Ingresses   []kubeIngress
+	ConfigMaps  []kubeConfigMap
+	Secrets     []kubeSecret
+	PVCs        []kubePersistentVolumeClaim
+	PVs         []kubePersistentVolume
+	Deployments []kubeDeployment
+	StatefulSet []kubeStatefulSet
+	DaemonSets  []kubeDaemonSet
+	Jobs        []kubeJob
+	CronJobs    []kubeCronJob
+}
+
+type k8sAggregateMetrics struct {
+	TotalAllocCPUMilli    int64
+	TotalAllocMemoryBytes int64
+	TotalReqCPUMilli      int64
+	TotalReqMemoryBytes   int64
+	AlertCount            int
+}
+
+func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
+	var list []model.K8sCluster
+	if err := s.db.Order("id asc").Find(&list).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]model.K8sClusterView, 0, len(list))
+	for _, item := range list {
+		result = append(result, toK8sClusterView(item))
+	}
+	return result, nil
+}
+
+func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
+	var cluster model.K8sCluster
+	if err := s.db.First(&cluster, id).Error; err != nil {
+		return cluster, err
+	}
+	return cluster, nil
+}
+
+func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
+	cluster := model.K8sCluster{
+		Name:        strings.TrimSpace(payload.Name),
+		Description: strings.TrimSpace(payload.Description),
+		KubeConfig:  strings.TrimSpace(payload.KubeConfig),
+	}
+	if err := validateK8sClusterPayload(cluster); err != nil {
+		return cluster, err
+	}
+
+	var count int64
+	if err := s.db.Model(&model.K8sCluster{}).Where("name = ?", cluster.Name).Count(&count).Error; err != nil {
+		return cluster, err
+	}
+	if count > 0 {
+		return cluster, errors.New("k8s cluster name already exists")
+	}
+
+	probe, err := probeK8sCluster(cluster.KubeConfig)
+	if err != nil {
+		return cluster, err
+	}
+
+	now := time.Now()
+	cluster.APIServer = probe.APIServer
+	cluster.Version = probe.Version
+	cluster.NodeCount = probe.NodeCount
+	cluster.Status = probe.Status
+	cluster.LastSyncAt = &now
+
+	return cluster, s.db.Create(&cluster).Error
+}
+
+func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
+	cluster, err := s.GetK8sCluster(payload.ID)
+	if err != nil {
+		return cluster, err
+	}
+
+	cluster.Name = strings.TrimSpace(payload.Name)
+	cluster.Description = strings.TrimSpace(payload.Description)
+	cluster.KubeConfig = strings.TrimSpace(payload.KubeConfig)
+
+	if err := validateK8sClusterPayload(cluster); err != nil {
+		return cluster, err
+	}
+
+	var count int64
+	if err := s.db.Model(&model.K8sCluster{}).Where("name = ? AND id <> ?", cluster.Name, cluster.ID).Count(&count).Error; err != nil {
+		return cluster, err
+	}
+	if count > 0 {
+		return cluster, errors.New("k8s cluster name already exists")
+	}
+
+	probe, err := probeK8sCluster(cluster.KubeConfig)
+	if err != nil {
+		return cluster, err
+	}
+
+	now := time.Now()
+	cluster.APIServer = probe.APIServer
+	cluster.Version = probe.Version
+	cluster.NodeCount = probe.NodeCount
+	cluster.Status = probe.Status
+	cluster.LastSyncAt = &now
+
+	return cluster, s.db.Save(&cluster).Error
+}
+
+func (s *Service) DeleteK8sCluster(id uint) error {
+	return s.db.Delete(&model.K8sCluster{}, id).Error
+}
+
+func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
+	cluster, err := s.GetK8sCluster(clusterID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.K8sClusterDetail{}, errors.New("k8s cluster not found")
+		}
+		return model.K8sClusterDetail{}, err
+	}
+
+	runtime, err := parseKubeConfig(cluster.KubeConfig)
+	if err != nil {
+		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+	}
+	client, err := newK8sHTTPClient(runtime)
+	if err != nil {
+		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	data, err := fetchK8sData(client, runtime)
+	if err != nil {
+		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	metrics := calculateK8sAggregateMetrics(data.Nodes, data.Pods)
+	detailCluster := toK8sClusterView(cluster)
+	if metrics.AlertCount > 0 {
+		detailCluster.Status = "warning"
+		detailCluster.StatusText = k8sStatusText("warning")
+	}
+
+	namespaceCounts := buildNamespaceCounts(data)
+	endpointCounts := buildEndpointCounts(data.Endpoints)
+	workloads := buildWorkloadItems(data)
+	sort.Slice(workloads, func(i, j int) bool {
+		if workloads[i].Namespace == workloads[j].Namespace {
+			return workloads[i].Name < workloads[j].Name
+		}
+		return workloads[i].Namespace < workloads[j].Namespace
+	})
+
+	return model.K8sClusterDetail{
+		Cluster: detailCluster,
+		Overview: model.K8sOverview{
+			HealthScore:  calculateHealthScore(metrics.AlertCount),
+			CPUUsage:     formatUsagePercent(metrics.TotalReqCPUMilli, metrics.TotalAllocCPUMilli),
+			MemoryUsage:  formatUsagePercent(metrics.TotalReqMemoryBytes, metrics.TotalAllocMemoryBytes),
+			PodUsage:     fmt.Sprintf("%d Pods", len(data.Pods)),
+			RequestRate:  fmt.Sprintf("%d Workloads", len(workloads)),
+			AlertCount:   metrics.AlertCount,
+			Distribution: buildOverviewDistribution(detailCluster),
+			Certificates: buildOverviewCertificates(runtime),
+		},
+		Nodes:         buildNodeItems(data.Nodes, data.Pods),
+		Namespaces:    buildNamespaceItems(data.Namespaces, namespaceCounts),
+		Pods:          buildPodItems(data.Pods),
+		Workloads:     workloads,
+		Network:       buildNetworkSection(data.Services, data.Ingresses, endpointCounts),
+		ConfigStorage: buildConfigStorageSection(data.ConfigMaps, data.Secrets, data.PVCs, data.PVs),
+	}, nil
+}
+
+func (s *Service) GetK8sNodeDetail(clusterID uint, nodeName string) (model.K8sNodeDetail, error) {
+	cluster, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sNodeDetail{}, err
+	}
+
+	var node kubeNode
+	if err := k8sGetJSON(client, runtime, "/api/v1/nodes/"+nodeName, &node); err != nil {
+		return model.K8sNodeDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	pods, err := fetchPodsForNode(client, runtime, nodeName)
+	if err != nil {
+		return model.K8sNodeDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	_ = cluster
+	return model.K8sNodeDetail{
+		Name:           node.Metadata.Name,
+		Status:         nodeReadyStatus(node),
+		Roles:          joinNodeRoles(node.Metadata.Labels),
+		Version:        fallbackText(node.Status.NodeInfo.KubeletVersion),
+		InternalIP:     firstNodeInternalIP(node),
+		OS:             fallbackText(node.Status.NodeInfo.OSImage),
+		Kernel:         fallbackText(node.Status.NodeInfo.KernelVersion),
+		ContainerRT:    fallbackText(node.Status.NodeInfo.ContainerRuntimeVersion),
+		Architecture:   fallbackText(node.Status.NodeInfo.Architecture),
+		Labels:         node.Metadata.Labels,
+		CapacityCPU:    fallbackText(node.Status.Capacity["cpu"]),
+		CapacityMem:    fallbackText(node.Status.Capacity["memory"]),
+		AllocatableCPU: fallbackText(node.Status.Allocatable["cpu"]),
+		AllocatableMem: fallbackText(node.Status.Allocatable["memory"]),
+		Pods:           buildPodItems(pods),
+	}, nil
+}
+
+func (s *Service) GetK8sNodePods(clusterID uint, nodeName string) ([]model.K8sPodItem, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	pods, err := fetchPodsForNode(client, runtime, nodeName)
+	if err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	return buildPodItems(pods), nil
+}
+
+func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName string) (model.K8sPodDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sPodDetail{}, err
+	}
+
+	var pod kubePod
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/pods/"+podName, &pod); err != nil {
+		return model.K8sPodDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	containers := make([]model.K8sContainerItem, 0, len(pod.Spec.Containers))
+	statusMap := make(map[string]struct {
+		ready   bool
+		restart int
+	}, len(pod.Status.ContainerStatuses))
+	for _, status := range pod.Status.ContainerStatuses {
+		statusMap[status.Name] = struct {
+			ready   bool
+			restart int
+		}{ready: status.Ready, restart: status.RestartCount}
+	}
+	for _, container := range pod.Spec.Containers {
+		containerStatus := statusMap[container.Name]
+		containers = append(containers, model.K8sContainerItem{
+			Name:    container.Name,
+			Image:   container.Image,
+			Ready:   containerStatus.ready,
+			Restart: containerStatus.restart,
+		})
+	}
+
+	return model.K8sPodDetail{
+		Name:           pod.Metadata.Name,
+		Namespace:      pod.Metadata.Namespace,
+		Status:         fallbackText(pod.Status.Phase),
+		Node:           fallbackText(pod.Spec.NodeName),
+		PodIP:          fallbackText(pod.Status.PodIP),
+		HostIP:         fallbackText(pod.Status.HostIP),
+		QoSClass:       fallbackText(pod.Status.QoSClass),
+		ServiceAccount: fallbackText(pod.Spec.ServiceAccountName),
+		Labels:         pod.Metadata.Labels,
+		Containers:     containers,
+		CreatedAt:      formatTimestamp(pod.Metadata.CreationTimestamp),
+		YAML:           marshalK8sYAML(pod),
+	}, nil
+}
+
+func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string, container string) (map[string]any, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/log", namespace, podName)
+	query := map[string]string{}
+	if strings.TrimSpace(container) != "" {
+		query["container"] = strings.TrimSpace(container)
+	}
+	body, err := k8sGetText(client, runtime, path, query)
+	if err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	return map[string]any{
+		"namespace": namespace,
+		"podName":   podName,
+		"container": container,
+		"content":   body,
+	}, nil
+}
+
+func (s *Service) GetK8sPodEvents(clusterID uint, namespace string, podName string) ([]model.K8sEventItem, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return fetchNamespacedEvents(client, runtime, namespace, fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Pod", podName))
+}
+
+func (s *Service) GetK8sNamespaceDetail(clusterID uint, namespace string) (model.K8sNamespaceDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sNamespaceDetail{}, err
+	}
+
+	var ns kubeNamespace
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace, &ns); err != nil {
+		return model.K8sNamespaceDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	var pods kubePodListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/pods", &pods); err != nil {
+		return model.K8sNamespaceDetail{}, errors.New(k8sClusterConnectError)
+	}
+	var services kubeServiceListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/services", &services); err != nil {
+		return model.K8sNamespaceDetail{}, errors.New(k8sClusterConnectError)
+	}
+	var configMaps kubeConfigMapListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/configmaps", &configMaps); err != nil {
+		return model.K8sNamespaceDetail{}, errors.New(k8sClusterConnectError)
+	}
+	var secrets kubeSecretListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/secrets", &secrets); err != nil {
+		return model.K8sNamespaceDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	storageCount := 0
+	var pvcs kubePVCListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/persistentvolumeclaims", &pvcs); err == nil {
+		storageCount = len(pvcs.Items)
+	}
+
+	workloadCount := 0
+	if count, err := fetchNamespaceWorkloadCount(client, runtime, namespace); err == nil {
+		workloadCount = count
+	}
+
+	return model.K8sNamespaceDetail{
+		Name:        ns.Metadata.Name,
+		Status:      fallbackText(ns.Status.Phase),
+		CreatedAt:   formatTimestamp(ns.Metadata.CreationTimestamp),
+		Labels:      ns.Metadata.Labels,
+		Annotations: ns.Metadata.Annotations,
+		Pods:        len(pods.Items),
+		Services:    len(services.Items),
+		Workloads:   workloadCount,
+		ConfigMaps:  len(configMaps.Items),
+		Secrets:     len(secrets.Items),
+		Storage:     storageCount,
+		YAML:        marshalK8sYAML(ns),
+	}, nil
+}
+
+func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || Trimmed(payload.ResourceType) == "" || Trimmed(payload.YAML) == "" {
+		return nil, errors.New("invalid yaml payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	path, err := buildK8sYAMLResourcePath(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := ksyaml.YAMLToJSON([]byte(payload.YAML))
+	if err != nil {
+		return nil, errors.New("invalid yaml content")
+	}
+	if err := k8sDoJSON(client, runtime, http.MethodPut, path, nil, body, "application/json", nil); err != nil {
+		return nil, friendlyK8sYAMLError(payload, err)
+	}
+
+	return map[string]any{
+		"resourceType": payload.ResourceType,
+		"namespace":    payload.Namespace,
+		"name":         payload.Name,
+		"workloadType": payload.WorkloadType,
+		"updated":      true,
+	}, nil
+}
+
+func (s *Service) GetK8sNamespaceEvents(clusterID uint, namespace string) ([]model.K8sEventItem, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	return fetchNamespacedEvents(client, runtime, namespace, fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Namespace", namespace))
+}
+
+func (s *Service) GetK8sWorkloadDetail(clusterID uint, namespace string, workloadType string, workloadName string) (model.K8sWorkloadDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sWorkloadDetail{}, err
+	}
+
+	typeName := strings.ToLower(strings.TrimSpace(workloadType))
+	switch typeName {
+	case "deployment":
+		var item kubeDeployment
+		path := fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, workloadName)
+		if err := k8sGetJSON(client, runtime, path, &item); err != nil {
+			return model.K8sWorkloadDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return buildDeploymentDetail(client, runtime, item), nil
+	case "statefulset":
+		var item kubeStatefulSet
+		path := fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s", namespace, workloadName)
+		if err := k8sGetJSON(client, runtime, path, &item); err != nil {
+			return model.K8sWorkloadDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return buildStatefulSetDetail(client, runtime, item), nil
+	case "daemonset":
+		var item kubeDaemonSet
+		path := fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets/%s", namespace, workloadName)
+		if err := k8sGetJSON(client, runtime, path, &item); err != nil {
+			return model.K8sWorkloadDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return buildDaemonSetDetail(client, runtime, item), nil
+	case "job":
+		var item kubeJob
+		path := fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs/%s", namespace, workloadName)
+		if err := k8sGetJSON(client, runtime, path, &item); err != nil {
+			return model.K8sWorkloadDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return buildJobDetail(client, runtime, item), nil
+	case "cronjob":
+		var item kubeCronJob
+		path := fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs/%s", namespace, workloadName)
+		if err := k8sGetJSON(client, runtime, path, &item); err != nil {
+			return model.K8sWorkloadDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return buildCronJobDetail(client, runtime, item), nil
+	default:
+		return model.K8sWorkloadDetail{}, errors.New("unsupported workload type")
+	}
+}
+
+func (s *Service) ScaleK8sWorkload(payload model.K8sWorkloadActionPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || strings.TrimSpace(payload.Namespace) == "" || strings.TrimSpace(payload.WorkloadType) == "" || strings.TrimSpace(payload.WorkloadName) == "" {
+		return nil, errors.New("invalid workload payload")
+	}
+	if payload.Replicas < 0 {
+		return nil, errors.New("replicas must be greater than or equal to 0")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	workloadType := strings.ToLower(strings.TrimSpace(payload.WorkloadType))
+	var path string
+	switch workloadType {
+	case "deployment":
+		path = fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s/scale", payload.Namespace, payload.WorkloadName)
+	case "statefulset":
+		path = fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s/scale", payload.Namespace, payload.WorkloadName)
+	default:
+		return nil, errors.New("only deployment and statefulset support scaling")
+	}
+
+	patchBody := map[string]any{
+		"spec": map[string]any{
+			"replicas": payload.Replicas,
+		},
+	}
+	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/merge-patch+json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	return map[string]any{
+		"namespace":    payload.Namespace,
+		"workloadType": payload.WorkloadType,
+		"workloadName": payload.WorkloadName,
+		"replicas":     payload.Replicas,
+	}, nil
+}
+
+func (s *Service) RestartK8sWorkload(payload model.K8sWorkloadActionPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || strings.TrimSpace(payload.Namespace) == "" || strings.TrimSpace(payload.WorkloadType) == "" || strings.TrimSpace(payload.WorkloadName) == "" {
+		return nil, errors.New("invalid workload payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	workloadType := strings.ToLower(strings.TrimSpace(payload.WorkloadType))
+	var path string
+	switch workloadType {
+	case "deployment":
+		path = fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", payload.Namespace, payload.WorkloadName)
+	case "statefulset":
+		path = fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s", payload.Namespace, payload.WorkloadName)
+	case "daemonset":
+		path = fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets/%s", payload.Namespace, payload.WorkloadName)
+	default:
+		return nil, errors.New("only deployment, statefulset and daemonset support restart")
+	}
+
+	patchBody := map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"metadata": map[string]any{
+					"annotations": map[string]any{
+						"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339),
+					},
+				},
+			},
+		},
+	}
+	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/strategic-merge-patch+json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	return map[string]any{
+		"namespace":    payload.Namespace,
+		"workloadType": payload.WorkloadType,
+		"workloadName": payload.WorkloadName,
+		"restarted":    true,
+	}, nil
+}
+
+func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceName string) (model.K8sServiceDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sServiceDetail{}, err
+	}
+
+	var service kubeService
+	if err := k8sGetJSON(client, runtime, fmt.Sprintf("/api/v1/namespaces/%s/services/%s", namespace, serviceName), &service); err != nil {
+		return model.K8sServiceDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	endpointCount := 0
+	var endpoints kubeEndpoints
+	if err := k8sGetJSON(client, runtime, fmt.Sprintf("/api/v1/namespaces/%s/endpoints/%s", namespace, serviceName), &endpoints); err == nil {
+		for _, subset := range endpoints.Subsets {
+			endpointCount += len(subset.Addresses)
+		}
+	}
+
+	ports := make([]model.K8sKVTextItem, 0, len(service.Spec.Ports))
+	for _, port := range service.Spec.Ports {
+		label := strconv.Itoa(port.Port)
+		if strings.TrimSpace(port.Name) != "" {
+			label = port.Name
+		}
+		target := stringifyTargetPort(port.TargetPort)
+		if target == "" {
+			target = strconv.Itoa(port.Port)
+		}
+		ports = append(ports, model.K8sKVTextItem{
+			Label: label,
+			Value: fmt.Sprintf("%d -> %s", port.Port, target),
+		})
+	}
+
+	return model.K8sServiceDetail{
+		Name:        service.Metadata.Name,
+		Namespace:   service.Metadata.Namespace,
+		Type:        fallbackText(service.Spec.Type),
+		ClusterIP:   fallbackText(service.Spec.ClusterIP),
+		Ports:       ports,
+		Selector:    service.Spec.Selector,
+		Labels:      service.Metadata.Labels,
+		Annotations: service.Metadata.Annotations,
+		Endpoints:   endpointCount,
+		Age:         humanizeAge(service.Metadata.CreationTimestamp),
+		YAML:        marshalK8sYAML(service),
+	}, nil
+}
+
+func (s *Service) GetK8sIngressDetail(clusterID uint, namespace string, ingressName string) (model.K8sIngressDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sIngressDetail{}, err
+	}
+
+	var ingress kubeIngress
+	if err := k8sGetJSON(client, runtime, fmt.Sprintf("/apis/networking.k8s.io/v1/namespaces/%s/ingresses/%s", namespace, ingressName), &ingress); err != nil {
+		return model.K8sIngressDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	address := "-"
+	if len(ingress.Status.LoadBalancer.Ingress) > 0 {
+		address = firstNonEmpty(ingress.Status.LoadBalancer.Ingress[0].IP, ingress.Status.LoadBalancer.Ingress[0].Hostname)
+	}
+
+	tls := "未启用"
+	if len(ingress.Spec.TLS) > 0 {
+		tls = "已启用"
+	}
+
+	hosts := make([]string, 0, len(ingress.Spec.Rules))
+	rules := make([]model.K8sKVTextItem, 0)
+	for _, rule := range ingress.Spec.Rules {
+		if strings.TrimSpace(rule.Host) != "" {
+			hosts = append(hosts, rule.Host)
+		}
+		if len(rule.HTTP.Paths) == 0 {
+			rules = append(rules, model.K8sKVTextItem{
+				Label: fallbackText(rule.Host),
+				Value: "/",
+			})
+			continue
+		}
+		for _, path := range rule.HTTP.Paths {
+			backendTarget := path.Backend.Service.Name
+			portText := firstNonEmpty(path.Backend.Service.Port.Name, strconv.Itoa(path.Backend.Service.Port.Number))
+			if backendTarget != "" && portText != "" && portText != "0" {
+				backendTarget = backendTarget + ":" + portText
+			}
+			rules = append(rules, model.K8sKVTextItem{
+				Label: fmt.Sprintf("%s %s", fallbackText(rule.Host), fallbackText(path.Path)),
+				Value: fallbackText(backendTarget),
+			})
+		}
+	}
+
+	return model.K8sIngressDetail{
+		Name:        ingress.Metadata.Name,
+		Namespace:   ingress.Metadata.Namespace,
+		Host:        fallbackText(strings.Join(hosts, ", ")),
+		Address:     fallbackText(address),
+		TLS:         tls,
+		ClassName:   fallbackText(ingress.Spec.IngressClassName),
+		Labels:      ingress.Metadata.Labels,
+		Annotations: ingress.Metadata.Annotations,
+		Rules:       rules,
+		Age:         humanizeAge(ingress.Metadata.CreationTimestamp),
+		YAML:        marshalK8sYAML(ingress),
+	}, nil
+}
+
+func (s *Service) GetK8sConfigMapDetail(clusterID uint, namespace string, configMapName string) (model.K8sConfigMapDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sConfigMapDetail{}, err
+	}
+
+	var item kubeConfigMap
+	if err := k8sGetJSON(client, runtime, fmt.Sprintf("/api/v1/namespaces/%s/configmaps/%s", namespace, configMapName), &item); err != nil {
+		return model.K8sConfigMapDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	keys := make([]model.K8sKVTextItem, 0, len(item.Data)+len(item.Binary))
+	for key := range item.Data {
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "text"})
+	}
+	for key := range item.Binary {
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "binary"})
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].Label < keys[j].Label })
+
+	return model.K8sConfigMapDetail{
+		Name:        item.Metadata.Name,
+		Namespace:   item.Metadata.Namespace,
+		Keys:        keys,
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		YAML:        marshalK8sYAML(item),
+	}, nil
+}
+
+func (s *Service) GetK8sSecretDetail(clusterID uint, namespace string, secretName string) (model.K8sSecretDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sSecretDetail{}, err
+	}
+
+	var item kubeSecret
+	if err := k8sGetJSON(client, runtime, fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, secretName), &item); err != nil {
+		return model.K8sSecretDetail{}, errors.New(k8sClusterConnectError)
+	}
+
+	keys := make([]model.K8sKVTextItem, 0, len(item.Data))
+	for key := range item.Data {
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "encoded"})
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].Label < keys[j].Label })
+
+	return model.K8sSecretDetail{
+		Name:        item.Metadata.Name,
+		Namespace:   item.Metadata.Namespace,
+		Type:        fallbackText(item.Type),
+		Keys:        keys,
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		YAML:        marshalK8sYAML(item),
+	}, nil
+}
+
+func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace string, name string) (model.K8sStorageDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sStorageDetail{}, err
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(kind)) {
+	case "PVC":
+		var item kubePersistentVolumeClaim
+		if strings.TrimSpace(namespace) == "" {
+			return model.K8sStorageDetail{}, errors.New("namespace is required for pvc")
+		}
+		if err := k8sGetJSON(client, runtime, fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims/%s", namespace, name), &item); err != nil {
+			return model.K8sStorageDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return model.K8sStorageDetail{
+			Name:         item.Metadata.Name,
+			Kind:         "PVC",
+			Namespace:    fallbackText(item.Metadata.Namespace),
+			Status:       fallbackText(item.Status.Phase),
+			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			StorageClass: fallbackText(item.Spec.StorageClassName),
+			Labels:       item.Metadata.Labels,
+			Annotations:  item.Metadata.Annotations,
+			Age:          humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:         marshalK8sYAML(item),
+		}, nil
+	case "PV":
+		var item kubePersistentVolume
+		if err := k8sGetJSON(client, runtime, "/api/v1/persistentvolumes/"+name, &item); err != nil {
+			return model.K8sStorageDetail{}, errors.New(k8sClusterConnectError)
+		}
+		return model.K8sStorageDetail{
+			Name:         item.Metadata.Name,
+			Kind:         "PV",
+			Namespace:    "-",
+			Status:       fallbackText(item.Status.Phase),
+			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			StorageClass: fallbackText(item.Spec.StorageClassName),
+			Labels:       item.Metadata.Labels,
+			Annotations:  item.Metadata.Annotations,
+			Age:          humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:         marshalK8sYAML(item),
+		}, nil
+	default:
+		return model.K8sStorageDetail{}, errors.New("unsupported storage kind")
+	}
+}
+
+func fetchK8sData(client *http.Client, runtime kubeClusterRuntime) (k8sFetchedData, error) {
+	var data k8sFetchedData
+
+	var nodeResp kubeNodeListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/nodes", &nodeResp); err != nil {
+		return data, err
+	}
+	data.Nodes = nodeResp.Items
+
+	var namespaceResp kubeNamespaceListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces", &namespaceResp); err != nil {
+		return data, err
+	}
+	data.Namespaces = namespaceResp.Items
+
+	var podResp kubePodListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/pods", &podResp); err != nil {
+		return data, err
+	}
+	data.Pods = podResp.Items
+
+	var serviceResp kubeServiceListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/services", &serviceResp); err != nil {
+		return data, err
+	}
+	data.Services = serviceResp.Items
+
+	var endpointResp kubeEndpointListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/endpoints", &endpointResp); err != nil {
+		return data, err
+	}
+	data.Endpoints = endpointResp.Items
+
+	var ingressResp kubeIngressListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/networking.k8s.io/v1/ingresses", &ingressResp); err == nil {
+		data.Ingresses = ingressResp.Items
+	}
+
+	var configMapResp kubeConfigMapListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/configmaps", &configMapResp); err != nil {
+		return data, err
+	}
+	data.ConfigMaps = configMapResp.Items
+
+	var secretResp kubeSecretListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/secrets", &secretResp); err != nil {
+		return data, err
+	}
+	data.Secrets = secretResp.Items
+
+	var pvcResp kubePVCListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/persistentvolumeclaims", &pvcResp); err == nil {
+		data.PVCs = pvcResp.Items
+	}
+
+	var pvResp kubePVListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/persistentvolumes", &pvResp); err == nil {
+		data.PVs = pvResp.Items
+	}
+
+	var deploymentResp kubeDeploymentListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/deployments", &deploymentResp); err == nil {
+		data.Deployments = deploymentResp.Items
+	}
+
+	var statefulSetResp kubeStatefulSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/statefulsets", &statefulSetResp); err == nil {
+		data.StatefulSet = statefulSetResp.Items
+	}
+
+	var daemonSetResp kubeDaemonSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/daemonsets", &daemonSetResp); err == nil {
+		data.DaemonSets = daemonSetResp.Items
+	}
+
+	var jobResp kubeJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/jobs", &jobResp); err == nil {
+		data.Jobs = jobResp.Items
+	}
+
+	var cronJobResp kubeCronJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/cronjobs", &cronJobResp); err == nil {
+		data.CronJobs = cronJobResp.Items
+	}
+
+	return data, nil
+}
+
+func (s *Service) k8sClientForCluster(clusterID uint) (model.K8sCluster, kubeClusterRuntime, *http.Client, error) {
+	cluster, err := s.GetK8sCluster(clusterID)
+	if err != nil {
+		return model.K8sCluster{}, kubeClusterRuntime{}, nil, err
+	}
+	runtime, err := parseKubeConfig(cluster.KubeConfig)
+	if err != nil {
+		return cluster, kubeClusterRuntime{}, nil, errors.New(k8sClusterConnectError)
+	}
+	client, err := newK8sHTTPClient(runtime)
+	if err != nil {
+		return cluster, kubeClusterRuntime{}, nil, errors.New(k8sClusterConnectError)
+	}
+	return cluster, runtime, client, nil
+}
+
+func fetchPodsForNode(client *http.Client, runtime kubeClusterRuntime, nodeName string) ([]kubePod, error) {
+	var payload kubePodListResponse
+	if err := k8sGetJSONWithQuery(client, runtime, "/api/v1/pods", map[string]string{
+		"fieldSelector": "spec.nodeName=" + nodeName,
+	}, &payload); err != nil {
+		return nil, err
+	}
+	return payload.Items, nil
+}
+
+func fetchPodsByNamespace(client *http.Client, runtime kubeClusterRuntime, namespace string) ([]kubePod, error) {
+	var payload kubePodListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+namespace+"/pods", &payload); err != nil {
+		return nil, err
+	}
+	return payload.Items, nil
+}
+
+func fetchNamespacedEvents(client *http.Client, runtime kubeClusterRuntime, namespace string, fieldSelector string) ([]model.K8sEventItem, error) {
+	var payload struct {
+		Items []struct {
+			Type      string `json:"type"`
+			Reason    string `json:"reason"`
+			Message   string `json:"message"`
+			Count     int    `json:"count"`
+			FirstTime string `json:"firstTimestamp"`
+			LastTime  string `json:"lastTimestamp"`
+		} `json:"items"`
+	}
+	if err := k8sGetJSONWithQuery(client, runtime, "/api/v1/namespaces/"+namespace+"/events", map[string]string{"fieldSelector": fieldSelector}, &payload); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	events := make([]model.K8sEventItem, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		events = append(events, model.K8sEventItem{
+			Type:      fallbackText(item.Type),
+			Reason:    fallbackText(item.Reason),
+			Message:   fallbackText(item.Message),
+			Count:     item.Count,
+			FirstTime: formatTimestamp(item.FirstTime),
+			LastTime:  formatTimestamp(item.LastTime),
+		})
+	}
+	sort.Slice(events, func(i, j int) bool { return events[i].LastTime > events[j].LastTime })
+	return events, nil
+}
+
+func fetchNamespaceWorkloadCount(client *http.Client, runtime kubeClusterRuntime, namespace string) (int, error) {
+	total := 0
+
+	var deployments kubeDeploymentListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+namespace+"/deployments", &deployments); err != nil {
+		return 0, err
+	}
+	total += len(deployments.Items)
+
+	var statefulsets kubeStatefulSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+namespace+"/statefulsets", &statefulsets); err == nil {
+		total += len(statefulsets.Items)
+	}
+
+	var daemonsets kubeDaemonSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+namespace+"/daemonsets", &daemonsets); err == nil {
+		total += len(daemonsets.Items)
+	}
+
+	var jobs kubeJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/namespaces/"+namespace+"/jobs", &jobs); err == nil {
+		total += len(jobs.Items)
+	}
+
+	var cronjobs kubeCronJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/namespaces/"+namespace+"/cronjobs", &cronjobs); err == nil {
+		total += len(cronjobs.Items)
+	}
+
+	return total, nil
+}
+
+func matchLabels(labels map[string]string, selector map[string]string) bool {
+	if len(selector) == 0 {
+		return false
+	}
+	for key, value := range selector {
+		if labels[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func filterPodsBySelector(pods []kubePod, namespace string, selector map[string]string) []kubePod {
+	result := make([]kubePod, 0)
+	for _, pod := range pods {
+		if pod.Metadata.Namespace != namespace {
+			continue
+		}
+		if matchLabels(pod.Metadata.Labels, selector) {
+			result = append(result, pod)
+		}
+	}
+	return result
+}
+
+func filterPodsByOwnerOrSelector(pods []kubePod, namespace string, selector map[string]string, ownerKind string, ownerName string) []kubePod {
+	result := make([]kubePod, 0)
+	for _, pod := range pods {
+		if pod.Metadata.Namespace != namespace {
+			continue
+		}
+		matched := false
+		for _, owner := range pod.Metadata.OwnerReferences {
+			if strings.EqualFold(owner.Kind, ownerKind) && owner.Name == ownerName {
+				matched = true
+				break
+			}
+		}
+		if matched || matchLabels(pod.Metadata.Labels, selector) {
+			result = append(result, pod)
+		}
+	}
+	return result
+}
+
+func buildContainerItems(containers []kubeContainer) []model.K8sContainerItem {
+	items := make([]model.K8sContainerItem, 0, len(containers))
+	for _, container := range containers {
+		items = append(items, model.K8sContainerItem{
+			Name:  container.Name,
+			Image: container.Image,
+		})
+	}
+	return items
+}
+
+func marshalK8sYAML(v any) string {
+	body, err := yaml.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(body)
+}
+
+func buildDeploymentDetail(client *http.Client, runtime kubeClusterRuntime, item kubeDeployment) model.K8sWorkloadDetail {
+	pods, _ := fetchPodsByNamespace(client, runtime, item.Metadata.Namespace)
+	relatedPods := filterPodsBySelector(pods, item.Metadata.Namespace, item.Spec.Selector.MatchLabels)
+	replicas := intValue(item.Spec.Replicas)
+	return model.K8sWorkloadDetail{
+		Name:        item.Metadata.Name,
+		Type:        "Deployment",
+		Namespace:   item.Metadata.Namespace,
+		Ready:       fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, replicas),
+		Updated:     item.Status.UpdatedReplicas,
+		Available:   item.Status.AvailableReplicas,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Selector:    item.Spec.Selector.MatchLabels,
+		Pods:        buildPodItems(relatedPods),
+		Containers:  buildContainerItems(item.Spec.Template.Spec.Containers),
+		YAML:        marshalK8sYAML(item),
+	}
+}
+
+func buildStatefulSetDetail(client *http.Client, runtime kubeClusterRuntime, item kubeStatefulSet) model.K8sWorkloadDetail {
+	pods, _ := fetchPodsByNamespace(client, runtime, item.Metadata.Namespace)
+	relatedPods := filterPodsBySelector(pods, item.Metadata.Namespace, item.Spec.Selector.MatchLabels)
+	replicas := intValue(item.Spec.Replicas)
+	return model.K8sWorkloadDetail{
+		Name:        item.Metadata.Name,
+		Type:        "StatefulSet",
+		Namespace:   item.Metadata.Namespace,
+		Ready:       fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, replicas),
+		Updated:     item.Status.UpdatedReplicas,
+		Available:   item.Status.AvailableReplicas,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Selector:    item.Spec.Selector.MatchLabels,
+		Pods:        buildPodItems(relatedPods),
+		Containers:  buildContainerItems(item.Spec.Template.Spec.Containers),
+		YAML:        marshalK8sYAML(item),
+	}
+}
+
+func buildDaemonSetDetail(client *http.Client, runtime kubeClusterRuntime, item kubeDaemonSet) model.K8sWorkloadDetail {
+	pods, _ := fetchPodsByNamespace(client, runtime, item.Metadata.Namespace)
+	relatedPods := filterPodsBySelector(pods, item.Metadata.Namespace, item.Spec.Selector.MatchLabels)
+	return model.K8sWorkloadDetail{
+		Name:        item.Metadata.Name,
+		Type:        "DaemonSet",
+		Namespace:   item.Metadata.Namespace,
+		Ready:       fmt.Sprintf("%d/%d", item.Status.NumberReady, item.Status.DesiredNumberScheduled),
+		Updated:     item.Status.UpdatedNumberScheduled,
+		Available:   item.Status.NumberAvailable,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Selector:    item.Spec.Selector.MatchLabels,
+		Pods:        buildPodItems(relatedPods),
+		Containers:  buildContainerItems(item.Spec.Template.Spec.Containers),
+		YAML:        marshalK8sYAML(item),
+	}
+}
+
+func buildJobDetail(client *http.Client, runtime kubeClusterRuntime, item kubeJob) model.K8sWorkloadDetail {
+	pods, _ := fetchPodsByNamespace(client, runtime, item.Metadata.Namespace)
+	selector := map[string]string{"job-name": item.Metadata.Name}
+	if item.Spec.Selector != nil && len(item.Spec.Selector.MatchLabels) > 0 {
+		selector = item.Spec.Selector.MatchLabels
+	}
+	relatedPods := filterPodsByOwnerOrSelector(pods, item.Metadata.Namespace, selector, "Job", item.Metadata.Name)
+	total := intValue(item.Spec.Completions)
+	if total == 0 {
+		total = item.Status.Active + item.Status.Succeeded + item.Status.Failed
+	}
+	return model.K8sWorkloadDetail{
+		Name:        item.Metadata.Name,
+		Type:        "Job",
+		Namespace:   item.Metadata.Namespace,
+		Ready:       fmt.Sprintf("%d/%d", item.Status.Succeeded, total),
+		Updated:     item.Status.Active,
+		Available:   item.Status.Succeeded,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Selector:    selector,
+		Pods:        buildPodItems(relatedPods),
+		Containers:  buildContainerItems(item.Spec.Template.Spec.Containers),
+		YAML:        marshalK8sYAML(item),
+	}
+}
+
+func buildCronJobDetail(client *http.Client, runtime kubeClusterRuntime, item kubeCronJob) model.K8sWorkloadDetail {
+	pods, _ := fetchPodsByNamespace(client, runtime, item.Metadata.Namespace)
+	relatedPods := make([]kubePod, 0)
+	for _, pod := range pods {
+		if pod.Metadata.Namespace != item.Metadata.Namespace {
+			continue
+		}
+		if strings.HasPrefix(pod.Metadata.Name, item.Metadata.Name+"-") {
+			relatedPods = append(relatedPods, pod)
+			continue
+		}
+		for _, owner := range pod.Metadata.OwnerReferences {
+			if strings.EqualFold(owner.Kind, "Job") && strings.HasPrefix(owner.Name, item.Metadata.Name+"-") {
+				relatedPods = append(relatedPods, pod)
+				break
+			}
+		}
+	}
+	active := len(item.Status.Active)
+	schedule := item.Spec.Schedule
+	if strings.TrimSpace(schedule) == "" {
+		schedule = "-"
+	}
+	return model.K8sWorkloadDetail{
+		Name:        item.Metadata.Name,
+		Type:        "CronJob",
+		Namespace:   item.Metadata.Namespace,
+		Ready:       cronJobReadyText(item.Spec.Suspend, active),
+		Updated:     active,
+		Available:   active,
+		Age:         humanizeAge(item.Metadata.CreationTimestamp),
+		Labels:      item.Metadata.Labels,
+		Annotations: item.Metadata.Annotations,
+		Selector:    map[string]string{"schedule": schedule},
+		Pods:        buildPodItems(relatedPods),
+		Containers:  buildContainerItems(item.Spec.JobTemplate.Spec.Template.Spec.Containers),
+		YAML:        marshalK8sYAML(item),
+	}
+}
+
+func buildOverviewDistribution(cluster model.K8sClusterView) []model.K8sKVTextItem {
+	return []model.K8sKVTextItem{
+		{Label: "集群状态", Value: cluster.StatusText},
+		{Label: "集群版本", Value: fallbackText(cluster.Version)},
+		{Label: "节点数量", Value: intLabel(cluster.NodeCount, " 个")},
+	}
+}
+
+func buildOverviewCertificates(runtime kubeClusterRuntime) []model.K8sCertificate {
+	certificates := make([]model.K8sCertificate, 0, 2)
+	if certificate, ok := parseOverviewCertificate("CA 证书", "certificate-authority", runtime.CertificateAuthority); ok {
+		certificates = append(certificates, certificate)
+	}
+	if certificate, ok := parseOverviewCertificate("客户端证书", "client-certificate", runtime.ClientCertificateData); ok {
+		certificates = append(certificates, certificate)
+	}
+	return certificates
+}
+
+func parseOverviewCertificate(name string, certType string, encoded string) (model.K8sCertificate, bool) {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return model.K8sCertificate{}, false
+	}
+
+	certBytes, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return model.K8sCertificate{}, false
+	}
+
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		return model.K8sCertificate{}, false
+	}
+
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return model.K8sCertificate{}, false
+	}
+
+	daysRemaining := int(time.Until(certificate.NotAfter).Hours() / 24)
+	status, statusText := k8sCertificateStatus(certificate.NotAfter)
+
+	return model.K8sCertificate{
+		Name:          name,
+		Type:          certType,
+		Subject:       certificateCommonName(certificate.Subject.CommonName, certificate.Subject.String()),
+		Issuer:        certificateCommonName(certificate.Issuer.CommonName, certificate.Issuer.String()),
+		NotBefore:     certificate.NotBefore.Local().Format("2006-01-02 15:04:05"),
+		NotAfter:      certificate.NotAfter.Local().Format("2006-01-02 15:04:05"),
+		DaysRemaining: daysRemaining,
+		Status:        status,
+		StatusText:    statusText,
+	}, true
+}
+
+func certificateCommonName(commonName string, fallback string) string {
+	if strings.TrimSpace(commonName) != "" {
+		return strings.TrimSpace(commonName)
+	}
+	return fallbackText(fallback)
+}
+
+func k8sCertificateStatus(notAfter time.Time) (string, string) {
+	remaining := time.Until(notAfter)
+	switch {
+	case remaining <= 0:
+		return "expired", "已过期"
+	case remaining <= 30*24*time.Hour:
+		return "warning", "即将到期"
+	default:
+		return "valid", "有效"
+	}
+}
+
+func buildNodeItems(nodes []kubeNode, pods []kubePod) []model.K8sNodeItem {
+	podCountByNode := map[string]int{}
+	for _, pod := range pods {
+		if pod.Spec.NodeName != "" {
+			podCountByNode[pod.Spec.NodeName]++
+		}
+	}
+
+	items := make([]model.K8sNodeItem, 0, len(nodes))
+	for _, node := range nodes {
+		internalIP := "-"
+		for _, address := range node.Status.Addresses {
+			if address.Type == "InternalIP" {
+				internalIP = fallbackText(address.Address)
+				break
+			}
+		}
+
+		items = append(items, model.K8sNodeItem{
+			Name:       node.Metadata.Name,
+			Role:       joinNodeRoles(node.Metadata.Labels),
+			Status:     nodeReadyStatus(node),
+			Version:    fallbackText(node.Status.NodeInfo.KubeletVersion),
+			InternalIP: internalIP,
+			CPU:        fallbackText(node.Status.Allocatable["cpu"]),
+			Memory:     fallbackText(node.Status.Allocatable["memory"]),
+			Pods:       fmt.Sprintf("%d/%s", podCountByNode[node.Metadata.Name], fallbackText(node.Status.Capacity["pods"])),
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func buildNamespaceCounts(data k8sFetchedData) map[string]struct {
+	pods      int
+	services  int
+	workloads int
+} {
+	counts := map[string]struct {
+		pods      int
+		services  int
+		workloads int
+	}{}
+
+	for _, pod := range data.Pods {
+		item := counts[pod.Metadata.Namespace]
+		item.pods++
+		counts[pod.Metadata.Namespace] = item
+	}
+	for _, service := range data.Services {
+		item := counts[service.Metadata.Namespace]
+		item.services++
+		counts[service.Metadata.Namespace] = item
+	}
+
+	addWorkload := func(namespace string) {
+		item := counts[namespace]
+		item.workloads++
+		counts[namespace] = item
+	}
+	for _, item := range data.Deployments {
+		addWorkload(item.Metadata.Namespace)
+	}
+	for _, item := range data.StatefulSet {
+		addWorkload(item.Metadata.Namespace)
+	}
+	for _, item := range data.DaemonSets {
+		addWorkload(item.Metadata.Namespace)
+	}
+	for _, item := range data.Jobs {
+		addWorkload(item.Metadata.Namespace)
+	}
+	for _, item := range data.CronJobs {
+		addWorkload(item.Metadata.Namespace)
+	}
+
+	return counts
+}
+
+func buildNamespaceItems(namespaces []kubeNamespace, counts map[string]struct {
+	pods      int
+	services  int
+	workloads int
+}) []model.K8sNamespaceItem {
+	items := make([]model.K8sNamespaceItem, 0, len(namespaces))
+	for _, namespace := range namespaces {
+		stat := counts[namespace.Metadata.Name]
+		items = append(items, model.K8sNamespaceItem{
+			Name:      namespace.Metadata.Name,
+			Status:    fallbackText(namespace.Status.Phase),
+			Pods:      stat.pods,
+			Services:  stat.services,
+			Workloads: stat.workloads,
+			CreatedAt: formatTimestamp(namespace.Metadata.CreationTimestamp),
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func buildPodItems(pods []kubePod) []model.K8sPodItem {
+	items := make([]model.K8sPodItem, 0, len(pods))
+	for _, pod := range pods {
+		restarts := 0
+		for _, status := range pod.Status.ContainerStatuses {
+			restarts += status.RestartCount
+		}
+
+		items = append(items, model.K8sPodItem{
+			Name:      pod.Metadata.Name,
+			Namespace: pod.Metadata.Namespace,
+			Status:    fallbackText(pod.Status.Phase),
+			Node:      fallbackText(pod.Spec.NodeName),
+			Restarts:  restarts,
+			Age:       humanizeAge(pod.Metadata.CreationTimestamp),
+			IP:        fallbackText(pod.Status.PodIP),
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Namespace == items[j].Namespace {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].Namespace < items[j].Namespace
+	})
+	return items
+}
+
+func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
+	items := make([]model.K8sWorkloadItem, 0, len(data.Deployments)+len(data.StatefulSet)+len(data.DaemonSets)+len(data.Jobs)+len(data.CronJobs))
+
+	for _, item := range data.Deployments {
+		replicas := intValue(item.Spec.Replicas)
+		items = append(items, model.K8sWorkloadItem{
+			Name:      item.Metadata.Name,
+			Type:      "Deployment",
+			Namespace: item.Metadata.Namespace,
+			Ready:     fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, replicas),
+			Updated:   item.Status.UpdatedReplicas,
+			Available: item.Status.AvailableReplicas,
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	for _, item := range data.StatefulSet {
+		replicas := intValue(item.Spec.Replicas)
+		items = append(items, model.K8sWorkloadItem{
+			Name:      item.Metadata.Name,
+			Type:      "StatefulSet",
+			Namespace: item.Metadata.Namespace,
+			Ready:     fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, replicas),
+			Updated:   item.Status.UpdatedReplicas,
+			Available: item.Status.AvailableReplicas,
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	for _, item := range data.DaemonSets {
+		items = append(items, model.K8sWorkloadItem{
+			Name:      item.Metadata.Name,
+			Type:      "DaemonSet",
+			Namespace: item.Metadata.Namespace,
+			Ready:     fmt.Sprintf("%d/%d", item.Status.NumberReady, item.Status.DesiredNumberScheduled),
+			Updated:   item.Status.UpdatedNumberScheduled,
+			Available: item.Status.NumberAvailable,
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	for _, item := range data.Jobs {
+		total := intValue(item.Spec.Completions)
+		if total == 0 {
+			total = item.Status.Active + item.Status.Succeeded + item.Status.Failed
+		}
+		items = append(items, model.K8sWorkloadItem{
+			Name:      item.Metadata.Name,
+			Type:      "Job",
+			Namespace: item.Metadata.Namespace,
+			Ready:     fmt.Sprintf("%d/%d", item.Status.Succeeded, total),
+			Updated:   item.Status.Active,
+			Available: item.Status.Succeeded,
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	for _, item := range data.CronJobs {
+		active := len(item.Status.Active)
+		items = append(items, model.K8sWorkloadItem{
+			Name:      item.Metadata.Name,
+			Type:      "CronJob",
+			Namespace: item.Metadata.Namespace,
+			Ready:     cronJobReadyText(item.Spec.Suspend, active),
+			Updated:   active,
+			Available: active,
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	return items
+}
+
+func buildEndpointCounts(endpoints []kubeEndpoints) map[string]int {
+	result := make(map[string]int, len(endpoints))
+	for _, endpoint := range endpoints {
+		key := endpoint.Metadata.Namespace + "/" + endpoint.Metadata.Name
+		count := 0
+		for _, subset := range endpoint.Subsets {
+			count += len(subset.Addresses)
+		}
+		result[key] = count
+	}
+	return result
+}
+
+func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpointCounts map[string]int) model.K8sNetworkSection {
+	serviceItems := make([]model.K8sServiceItem, 0, len(services))
+	for _, service := range services {
+		ports := make([]string, 0, len(service.Spec.Ports))
+		for _, port := range service.Spec.Ports {
+			targetPort := stringifyTargetPort(port.TargetPort)
+			if targetPort == "" {
+				targetPort = strconv.Itoa(port.Port)
+			}
+			ports = append(ports, fmt.Sprintf("%d:%s", port.Port, targetPort))
+		}
+
+		key := service.Metadata.Namespace + "/" + service.Metadata.Name
+		serviceItems = append(serviceItems, model.K8sServiceItem{
+			Name:      service.Metadata.Name,
+			Namespace: service.Metadata.Namespace,
+			Type:      fallbackText(service.Spec.Type),
+			ClusterIP: fallbackText(service.Spec.ClusterIP),
+			Ports:     strings.Join(ports, ", "),
+			Endpoints: endpointCounts[key],
+		})
+	}
+	sort.Slice(serviceItems, func(i, j int) bool {
+		if serviceItems[i].Namespace == serviceItems[j].Namespace {
+			return serviceItems[i].Name < serviceItems[j].Name
+		}
+		return serviceItems[i].Namespace < serviceItems[j].Namespace
+	})
+
+	ingressItems := make([]model.K8sIngressItem, 0, len(ingresses))
+	for _, ingress := range ingresses {
+		hosts := make([]string, 0, len(ingress.Spec.Rules))
+		for _, rule := range ingress.Spec.Rules {
+			if strings.TrimSpace(rule.Host) != "" {
+				hosts = append(hosts, rule.Host)
+			}
+		}
+
+		address := "-"
+		if len(ingress.Status.LoadBalancer.Ingress) > 0 {
+			address = firstNonEmpty(ingress.Status.LoadBalancer.Ingress[0].IP, ingress.Status.LoadBalancer.Ingress[0].Hostname)
+		}
+
+		tls := "未启用"
+		if len(ingress.Spec.TLS) > 0 {
+			tls = "已启用"
+		}
+
+		ingressItems = append(ingressItems, model.K8sIngressItem{
+			Name:      ingress.Metadata.Name,
+			Namespace: ingress.Metadata.Namespace,
+			Host:      fallbackText(strings.Join(hosts, ", ")),
+			Address:   fallbackText(address),
+			TLS:       tls,
+			Age:       humanizeAge(ingress.Metadata.CreationTimestamp),
+		})
+	}
+	sort.Slice(ingressItems, func(i, j int) bool {
+		if ingressItems[i].Namespace == ingressItems[j].Namespace {
+			return ingressItems[i].Name < ingressItems[j].Name
+		}
+		return ingressItems[i].Namespace < ingressItems[j].Namespace
+	})
+
+	return model.K8sNetworkSection{
+		Services:  serviceItems,
+		Ingresses: ingressItems,
+	}
+}
+
+func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret, pvcs []kubePersistentVolumeClaim, pvs []kubePersistentVolume) model.K8sConfigStorageSection {
+	configMapItems := make([]model.K8sConfigMapItem, 0, len(configMaps))
+	for _, item := range configMaps {
+		configMapItems = append(configMapItems, model.K8sConfigMapItem{
+			Name:      item.Metadata.Name,
+			Namespace: item.Metadata.Namespace,
+			Keys:      len(item.Data) + len(item.Binary),
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+	sort.Slice(configMapItems, func(i, j int) bool {
+		if configMapItems[i].Namespace == configMapItems[j].Namespace {
+			return configMapItems[i].Name < configMapItems[j].Name
+		}
+		return configMapItems[i].Namespace < configMapItems[j].Namespace
+	})
+
+	secretItems := make([]model.K8sSecretItem, 0, len(secrets))
+	for _, item := range secrets {
+		secretItems = append(secretItems, model.K8sSecretItem{
+			Name:      item.Metadata.Name,
+			Namespace: item.Metadata.Namespace,
+			Type:      fallbackText(item.Type),
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+	sort.Slice(secretItems, func(i, j int) bool {
+		if secretItems[i].Namespace == secretItems[j].Namespace {
+			return secretItems[i].Name < secretItems[j].Name
+		}
+		return secretItems[i].Namespace < secretItems[j].Namespace
+	})
+
+	storageItems := make([]model.K8sStorageItem, 0, len(pvcs)+len(pvs))
+	for _, item := range pvcs {
+		storageItems = append(storageItems, model.K8sStorageItem{
+			Name:         item.Metadata.Name,
+			Kind:         "PVC",
+			Namespace:    fallbackText(item.Metadata.Namespace),
+			Status:       fallbackText(item.Status.Phase),
+			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			StorageClass: fallbackText(item.Spec.StorageClassName),
+		})
+	}
+	for _, item := range pvs {
+		storageItems = append(storageItems, model.K8sStorageItem{
+			Name:         item.Metadata.Name,
+			Kind:         "PV",
+			Namespace:    "-",
+			Status:       fallbackText(item.Status.Phase),
+			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			StorageClass: fallbackText(item.Spec.StorageClassName),
+		})
+	}
+	sort.Slice(storageItems, func(i, j int) bool {
+		if storageItems[i].Kind == storageItems[j].Kind {
+			if storageItems[i].Namespace == storageItems[j].Namespace {
+				return storageItems[i].Name < storageItems[j].Name
+			}
+			return storageItems[i].Namespace < storageItems[j].Namespace
+		}
+		return storageItems[i].Kind < storageItems[j].Kind
+	})
+
+	return model.K8sConfigStorageSection{
+		ConfigMaps: configMapItems,
+		Secrets:    secretItems,
+		Storage:    storageItems,
+	}
+}
+
+func calculateK8sAggregateMetrics(nodes []kubeNode, pods []kubePod) k8sAggregateMetrics {
+	var metrics k8sAggregateMetrics
+
+	for _, node := range nodes {
+		metrics.TotalAllocCPUMilli += parseCPUToMilli(node.Status.Allocatable["cpu"])
+		metrics.TotalAllocMemoryBytes += parseBytesQuantity(node.Status.Allocatable["memory"])
+		if nodeReadyStatus(node) != "Ready" || node.Spec.Unschedulable {
+			metrics.AlertCount++
+		}
+	}
+
+	for _, pod := range pods {
+		switch strings.ToLower(pod.Status.Phase) {
+		case "failed", "pending", "unknown":
+			metrics.AlertCount++
+		}
+		for _, container := range pod.Spec.Containers {
+			metrics.TotalReqCPUMilli += parseCPUToMilli(container.Resources.Requests["cpu"])
+			metrics.TotalReqMemoryBytes += parseBytesQuantity(container.Resources.Requests["memory"])
+		}
+	}
+
+	return metrics
+}
+
+func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
+	return model.K8sClusterView{
+		ID:          cluster.ID,
+		Name:        cluster.Name,
+		Status:      cluster.Status,
+		StatusText:  k8sStatusText(cluster.Status),
+		APIServer:   cluster.APIServer,
+		Version:     cluster.Version,
+		NodeCount:   cluster.NodeCount,
+		Description: cluster.Description,
+		LastSyncAt:  cluster.LastSyncAt,
+		CreatedAt:   cluster.CreatedAt,
+		UpdatedAt:   cluster.UpdatedAt,
+	}
+}
+
+func validateK8sClusterPayload(cluster model.K8sCluster) error {
+	if cluster.Name == "" {
+		return errors.New("cluster name is required")
+	}
+	if cluster.KubeConfig == "" {
+		return errors.New("kubeconfig is required")
+	}
+	return nil
+}
+
+func probeK8sCluster(content string) (k8sClusterProbe, error) {
+	runtime, err := parseKubeConfig(content)
+	if err != nil {
+		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+	}
+
+	client, err := newK8sHTTPClient(runtime)
+	if err != nil {
+		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+	}
+
+	version, err := fetchK8sVersion(client, runtime)
+	if err != nil {
+		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+	}
+
+	nodeCount, err := fetchK8sNodeCount(client, runtime)
+	if err != nil {
+		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+	}
+
+	return k8sClusterProbe{
+		APIServer: runtime.Server,
+		Version:   version,
+		NodeCount: nodeCount,
+		Status:    "running",
+	}, nil
+}
+
+func parseKubeConfig(content string) (kubeClusterRuntime, error) {
+	var cfg kubeConfig
+	if err := yaml.Unmarshal([]byte(content), &cfg); err != nil {
+		return kubeClusterRuntime{}, err
+	}
+
+	contextName := strings.TrimSpace(cfg.CurrentContext)
+	if contextName == "" && len(cfg.Contexts) > 0 {
+		contextName = cfg.Contexts[0].Name
+	}
+	if contextName == "" {
+		return kubeClusterRuntime{}, errors.New("missing context")
+	}
+
+	var clusterName string
+	var userName string
+	for i := range cfg.Contexts {
+		if cfg.Contexts[i].Name == contextName {
+			clusterName = strings.TrimSpace(cfg.Contexts[i].Context.Cluster)
+			userName = strings.TrimSpace(cfg.Contexts[i].Context.User)
+			break
+		}
+	}
+	if clusterName == "" {
+		return kubeClusterRuntime{}, errors.New("cluster not found")
+	}
+
+	runtime := kubeClusterRuntime{}
+	for i := range cfg.Clusters {
+		if cfg.Clusters[i].Name == clusterName {
+			runtime.Server = strings.TrimSpace(cfg.Clusters[i].Cluster.Server)
+			runtime.InsecureSkipTLSVerify = cfg.Clusters[i].Cluster.InsecureSkipTLSVerify
+			runtime.CertificateAuthority = strings.TrimSpace(cfg.Clusters[i].Cluster.CertificateAuthorityData)
+			break
+		}
+	}
+	if runtime.Server == "" {
+		return kubeClusterRuntime{}, errors.New("server not found")
+	}
+
+	for i := range cfg.Users {
+		if cfg.Users[i].Name == userName {
+			runtime.Token = strings.TrimSpace(cfg.Users[i].User.Token)
+			runtime.Username = strings.TrimSpace(cfg.Users[i].User.Username)
+			runtime.Password = strings.TrimSpace(cfg.Users[i].User.Password)
+			runtime.ClientCertificateData = strings.TrimSpace(cfg.Users[i].User.ClientCertificateData)
+			runtime.ClientKeyData = strings.TrimSpace(cfg.Users[i].User.ClientKeyData)
+			break
+		}
+	}
+
+	return runtime, nil
+}
+
+func newK8sHTTPClient(runtime kubeClusterRuntime) (*http.Client, error) {
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: runtime.InsecureSkipTLSVerify,
+	}
+
+	if runtime.CertificateAuthority != "" {
+		caBytes, err := base64.StdEncoding.DecodeString(runtime.CertificateAuthority)
+		if err != nil {
+			return nil, err
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caBytes) {
+			return nil, errors.New("invalid certificate authority")
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	if runtime.ClientCertificateData != "" && runtime.ClientKeyData != "" {
+		certBytes, err := base64.StdEncoding.DecodeString(runtime.ClientCertificateData)
+		if err != nil {
+			return nil, err
+		}
+		keyBytes, err := base64.StdEncoding.DecodeString(runtime.ClientKeyData)
+		if err != nil {
+			return nil, err
+		}
+		cert, err := tls.X509KeyPair(certBytes, keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return &http.Client{
+		Timeout: 8 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}, nil
+}
+
+func fetchK8sVersion(client *http.Client, runtime kubeClusterRuntime) (string, error) {
+	var payload kubeVersionResponse
+	if err := k8sGetJSON(client, runtime, "/version", &payload); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(payload.GitVersion) == "" {
+		return "", errors.New("empty version")
+	}
+	return payload.GitVersion, nil
+}
+
+func fetchK8sNodeCount(client *http.Client, runtime kubeClusterRuntime) (int, error) {
+	var payload kubeNodeListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/nodes", &payload); err != nil {
+		return 0, err
+	}
+	return len(payload.Items), nil
+}
+
+func k8sGetJSON(client *http.Client, runtime kubeClusterRuntime, path string, target any) error {
+	return k8sGetJSONWithQuery(client, runtime, path, nil, target)
+}
+
+func k8sPatchJSON(client *http.Client, runtime kubeClusterRuntime, path string, body any, contentType string, target any) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	return k8sDoJSON(client, runtime, http.MethodPatch, path, nil, payload, contentType, target)
+}
+
+func k8sGetJSONWithQuery(client *http.Client, runtime kubeClusterRuntime, path string, query map[string]string, target any) error {
+	return k8sDoJSON(client, runtime, http.MethodGet, path, query, nil, "application/json", target)
+}
+
+func k8sDoJSON(client *http.Client, runtime kubeClusterRuntime, method string, path string, query map[string]string, body []byte, contentType string, target any) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	endpointURL := strings.TrimRight(runtime.Server, "/") + path
+	if len(query) > 0 {
+		values := url.Values{}
+		for key, value := range query {
+			values.Set(key, value)
+		}
+		endpointURL += "?" + values.Encode()
+	}
+
+	var reader io.Reader
+	if len(body) > 0 {
+		reader = strings.NewReader(string(body))
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpointURL, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	if len(body) > 0 && strings.TrimSpace(contentType) != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	if runtime.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+runtime.Token)
+	}
+	if runtime.Username != "" || runtime.Password != "" {
+		req.SetBasicAuth(runtime.Username, runtime.Password)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		message, _ := io.ReadAll(resp.Body)
+		if len(message) > 0 {
+			return fmt.Errorf("unexpected status: %d, %s", resp.StatusCode, strings.TrimSpace(string(message)))
+		}
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	if target == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func buildK8sYAMLResourcePath(payload model.K8sResourceYAMLPayload) (string, error) {
+	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
+	namespace := Trimmed(payload.Namespace)
+	name := Trimmed(payload.Name)
+
+	switch resourceType {
+	case "namespace":
+		if name == "" {
+			return "", errors.New("namespace name is required")
+		}
+		return "/api/v1/namespaces/" + name, nil
+	case "pod":
+		if namespace == "" || name == "" {
+			return "", errors.New("pod namespace and name are required")
+		}
+		return fmt.Sprintf("/api/v1/namespaces/%s/pods/%s", namespace, name), nil
+	case "service":
+		if namespace == "" || name == "" {
+			return "", errors.New("service namespace and name are required")
+		}
+		return fmt.Sprintf("/api/v1/namespaces/%s/services/%s", namespace, name), nil
+	case "ingress":
+		if namespace == "" || name == "" {
+			return "", errors.New("ingress namespace and name are required")
+		}
+		return fmt.Sprintf("/apis/networking.k8s.io/v1/namespaces/%s/ingresses/%s", namespace, name), nil
+	case "configmap":
+		if namespace == "" || name == "" {
+			return "", errors.New("configmap namespace and name are required")
+		}
+		return fmt.Sprintf("/api/v1/namespaces/%s/configmaps/%s", namespace, name), nil
+	case "secret":
+		if namespace == "" || name == "" {
+			return "", errors.New("secret namespace and name are required")
+		}
+		return fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, name), nil
+	case "pvc":
+		if namespace == "" || name == "" {
+			return "", errors.New("pvc namespace and name are required")
+		}
+		return fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims/%s", namespace, name), nil
+	case "pv":
+		if name == "" {
+			return "", errors.New("pv name is required")
+		}
+		return "/api/v1/persistentvolumes/" + name, nil
+	case "workload":
+		if namespace == "" || name == "" {
+			return "", errors.New("workload namespace and name are required")
+		}
+		switch strings.ToLower(Trimmed(payload.WorkloadType)) {
+		case "deployment":
+			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, name), nil
+		case "statefulset":
+			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s", namespace, name), nil
+		case "daemonset":
+			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets/%s", namespace, name), nil
+		case "job":
+			return fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs/%s", namespace, name), nil
+		case "cronjob":
+			return fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs/%s", namespace, name), nil
+		default:
+			return "", errors.New("unsupported workload type")
+		}
+	default:
+		return "", errors.New("unsupported resource type")
+	}
+}
+
+func friendlyK8sYAMLError(payload model.K8sResourceYAMLPayload, err error) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	lower := strings.ToLower(message)
+
+	if strings.Contains(lower, "field is immutable") || strings.Contains(lower, "immutable") {
+		switch strings.ToLower(Trimmed(payload.ResourceType)) {
+		case "pod":
+			return errors.New("Pod 存在不可变字段，Kubernetes 不允许直接更新这部分内容。建议修改可变字段，或删除后重新创建 Pod")
+		case "pv", "pvc":
+			return errors.New("当前存储资源包含不可变字段，Kubernetes 不允许直接覆盖保存。请仅修改可变字段，或按存储变更流程处理")
+		default:
+			return errors.New("当前资源包含不可变字段，Kubernetes 不允许直接覆盖保存。请检查 metadata、selector、volume 等字段是否被修改")
+		}
+	}
+
+	if strings.Contains(lower, "already exists") {
+		return errors.New("YAML 中的资源标识与当前集群现有资源冲突，请检查名称、命名空间或关联对象")
+	}
+	if strings.Contains(lower, "not found") {
+		return errors.New("目标资源不存在，可能已被删除或命名空间已变化，请刷新后重试")
+	}
+	if strings.Contains(lower, "invalid") || strings.Contains(lower, "unprocessable entity") {
+		return errors.New("YAML 校验未通过，请检查字段格式、apiVersion、kind 以及 spec 内容是否正确")
+	}
+	return err
+}
+
+func k8sGetText(client *http.Client, runtime kubeClusterRuntime, path string, query map[string]string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	endpointURL := strings.TrimRight(runtime.Server, "/") + path
+	if len(query) > 0 {
+		values := url.Values{}
+		for key, value := range query {
+			values.Set(key, value)
+		}
+		endpointURL += "?" + values.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	if runtime.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+runtime.Token)
+	}
+	if runtime.Username != "" || runtime.Password != "" {
+		req.SetBasicAuth(runtime.Username, runtime.Password)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func k8sStatusText(status string) string {
+	switch normalizedK8sStatus(status) {
+	case "warning":
+		return "部分告警"
+	case "offline":
+		return "离线"
+	default:
+		return "运行中"
+	}
+}
+
+func normalizedK8sStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "warning":
+		return "warning"
+	case "offline":
+		return "offline"
+	default:
+		return "running"
+	}
+}
+
+func calculateHealthScore(alertCount int) int {
+	if alertCount <= 0 {
+		return 100
+	}
+	score := 100 - alertCount*8
+	if score < 40 {
+		return 40
+	}
+	return score
+}
+
+func formatUsagePercent(used int64, total int64) string {
+	if used <= 0 || total <= 0 {
+		return "-"
+	}
+	value := float64(used) / float64(total) * 100
+	return fmt.Sprintf("%.1f%%", value)
+}
+
+func nodeReadyStatus(node kubeNode) string {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == "Ready" {
+			if condition.Status == "True" {
+				return "Ready"
+			}
+			return "NotReady"
+		}
+	}
+	return "Unknown"
+}
+
+func firstNodeInternalIP(node kubeNode) string {
+	for _, address := range node.Status.Addresses {
+		if address.Type == "InternalIP" && strings.TrimSpace(address.Address) != "" {
+			return address.Address
+		}
+	}
+	return "-"
+}
+
+func joinNodeRoles(labels map[string]string) string {
+	roles := make([]string, 0, 3)
+	for key := range labels {
+		if strings.HasPrefix(key, "node-role.kubernetes.io/") {
+			role := strings.TrimPrefix(key, "node-role.kubernetes.io/")
+			if role == "" {
+				role = "worker"
+			}
+			roles = append(roles, role)
+		}
+	}
+	if len(roles) == 0 {
+		return "worker"
+	}
+	sort.Strings(roles)
+	return strings.Join(roles, ",")
+}
+
+func parseCPUToMilli(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if strings.HasSuffix(value, "m") {
+		number := strings.TrimSuffix(value, "m")
+		parsed, _ := strconv.ParseFloat(number, 64)
+		return int64(parsed)
+	}
+	parsed, _ := strconv.ParseFloat(value, 64)
+	return int64(parsed * 1000)
+}
+
+func parseBytesQuantity(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+
+	units := map[string]float64{
+		"Ki": 1024,
+		"Mi": 1024 * 1024,
+		"Gi": 1024 * 1024 * 1024,
+		"Ti": 1024 * 1024 * 1024 * 1024,
+		"Pi": 1024 * 1024 * 1024 * 1024 * 1024,
+		"K":  1000,
+		"M":  1000 * 1000,
+		"G":  1000 * 1000 * 1000,
+		"T":  1000 * 1000 * 1000 * 1000,
+	}
+
+	for suffix, multiplier := range units {
+		if strings.HasSuffix(value, suffix) {
+			number := strings.TrimSpace(strings.TrimSuffix(value, suffix))
+			parsed, _ := strconv.ParseFloat(number, 64)
+			return int64(parsed * multiplier)
+		}
+	}
+
+	parsed, _ := strconv.ParseFloat(value, 64)
+	return int64(parsed)
+}
+
+func humanizeAge(timestamp string) string {
+	createdAt, err := time.Parse(time.RFC3339, strings.TrimSpace(timestamp))
+	if err != nil {
+		return "-"
+	}
+
+	duration := time.Since(createdAt)
+	if duration < time.Minute {
+		return "刚刚"
+	}
+	if duration < time.Hour {
+		return fmt.Sprintf("%dm", int(duration.Minutes()))
+	}
+	if duration < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(duration.Hours()))
+	}
+	if duration < 30*24*time.Hour {
+		return fmt.Sprintf("%dd", int(duration.Hours()/24))
+	}
+	return createdAt.Format("2006-01-02")
+}
+
+func formatTimestamp(value string) string {
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return "-"
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
+func stringifyTargetPort(value interface{}) string {
+	switch current := value.(type) {
+	case string:
+		return current
+	case float64:
+		return strconv.Itoa(int(current))
+	default:
+		return fmt.Sprint(current)
+	}
+}
+
+func intValue(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func cronJobReadyText(suspend *bool, active int) string {
+	if suspend != nil && *suspend {
+		return "Suspended"
+	}
+	if active > 0 {
+		return fmt.Sprintf("%d Active", active)
+	}
+	return "Scheduled"
+}
+
+func fallbackText(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+func intLabel(value int, suffix string) string {
+	return strconv.Itoa(value) + suffix
+}
