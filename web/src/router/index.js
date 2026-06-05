@@ -114,6 +114,7 @@ const routes = [
       { path: '/assets/k8s/network', redirect: '/assets/k8s/services' },
       { path: '/assets/k8s/services', component: K8s, meta: { title: 'Services', app: 'assets' } },
       { path: '/assets/k8s/ingresses', component: K8s, meta: { title: 'Ingress', app: 'assets' } },
+      { path: '/assets/k8s/advanced-network', component: K8s, meta: { title: 'Advanced Network', app: 'assets' } },
       { path: '/assets/k8s/config-storage', component: K8s, meta: { title: 'Config & Storage', app: 'assets' } },
       {
         path: '/assets/k8s/pod-terminal/:clusterId/:namespace/:podName',

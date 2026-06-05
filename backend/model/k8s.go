@@ -44,6 +44,30 @@ type K8sResourceYAMLPayload struct {
 	YAML         string `json:"yaml"`
 }
 
+type K8sResourceDeletePayload struct {
+	ClusterID    uint   `json:"clusterId"`
+	ResourceType string `json:"resourceType"`
+	Namespace    string `json:"namespace"`
+	Name         string `json:"name"`
+	WorkloadType string `json:"workloadType"`
+}
+
+type K8sIstioTrafficRoute struct {
+	Index  int    `json:"index"`
+	Host   string `json:"host"`
+	Subset string `json:"subset"`
+	Port   int    `json:"port"`
+	Weight int    `json:"weight"`
+	Label  string `json:"label"`
+}
+
+type K8sIstioTrafficPayload struct {
+	ClusterID uint                   `json:"clusterId"`
+	Namespace string                 `json:"namespace"`
+	Name      string                 `json:"name"`
+	Routes    []K8sIstioTrafficRoute `json:"routes"`
+}
+
 type K8sClusterView struct {
 	ID          uint       `json:"id"`
 	Name        string     `json:"name"`
@@ -207,12 +231,13 @@ type K8sWorkloadDetail struct {
 }
 
 type K8sServiceItem struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Type      string `json:"type"`
-	ClusterIP string `json:"clusterIP"`
-	Ports     string `json:"ports"`
-	Endpoints int    `json:"endpoints"`
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
+	Type       string `json:"type"`
+	ClusterIP  string `json:"clusterIP"`
+	ExternalIP string `json:"externalIP"`
+	Ports      string `json:"ports"`
+	Endpoints  int    `json:"endpoints"`
 }
 
 type K8sServiceDetail struct {
@@ -220,6 +245,7 @@ type K8sServiceDetail struct {
 	Namespace   string            `json:"namespace"`
 	Type        string            `json:"type"`
 	ClusterIP   string            `json:"clusterIP"`
+	ExternalIP  string            `json:"externalIP"`
 	Ports       []K8sKVTextItem   `json:"ports"`
 	Selector    map[string]string `json:"selector"`
 	Labels      map[string]string `json:"labels"`
@@ -314,6 +340,36 @@ type K8sNetworkSection struct {
 	Ingresses []K8sIngressItem `json:"ingresses"`
 }
 
+type K8sIstioResourceItem struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Kind      string `json:"kind"`
+	Hosts     string `json:"hosts"`
+	Gateways  string `json:"gateways"`
+	Target    string `json:"target"`
+	Address   string `json:"address"`
+	Ports     string `json:"ports"`
+	Age       string `json:"age"`
+}
+
+type K8sIstioResourceDetail struct {
+	Name        string                 `json:"name"`
+	Namespace   string                 `json:"namespace"`
+	Kind        string                 `json:"kind"`
+	Labels      map[string]string      `json:"labels"`
+	Annotations map[string]string      `json:"annotations"`
+	Summary     []K8sKVTextItem        `json:"summary"`
+	Items       []K8sKVTextItem        `json:"items"`
+	Traffic     []K8sIstioTrafficRoute `json:"traffic"`
+	Age         string                 `json:"age"`
+	YAML        string                 `json:"yaml"`
+}
+
+type K8sAdvancedNetworkSection struct {
+	GatewayAPIGateways []K8sIstioResourceItem `json:"gatewayApiGateways"`
+	HTTPRoutes         []K8sIstioResourceItem `json:"httpRoutes"`
+}
+
 type K8sConfigStorageSection struct {
 	ConfigMaps []K8sConfigMapItem `json:"configMaps"`
 	Secrets    []K8sSecretItem    `json:"secrets"`
@@ -321,12 +377,13 @@ type K8sConfigStorageSection struct {
 }
 
 type K8sClusterDetail struct {
-	Cluster       K8sClusterView          `json:"cluster"`
-	Overview      K8sOverview             `json:"overview"`
-	Nodes         []K8sNodeItem           `json:"nodes"`
-	Namespaces    []K8sNamespaceItem      `json:"namespaces"`
-	Pods          []K8sPodItem            `json:"pods"`
-	Workloads     []K8sWorkloadItem       `json:"workloads"`
-	Network       K8sNetworkSection       `json:"network"`
-	ConfigStorage K8sConfigStorageSection `json:"configStorage"`
+	Cluster         K8sClusterView            `json:"cluster"`
+	Overview        K8sOverview               `json:"overview"`
+	Nodes           []K8sNodeItem             `json:"nodes"`
+	Namespaces      []K8sNamespaceItem        `json:"namespaces"`
+	Pods            []K8sPodItem              `json:"pods"`
+	Workloads       []K8sWorkloadItem         `json:"workloads"`
+	Network         K8sNetworkSection         `json:"network"`
+	AdvancedNetwork K8sAdvancedNetworkSection `json:"advancedNetwork"`
+	ConfigStorage   K8sConfigStorageSection   `json:"configStorage"`
 }

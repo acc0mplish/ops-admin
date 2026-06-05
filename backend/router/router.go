@@ -141,6 +141,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/k8s/namespace/events", ctl.GetK8sNamespaceEvents)
 		authGroup.GET("/k8s/service/detail", ctl.GetK8sServiceDetail)
 		authGroup.GET("/k8s/ingress/detail", ctl.GetK8sIngressDetail)
+		authGroup.GET("/k8s/istio/detail", ctl.GetK8sIstioResourceDetail)
 		authGroup.GET("/k8s/configmap/detail", ctl.GetK8sConfigMapDetail)
 		authGroup.GET("/k8s/secret/detail", ctl.GetK8sSecretDetail)
 		authGroup.GET("/k8s/storage/detail", ctl.GetK8sStorageDetail)
@@ -151,7 +152,11 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/k8s/workload/detail", ctl.GetK8sWorkloadDetail)
 		authGroup.POST("/k8s/workload/scale", ctl.ScaleK8sWorkload)
 		authGroup.POST("/k8s/workload/restart", ctl.RestartK8sWorkload)
+		authGroup.POST("/k8s/istio/traffic", ctl.UpdateK8sIstioTraffic)
+		authGroup.POST("/k8s/httproute/traffic", ctl.UpdateK8sHTTPRouteTraffic)
+		authGroup.POST("/k8s/resource/yaml/create", ctl.CreateK8sResourceYAML)
 		authGroup.PUT("/k8s/resource/yaml", ctl.UpdateK8sResourceYAML)
+		authGroup.DELETE("/k8s/resource/delete", ctl.DeleteK8sResource)
 	}
 
 	return engine

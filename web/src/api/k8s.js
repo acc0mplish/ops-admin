@@ -32,6 +32,9 @@ export const queryK8sServiceDetail = (clusterId, namespace, serviceName) =>
 export const queryK8sIngressDetail = (clusterId, namespace, ingressName) =>
   http.get('/api/v1/k8s/ingress/detail', { params: { clusterId, namespace, ingressName } })
 
+export const queryK8sIstioResourceDetail = (clusterId, resourceType, namespace, name) =>
+  http.get('/api/v1/k8s/istio/detail', { params: { clusterId, resourceType, namespace, name } })
+
 export const queryK8sConfigMapDetail = (clusterId, namespace, configMapName) =>
   http.get('/api/v1/k8s/configmap/detail', { params: { clusterId, namespace, configMapName } })
 
@@ -60,7 +63,15 @@ export const scaleK8sWorkload = (data) => http.post('/api/v1/k8s/workload/scale'
 
 export const restartK8sWorkload = (data) => http.post('/api/v1/k8s/workload/restart', data)
 
+export const updateK8sIstioTraffic = (data) => http.post('/api/v1/k8s/istio/traffic', data)
+
+export const updateK8sHTTPRouteTraffic = (data) => http.post('/api/v1/k8s/httproute/traffic', data)
+
+export const createK8sResourceYAML = (data) => http.post('/api/v1/k8s/resource/yaml/create', data)
+
 export const updateK8sResourceYAML = (data) => http.put('/api/v1/k8s/resource/yaml', data)
+
+export const deleteK8sResource = (data) => http.delete('/api/v1/k8s/resource/delete', { data })
 
 export const buildK8sPodTerminalWSUrl = ({
   clusterId,

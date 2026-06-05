@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import {
@@ -9,6 +9,7 @@ import {
   queryK8sClusterList,
   updateK8sCluster
 } from '../../api/k8s'
+import { t } from '../../utils/i18n'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -22,6 +23,17 @@ const form = reactive({
   description: '',
   kubeConfig: ''
 })
+
+const dialogTitle = computed(() => (isEdit.value ? t('k8sEditCluster') : t('k8sCreateCluster')))
+
+function clusterStatusText(status) {
+  const map = {
+    running: 'k8sStatusRunning',
+    warning: 'k8sStatusWarning',
+    offline: 'k8sStatusOffline'
+  }
+  return t(map[status] || 'k8sStatusWarning')
+}
 
 function resetForm() {
   Object.assign(form, {
@@ -61,11 +73,11 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning('请输入集群名称')
+    ElMessage.warning(t('k8sPleaseInputClusterName'))
     return
   }
   if (!form.kubeConfig.trim()) {
-    ElMessage.warning('请输入 kubeconfig')
+    ElMessage.warning(t('k8sPleaseInputKubeconfig'))
     return
   }
 
@@ -73,10 +85,10 @@ async function submit() {
   try {
     if (isEdit.value) {
       await updateK8sCluster({ ...form })
-      ElMessage.success('集群已更新')
+      ElMessage.success(t('k8sClusterUpdated'))
     } else {
       await addK8sCluster({ ...form })
-      ElMessage.success('集群已新增')
+      ElMessage.success(t('k8sClusterCreated'))
     }
     dialogVisible.value = false
     await loadClusters()
@@ -86,9 +98,9 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除集群 ${row.name} 吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(t('k8sDeleteClusterConfirm', { name: row.name }), t('k8sPrompt'), { type: 'warning' })
   await deleteK8sCluster(row.id)
-  ElMessage.success('集群已删除')
+  ElMessage.success(t('k8sClusterDeleted'))
   await loadClusters()
 }
 
@@ -114,70 +126,65 @@ onMounted(async () => {
   <div class="cluster-manage-page">
     <section class="page-header">
       <div>
-        <h2>集群管理</h2>
-        <p>录入 Kubernetes 集群，保存时会自动校验 kubeconfig 连通性。</p>
+        <h2>{{ t('k8sManageTitle') }}</h2>
+        <p>{{ t('k8sManageDesc') }}</p>
       </div>
       <div class="header-actions">
-        <el-button :icon="Refresh" @click="loadClusters">刷新</el-button>
-        <el-button type="primary" :icon="Plus" @click="openCreate">新增集群</el-button>
+        <el-button :icon="Refresh" @click="loadClusters">{{ t('k8sRefresh') }}</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('k8sNewCluster') }}</el-button>
       </div>
     </section>
 
-    <section class="table-panel" v-loading="loading">
+    <section v-loading="loading" class="table-panel">
       <el-table :data="clusterList" class="cluster-table">
-        <el-table-column prop="name" label="集群名称" min-width="180" />
-        <el-table-column label="集群状态" width="120">
+        <el-table-column prop="name" :label="t('k8sClusterName')" min-width="180" />
+        <el-table-column :label="t('k8sStatus')" width="120">
           <template #default="{ row }">
-            <el-tag :type="tagType(row.status)" effect="light">{{ row.statusText }}</el-tag>
+            <el-tag :type="tagType(row.status)" effect="light">{{ clusterStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="apiServer" label="API Server" min-width="260" />
-        <el-table-column prop="version" label="K8s 版本" width="140" />
-        <el-table-column prop="nodeCount" label="节点数量" width="100" />
-        <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column prop="apiServer" :label="t('k8sApiServer')" min-width="260" />
+        <el-table-column prop="version" :label="t('k8sVersion')" width="140" />
+        <el-table-column prop="nodeCount" :label="t('k8sNodeCount')" width="100" />
+        <el-table-column prop="description" :label="t('k8sDescription')" min-width="180" show-overflow-tooltip />
+        <el-table-column :label="t('k8sOperations')" width="160" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">{{ t('k8sEdit') }}</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">{{ t('k8sDelete') }}</el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!loading && !clusterList.length" description="还没有录入任何 K8s 集群" />
+      <el-empty v-if="!loading && !clusterList.length" :description="t('k8sNoClustersRecorded')" />
     </section>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="isEdit ? '编辑 K8s 集群' : '新增 K8s 集群'"
-      width="760px"
-      destroy-on-close
-    >
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="760px" destroy-on-close>
       <el-form label-width="100px">
-        <el-form-item label="集群名称" required>
-          <el-input v-model="form.name" placeholder="例如：prod-hz-01" />
+        <el-form-item :label="t('k8sClusterName')" required>
+          <el-input v-model="form.name" :placeholder="t('k8sClusterNamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="t('k8sDescription')">
           <el-input
             v-model="form.description"
             type="textarea"
             :rows="2"
-            placeholder="补充说明这个集群的用途、环境或负责人"
+            :placeholder="t('k8sClusterDescriptionPlaceholder')"
           />
         </el-form-item>
-        <el-form-item label="KubeConfig" required>
+        <el-form-item :label="t('k8sKubeConfig')" required>
           <el-input
             v-model="form.kubeConfig"
             type="textarea"
             :rows="14"
-            placeholder="请输入完整 kubeconfig，保存时会自动校验连通性并获取 API Server、K8s 版本、集群状态和节点数量"
+            :placeholder="t('k8sKubeConfigPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">{{ t('save') }}</el-button>
       </template>
     </el-dialog>
   </div>

@@ -208,15 +208,26 @@ type kubeNamespace struct {
 type kubeService struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		Type      string            `json:"type"`
-		ClusterIP string            `json:"clusterIP"`
-		Selector  map[string]string `json:"selector"`
-		Ports     []struct {
+		Type        string            `json:"type"`
+		ClusterIP   string            `json:"clusterIP"`
+		ExternalIPs []string          `json:"externalIPs"`
+		Selector    map[string]string `json:"selector"`
+		Ports       []struct {
 			Name       string      `json:"name"`
 			Port       int         `json:"port"`
+			NodePort   int         `json:"nodePort"`
+			Protocol   string      `json:"protocol"`
 			TargetPort interface{} `json:"targetPort"`
 		} `json:"ports"`
 	} `json:"spec"`
+	Status struct {
+		LoadBalancer struct {
+			Ingress []struct {
+				IP       string `json:"ip"`
+				Hostname string `json:"hostname"`
+			} `json:"ingress"`
+		} `json:"loadBalancer"`
+	} `json:"status"`
 }
 
 type kubeEndpoints struct {
@@ -395,6 +406,155 @@ type kubeCronJob struct {
 	} `json:"status"`
 }
 
+type kubeIstioGatewayListResponse struct {
+	Items []kubeIstioGateway `json:"items"`
+}
+
+type kubeIstioVirtualServiceListResponse struct {
+	Items []kubeIstioVirtualService `json:"items"`
+}
+
+type kubeIstioDestinationRuleListResponse struct {
+	Items []kubeIstioDestinationRule `json:"items"`
+}
+
+type kubeIstioServiceEntryListResponse struct {
+	Items []kubeIstioServiceEntry `json:"items"`
+}
+
+type kubeGatewayAPIListResponse struct {
+	Items []kubeGatewayAPI `json:"items"`
+}
+
+type kubeHTTPRouteListResponse struct {
+	Items []kubeHTTPRoute `json:"items"`
+}
+
+type kubeIstioGateway struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Selector map[string]string `json:"selector"`
+		Servers  []struct {
+			Port struct {
+				Name     string `json:"name"`
+				Number   int    `json:"number"`
+				Protocol string `json:"protocol"`
+			} `json:"port"`
+			Hosts []string `json:"hosts"`
+		} `json:"servers"`
+	} `json:"spec"`
+}
+
+type kubeIstioVirtualService struct {
+	APIVersion string       `json:"apiVersion"`
+	Metadata   kubeMetadata `json:"metadata"`
+	Spec       struct {
+		Hosts    []string `json:"hosts"`
+		Gateways []string `json:"gateways"`
+		HTTP     []struct {
+			Match []struct {
+				URI struct {
+					Exact  string `json:"exact"`
+					Prefix string `json:"prefix"`
+				} `json:"uri"`
+			} `json:"match"`
+			Route []struct {
+				Destination struct {
+					Host   string `json:"host"`
+					Subset string `json:"subset"`
+					Port   struct {
+						Number int `json:"number"`
+					} `json:"port"`
+				} `json:"destination"`
+				Weight int `json:"weight"`
+			} `json:"route"`
+		} `json:"http"`
+		TCP []struct {
+			Route []struct {
+				Destination struct {
+					Host string `json:"host"`
+					Port struct {
+						Number int `json:"number"`
+					} `json:"port"`
+				} `json:"destination"`
+			} `json:"route"`
+		} `json:"tcp"`
+	} `json:"spec"`
+}
+
+type kubeIstioDestinationRule struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Host    string `json:"host"`
+		Subsets []struct {
+			Name string `json:"name"`
+		} `json:"subsets"`
+	} `json:"spec"`
+}
+
+type kubeIstioServiceEntry struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Hosts      []string `json:"hosts"`
+		Addresses  []string `json:"addresses"`
+		Location   string   `json:"location"`
+		Resolution string   `json:"resolution"`
+		Ports      []struct {
+			Name     string `json:"name"`
+			Number   int    `json:"number"`
+			Protocol string `json:"protocol"`
+		} `json:"ports"`
+	} `json:"spec"`
+}
+
+type kubeGatewayAPI struct {
+	APIVersion string       `json:"apiVersion"`
+	Kind       string       `json:"kind"`
+	Metadata   kubeMetadata `json:"metadata"`
+	Spec       struct {
+		GatewayClassName string `json:"gatewayClassName"`
+		Listeners        []struct {
+			Name     string `json:"name"`
+			Hostname string `json:"hostname"`
+			Port     int    `json:"port"`
+			Protocol string `json:"protocol"`
+		} `json:"listeners"`
+	} `json:"spec"`
+	Status struct {
+		Addresses []struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		} `json:"addresses"`
+	} `json:"status"`
+}
+
+type kubeHTTPRoute struct {
+	APIVersion string       `json:"apiVersion"`
+	Kind       string       `json:"kind"`
+	Metadata   kubeMetadata `json:"metadata"`
+	Spec       struct {
+		Hostnames  []string `json:"hostnames"`
+		ParentRefs []struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+		} `json:"parentRefs"`
+		Rules []struct {
+			Matches []struct {
+				Path struct {
+					Type  string `json:"type"`
+					Value string `json:"value"`
+				} `json:"path"`
+			} `json:"matches"`
+			BackendRefs []struct {
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+				Port      int    `json:"port"`
+				Weight    int    `json:"weight"`
+			} `json:"backendRefs"`
+		} `json:"rules"`
+	} `json:"spec"`
+}
+
 type k8sClusterProbe struct {
 	APIServer string
 	Version   string
@@ -403,21 +563,27 @@ type k8sClusterProbe struct {
 }
 
 type k8sFetchedData struct {
-	Nodes       []kubeNode
-	Namespaces  []kubeNamespace
-	Pods        []kubePod
-	Services    []kubeService
-	Endpoints   []kubeEndpoints
-	Ingresses   []kubeIngress
-	ConfigMaps  []kubeConfigMap
-	Secrets     []kubeSecret
-	PVCs        []kubePersistentVolumeClaim
-	PVs         []kubePersistentVolume
-	Deployments []kubeDeployment
-	StatefulSet []kubeStatefulSet
-	DaemonSets  []kubeDaemonSet
-	Jobs        []kubeJob
-	CronJobs    []kubeCronJob
+	Nodes                 []kubeNode
+	Namespaces            []kubeNamespace
+	Pods                  []kubePod
+	Services              []kubeService
+	Endpoints             []kubeEndpoints
+	Ingresses             []kubeIngress
+	ConfigMaps            []kubeConfigMap
+	Secrets               []kubeSecret
+	PVCs                  []kubePersistentVolumeClaim
+	PVs                   []kubePersistentVolume
+	Deployments           []kubeDeployment
+	StatefulSet           []kubeStatefulSet
+	DaemonSets            []kubeDaemonSet
+	Jobs                  []kubeJob
+	CronJobs              []kubeCronJob
+	GatewayAPIGateways    []kubeGatewayAPI
+	HTTPRoutes            []kubeHTTPRoute
+	IstioGateways         []kubeIstioGateway
+	IstioVirtualServices  []kubeIstioVirtualService
+	IstioDestinationRules []kubeIstioDestinationRule
+	IstioServiceEntries   []kubeIstioServiceEntry
 }
 
 type k8sAggregateMetrics struct {
@@ -426,6 +592,15 @@ type k8sAggregateMetrics struct {
 	TotalReqCPUMilli      int64
 	TotalReqMemoryBytes   int64
 	AlertCount            int
+}
+
+type k8sManifestIdentity struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Metadata   struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
 }
 
 func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
@@ -575,11 +750,16 @@ func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, e
 			Distribution: buildOverviewDistribution(detailCluster),
 			Certificates: buildOverviewCertificates(runtime),
 		},
-		Nodes:         buildNodeItems(data.Nodes, data.Pods),
-		Namespaces:    buildNamespaceItems(data.Namespaces, namespaceCounts),
-		Pods:          buildPodItems(data.Pods),
-		Workloads:     workloads,
-		Network:       buildNetworkSection(data.Services, data.Ingresses, endpointCounts),
+		Nodes:      buildNodeItems(data.Nodes, data.Pods),
+		Namespaces: buildNamespaceItems(data.Namespaces, namespaceCounts),
+		Pods:       buildPodItems(data.Pods),
+		Workloads:  workloads,
+		Network:    buildNetworkSection(data.Services, data.Ingresses, endpointCounts),
+		AdvancedNetwork: buildAdvancedNetworkSection(
+			data.GatewayAPIGateways,
+			data.HTTPRoutes,
+			data.Services,
+		),
 		ConfigStorage: buildConfigStorageSection(data.ConfigMaps, data.Secrets, data.PVCs, data.PVs),
 	}, nil
 }
@@ -778,17 +958,27 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		return nil, err
 	}
 
-	path, err := buildK8sYAMLResourcePath(payload)
-	if err != nil {
-		return nil, err
-	}
-
 	body, err := ksyaml.YAMLToJSON([]byte(payload.YAML))
 	if err != nil {
 		return nil, errors.New("invalid yaml content")
 	}
-	if err := k8sDoJSON(client, runtime, http.MethodPut, path, nil, body, "application/json", nil); err != nil {
-		return nil, friendlyK8sYAMLError(payload, err)
+
+	paths, err := buildK8sYAMLResourcePaths(payload)
+	if err != nil {
+		return nil, err
+	}
+	var updateErr error
+	for _, path := range paths {
+		updateErr = k8sDoJSON(client, runtime, http.MethodPut, path, nil, body, "application/json", nil)
+		if updateErr == nil {
+			break
+		}
+		if !isK8sNotFoundError(updateErr) {
+			break
+		}
+	}
+	if updateErr != nil {
+		return nil, friendlyK8sYAMLError(payload, updateErr)
 	}
 
 	return map[string]any{
@@ -797,6 +987,179 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		"name":         payload.Name,
 		"workloadType": payload.WorkloadType,
 		"updated":      true,
+	}, nil
+}
+
+func (s *Service) CreateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || Trimmed(payload.ResourceType) == "" || Trimmed(payload.YAML) == "" {
+		return nil, errors.New("invalid yaml payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := ksyaml.YAMLToJSON([]byte(payload.YAML))
+	if err != nil {
+		return nil, errors.New("invalid yaml content")
+	}
+
+	manifest, err := parseK8sManifestIdentity(body)
+	if err != nil {
+		return nil, err
+	}
+	if Trimmed(payload.Name) == "" {
+		payload.Name = manifest.Metadata.Name
+	}
+	if Trimmed(payload.Namespace) == "" {
+		payload.Namespace = manifest.Metadata.Namespace
+	}
+
+	paths, err := buildK8sCreateResourcePaths(payload, manifest)
+	if err != nil {
+		return nil, err
+	}
+	if err := k8sDoJSONAnyPath(client, runtime, http.MethodPost, paths, nil, body, "application/json", nil); err != nil {
+		return nil, friendlyK8sYAMLError(payload, err)
+	}
+
+	return map[string]any{
+		"resourceType": payload.ResourceType,
+		"namespace":    payload.Namespace,
+		"name":         firstNonEmpty(payload.Name, manifest.Metadata.Name),
+		"created":      true,
+	}, nil
+}
+
+func (s *Service) DeleteK8sResource(payload model.K8sResourceDeletePayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || Trimmed(payload.ResourceType) == "" || Trimmed(payload.Name) == "" {
+		return nil, errors.New("invalid delete payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	paths, err := buildK8sDeleteResourcePaths(payload)
+	if err != nil {
+		return nil, err
+	}
+	if err := k8sDoJSONAnyPath(client, runtime, http.MethodDelete, paths, nil, nil, "application/json", nil); err != nil {
+		if isK8sNotFoundError(err) {
+			return nil, errors.New("resource not found")
+		}
+		return nil, err
+	}
+
+	return map[string]any{
+		"resourceType": payload.ResourceType,
+		"namespace":    payload.Namespace,
+		"name":         payload.Name,
+		"deleted":      true,
+	}, nil
+}
+
+func (s *Service) UpdateK8sIstioTraffic(payload model.K8sIstioTrafficPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || Trimmed(payload.Namespace) == "" || Trimmed(payload.Name) == "" || len(payload.Routes) == 0 {
+		return nil, errors.New("invalid istio traffic payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	var item kubeIstioVirtualService
+	if err := k8sGetIstioJSON(client, runtime, "virtualservices", payload.Namespace, payload.Name, &item); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	httpIndex := firstVirtualServiceHTTPRouteIndex(item)
+	if httpIndex < 0 {
+		return nil, errors.New("virtualservice has no adjustable HTTP routes")
+	}
+	if len(item.Spec.HTTP[httpIndex].Route) != len(payload.Routes) {
+		return nil, errors.New("virtualservice route count changed, please refresh and try again")
+	}
+
+	totalWeight := 0
+	for index, route := range payload.Routes {
+		if route.Weight < 0 {
+			return nil, errors.New("traffic weight must be greater than or equal to 0")
+		}
+		totalWeight += route.Weight
+		item.Spec.HTTP[httpIndex].Route[index].Weight = route.Weight
+	}
+	if totalWeight != 100 {
+		return nil, errors.New("traffic weights must total 100")
+	}
+
+	body, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+	paths := buildIstioResourcePathsWithPreferred("virtualservices", payload.Namespace, payload.Name, item.APIVersion)
+	if err := k8sDoJSONAnyPath(client, runtime, http.MethodPut, paths, nil, body, "application/json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	return map[string]any{
+		"namespace": payload.Namespace,
+		"name":      payload.Name,
+		"updated":   true,
+	}, nil
+}
+
+func (s *Service) UpdateK8sHTTPRouteTraffic(payload model.K8sIstioTrafficPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || Trimmed(payload.Namespace) == "" || Trimmed(payload.Name) == "" || len(payload.Routes) == 0 {
+		return nil, errors.New("invalid http route traffic payload")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	var item kubeHTTPRoute
+	if err := k8sGetGatewayAPIJSON(client, runtime, "httproutes", payload.Namespace, payload.Name, &item); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	ruleIndex := firstHTTPRouteRuleIndex(item)
+	if ruleIndex < 0 {
+		return nil, errors.New("httproute has no adjustable backend refs")
+	}
+	if len(item.Spec.Rules[ruleIndex].BackendRefs) != len(payload.Routes) {
+		return nil, errors.New("httproute backend refs changed, please refresh and try again")
+	}
+
+	totalWeight := 0
+	for index, route := range payload.Routes {
+		if route.Weight < 0 {
+			return nil, errors.New("traffic weight must be greater than or equal to 0")
+		}
+		totalWeight += route.Weight
+		item.Spec.Rules[ruleIndex].BackendRefs[index].Weight = route.Weight
+	}
+	if totalWeight != 100 {
+		return nil, errors.New("traffic weights must total 100")
+	}
+
+	body, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+	paths := buildGatewayAPIResourcePathsWithPreferred("httproutes", payload.Namespace, payload.Name, item.APIVersion)
+	if err := k8sDoJSONAnyPath(client, runtime, http.MethodPut, paths, nil, body, "application/json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+
+	return map[string]any{
+		"namespace": payload.Namespace,
+		"name":      payload.Name,
+		"updated":   true,
 	}, nil
 }
 
@@ -974,7 +1337,7 @@ func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceN
 		}
 		ports = append(ports, model.K8sKVTextItem{
 			Label: label,
-			Value: fmt.Sprintf("%d -> %s", port.Port, target),
+			Value: formatServiceDetailPort(port.Port, port.NodePort, port.Protocol, target),
 		})
 	}
 
@@ -983,6 +1346,7 @@ func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceN
 		Namespace:   service.Metadata.Namespace,
 		Type:        fallbackText(service.Spec.Type),
 		ClusterIP:   fallbackText(service.Spec.ClusterIP),
+		ExternalIP:  serviceExternalIP(service),
 		Ports:       ports,
 		Selector:    service.Spec.Selector,
 		Labels:      service.Metadata.Labels,
@@ -991,6 +1355,227 @@ func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceN
 		Age:         humanizeAge(service.Metadata.CreationTimestamp),
 		YAML:        marshalK8sYAML(service),
 	}, nil
+}
+
+func (s *Service) GetK8sIstioResourceDetail(clusterID uint, resourceType string, namespace string, name string) (model.K8sIstioResourceDetail, error) {
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
+	if err != nil {
+		return model.K8sIstioResourceDetail{}, err
+	}
+
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
+	switch resourceType {
+	case "gatewayapi":
+		var item kubeGatewayAPI
+		if err := k8sGetGatewayAPIJSON(client, runtime, "gateways", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "GatewayClass", Value: fallbackText(item.Spec.GatewayClassName)},
+			{Label: "Hosts", Value: joinAndLimit(collectGatewayAPIHosts(item), 0)},
+			{Label: "Address", Value: joinAndLimit(collectGatewayAPIAddresses(item), 0)},
+			{Label: "Ports", Value: joinAndLimit(collectGatewayAPIPorts(item), 0)},
+		}
+		items := make([]model.K8sKVTextItem, 0, len(item.Spec.Listeners))
+		for _, listener := range item.Spec.Listeners {
+			label := firstNonEmpty(listener.Name, formatIstioPort(listener.Port, listener.Protocol))
+			items = append(items, model.K8sKVTextItem{
+				Label: label,
+				Value: firstNonEmpty(listener.Hostname, "*"),
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "Gateway",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	case "httproute":
+		var item kubeHTTPRoute
+		if err := k8sGetGatewayAPIJSON(client, runtime, "httproutes", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "Hosts", Value: joinAndLimit(item.Spec.Hostnames, 0)},
+			{Label: "Gateways", Value: joinAndLimit(collectHTTPRouteParents(item), 0)},
+			{Label: "Targets", Value: joinAndLimit(collectHTTPRouteTargets(item), 0)},
+		}
+		items := make([]model.K8sKVTextItem, 0, len(item.Spec.Rules))
+		for _, rule := range item.Spec.Rules {
+			matchText := "/"
+			if len(rule.Matches) > 0 {
+				matchParts := make([]string, 0, len(rule.Matches))
+				for _, match := range rule.Matches {
+					if strings.TrimSpace(match.Path.Value) != "" {
+						matchParts = append(matchParts, match.Path.Value)
+					}
+				}
+				if len(matchParts) > 0 {
+					matchText = strings.Join(matchParts, ", ")
+				}
+			}
+			items = append(items, model.K8sKVTextItem{
+				Label: matchText,
+				Value: joinAndLimit(collectHTTPRouteTargetsFromRule(rule), 0),
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "HTTPRoute",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Traffic:     buildHTTPRouteTrafficItems(item),
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	case "gateway":
+		var item kubeIstioGateway
+		if err := k8sGetIstioJSON(client, runtime, "gateways", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "Selector", Value: joinSelector(item.Spec.Selector)},
+			{Label: "Hosts", Value: joinAndLimit(flattenGatewayHosts(item), 0)},
+			{Label: "Ports", Value: joinAndLimit(flattenGatewayPorts(item), 0)},
+		}
+		items := make([]model.K8sKVTextItem, 0, len(item.Spec.Servers))
+		for _, server := range item.Spec.Servers {
+			items = append(items, model.K8sKVTextItem{
+				Label: formatIstioPort(server.Port.Number, server.Port.Protocol),
+				Value: joinAndLimit(server.Hosts, 0),
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "Gateway",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	case "virtualservice":
+		var item kubeIstioVirtualService
+		if err := k8sGetIstioJSON(client, runtime, "virtualservices", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "Hosts", Value: joinAndLimit(item.Spec.Hosts, 0)},
+			{Label: "Gateways", Value: joinAndLimit(item.Spec.Gateways, 0)},
+			{Label: "Targets", Value: joinAndLimit(collectVirtualServiceTargets(item), 0)},
+		}
+		items := make([]model.K8sKVTextItem, 0)
+		for _, httpRoute := range item.Spec.HTTP {
+			routeTarget := make([]string, 0, len(httpRoute.Route))
+			for _, route := range httpRoute.Route {
+				target := route.Destination.Host
+				if route.Destination.Subset != "" {
+					target += ":" + route.Destination.Subset
+				}
+				if route.Destination.Port.Number > 0 {
+					target += ":" + strconv.Itoa(route.Destination.Port.Number)
+				}
+				routeTarget = append(routeTarget, target)
+			}
+			matchText := "/"
+			if len(httpRoute.Match) > 0 {
+				matchParts := make([]string, 0, len(httpRoute.Match))
+				for _, match := range httpRoute.Match {
+					value := firstNonEmpty(match.URI.Exact, match.URI.Prefix)
+					if value != "" {
+						matchParts = append(matchParts, value)
+					}
+				}
+				if len(matchParts) > 0 {
+					matchText = strings.Join(matchParts, ", ")
+				}
+			}
+			items = append(items, model.K8sKVTextItem{
+				Label: matchText,
+				Value: joinAndLimit(routeTarget, 0),
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "VirtualService",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Traffic:     buildVirtualServiceTrafficItems(item),
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	case "destinationrule":
+		var item kubeIstioDestinationRule
+		if err := k8sGetIstioJSON(client, runtime, "destinationrules", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "Host", Value: fallbackText(item.Spec.Host)},
+			{Label: "Subsets", Value: strconv.Itoa(len(item.Spec.Subsets))},
+		}
+		items := make([]model.K8sKVTextItem, 0, len(item.Spec.Subsets))
+		for _, subset := range item.Spec.Subsets {
+			items = append(items, model.K8sKVTextItem{
+				Label: subset.Name,
+				Value: "subset",
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "DestinationRule",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	case "serviceentry":
+		var item kubeIstioServiceEntry
+		if err := k8sGetIstioJSON(client, runtime, "serviceentries", namespace, name, &item); err != nil {
+			return model.K8sIstioResourceDetail{}, errors.New(k8sClusterConnectError)
+		}
+		summary := []model.K8sKVTextItem{
+			{Label: "Hosts", Value: joinAndLimit(item.Spec.Hosts, 0)},
+			{Label: "Addresses", Value: joinAndLimit(item.Spec.Addresses, 0)},
+			{Label: "Resolution", Value: fallbackText(item.Spec.Resolution)},
+		}
+		items := make([]model.K8sKVTextItem, 0, len(item.Spec.Ports))
+		for _, port := range item.Spec.Ports {
+			label := firstNonEmpty(port.Name, strconv.Itoa(port.Number))
+			items = append(items, model.K8sKVTextItem{
+				Label: label,
+				Value: formatIstioPort(port.Number, port.Protocol),
+			})
+		}
+		return model.K8sIstioResourceDetail{
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Kind:        "ServiceEntry",
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Summary:     summary,
+			Items:       items,
+			Age:         humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:        marshalK8sYAML(item),
+		}, nil
+	default:
+		return model.K8sIstioResourceDetail{}, errors.New("unsupported istio resource type")
+	}
 }
 
 func (s *Service) GetK8sIngressDetail(clusterID uint, namespace string, ingressName string) (model.K8sIngressDetail, error) {
@@ -1200,6 +1785,16 @@ func fetchK8sData(client *http.Client, runtime kubeClusterRuntime) (k8sFetchedDa
 	var ingressResp kubeIngressListResponse
 	if err := k8sGetJSON(client, runtime, "/apis/networking.k8s.io/v1/ingresses", &ingressResp); err == nil {
 		data.Ingresses = ingressResp.Items
+	}
+
+	var gatewayAPIResp kubeGatewayAPIListResponse
+	if err := k8sGetGatewayAPIJSON(client, runtime, "gateways", "", "", &gatewayAPIResp); err == nil {
+		data.GatewayAPIGateways = gatewayAPIResp.Items
+	}
+
+	var httpRouteResp kubeHTTPRouteListResponse
+	if err := k8sGetGatewayAPIJSON(client, runtime, "httproutes", "", "", &httpRouteResp); err == nil {
+		data.HTTPRoutes = httpRouteResp.Items
 	}
 
 	var configMapResp kubeConfigMapListResponse
@@ -1833,26 +2428,373 @@ func buildEndpointCounts(endpoints []kubeEndpoints) map[string]int {
 	return result
 }
 
+func formatServiceListPort(port int, nodePort int, protocol string) string {
+	proto := strings.TrimSpace(protocol)
+	if proto == "" {
+		proto = "TCP"
+	}
+	if nodePort > 0 {
+		return fmt.Sprintf("%d:%d/%s", port, nodePort, proto)
+	}
+	return fmt.Sprintf("%d/%s", port, proto)
+}
+
+func formatServiceDetailPort(port int, nodePort int, protocol string, targetPort string) string {
+	base := formatServiceListPort(port, nodePort, protocol)
+	targetPort = strings.TrimSpace(targetPort)
+	if targetPort == "" || targetPort == strconv.Itoa(port) {
+		return base
+	}
+	return fmt.Sprintf("%s -> %s", base, targetPort)
+}
+
+func serviceExternalIP(service kubeService) string {
+	values := make([]string, 0, len(service.Spec.ExternalIPs)+len(service.Status.LoadBalancer.Ingress))
+	for _, value := range service.Spec.ExternalIPs {
+		value = strings.TrimSpace(value)
+		if value != "" && value != "-" {
+			values = append(values, value)
+		}
+	}
+	for _, item := range service.Status.LoadBalancer.Ingress {
+		value := firstNonEmpty(strings.TrimSpace(item.IP), strings.TrimSpace(item.Hostname))
+		if value != "" && value != "-" {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return "<none>"
+	}
+	return strings.Join(values, ", ")
+}
+
+func buildAdvancedNetworkSection(
+	gatewayAPIGateways []kubeGatewayAPI,
+	httpRoutes []kubeHTTPRoute,
+	services []kubeService,
+) model.K8sAdvancedNetworkSection {
+	result := model.K8sAdvancedNetworkSection{
+		GatewayAPIGateways: make([]model.K8sIstioResourceItem, 0, len(gatewayAPIGateways)),
+		HTTPRoutes:         make([]model.K8sIstioResourceItem, 0, len(httpRoutes)),
+	}
+
+	for _, item := range gatewayAPIGateways {
+		result.GatewayAPIGateways = append(result.GatewayAPIGateways, model.K8sIstioResourceItem{
+			Name:      item.Metadata.Name,
+			Namespace: item.Metadata.Namespace,
+			Kind:      "Gateway",
+			Hosts:     joinAndLimit(collectGatewayAPIHosts(item), 3),
+			Address:   resolveGatewayAPIAddress(item, services),
+			Ports:     joinAndLimit(collectGatewayAPIPorts(item), 4),
+			Target:    fallbackText(item.Spec.GatewayClassName),
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	for _, item := range httpRoutes {
+		result.HTTPRoutes = append(result.HTTPRoutes, model.K8sIstioResourceItem{
+			Name:      item.Metadata.Name,
+			Namespace: item.Metadata.Namespace,
+			Kind:      "HTTPRoute",
+			Hosts:     joinAndLimit(uniqueNonEmptyStrings(item.Spec.Hostnames), 3),
+			Gateways:  joinAndLimit(collectHTTPRouteParents(item), 3),
+			Target:    joinAndLimit(collectHTTPRouteTargets(item), 3),
+			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+		})
+	}
+
+	sort.Slice(result.GatewayAPIGateways, func(i, j int) bool {
+		return compareIstioItems(result.GatewayAPIGateways[i], result.GatewayAPIGateways[j])
+	})
+	sort.Slice(result.HTTPRoutes, func(i, j int) bool { return compareIstioItems(result.HTTPRoutes[i], result.HTTPRoutes[j]) })
+
+	return result
+}
+
+func compareIstioItems(left, right model.K8sIstioResourceItem) bool {
+	if left.Namespace == right.Namespace {
+		return left.Name < right.Name
+	}
+	return left.Namespace < right.Namespace
+}
+
+func joinAndLimit(values []string, limit int) string {
+	values = uniqueNonEmptyStrings(values)
+	if len(values) == 0 {
+		return "-"
+	}
+	if limit > 0 && len(values) > limit {
+		return strings.Join(values[:limit], ", ") + fmt.Sprintf(" +%d", len(values)-limit)
+	}
+	return strings.Join(values, ", ")
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || value == "-" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func formatIstioPort(number int, protocol string) string {
+	if number <= 0 {
+		return fallbackText(protocol)
+	}
+	proto := strings.TrimSpace(protocol)
+	if proto == "" {
+		proto = "TCP"
+	}
+	return fmt.Sprintf("%d/%s", number, proto)
+}
+
+func joinSelector(selector map[string]string) string {
+	if len(selector) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(selector))
+	for key := range selector {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"="+selector[key])
+	}
+	return strings.Join(parts, ", ")
+}
+
+func collectVirtualServiceTargets(item kubeIstioVirtualService) []string {
+	result := make([]string, 0)
+	for _, httpRoute := range item.Spec.HTTP {
+		for _, route := range httpRoute.Route {
+			target := route.Destination.Host
+			if route.Destination.Subset != "" {
+				target += ":" + route.Destination.Subset
+			}
+			if route.Destination.Port.Number > 0 {
+				target += ":" + strconv.Itoa(route.Destination.Port.Number)
+			}
+			result = append(result, target)
+		}
+	}
+	for _, tcpRoute := range item.Spec.TCP {
+		for _, route := range tcpRoute.Route {
+			target := route.Destination.Host
+			if route.Destination.Port.Number > 0 {
+				target += ":" + strconv.Itoa(route.Destination.Port.Number)
+			}
+			result = append(result, target)
+		}
+	}
+	return result
+}
+
+func buildVirtualServiceTrafficItems(item kubeIstioVirtualService) []model.K8sIstioTrafficRoute {
+	httpIndex := firstVirtualServiceHTTPRouteIndex(item)
+	if httpIndex < 0 {
+		return nil
+	}
+
+	result := make([]model.K8sIstioTrafficRoute, 0, len(item.Spec.HTTP[httpIndex].Route))
+	for index, route := range item.Spec.HTTP[httpIndex].Route {
+		label := route.Destination.Host
+		if route.Destination.Subset != "" {
+			label += " / " + route.Destination.Subset
+		}
+		if route.Destination.Port.Number > 0 {
+			label += ":" + strconv.Itoa(route.Destination.Port.Number)
+		}
+		result = append(result, model.K8sIstioTrafficRoute{
+			Index:  index,
+			Host:   route.Destination.Host,
+			Subset: route.Destination.Subset,
+			Port:   route.Destination.Port.Number,
+			Weight: route.Weight,
+			Label:  label,
+		})
+	}
+	return result
+}
+
+func firstVirtualServiceHTTPRouteIndex(item kubeIstioVirtualService) int {
+	for index, route := range item.Spec.HTTP {
+		if len(route.Route) > 0 {
+			return index
+		}
+	}
+	return -1
+}
+
+func collectGatewayAPIHosts(item kubeGatewayAPI) []string {
+	hosts := make([]string, 0, len(item.Spec.Listeners))
+	for _, listener := range item.Spec.Listeners {
+		hosts = append(hosts, firstNonEmpty(listener.Hostname, "*"))
+	}
+	return uniqueNonEmptyStrings(hosts)
+}
+
+func collectGatewayAPIPorts(item kubeGatewayAPI) []string {
+	ports := make([]string, 0, len(item.Spec.Listeners))
+	for _, listener := range item.Spec.Listeners {
+		ports = append(ports, formatIstioPort(listener.Port, listener.Protocol))
+	}
+	return uniqueNonEmptyStrings(ports)
+}
+
+func collectGatewayAPIAddresses(item kubeGatewayAPI) []string {
+	values := make([]string, 0, len(item.Status.Addresses))
+	for _, address := range item.Status.Addresses {
+		values = append(values, address.Value)
+	}
+	return uniqueNonEmptyStrings(values)
+}
+
+func resolveGatewayAPIAddress(item kubeGatewayAPI, services []kubeService) string {
+	addresses := collectGatewayAPIAddresses(item)
+	if len(addresses) > 0 {
+		return joinAndLimit(addresses, 3)
+	}
+
+	candidates := []string{
+		item.Metadata.Name,
+		item.Metadata.Name + "-istio",
+	}
+	for _, service := range services {
+		if service.Metadata.Namespace != item.Metadata.Namespace {
+			continue
+		}
+		name := service.Metadata.Name
+		matched := false
+		for _, candidate := range candidates {
+			if name == candidate || strings.HasPrefix(name, item.Metadata.Name+"-") {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		address := serviceExternalIP(service)
+		if strings.TrimSpace(address) != "" && address != "<none>" && address != "-" {
+			return address
+		}
+	}
+
+	return "-"
+}
+
+func collectHTTPRouteParents(item kubeHTTPRoute) []string {
+	values := make([]string, 0, len(item.Spec.ParentRefs))
+	for _, ref := range item.Spec.ParentRefs {
+		if strings.TrimSpace(ref.Namespace) != "" {
+			values = append(values, ref.Namespace+"/"+ref.Name)
+			continue
+		}
+		values = append(values, ref.Name)
+	}
+	return uniqueNonEmptyStrings(values)
+}
+
+func collectHTTPRouteTargets(item kubeHTTPRoute) []string {
+	values := make([]string, 0)
+	for _, rule := range item.Spec.Rules {
+		values = append(values, collectHTTPRouteTargetsFromRule(rule)...)
+	}
+	return uniqueNonEmptyStrings(values)
+}
+
+func collectHTTPRouteTargetsFromRule(rule struct {
+	Matches []struct {
+		Path struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		} `json:"path"`
+	} `json:"matches"`
+	BackendRefs []struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		Port      int    `json:"port"`
+		Weight    int    `json:"weight"`
+	} `json:"backendRefs"`
+}) []string {
+	values := make([]string, 0, len(rule.BackendRefs))
+	for _, backend := range rule.BackendRefs {
+		target := backend.Name
+		if strings.TrimSpace(backend.Namespace) != "" {
+			target = backend.Namespace + "/" + target
+		}
+		if backend.Port > 0 {
+			target += ":" + strconv.Itoa(backend.Port)
+		}
+		if backend.Weight > 0 {
+			target += fmt.Sprintf(" (%d%%)", backend.Weight)
+		}
+		values = append(values, target)
+	}
+	return values
+}
+
+func buildHTTPRouteTrafficItems(item kubeHTTPRoute) []model.K8sIstioTrafficRoute {
+	ruleIndex := firstHTTPRouteRuleIndex(item)
+	if ruleIndex < 0 {
+		return nil
+	}
+	result := make([]model.K8sIstioTrafficRoute, 0, len(item.Spec.Rules[ruleIndex].BackendRefs))
+	for index, backend := range item.Spec.Rules[ruleIndex].BackendRefs {
+		label := backend.Name
+		if strings.TrimSpace(backend.Namespace) != "" {
+			label = backend.Namespace + "/" + label
+		}
+		if backend.Port > 0 {
+			label += ":" + strconv.Itoa(backend.Port)
+		}
+		result = append(result, model.K8sIstioTrafficRoute{
+			Index:  index,
+			Host:   backend.Name,
+			Port:   backend.Port,
+			Weight: backend.Weight,
+			Label:  label,
+		})
+	}
+	return result
+}
+
+func firstHTTPRouteRuleIndex(item kubeHTTPRoute) int {
+	for index, rule := range item.Spec.Rules {
+		if len(rule.BackendRefs) > 0 {
+			return index
+		}
+	}
+	return -1
+}
+
 func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpointCounts map[string]int) model.K8sNetworkSection {
 	serviceItems := make([]model.K8sServiceItem, 0, len(services))
 	for _, service := range services {
 		ports := make([]string, 0, len(service.Spec.Ports))
 		for _, port := range service.Spec.Ports {
-			targetPort := stringifyTargetPort(port.TargetPort)
-			if targetPort == "" {
-				targetPort = strconv.Itoa(port.Port)
-			}
-			ports = append(ports, fmt.Sprintf("%d:%s", port.Port, targetPort))
+			ports = append(ports, formatServiceListPort(port.Port, port.NodePort, port.Protocol))
 		}
 
 		key := service.Metadata.Namespace + "/" + service.Metadata.Name
 		serviceItems = append(serviceItems, model.K8sServiceItem{
-			Name:      service.Metadata.Name,
-			Namespace: service.Metadata.Namespace,
-			Type:      fallbackText(service.Spec.Type),
-			ClusterIP: fallbackText(service.Spec.ClusterIP),
-			Ports:     strings.Join(ports, ", "),
-			Endpoints: endpointCounts[key],
+			Name:       service.Metadata.Name,
+			Namespace:  service.Metadata.Namespace,
+			Type:       fallbackText(service.Spec.Type),
+			ClusterIP:  fallbackText(service.Spec.ClusterIP),
+			ExternalIP: serviceExternalIP(service),
+			Ports:      strings.Join(ports, ", "),
+			Endpoints:  endpointCounts[key],
 		})
 	}
 	sort.Slice(serviceItems, func(i, j int) bool {
@@ -2169,8 +3111,102 @@ func fetchK8sNodeCount(client *http.Client, runtime kubeClusterRuntime) (int, er
 	return len(payload.Items), nil
 }
 
+func flattenGatewayHosts(item kubeIstioGateway) []string {
+	hosts := make([]string, 0)
+	for _, server := range item.Spec.Servers {
+		hosts = append(hosts, server.Hosts...)
+	}
+	return uniqueNonEmptyStrings(hosts)
+}
+
+func flattenGatewayPorts(item kubeIstioGateway) []string {
+	ports := make([]string, 0, len(item.Spec.Servers))
+	for _, server := range item.Spec.Servers {
+		ports = append(ports, formatIstioPort(server.Port.Number, server.Port.Protocol))
+	}
+	return uniqueNonEmptyStrings(ports)
+}
+
 func k8sGetJSON(client *http.Client, runtime kubeClusterRuntime, path string, target any) error {
 	return k8sGetJSONWithQuery(client, runtime, path, nil, target)
+}
+
+func k8sGetJSONAnyPath(client *http.Client, runtime kubeClusterRuntime, paths []string, target any) error {
+	var lastErr error
+	for _, path := range paths {
+		if err := k8sGetJSON(client, runtime, path, target); err != nil {
+			lastErr = err
+			if isK8sNotFoundError(err) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = errors.New("resource path not found")
+	}
+	return lastErr
+}
+
+func k8sGetIstioJSON(client *http.Client, runtime kubeClusterRuntime, resource string, namespace string, name string, target any) error {
+	paths := buildIstioResourcePaths(resource, namespace, name)
+	return k8sGetJSONAnyPath(client, runtime, paths, target)
+}
+
+func k8sGetGatewayAPIJSON(client *http.Client, runtime kubeClusterRuntime, resource string, namespace string, name string, target any) error {
+	paths := buildGatewayAPIResourcePaths(resource, namespace, name)
+	return k8sGetJSONAnyPath(client, runtime, paths, target)
+}
+
+func buildIstioResourcePaths(resource string, namespace string, name string) []string {
+	return buildIstioResourcePathsWithPreferred(resource, namespace, name, "")
+}
+
+func buildIstioResourcePathsWithPreferred(resource string, namespace string, name string, preferredVersion string) []string {
+	versions := []string{"v1", "v1beta1"}
+	preferredVersion = strings.TrimSpace(strings.TrimPrefix(preferredVersion, "networking.istio.io/"))
+	if preferredVersion == "v1beta1" {
+		versions = []string{"v1beta1", "v1"}
+	}
+	paths := make([]string, 0, len(versions))
+	for _, version := range versions {
+		base := fmt.Sprintf("/apis/networking.istio.io/%s", version)
+		if strings.TrimSpace(namespace) != "" {
+			base += "/namespaces/" + strings.TrimSpace(namespace)
+		}
+		base += "/" + resource
+		if strings.TrimSpace(name) != "" {
+			base += "/" + strings.TrimSpace(name)
+		}
+		paths = append(paths, base)
+	}
+	return paths
+}
+
+func buildGatewayAPIResourcePaths(resource string, namespace string, name string) []string {
+	return buildGatewayAPIResourcePathsWithPreferred(resource, namespace, name, "")
+}
+
+func buildGatewayAPIResourcePathsWithPreferred(resource string, namespace string, name string, preferredVersion string) []string {
+	versions := []string{"v1", "v1beta1"}
+	preferredVersion = strings.TrimSpace(strings.TrimPrefix(preferredVersion, "gateway.networking.k8s.io/"))
+	if preferredVersion == "v1beta1" {
+		versions = []string{"v1beta1", "v1"}
+	}
+	paths := make([]string, 0, len(versions))
+	for _, version := range versions {
+		base := fmt.Sprintf("/apis/gateway.networking.k8s.io/%s", version)
+		if strings.TrimSpace(namespace) != "" {
+			base += "/namespaces/" + strings.TrimSpace(namespace)
+		}
+		base += "/" + resource
+		if strings.TrimSpace(name) != "" {
+			base += "/" + strings.TrimSpace(name)
+		}
+		paths = append(paths, base)
+	}
+	return paths
 }
 
 func k8sPatchJSON(client *http.Client, runtime kubeClusterRuntime, path string, body any, contentType string, target any) error {
@@ -2183,6 +3219,34 @@ func k8sPatchJSON(client *http.Client, runtime kubeClusterRuntime, path string, 
 
 func k8sGetJSONWithQuery(client *http.Client, runtime kubeClusterRuntime, path string, query map[string]string, target any) error {
 	return k8sDoJSON(client, runtime, http.MethodGet, path, query, nil, "application/json", target)
+}
+
+func k8sDoJSONAnyPath(
+	client *http.Client,
+	runtime kubeClusterRuntime,
+	method string,
+	paths []string,
+	query map[string]string,
+	body []byte,
+	contentType string,
+	target any,
+) error {
+	var lastErr error
+	for _, path := range paths {
+		err := k8sDoJSON(client, runtime, method, path, query, body, contentType, target)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if isK8sNotFoundError(err) {
+			continue
+		}
+		return err
+	}
+	if lastErr == nil {
+		lastErr = errors.New("resource path not found")
+	}
+	return lastErr
 }
 
 func k8sDoJSON(client *http.Client, runtime kubeClusterRuntime, method string, path string, query map[string]string, body []byte, contentType string, target any) error {
@@ -2305,6 +3369,158 @@ func buildK8sYAMLResourcePath(payload model.K8sResourceYAMLPayload) (string, err
 	default:
 		return "", errors.New("unsupported resource type")
 	}
+}
+
+func buildK8sCreateResourcePaths(payload model.K8sResourceYAMLPayload, manifest k8sManifestIdentity) ([]string, error) {
+	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
+	namespace := firstNonEmpty(Trimmed(payload.Namespace), Trimmed(manifest.Metadata.Namespace))
+
+	switch resourceType {
+	case "namespace":
+		return []string{"/api/v1/namespaces"}, nil
+	case "pod":
+		if namespace == "" {
+			return nil, errors.New("pod namespace is required")
+		}
+		return []string{fmt.Sprintf("/api/v1/namespaces/%s/pods", namespace)}, nil
+	case "service":
+		if namespace == "" {
+			return nil, errors.New("service namespace is required")
+		}
+		return []string{fmt.Sprintf("/api/v1/namespaces/%s/services", namespace)}, nil
+	case "ingress":
+		if namespace == "" {
+			return nil, errors.New("ingress namespace is required")
+		}
+		return []string{fmt.Sprintf("/apis/networking.k8s.io/v1/namespaces/%s/ingresses", namespace)}, nil
+	case "configmap":
+		if namespace == "" {
+			return nil, errors.New("configmap namespace is required")
+		}
+		return []string{fmt.Sprintf("/api/v1/namespaces/%s/configmaps", namespace)}, nil
+	case "secret":
+		if namespace == "" {
+			return nil, errors.New("secret namespace is required")
+		}
+		return []string{fmt.Sprintf("/api/v1/namespaces/%s/secrets", namespace)}, nil
+	case "pvc":
+		if namespace == "" {
+			return nil, errors.New("pvc namespace is required")
+		}
+		return []string{fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", namespace)}, nil
+	case "pv":
+		return []string{"/api/v1/persistentvolumes"}, nil
+	case "workload":
+		if namespace == "" {
+			return nil, errors.New("workload namespace is required")
+		}
+		switch strings.ToLower(Trimmed(payload.WorkloadType)) {
+		case "deployment":
+			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", namespace)}, nil
+		case "statefulset":
+			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", namespace)}, nil
+		case "daemonset":
+			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets", namespace)}, nil
+		case "job":
+			return []string{fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", namespace)}, nil
+		case "cronjob":
+			return []string{fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", namespace)}, nil
+		default:
+			return nil, errors.New("unsupported workload type")
+		}
+	case "gateway", "virtualservice", "destinationrule", "serviceentry":
+		if namespace == "" {
+			return nil, fmt.Errorf("%s namespace is required", resourceType)
+		}
+		resourceMap := map[string]string{
+			"gateway":         "gateways",
+			"virtualservice":  "virtualservices",
+			"destinationrule": "destinationrules",
+			"serviceentry":    "serviceentries",
+		}
+		return buildIstioResourcePathsWithPreferred(
+			resourceMap[resourceType],
+			namespace,
+			"",
+			manifest.APIVersion,
+		), nil
+	case "gatewayapi":
+		if namespace == "" {
+			return nil, errors.New("gateway namespace is required")
+		}
+		return buildGatewayAPIResourcePathsWithPreferred("gateways", namespace, "", manifest.APIVersion), nil
+	case "httproute":
+		if namespace == "" {
+			return nil, errors.New("httproute namespace is required")
+		}
+		return buildGatewayAPIResourcePathsWithPreferred("httproutes", namespace, "", manifest.APIVersion), nil
+	default:
+		return nil, errors.New("unsupported resource type")
+	}
+}
+
+func buildK8sYAMLResourcePaths(payload model.K8sResourceYAMLPayload) ([]string, error) {
+	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
+	namespace := Trimmed(payload.Namespace)
+	name := Trimmed(payload.Name)
+
+	switch resourceType {
+	case "gateway", "virtualservice", "destinationrule", "serviceentry":
+		if namespace == "" || name == "" {
+			return nil, fmt.Errorf("%s namespace and name are required", resourceType)
+		}
+		resourceMap := map[string]string{
+			"gateway":         "gateways",
+			"virtualservice":  "virtualservices",
+			"destinationrule": "destinationrules",
+			"serviceentry":    "serviceentries",
+		}
+		return buildIstioResourcePaths(resourceMap[resourceType], namespace, name), nil
+	case "gatewayapi":
+		if namespace == "" || name == "" {
+			return nil, errors.New("gateway namespace and name are required")
+		}
+		return buildGatewayAPIResourcePaths("gateways", namespace, name), nil
+	case "httproute":
+		if namespace == "" || name == "" {
+			return nil, errors.New("httproute namespace and name are required")
+		}
+		return buildGatewayAPIResourcePaths("httproutes", namespace, name), nil
+	default:
+		path, err := buildK8sYAMLResourcePath(payload)
+		if err != nil {
+			return nil, err
+		}
+		return []string{path}, nil
+	}
+}
+
+func buildK8sDeleteResourcePaths(payload model.K8sResourceDeletePayload) ([]string, error) {
+	return buildK8sYAMLResourcePaths(model.K8sResourceYAMLPayload{
+		ResourceType: payload.ResourceType,
+		Namespace:    payload.Namespace,
+		Name:         payload.Name,
+		WorkloadType: payload.WorkloadType,
+	})
+}
+
+func parseK8sManifestIdentity(body []byte) (k8sManifestIdentity, error) {
+	var manifest k8sManifestIdentity
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return manifest, errors.New("invalid yaml content")
+	}
+	if Trimmed(manifest.Kind) == "" {
+		return manifest, errors.New("resource kind is required")
+	}
+	return manifest, nil
+}
+
+func isK8sNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unexpected status: 404") || strings.Contains(message, "\"code\":404")
 }
 
 func friendlyK8sYAMLError(payload model.K8sResourceYAMLPayload, err error) error {

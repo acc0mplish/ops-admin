@@ -67,59 +67,76 @@ export const appDefinitions = [
       },
       {
         title: 'K8s 管理',
+        titleKey: 'k8sManagement',
         path: '/assets/k8s',
         icon: 'Connection',
         children: [
           {
-            title: 'Clusters',
+            title: '集群管理',
+            titleKey: 'k8sClusters',
             path: '/assets/k8s/clusters',
             icon: 'FolderOpened',
             children: []
           },
           {
-            title: 'Overview',
+            title: '集群概览',
+            titleKey: 'k8sOverview',
             path: '/assets/k8s/overview',
             icon: 'DataAnalysis',
             children: []
           },
           {
-            title: 'Nodes',
+            title: '节点管理',
+            titleKey: 'k8sNodes',
             path: '/assets/k8s/nodes',
             icon: 'Monitor',
             children: []
           },
           {
-            title: 'Namespaces',
+            title: '命名空间',
+            titleKey: 'k8sNamespaces',
             path: '/assets/k8s/namespaces',
             icon: 'Grid',
             children: []
           },
           {
-            title: 'Workloads',
+            title: '工作负载',
+            titleKey: 'k8sWorkloads',
             path: '/assets/k8s/workloads',
             icon: 'SetUp',
             children: []
           },
           {
-            title: 'Pods',
+            title: 'Pod 管理',
+            titleKey: 'k8sPods',
             path: '/assets/k8s/pods',
             icon: 'Box',
             children: []
           },
           {
-            title: 'Services',
+            title: '服务',
+            titleKey: 'k8sServices',
             path: '/assets/k8s/services',
             icon: 'Share',
             children: []
           },
           {
             title: 'Ingress',
+            titleKey: 'k8sIngresses',
             path: '/assets/k8s/ingresses',
             icon: 'Connection',
             children: []
           },
           {
-            title: 'Config & Storage',
+            title: '高级网络',
+            titleKey: 'k8sAdvancedNetwork',
+            path: '/assets/k8s/advanced-network',
+            icon: 'Connection',
+            children: []
+          },
+          {
+            title: '配置与存储',
+            titleKey: 'k8sConfigStorage',
             path: '/assets/k8s/config-storage',
             icon: 'Files',
             children: []

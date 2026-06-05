@@ -346,6 +346,62 @@ func (ctl *Controller) UpdateK8sResourceYAML(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) CreateK8sResourceYAML(c *gin.Context) {
+	var payload model.K8sResourceYAMLPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid yaml payload")
+		return
+	}
+	data, err := ctl.service.CreateK8sResourceYAML(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) DeleteK8sResource(c *gin.Context) {
+	var payload model.K8sResourceDeletePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid delete payload")
+		return
+	}
+	data, err := ctl.service.DeleteK8sResource(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) UpdateK8sIstioTraffic(c *gin.Context) {
+	var payload model.K8sIstioTrafficPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid istio traffic payload")
+		return
+	}
+	data, err := ctl.service.UpdateK8sIstioTraffic(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) UpdateK8sHTTPRouteTraffic(c *gin.Context) {
+	var payload model.K8sIstioTrafficPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid http route traffic payload")
+		return
+	}
+	data, err := ctl.service.UpdateK8sHTTPRouteTraffic(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetK8sServiceDetail(c *gin.Context) {
 	var query struct {
 		ClusterID   uint   `form:"clusterId"`
@@ -375,6 +431,25 @@ func (ctl *Controller) GetK8sIngressDetail(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.GetK8sIngressDetail(query.ClusterID, query.Namespace, query.IngressName)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetK8sIstioResourceDetail(c *gin.Context) {
+	var query struct {
+		ClusterID    uint   `form:"clusterId"`
+		ResourceType string `form:"resourceType"`
+		Namespace    string `form:"namespace"`
+		Name         string `form:"name"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil || query.ClusterID == 0 || query.ResourceType == "" || query.Namespace == "" || query.Name == "" {
+		httpx.Failed(c, http.StatusBadRequest, "invalid istio resource query")
+		return
+	}
+	data, err := ctl.service.GetK8sIstioResourceDetail(query.ClusterID, query.ResourceType, query.Namespace, query.Name)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return
