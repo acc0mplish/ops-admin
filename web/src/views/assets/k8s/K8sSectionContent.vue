@@ -1,4 +1,7 @@
 <script setup>
+import K8sNamespaceBoard from './K8sNamespaceBoard.vue'
+import K8sWorkloadBoard from './K8sWorkloadBoard.vue'
+
 defineProps({
   page: {
     type: Object,
@@ -96,23 +99,7 @@ defineProps({
     <el-empty v-else :description="page.t('k8sNoRealtimeNodeData')" />
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'namespaces'" class="section-body">
-    <el-table v-if="page.hasItems(page.namespaces)" :data="page.namespaces" class="data-table">
-      <el-table-column prop="name" :label="page.t('k8sName')" min-width="180" />
-      <el-table-column prop="status" :label="page.t('k8sStatus')" width="120" />
-      <el-table-column prop="pods" :label="page.t('k8sPodsCount')" width="100" />
-      <el-table-column prop="services" :label="page.t('k8sServicesCount')" width="100" />
-      <el-table-column prop="workloads" :label="page.t('k8sWorkloadsCount')" width="120" />
-      <el-table-column prop="createdAt" :label="page.t('k8sCreatedAt')" min-width="180" />
-      <el-table-column :label="page.t('k8sActions')" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="page.openNamespaceDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-          <el-button link type="primary" @click="page.openNamespaceYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-empty v-else :description="page.t('k8sNoRealtimeNamespaceData')" />
-  </section>
+  <K8sNamespaceBoard v-if="page.hasCluster && page.currentTab === 'namespaces'" :page="page" />
 
   <section v-if="page.hasCluster && page.currentTab === 'pods'" class="section-body">
     <el-table v-if="page.hasItems(page.filteredPods)" :data="page.filteredPods" class="data-table">
@@ -134,28 +121,7 @@ defineProps({
     <el-empty v-else :description="page.t('k8sNoRealtimePodData')" />
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'workloads'" class="section-body">
-    <el-table v-if="page.hasItems(page.filteredWorkloads)" :data="page.filteredWorkloads" class="data-table">
-      <el-table-column prop="name" :label="page.t('k8sName')" min-width="180" />
-      <el-table-column prop="type" :label="page.t('k8sType')" width="140" />
-      <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="140" />
-      <el-table-column prop="ready" :label="page.t('k8sReady')" width="110" />
-      <el-table-column prop="updated" :label="page.t('k8sUpdated')" width="100" />
-      <el-table-column prop="available" :label="page.t('k8sAvailable')" width="100" />
-      <el-table-column prop="age" :label="page.t('k8sAge')" width="120" />
-      <el-table-column :label="page.t('k8sActions')" min-width="290" fixed="right">
-        <template #default="{ row }">
-          <div class="action-row">
-            <el-button link type="primary" @click="page.openWorkloadDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-            <el-button link type="primary" @click="page.openWorkloadYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-            <el-button v-if="page.supportsScale(row)" link type="primary" @click="page.openScaleDialog(row)">{{ page.t('k8sScale') }}</el-button>
-            <el-button v-if="page.supportsRestart(row)" link type="warning" @click="page.handleRestartWorkload(row)">{{ page.t('k8sRestart') }}</el-button>
-          </div>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-empty v-else :description="page.t('k8sNoRealtimeWorkloadData')" />
-  </section>
+  <K8sWorkloadBoard v-if="page.hasCluster && page.currentTab === 'workloads'" :page="page" />
 
   <section v-if="page.hasCluster && page.currentTab === 'services'" class="section-body">
     <el-table v-if="page.hasItems(page.filteredServices)" :data="page.filteredServices" class="data-table">

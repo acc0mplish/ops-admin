@@ -647,6 +647,60 @@ const messages = {
   }
 }
 
+Object.assign(messages['zh-CN'], {
+  k8sResourceConsole: 'K8s 资源控制台',
+  k8sMenuCluster: '集群资源',
+  k8sMenuWorkloads: '工作负载',
+  k8sMenuNetwork: '网络与流量',
+  k8sMenuConfig: '配置与存储',
+  k8sSectionOverviewDesc: '从集群健康、证书与资源分布快速掌握整体运行状态。',
+  k8sSectionNodesDesc: '查看节点角色、版本、IP 和 Pod 分配情况。',
+  k8sSectionNamespacesDesc: '以资源空间视角管理命名空间，快速扫清资源密度与生命周期。',
+  k8sSectionWorkloadsDesc: '用 Kuboard 风格工作台查看工作负载就绪度、发布状态和镜像。',
+  k8sSectionPodsDesc: '切换命名空间后集中查看 Pod 状态、重启次数和终端入口。',
+  k8sSectionServicesDesc: '查看 Service 暴露方式、地址与端口映射。',
+  k8sSectionIngressDesc: '集中查看 Ingress 的 Host、Address 和 TLS。',
+  k8sSectionAdvancedNetworkDesc: '从 Gateway API 与 HTTPRoute 视角管理高级网络资源。',
+  k8sSectionConfigDesc: '统一查看配置、密钥与存储资源。',
+  k8sCurrentScope: '当前作用域',
+  k8sScopeNamespaceHint: '左侧负责资源导航，右侧是当前命名空间的操作台。',
+  k8sNamespacesTotal: '命名空间总数',
+  k8sNamespaceStatusActive: '活跃命名空间',
+  k8sNamespacesHint: '列表展示命名空间资源密度与存活时长，可直接进入详情或 YAML。',
+  k8sWorkloadsHint: '按类型分组扫描工作负载，展示 Ready、Updated、Available 与镜像。',
+  k8sOpenNamespace: '查看命名空间资源',
+  k8sWorkloadTypeAll: '全部',
+  k8sImages: '镜像',
+  k8sNoImageData: '暂无镜像数据'
+})
+
+Object.assign(messages['en-US'], {
+  k8sResourceConsole: 'K8s Resource Console',
+  k8sMenuCluster: 'Cluster Resources',
+  k8sMenuWorkloads: 'Workloads',
+  k8sMenuNetwork: 'Network & Traffic',
+  k8sMenuConfig: 'Config & Storage',
+  k8sSectionOverviewDesc: 'Review cluster health, certificates, and resource distribution from one operational surface.',
+  k8sSectionNodesDesc: 'Inspect node roles, versions, internal addresses, and pod allocation at a glance.',
+  k8sSectionNamespacesDesc: 'Browse namespaces as operational resource spaces with counts and lifecycle data.',
+  k8sSectionWorkloadsDesc: 'Scan workload readiness, rollout status, and images in a Kuboard-style workload console.',
+  k8sSectionPodsDesc: 'Filter pods by namespace and move quickly into details, logs, and terminal access.',
+  k8sSectionServicesDesc: 'Inspect service exposure mode, addresses, and port mappings.',
+  k8sSectionIngressDesc: 'Review ingress hosts, addresses, TLS, and age in one place.',
+  k8sSectionAdvancedNetworkDesc: 'Manage Gateway API and HTTPRoute resources from an advanced network console.',
+  k8sSectionConfigDesc: 'Review config, secret, and storage resources from one control surface.',
+  k8sCurrentScope: 'Current Scope',
+  k8sScopeNamespaceHint: 'The left side is resource navigation and the right side is the active namespace workspace.',
+  k8sNamespacesTotal: 'Namespaces',
+  k8sNamespaceStatusActive: 'Active namespaces',
+  k8sNamespacesHint: 'Review namespace density and lifetime, then jump directly to details or YAML.',
+  k8sWorkloadsHint: 'Group workloads by type and inspect readiness, rollout state, and images.',
+  k8sOpenNamespace: 'Open namespace resources',
+  k8sWorkloadTypeAll: 'All',
+  k8sImages: 'Images',
+  k8sNoImageData: 'No image data'
+})
+
 export const locale = ref(localStorage.getItem(LOCALE_KEY) || 'zh-CN')
 
 export function setLocale(value) {

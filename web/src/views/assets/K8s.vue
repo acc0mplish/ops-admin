@@ -1,9 +1,9 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { Connection, Grid, Histogram, Monitor, Promotion, SetUp } from '@element-plus/icons-vue'
-import K8sHeader from './k8s/K8sHeader.vue'
+import K8sConsoleLayout from './k8s/K8sConsoleLayout.vue'
 import K8sSectionContent from './k8s/K8sSectionContent.vue'
 import K8sDrawers from './k8s/K8sDrawers.vue'
 import K8sDialogs from './k8s/K8sDialogs.vue'
@@ -71,6 +71,11 @@ const secrets = ref([])
 const storages = ref([])
 const namespaceFilter = ref('__all__')
 const resourceKeyword = ref('')
+const namespaceKeyword = ref('')
+const workloadTypeFilter = ref('all')
+const podScopedNames = ref([])
+const workloadImageMap = reactive({})
+const workloadImageLoadingMap = reactive({})
 
 const configMapDrawerVisible = ref(false)
 const configMapDrawerLoading = ref(false)
@@ -274,6 +279,123 @@ const trafficTotalWeight = computed(() =>
   (trafficForm.routes || []).reduce((total, item) => total + Number(item.weight || 0), 0)
 )
 
+const kuboardMenuGroups = computed(() => [
+  {
+    key: 'cluster',
+    label: t('k8sMenuCluster'),
+    items: sectionTabs.filter((item) => ['overview', 'nodes', 'namespaces'].includes(item.key))
+  },
+  {
+    key: 'workload',
+    label: t('k8sMenuWorkloads'),
+    items: sectionTabs.filter((item) => ['workloads', 'pods'].includes(item.key))
+  },
+  {
+    key: 'network',
+    label: t('k8sMenuNetwork'),
+    items: sectionTabs.filter((item) => ['services', 'ingresses', 'advanced-network'].includes(item.key))
+  },
+  {
+    key: 'config',
+    label: t('k8sMenuConfig'),
+    items: sectionTabs.filter((item) => ['config-storage'].includes(item.key))
+  }
+])
+
+const currentSection = computed(() => {
+  const current = sectionTabs.find((item) => item.key === currentTab.value)
+  if (!current) {
+    return {
+      key: 'overview',
+      title: t('k8sOverview'),
+      description: t('k8sSectionOverviewDesc')
+    }
+  }
+  const descMap = {
+    overview: 'k8sSectionOverviewDesc',
+    nodes: 'k8sSectionNodesDesc',
+    namespaces: 'k8sSectionNamespacesDesc',
+    workloads: 'k8sSectionWorkloadsDesc',
+    pods: 'k8sSectionPodsDesc',
+    services: 'k8sSectionServicesDesc',
+    ingresses: 'k8sSectionIngressDesc',
+    'advanced-network': 'k8sSectionAdvancedNetworkDesc',
+    'config-storage': 'k8sSectionConfigDesc'
+  }
+  return {
+    key: current.key,
+    title: t(current.labelKey),
+    description: t(descMap[current.key] || 'k8sSectionOverviewDesc')
+  }
+})
+
+const kuboardNamespaceRows = computed(() =>
+  (namespaces.value || []).map((item) => ({
+    ...item,
+    podsCount: Number(item.podsCount ?? item.pods ?? 0),
+    servicesCount: Number(item.servicesCount ?? item.services ?? 0),
+    workloadsCount: Number(item.workloadsCount ?? item.workloads ?? 0),
+    phase: item.phase || item.status || '-',
+    age: item.age || formatAgeFromTimestamp(item.createdAt)
+  }))
+)
+
+const filteredKuboardNamespaceRows = computed(() => {
+  const keyword = namespaceKeyword.value.trim().toLowerCase()
+  if (!keyword) return kuboardNamespaceRows.value
+  return kuboardNamespaceRows.value.filter((item) =>
+    [item.name, item.phase, item.age].some((value) => String(value || '').toLowerCase().includes(keyword))
+  )
+})
+
+const namespaceSummary = computed(() => {
+  const rows = kuboardNamespaceRows.value
+  return {
+    total: rows.length,
+    active: rows.filter((item) => ['active', 'running'].includes(String(item.phase || '').toLowerCase())).length,
+    pods: rows.reduce((total, item) => total + Number(item.podsCount || 0), 0),
+    services: rows.reduce((total, item) => total + Number(item.servicesCount || 0), 0),
+    workloads: rows.reduce((total, item) => total + Number(item.workloadsCount || 0), 0)
+  }
+})
+
+const workloadTypeOptions = computed(() => {
+  const counts = new Map()
+  for (const item of filteredWorkloads.value) {
+    counts.set(item.type, (counts.get(item.type) || 0) + 1)
+  }
+  const order = ['Deployment', 'StatefulSet', 'DaemonSet', 'CronJob', 'Job']
+  const dynamic = order
+    .filter((type) => counts.has(type))
+    .map((type) => ({ value: type, label: type, count: counts.get(type) || 0 }))
+  return [{ value: 'all', label: t('k8sWorkloadTypeAll'), count: filteredWorkloads.value.length }, ...dynamic]
+})
+
+const kuboardWorkloadRows = computed(() => {
+  const activeType = workloadTypeFilter.value
+  return filteredWorkloads.value
+    .filter((item) => activeType === 'all' || item.type === activeType)
+    .map((item) => {
+      const key = buildWorkloadCacheKey(item)
+      return {
+        ...item,
+        status: item.status || item.phase || deriveWorkloadPhase(item),
+        age: item.age || formatAgeFromTimestamp(item.createdAt || item.createTime),
+        images: item.images || workloadImageMap[key] || extractImagesFromContainers(item.containers)
+      }
+    })
+})
+
+const workloadSummary = computed(() => {
+  const rows = kuboardWorkloadRows.value
+  return {
+    total: rows.length,
+    healthy: rows.filter((item) => isWorkloadHealthy(item)).length,
+    namespaces: new Set(rows.map((item) => item.namespace).filter(Boolean)).size,
+    restartable: rows.filter((item) => supportsRestart(item)).length
+  }
+})
+
 function hasItems(list) {
   return Array.isArray(list) && list.length > 0
 }
@@ -287,6 +409,9 @@ function filterList(list) {
   let result = list
   if (namespaceFilter.value !== '__all__') {
     result = result.filter((item) => item.namespace === namespaceFilter.value)
+  }
+  if (list === pods.value && podScopedNames.value.length) {
+    result = result.filter((item) => podScopedNames.value.includes(item.name))
   }
   const keyword = resourceKeyword.value.trim().toLowerCase()
   if (!keyword) return result
@@ -319,11 +444,43 @@ function restoreNamespaceFilter() {
 
 function handleNamespaceFilterChange(value) {
   namespaceFilter.value = value || '__all__'
+  podScopedNames.value = []
   localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
 }
 
 function handleResourceKeywordChange(value) {
   resourceKeyword.value = value || ''
+  podScopedNames.value = []
+}
+
+function handleNamespaceKeywordChange(value) {
+  namespaceKeyword.value = value || ''
+}
+
+function openNamespaceWorkloads(row) {
+  if (!row?.name) return
+  namespaceFilter.value = row.name
+  resourceKeyword.value = ''
+  workloadTypeFilter.value = 'all'
+  podScopedNames.value = []
+  localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
+  handleTabChange('workloads')
+}
+
+async function openWorkloadPods(row) {
+  if (!cluster.value?.id || !row?.name) return
+  namespaceFilter.value = row.namespace || '__all__'
+  localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
+  const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
+  const relatedPods = Array.isArray(detail?.pods) ? detail.pods.map((item) => item.name).filter(Boolean) : []
+  podScopedNames.value = relatedPods
+  resourceKeyword.value = relatedPods.length ? '' : row.name
+  handleTabChange('pods')
+}
+
+function handleWorkloadTypeChange(value) {
+  workloadTypeFilter.value = value || 'all'
+  void hydrateWorkloadImages()
 }
 
 function resolveIstioNamespace() {
@@ -626,6 +783,7 @@ async function loadClusters(preferId) {
 async function loadClusterData(clusterId) {
   loading.value = true
   try {
+    Object.keys(workloadImageMap).forEach((key) => delete workloadImageMap[key])
     const data = await queryK8sClusterOverview(clusterId)
     cluster.value = data.cluster
     overview.value = data.overview
@@ -642,6 +800,7 @@ async function loadClusterData(clusterId) {
     storages.value = data.configStorage?.storage || []
     restoreNamespaceFilter()
     localStorage.setItem(CLUSTER_KEY, String(clusterId))
+    void hydrateWorkloadImages()
   } finally {
     loading.value = false
   }
@@ -908,6 +1067,76 @@ async function openIngressYAML(row) {
     name: detail.name,
     yaml: detail.yaml
   })
+}
+
+function formatAgeFromTimestamp(value) {
+  if (!value) return '-'
+  const timestamp = new Date(value)
+  if (Number.isNaN(timestamp.getTime())) return String(value)
+  const diffMs = Date.now() - timestamp.getTime()
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000))
+  if (diffMinutes < 60) return `${diffMinutes || 1}m`
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}h`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays}d`
+  const diffMonths = Math.floor(diffDays / 30)
+  if (diffMonths < 12) return `${diffMonths}mo`
+  const diffYears = Math.floor(diffDays / 365)
+  return `${diffYears}y`
+}
+
+function deriveWorkloadPhase(item) {
+  const readyText = String(item.ready || '')
+  if (!readyText.includes('/')) return item.type || '-'
+  const [readyCountText, desiredCountText] = readyText.split('/')
+  const readyCount = Number(readyCountText || 0)
+  const desiredCount = Number(desiredCountText || 0)
+  if (desiredCount > 0 && readyCount >= desiredCount) return t('k8sStatusRunning')
+  if (readyCount > 0) return t('k8sStatusWarning')
+  return t('k8sStatusOffline')
+}
+
+function isWorkloadHealthy(item) {
+  const readyText = String(item.ready || '')
+  if (!readyText.includes('/')) return Boolean(item.available)
+  const [readyCountText, desiredCountText] = readyText.split('/')
+  const readyCount = Number(readyCountText || 0)
+  const desiredCount = Number(desiredCountText || 0)
+  return desiredCount > 0 ? readyCount >= desiredCount : readyCount > 0
+}
+
+function buildWorkloadCacheKey(item) {
+  return `${item.namespace || ''}/${item.type || ''}/${item.name || ''}`
+}
+
+function extractImagesFromContainers(containers) {
+  if (!Array.isArray(containers) || !containers.length) return ''
+  return containers.map((item) => item.image).filter(Boolean).join('\n')
+}
+
+async function hydrateWorkloadImages() {
+  if (!cluster.value?.id) return
+  const targets = kuboardWorkloadRows.value
+    .filter((item) => !item.images)
+    .filter((item) => ['Deployment', 'StatefulSet', 'DaemonSet', 'CronJob', 'Job'].includes(item.type))
+    .slice(0, 24)
+
+  await Promise.all(
+    targets.map(async (item) => {
+      const key = buildWorkloadCacheKey(item)
+      if (workloadImageMap[key] || workloadImageLoadingMap[key]) return
+      workloadImageLoadingMap[key] = true
+      try {
+        const detail = await queryK8sWorkloadDetail(cluster.value.id, item.namespace, item.type, item.name)
+        workloadImageMap[key] = extractImagesFromContainers(detail?.containers)
+      } catch (error) {
+        workloadImageMap[key] = ''
+      } finally {
+        delete workloadImageLoadingMap[key]
+      }
+    })
+  )
 }
 
 async function openIstioResourceDetail(row, resourceType) {
@@ -1298,6 +1527,8 @@ const page = reactive({
   storages,
   namespaceFilter,
   resourceKeyword,
+  namespaceKeyword,
+  podScopedNames,
   configMapDrawerVisible,
   configMapDrawerLoading,
   configMapDetail,
@@ -1354,6 +1585,15 @@ const page = reactive({
   hasCluster,
   statusType,
   namespaceOptions,
+  kuboardMenuGroups,
+  currentSection,
+  kuboardNamespaceRows,
+  filteredKuboardNamespaceRows,
+  namespaceSummary,
+  workloadTypeFilter,
+  workloadTypeOptions,
+  kuboardWorkloadRows,
+  workloadSummary,
   filteredPods,
   filteredWorkloads,
   filteredServices,
@@ -1381,6 +1621,11 @@ const page = reactive({
   handleTabChange,
   handleNamespaceFilterChange,
   handleResourceKeywordChange,
+  handleNamespaceKeywordChange,
+  openNamespaceWorkloads,
+  openWorkloadPods,
+  handleWorkloadTypeChange,
+  refreshCurrentClusterData,
   openNodeDetail,
   openNamespaceDetail,
   openNamespaceYAML,
@@ -1426,12 +1671,22 @@ const page = reactive({
 onMounted(async () => {
   await loadClusters()
 })
+
+watch(
+  () => [currentTab.value, namespaceFilter.value, resourceKeyword.value, workloadTypeFilter.value, workloads.value.length],
+  () => {
+    if (currentTab.value === 'workloads') {
+      void hydrateWorkloadImages()
+    }
+  }
+)
 </script>
 
 <template>
   <div class="k8s-page" v-loading="page.loading">
-    <K8sHeader :page="page" />
-    <K8sSectionContent :page="page" />
+    <K8sConsoleLayout :page="page">
+      <K8sSectionContent :page="page" />
+    </K8sConsoleLayout>
     <K8sDrawers :page="page" />
     <K8sDialogs :page="page" />
   </div>
