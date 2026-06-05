@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addAssetHostGroup,
@@ -9,6 +10,7 @@ import {
   updateAssetHostGroup
 } from '../../api/asset'
 
+const router = useRouter()
 const loading = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -30,6 +32,14 @@ const treeProps = {
   value: 'id',
   children: 'children'
 }
+
+const parentTreeOptions = computed(() => [
+  {
+    id: 0,
+    name: '根分组',
+    children: form.id ? filterTree(cloneTree(treeData.value), form.id) : cloneTree(treeData.value)
+  }
+])
 
 function resetForm() {
   Object.assign(form, {
@@ -60,14 +70,6 @@ function filterTree(nodes = [], excludeId) {
     }))
 }
 
-const parentTreeOptions = computed(() => [
-  {
-    id: 0,
-    name: '根分组',
-    children: form.id ? filterTree(cloneTree(treeData.value), form.id) : cloneTree(treeData.value)
-  }
-])
-
 async function loadData() {
   loading.value = true
   try {
@@ -76,6 +78,11 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+function resetQuery() {
+  query.keyword = ''
+  loadData()
 }
 
 function openCreate(parentId = 0) {
@@ -118,26 +125,32 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除主机组「${row.name}」吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`确认删除主机组“${row.name}”吗？`, '提示', { type: 'warning' })
   await deleteAssetHostGroup(row.id)
   ElMessage.success('删除成功')
   await loadData()
 }
 
-function resetQuery() {
-  query.keyword = ''
-  loadData()
+function openGroupHosts(row) {
+  if (!row?.id) return
+  router.push({
+    path: '/assets/server/hosts',
+    query: {
+      groupId: String(row.id),
+      groupName: row.name || ''
+    }
+  })
 }
 
 onMounted(loadData)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card host-group-page">
     <div class="page-header">
       <div>
         <h2 class="page-title">主机组管理</h2>
-        <p class="page-desc">按树形结构维护主机组，查看每个分组下的主机关联数量。</p>
+        <p class="page-desc">按树形结构维护主机组，点击组名可直接进入该组内服务器列表。</p>
       </div>
       <el-button type="primary" @click="openCreate()">新增主机组</el-button>
     </div>
@@ -148,7 +161,7 @@ onMounted(loadData)
           v-model="query.keyword"
           clearable
           placeholder="搜索主机组名称 / 编码"
-          style="width: 260px"
+          style="width: 280px"
           @keyup.enter="loadData"
         />
         <el-button type="primary" @click="loadData">搜索</el-button>
@@ -163,36 +176,40 @@ onMounted(loadData)
       border
       default-expand-all
       :tree-props="{ children: 'children' }"
+      class="group-table"
     >
-      <el-table-column prop="name" label="主机组名称" min-width="220">
+      <el-table-column prop="name" label="主机组名称" min-width="240">
         <template #default="{ row }">
           <div class="group-name-cell">
             <span class="group-dot" />
-            <span>{{ row.name }}</span>
+            <button type="button" class="group-link-button" @click="openGroupHosts(row)">{{ row.name }}</button>
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="code" label="编码" min-width="150" />
-      <el-table-column prop="hostCount" label="关联主机数" width="120" align="center">
+      <el-table-column prop="code" label="编码" min-width="140" />
+      <el-table-column label="关联主机数" width="120" align="center">
         <template #default="{ row }">
-          <el-tag type="info">{{ row.hostCount || 0 }} 台</el-tag>
+          <el-tag type="info" >{{ row.hostCount || 0 }} 台</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="sort" label="排序" width="90" align="center" />
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'danger'">
-            {{ row.status === 1 ? '正常' : '停用' }}
+          <el-tag :type="Number(row.status) === 1 ? 'success' : 'danger'" effect="light">
+            {{ Number(row.status) === 1 ? '正常' : '停用' }}
           </el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="description" label="备注" min-width="220" show-overflow-tooltip />
       <el-table-column prop="updateTime" label="更新时间" min-width="170" />
-      <el-table-column label="操作" width="210" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openCreate(row.id)">新增子组</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <div class="action-row">
+            <el-button link type="primary" @click="openGroupHosts(row)">查看主机</el-button>
+            <el-button link type="primary" @click="openCreate(row.id)">新增子组</el-button>
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -241,12 +258,17 @@ onMounted(loadData)
 </template>
 
 <style scoped>
+.host-group-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 20px;
 }
 
 .page-title {
@@ -262,24 +284,21 @@ onMounted(loadData)
   font-size: 14px;
 }
 
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
 .toolbar-left {
   display: flex;
   gap: 12px;
   align-items: center;
 }
 
+.group-table {
+  overflow: hidden;
+  border-radius: 10px;
+}
+
 .group-name-cell {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 600;
-  color: #24314f;
 }
 
 .group-dot {
@@ -288,5 +307,36 @@ onMounted(loadData)
   border-radius: 999px;
   background: linear-gradient(135deg, #6c63ff 0%, #5aa7ff 100%);
   box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.12);
+}
+
+.group-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #24314f;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.group-link-button:hover {
+  color: #315dce;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-left {
+    flex-wrap: wrap;
+  }
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addAssetHost,
@@ -20,6 +20,7 @@ import {
   updateAssetHost
 } from '../../api/asset'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const syncingId = ref()
@@ -149,6 +150,12 @@ function resetQuery() {
   query.groupId = undefined
   query.pageNum = 1
   loadData()
+}
+
+function applyRouteGroupFilter() {
+  const groupId = Number(route.query.groupId || 0)
+  query.groupId = groupId > 0 ? groupId : undefined
+  query.pageNum = 1
 }
 
 function openCreate() {
@@ -395,9 +402,18 @@ function handleMoreCommand(command) {
 }
 
 onMounted(async () => {
+  applyRouteGroupFilter()
   await loadOptions()
   await loadData()
 })
+
+watch(
+  () => route.query.groupId,
+  async () => {
+    applyRouteGroupFilter()
+    await loadData()
+  }
+)
 </script>
 
 <template>
