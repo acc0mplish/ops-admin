@@ -15,6 +15,10 @@ defineProps({
         <p>{{ page.t('k8sWorkloadsHint') }}</p>
       </div>
       <div class="kuboard-head-actions">
+        <el-button plain :disabled="!page.workloadSelectionCount" @click="page.openImageVersionDialog">
+          {{ page.t('k8sBatchUpdateImageVersion') }}
+          <span v-if="page.workloadSelectionCount">({{ page.workloadSelectionCount }})</span>
+        </el-button>
         <el-button plain @click="page.refreshCurrentClusterData">{{ page.t('k8sRefresh') }}</el-button>
       </div>
     </div>
@@ -53,7 +57,13 @@ defineProps({
     </div>
 
     <div class="kuboard-table-card">
-      <el-table v-if="page.hasItems(page.kuboardWorkloadRows)" :data="page.kuboardWorkloadRows" class="kuboard-table">
+      <el-table
+        v-if="page.hasItems(page.kuboardWorkloadRows)"
+        :data="page.kuboardWorkloadRows"
+        class="kuboard-table"
+        @selection-change="page.handleWorkloadSelectionChange"
+      >
+        <el-table-column type="selection" width="48" />
         <el-table-column :label="page.t('k8sName')" min-width="220">
           <template #default="{ row }">
             <div class="kuboard-name-cell">

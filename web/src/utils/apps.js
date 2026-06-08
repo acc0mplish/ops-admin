@@ -1,4 +1,4 @@
-export const APP_KEY = 'ops-admin-current-app'
+﻿export const APP_KEY = 'ops-admin-current-app'
 
 export const appDefinitions = [
   {
@@ -64,6 +64,13 @@ export const appDefinitions = [
             children: []
           }
         ]
+      },
+      {
+        title: '数据库管理',
+        titleKey: 'databaseManagement',
+        path: '/assets/databases',
+        icon: 'Coin',
+        children: []
       },
       {
         title: 'K8s 管理',
@@ -238,3 +245,4 @@ export function setCurrentApp(key) {
 export function getCurrentApp() {
   return localStorage.getItem(APP_KEY) || 'console'
 }
+

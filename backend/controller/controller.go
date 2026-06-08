@@ -721,6 +721,15 @@ func (ctl *Controller) GetAssetHostList(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetAssetOverview(c *gin.Context) {
+	data, err := ctl.service.GetAssetOverview()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetAssetHostInfo(c *gin.Context) {
 	data, err := ctl.service.GetAssetHost(uint(mustAtoi(c.Query("id"))))
 	if err != nil {

@@ -1,5 +1,6 @@
 import http from './http'
 
+export const queryAssetOverview = () => http.get('/api/v1/asset/overview')
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })
 export const assetHostInfo = (id) => http.get('/api/v1/asset/host/info', { params: { id } })
 export const downloadAssetHostTemplate = () => http.get('/api/v1/asset/host/template', { responseType: 'blob' })
@@ -35,3 +36,10 @@ export const assetCloudAccountInfo = (id) => http.get('/api/v1/asset/cloudAccoun
 export const addAssetCloudAccount = (data) => http.post('/api/v1/asset/cloudAccount/add', data)
 export const updateAssetCloudAccount = (data) => http.put('/api/v1/asset/cloudAccount/update', data)
 export const deleteAssetCloudAccount = (id) => http.delete('/api/v1/asset/cloudAccount/delete', { data: { id } })
+
+export const queryAssetDatabaseList = (params) => http.get('/api/v1/asset/database/list', { params })
+export const assetDatabaseInfo = (id) => http.get('/api/v1/asset/database/info', { params: { id } })
+export const addAssetDatabase = (data) => http.post('/api/v1/asset/database/add', data)
+export const updateAssetDatabase = (data) => http.put('/api/v1/asset/database/update', data)
+export const deleteAssetDatabase = (id) => http.delete('/api/v1/asset/database/delete', { data: { id } })
+export const testAssetDatabase = (data) => http.post('/api/v1/asset/database/test', data)

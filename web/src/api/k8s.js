@@ -63,6 +63,8 @@ export const scaleK8sWorkload = (data) => http.post('/api/v1/k8s/workload/scale'
 
 export const restartK8sWorkload = (data) => http.post('/api/v1/k8s/workload/restart', data)
 
+export const updateK8sWorkloadImages = (data) => http.post('/api/v1/k8s/workload/images', data)
+
 export const updateK8sIstioTraffic = (data) => http.post('/api/v1/k8s/istio/traffic', data)
 
 export const updateK8sHTTPRouteTraffic = (data) => http.post('/api/v1/k8s/httproute/traffic', data)

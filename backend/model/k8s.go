@@ -35,6 +35,18 @@ type K8sWorkloadActionPayload struct {
 	Replicas     int    `json:"replicas"`
 }
 
+type K8sWorkloadImageUpdateItem struct {
+	Namespace    string `json:"namespace"`
+	WorkloadType string `json:"workloadType"`
+	WorkloadName string `json:"workloadName"`
+}
+
+type K8sWorkloadImageBatchPayload struct {
+	ClusterID uint                         `json:"clusterId"`
+	Version   string                       `json:"version"`
+	Items     []K8sWorkloadImageUpdateItem `json:"items"`
+}
+
 type K8sResourceYAMLPayload struct {
 	ClusterID    uint   `json:"clusterId"`
 	ResourceType string `json:"resourceType"`

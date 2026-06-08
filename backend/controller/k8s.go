@@ -402,6 +402,20 @@ func (ctl *Controller) UpdateK8sHTTPRouteTraffic(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) UpdateK8sWorkloadImages(c *gin.Context) {
+	var payload model.K8sWorkloadImageBatchPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid workload image payload")
+		return
+	}
+	data, err := ctl.service.UpdateK8sWorkloadImages(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetK8sServiceDetail(c *gin.Context) {
 	var query struct {
 		ClusterID   uint   `form:"clusterId"`

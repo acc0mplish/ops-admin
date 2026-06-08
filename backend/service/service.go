@@ -1,4 +1,4 @@
-package service
+﻿package service
 
 import (
 	"errors"
@@ -13,7 +13,6 @@ import (
 	"ops-admin/backend/auth"
 	"ops-admin/backend/model"
 	"ops-admin/backend/util"
-
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
@@ -211,6 +210,20 @@ type AssetCloudAccountPayload struct {
 	AccessKey   string `json:"accessKey"`
 	SecretKey   string `json:"secretKey"`
 	Region      string `json:"region"`
+	Status      int    `json:"status"`
+	Description string `json:"description"`
+}
+
+type AssetDatabasePayload struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	DBType      string `json:"dbType"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	DBName      string `json:"dbName"`
+	Charset     string `json:"charset"`
 	Status      int    `json:"status"`
 	Description string `json:"description"`
 }
@@ -1660,6 +1673,221 @@ func (s *Service) DeleteAssetCloudAccount(id uint) error {
 	return s.db.Delete(&model.AssetCloudAccount{}, id).Error
 }
 
+func (s *Service) GetAssetOverview() (map[string]any, error) {
+	var (
+		hostTotal           int64
+		hostOnline          int64
+		hostOffline         int64
+		hostAuthFailed      int64
+		groupTotal          int64
+		credentialTotal     int64
+		credentialEnabled   int64
+		cloudAccountTotal   int64
+		cloudAccountEnabled int64
+		databaseTotal       int64
+		databaseHealthy     int64
+		k8sClusterTotal     int64
+		k8sClusterOnline    int64
+		k8sNodeTotal        int64
+	)
+
+	if err := s.db.Model(&model.AssetHost{}).Count(&hostTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetHost{}).Where("alive_status = ?", 1).Count(&hostOnline).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetHost{}).Where("alive_status = ?", 2).Count(&hostOffline).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetHost{}).Where("auth_status = ?", 2).Count(&hostAuthFailed).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetHostGroup{}).Count(&groupTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetCredential{}).Count(&credentialTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetCredential{}).Where("status = ?", 1).Count(&credentialEnabled).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetCloudAccount{}).Count(&cloudAccountTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetCloudAccount{}).Where("status = ?", 1).Count(&cloudAccountEnabled).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetDatabase{}).Count(&databaseTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetDatabase{}).Where("connect_status = ?", 1).Count(&databaseHealthy).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.K8sCluster{}).Count(&k8sClusterTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.K8sCluster{}).Where("status = ?", "running").Count(&k8sClusterOnline).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.K8sCluster{}).Select("COALESCE(SUM(node_count), 0)").Scan(&k8sNodeTotal).Error; err != nil {
+		return nil, err
+	}
+
+	type distributionRow struct {
+		Name  string `json:"name" gorm:"column:name"`
+		Count int64  `json:"count" gorm:"column:count"`
+	}
+
+	var providerRows []distributionRow
+	if err := s.db.Model(&model.AssetHost{}).
+		Select("COALESCE(NULLIF(provider, ''), '自建') as name, COUNT(*) as count").
+		Group("COALESCE(NULLIF(provider, ''), '自建')").
+		Order("count DESC").
+		Limit(8).
+		Scan(&providerRows).Error; err != nil {
+		return nil, err
+	}
+
+	var environmentRows []distributionRow
+	if err := s.db.Model(&model.AssetHost{}).
+		Where("NULLIF(environment, '') IS NOT NULL").
+		Select("environment as name, COUNT(*) as count").
+		Group("environment").
+		Order("count DESC").
+		Limit(8).
+		Scan(&environmentRows).Error; err != nil {
+		return nil, err
+	}
+
+	var groups []model.AssetHostGroup
+	if err := s.db.Order("sort ASC, updated_at DESC").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	countMap, err := s.assetHostGroupHostCountMap()
+	if err != nil {
+		return nil, err
+	}
+
+	groupItems := make([]map[string]any, 0, len(groups))
+	for _, item := range groups {
+		groupItems = append(groupItems, map[string]any{
+			"id":        item.ID,
+			"name":      item.Name,
+			"code":      item.Code,
+			"status":    item.Status,
+			"hostCount": countMap[item.ID],
+			"updatedAt": item.UpdatedAt,
+		})
+	}
+	sort.Slice(groupItems, func(i, j int) bool {
+		return groupItems[i]["hostCount"].(int64) > groupItems[j]["hostCount"].(int64)
+	})
+	if len(groupItems) > 6 {
+		groupItems = groupItems[:6]
+	}
+
+	var recentHosts []model.AssetHost
+	if err := s.db.Preload("Group").Preload("HostGroups").Preload("Credential").Preload("CloudAccount").
+		Order("updated_at DESC").
+		Limit(6).
+		Find(&recentHosts).Error; err != nil {
+		return nil, err
+	}
+	ensureHostGroupFallbackList(recentHosts)
+
+	hostItems := make([]map[string]any, 0, len(recentHosts))
+	for _, item := range recentHosts {
+		groupNames := make([]string, 0, len(item.HostGroups))
+		for _, group := range item.HostGroups {
+			groupNames = append(groupNames, group.Name)
+		}
+		hostItems = append(hostItems, map[string]any{
+			"id":          item.ID,
+			"hostName":    item.HostName,
+			"sshIp":       item.SSHIP,
+			"publicIp":    item.PublicIP,
+			"privateIp":   item.PrivateIP,
+			"provider":    item.Provider,
+			"environment": item.Environment,
+			"aliveStatus": item.AliveStatus,
+			"authStatus":  item.AuthStatus,
+			"groupNames":  groupNames,
+			"updatedAt":   item.UpdatedAt,
+		})
+	}
+
+	var recentDatabases []model.AssetDatabase
+	if err := s.db.Order("updated_at DESC").Limit(6).Find(&recentDatabases).Error; err != nil {
+		return nil, err
+	}
+	databaseItems := make([]map[string]any, 0, len(recentDatabases))
+	for _, item := range recentDatabases {
+		databaseItems = append(databaseItems, map[string]any{
+			"id":            item.ID,
+			"name":          item.Name,
+			"dbType":        item.DBType,
+			"host":          item.Host,
+			"port":          item.Port,
+			"dbName":        item.DBName,
+			"version":       item.Version,
+			"status":        item.Status,
+			"connectStatus": item.ConnectStatus,
+			"updatedAt":     item.UpdatedAt,
+		})
+	}
+
+	var recentClusters []model.K8sCluster
+	if err := s.db.Order("updated_at DESC").Limit(6).Find(&recentClusters).Error; err != nil {
+		return nil, err
+	}
+	clusterItems := make([]map[string]any, 0, len(recentClusters))
+	for _, item := range recentClusters {
+		clusterItems = append(clusterItems, map[string]any{
+			"id":        item.ID,
+			"name":      item.Name,
+			"status":    item.Status,
+			"apiServer": item.APIServer,
+			"version":   item.Version,
+			"nodeCount": item.NodeCount,
+			"updatedAt": item.UpdatedAt,
+		})
+	}
+
+	return map[string]any{
+		"summary": map[string]any{
+			"hostTotal":           hostTotal,
+			"hostOnline":          hostOnline,
+			"hostOffline":         hostOffline,
+			"groupTotal":          groupTotal,
+			"credentialTotal":     credentialTotal,
+			"credentialEnabled":   credentialEnabled,
+			"cloudAccountTotal":   cloudAccountTotal,
+			"cloudAccountEnabled": cloudAccountEnabled,
+			"databaseTotal":       databaseTotal,
+			"databaseHealthy":     databaseHealthy,
+			"k8sClusterTotal":     k8sClusterTotal,
+			"k8sClusterOnline":    k8sClusterOnline,
+			"k8sNodeTotal":        k8sNodeTotal,
+		},
+		"health": map[string]any{
+			"offlineHosts":      hostOffline,
+			"authFailedHosts":   hostAuthFailed,
+			"healthyDatabases":  databaseHealthy,
+			"abnormalDatabases": databaseTotal - databaseHealthy,
+			"abnormalClusters":  k8sClusterTotal - k8sClusterOnline,
+		},
+		"distributions": map[string]any{
+			"providers":    providerRows,
+			"environments": environmentRows,
+		},
+		"topGroups":       groupItems,
+		"recentHosts":     hostItems,
+		"recentDatabases": databaseItems,
+		"recentClusters":  clusterItems,
+	}, nil
+}
+
 func (s *Service) paginateLogs(entity any, pageNum, pageSize int, field string, keyword string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
@@ -2052,3 +2280,4 @@ func defaultSSHPort(port int) int {
 	}
 	return 22
 }
+

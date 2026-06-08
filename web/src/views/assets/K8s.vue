@@ -28,6 +28,7 @@ import {
   queryK8sStorageDetail,
   scaleK8sWorkload,
   restartK8sWorkload,
+  updateK8sWorkloadImages,
   updateK8sIstioTraffic,
   updateK8sHTTPRouteTraffic,
   createK8sResourceYAML,
@@ -74,6 +75,7 @@ const resourceKeyword = ref('')
 const namespaceKeyword = ref('')
 const workloadTypeFilter = ref('all')
 const podScopedNames = ref([])
+const selectedWorkloads = ref([])
 const workloadImageMap = reactive({})
 const workloadImageLoadingMap = reactive({})
 
@@ -133,6 +135,12 @@ const scaleForm = reactive({
   workloadType: '',
   workloadName: '',
   replicas: 1
+})
+
+const imageVersionDialogVisible = ref(false)
+const imageVersionSaving = ref(false)
+const imageVersionForm = reactive({
+  version: ''
 })
 
 const istioCreateDialogVisible = ref(false)
@@ -396,6 +404,8 @@ const workloadSummary = computed(() => {
   }
 })
 
+const workloadSelectionCount = computed(() => selectedWorkloads.value.length)
+
 function hasItems(list) {
   return Array.isArray(list) && list.length > 0
 }
@@ -480,7 +490,66 @@ async function openWorkloadPods(row) {
 
 function handleWorkloadTypeChange(value) {
   workloadTypeFilter.value = value || 'all'
+  selectedWorkloads.value = []
   void hydrateWorkloadImages()
+}
+
+function handleWorkloadSelectionChange(rows) {
+  selectedWorkloads.value = Array.isArray(rows) ? rows : []
+}
+
+function openImageVersionDialog() {
+  if (!selectedWorkloads.value.length) {
+    ElMessage.warning(t('k8sSelectWorkloadsFirst'))
+    return
+  }
+  imageVersionForm.version = ''
+  imageVersionDialogVisible.value = true
+}
+
+async function submitWorkloadImageVersionUpdate() {
+  if (!cluster.value?.id) return
+  const version = String(imageVersionForm.version || '').trim()
+  if (!version) {
+    ElMessage.warning(t('k8sImageVersionRequired'))
+    return
+  }
+  await ElMessageBox.confirm(
+    t('k8sConfirmBatchImageUpdateMessage', { count: selectedWorkloads.value.length, version }),
+    t('k8sConfirmBatchImageUpdateTitle'),
+    {
+      type: 'warning',
+      confirmButtonText: t('confirmChange'),
+      cancelButtonText: t('cancel')
+    }
+  )
+
+  imageVersionSaving.value = true
+  try {
+    await updateK8sWorkloadImages({
+      clusterId: cluster.value.id,
+      version,
+      items: selectedWorkloads.value.map((item) => ({
+        namespace: item.namespace,
+        workloadType: item.type,
+        workloadName: item.name
+      }))
+    })
+    ElMessage.success(t('k8sBatchImageUpdatedSuccess'))
+    imageVersionDialogVisible.value = false
+    selectedWorkloads.value = []
+    await refreshCurrentClusterData()
+    if (workloadDrawerVisible.value && workloadDetail.value?.name) {
+      workloadDetail.value = await queryK8sWorkloadDetail(
+        cluster.value.id,
+        workloadDetail.value.namespace,
+        workloadDetail.value.type,
+        workloadDetail.value.name
+      )
+    }
+  } finally {
+    imageVersionSaving.value = false
+  }
 }
 
 function resolveIstioNamespace() {
@@ -784,6 +853,7 @@ async function loadClusterData(clusterId) {
   loading.value = true
   try {
     Object.keys(workloadImageMap).forEach((key) => delete workloadImageMap[key])
+    selectedWorkloads.value = []
     const data = await queryK8sClusterOverview(clusterId)
     cluster.value = data.cluster
     overview.value = data.overview
@@ -1549,6 +1619,7 @@ const page = reactive({
   workloadDrawerVisible,
   workloadDrawerLoading,
   workloadDetail,
+  selectedWorkloads,
   podDrawerVisible,
   podDrawerLoading,
   podDetail,
@@ -1568,6 +1639,9 @@ const page = reactive({
   scaleDialogVisible,
   scaleLoading,
   scaleForm,
+  imageVersionDialogVisible,
+  imageVersionSaving,
+  imageVersionForm,
   istioCreateDialogVisible,
   istioCreateSaving,
   istioCreateForm,
@@ -1594,6 +1668,7 @@ const page = reactive({
   workloadTypeOptions,
   kuboardWorkloadRows,
   workloadSummary,
+  workloadSelectionCount,
   filteredPods,
   filteredWorkloads,
   filteredServices,
@@ -1631,10 +1706,13 @@ const page = reactive({
   openNamespaceYAML,
   openWorkloadDetail,
   openWorkloadYAML,
+  handleWorkloadSelectionChange,
   supportsScale,
   supportsRestart,
+  openImageVersionDialog,
   openScaleDialog,
   handleRestartWorkload,
+  submitWorkloadImageVersionUpdate,
   openPodDetail,
   openPodYAML,
   openPodTerminal,
@@ -1675,6 +1753,7 @@ onMounted(async () => {
 watch(
   () => [currentTab.value, namespaceFilter.value, resourceKeyword.value, workloadTypeFilter.value, workloads.value.length],
   () => {
+    selectedWorkloads.value = []
     if (currentTab.value === 'workloads') {
       void hydrateWorkloadImages()
     }

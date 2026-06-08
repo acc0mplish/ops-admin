@@ -93,6 +93,7 @@ const messages = {
     passwordAuth: '密码认证',
     keyAuth: '密钥认证',
     cloudAccountManagement: '云账号管理',
+    databaseManagement: '数据库管理',
     assetsHosts: '主机管理',
     assetsTags: '标签分组',
     opsOverview: '运维总览',
@@ -175,6 +176,16 @@ const messages = {
     k8sScale: '伸缩',
     k8sRestart: '重启',
     k8sTraffic: '流量',
+    k8sBatchUpdateImageVersion: '批量改镜像版本',
+    k8sSelectedWorkloads: '已选工作负载',
+    k8sTargetImageVersion: '目标版本',
+    k8sTargetImageVersionPlaceholder: '例如 0.4.15-20260608 或 1.27.6',
+    k8sBatchImageVersionHint: '会保留当前镜像仓库与镜像名，只替换 tag 版本。',
+    k8sSelectWorkloadsFirst: '请先选择工作负载',
+    k8sImageVersionRequired: '请输入目标镜像版本',
+    k8sConfirmBatchImageUpdateTitle: '确认批量修改镜像版本',
+    k8sConfirmBatchImageUpdateMessage: '将 {count} 个工作负载的镜像版本修改为 {version}，确认继续吗？',
+    k8sBatchImageUpdatedSuccess: '批量镜像版本更新成功',
     k8sClusterIp: 'Cluster IP',
     k8sExternalIp: '外部 IP',
     k8sPorts: '端口',
@@ -414,6 +425,7 @@ const messages = {
     passwordAuth: 'Password Auth',
     keyAuth: 'Key Auth',
     cloudAccountManagement: 'Cloud Account Management',
+    databaseManagement: 'Database Management',
     assetsHosts: 'Host Management',
     assetsTags: 'Tags',
     opsOverview: 'Operations Overview',
@@ -495,6 +507,16 @@ const messages = {
     k8sAvailable: 'Available',
     k8sScale: 'Scale',
     k8sRestart: 'Restart',
+    k8sBatchUpdateImageVersion: 'Batch Update Image Version',
+    k8sSelectedWorkloads: 'Selected Workloads',
+    k8sTargetImageVersion: 'Target Version',
+    k8sTargetImageVersionPlaceholder: 'For example 0.4.15-20260608 or 1.27.6',
+    k8sBatchImageVersionHint: 'Keep the current registry and image name, and only replace the image tag version.',
+    k8sSelectWorkloadsFirst: 'Please select workloads first',
+    k8sImageVersionRequired: 'Please enter a target image version',
+    k8sConfirmBatchImageUpdateTitle: 'Confirm Batch Image Update',
+    k8sConfirmBatchImageUpdateMessage: 'Update the image version of {count} workloads to {version}. Continue?',
+    k8sBatchImageUpdatedSuccess: 'Batch image version update completed',
     k8sTraffic: 'Traffic',
     k8sClusterIp: 'Cluster IP',
     k8sExternalIp: 'External IP',
@@ -742,6 +764,8 @@ const routeTitleMap = {
   '/assets/server/credentials/password': 'passwordAuth',
   '/assets/server/credentials/key': 'keyAuth',
   '/assets/server/cloud-accounts': 'cloudAccountManagement',
+  '/assets/server/databases': 'databaseManagement',
+  '/assets/databases': 'databaseManagement',
   '/assets/k8s': 'k8sManagement',
   '/assets/k8s/clusters': 'k8sClusters',
   '/assets/k8s/overview': 'k8sOverview',
@@ -767,7 +791,11 @@ const routeTitleMap = {
 }
 
 export function translateRoute(path, fallback = '') {
-  const normalizedPath = path.startsWith('/assets/k8s/pod-terminal/') ? '/assets/k8s/pod-terminal' : path
+  const normalizedPath = path.startsWith('/assets/k8s/pod-terminal/')
+    ? '/assets/k8s/pod-terminal'
+    : path.startsWith('/assets/databases/') && path.endsWith('/workbench')
+      ? '/assets/databases'
+      : path
   const key = routeTitleMap[normalizedPath]
   return key ? t(key) : fallback
 }

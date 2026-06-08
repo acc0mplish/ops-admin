@@ -1,0 +1,293 @@
+<script setup>
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  addAssetDatabase,
+  assetDatabaseInfo,
+  deleteAssetDatabase,
+  queryAssetDatabaseList,
+  testAssetDatabase,
+  updateAssetDatabase
+} from '../../api/asset'
+
+const router = useRouter()
+
+const loading = ref(false)
+const testing = ref(false)
+const dialogVisible = ref(false)
+const isEdit = ref(false)
+const tableData = ref([])
+const total = ref(0)
+
+const query = reactive({
+  pageNum: 1,
+  pageSize: 10,
+  keyword: '',
+  dbType: 'mysql',
+  status: ''
+})
+
+const form = reactive({
+  id: undefined,
+  name: '',
+  dbType: 'mysql',
+  host: '',
+  port: 3306,
+  username: '',
+  password: '',
+  dbName: '',
+  charset: 'utf8mb4',
+  status: 1,
+  description: ''
+})
+
+function resetForm() {
+  Object.assign(form, {
+    id: undefined,
+    name: '',
+    dbType: 'mysql',
+    host: '',
+    port: 3306,
+    username: '',
+    password: '',
+    dbName: '',
+    charset: 'utf8mb4',
+    status: 1,
+    description: ''
+  })
+}
+
+function connectionStatusText(row) {
+  if (row.connectStatus === 1) return '已连接'
+  if (row.connectStatus === 2) return '连接异常'
+  return '未检测'
+}
+
+function connectionStatusType(row) {
+  if (row.connectStatus === 1) return 'success'
+  if (row.connectStatus === 2) return 'danger'
+  return 'info'
+}
+
+async function loadData() {
+  loading.value = true
+  try {
+    const data = await queryAssetDatabaseList(query)
+    tableData.value = data.list || []
+    total.value = data.total || 0
+  } finally {
+    loading.value = false
+  }
+}
+
+function openCreate() {
+  isEdit.value = false
+  resetForm()
+  dialogVisible.value = true
+}
+
+async function openEdit(row) {
+  isEdit.value = true
+  const data = await assetDatabaseInfo(row.id)
+  Object.assign(form, data, { password: '' })
+  dialogVisible.value = true
+}
+
+async function handleTest() {
+  testing.value = true
+  try {
+    const data = await testAssetDatabase(form)
+    ElMessage.success(`连接成功，MySQL 版本 ${data.version || '-'}`)
+  } finally {
+    testing.value = false
+  }
+}
+
+async function submit() {
+  if (isEdit.value) {
+    await updateAssetDatabase(form)
+    ElMessage.success('数据库资产已更新')
+  } else {
+    await addAssetDatabase(form)
+    ElMessage.success('数据库资产已创建')
+  }
+  dialogVisible.value = false
+  await loadData()
+}
+
+async function handleDelete(row) {
+  await ElMessageBox.confirm(`确认删除数据库资产 ${row.name} 吗？`, '提示', { type: 'warning' })
+  await deleteAssetDatabase(row.id)
+  ElMessage.success('删除成功')
+  await loadData()
+}
+
+function openWorkbench(row) {
+  router.push({ name: 'DatabaseWorkbench', params: { id: row.id } })
+}
+
+onMounted(loadData)
+</script>
+
+<template>
+  <div class="database-page page-card">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">数据库管理</h2>
+        <p class="page-desc">集中维护 MySQL 数据库资产，并直接进入 SQL 工作台进行结构、数据和执行记录管理。</p>
+      </div>
+      <el-button type="primary" @click="openCreate">新增数据库</el-button>
+    </div>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <el-input
+          v-model="query.keyword"
+          clearable
+          placeholder="搜索数据库名称 / 主机 / 库名"
+          style="width: 260px"
+          @keyup.enter="loadData"
+        />
+        <el-select v-model="query.dbType" clearable style="width: 140px" placeholder="数据库类型">
+          <el-option label="MySQL" value="mysql" />
+        </el-select>
+        <el-select v-model="query.status" clearable style="width: 140px" placeholder="状态">
+          <el-option label="启用" value="1" />
+          <el-option label="停用" value="2" />
+        </el-select>
+        <el-button type="primary" @click="loadData">搜索</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '' }); loadData()">重置</el-button>
+      </div>
+    </div>
+
+    <el-table v-loading="loading" :data="tableData" border class="data-table">
+      <el-table-column label="数据库名称" min-width="180">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openWorkbench(row)">{{ row.name }}</el-button>
+        </template>
+      </el-table-column>
+      <el-table-column prop="dbType" label="类型" width="100" />
+      <el-table-column label="连接地址" min-width="220">
+        <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
+      </el-table-column>
+      <el-table-column prop="dbName" label="默认库" min-width="140" />
+      <el-table-column prop="username" label="账号" min-width="120" />
+      <el-table-column prop="version" label="版本" min-width="140" />
+      <el-table-column label="连接状态" width="110">
+        <template #default="{ row }">
+          <el-tag :type="connectionStatusType(row)" effect="light">{{ connectionStatusText(row) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="lastCheckTime" label="最近检测" min-width="170" />
+      <el-table-column prop="description" label="备注" min-width="180" />
+      <el-table-column label="操作" width="240" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openWorkbench(row)">工作台</el-button>
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="query.pageNum"
+        v-model:page-size="query.pageSize"
+        :total="total"
+        layout="total, sizes, prev, pager, next"
+        @current-change="loadData"
+        @size-change="loadData"
+      />
+    </div>
+
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑数据库资产' : '新增数据库资产'" width="720px">
+      <el-form label-width="110px">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="数据库名称"><el-input v-model="form.name" placeholder="例如：order-prod" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="数据库类型">
+              <el-select v-model="form.dbType" style="width: 100%">
+                <el-option label="MySQL" value="mysql" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="主机地址"><el-input v-model="form.host" placeholder="例如：10.0.0.12" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="端口"><el-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="密码"><el-input v-model="form.password" show-password :placeholder="isEdit ? '留空则保持不变' : ''" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="默认库"><el-input v-model="form.dbName" placeholder="例如：app_db" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="字符集"><el-input v-model="form.charset" placeholder="默认 utf8mb4" /></el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="备注"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="2">停用</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button :loading="testing" @click="handleTest">测试连接</el-button>
+        <el-button type="primary" @click="submit">保存</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+.database-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.page-desc {
+  margin: 8px 0 0;
+  color: var(--el-text-color-secondary);
+}
+
+.toolbar,
+.toolbar-left {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

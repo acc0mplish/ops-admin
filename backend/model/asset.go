@@ -99,3 +99,26 @@ type AssetHost struct {
 func (AssetHost) TableName() string {
 	return "asset_host"
 }
+
+type AssetDatabase struct {
+	ID            uint       `json:"id" gorm:"primaryKey"`
+	Name          string     `json:"name" gorm:"size:128;not null;index"`
+	DBType        string     `json:"dbType" gorm:"size:32;not null;index"`
+	Host          string     `json:"host" gorm:"size:128;not null;index"`
+	Port          int        `json:"port" gorm:"default:3306"`
+	Username      string     `json:"username" gorm:"size:128;not null"`
+	Password      string     `json:"password,omitempty" gorm:"size:512"`
+	DBName        string     `json:"dbName" gorm:"size:128"`
+	Charset       string     `json:"charset" gorm:"size:64"`
+	Version       string     `json:"version" gorm:"size:128"`
+	Status        int        `json:"status" gorm:"default:1;not null"`
+	ConnectStatus int        `json:"connectStatus" gorm:"default:0;not null"`
+	Description   string     `json:"description" gorm:"size:255"`
+	LastCheckTime *time.Time `json:"lastCheckTime"`
+	CreatedAt     time.Time  `json:"createTime"`
+	UpdatedAt     time.Time  `json:"updateTime"`
+}
+
+func (AssetDatabase) TableName() string {
+	return "asset_database"
+}

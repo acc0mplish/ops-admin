@@ -1306,6 +1306,86 @@ func (s *Service) RestartK8sWorkload(payload model.K8sWorkloadActionPayload) (ma
 	}, nil
 }
 
+func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 {
+		return nil, errors.New("invalid cluster payload")
+	}
+	version := strings.TrimSpace(payload.Version)
+	if version == "" {
+		return nil, errors.New("image version is required")
+	}
+	if len(payload.Items) == 0 {
+		return nil, errors.New("please select workloads first")
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	updated := make([]map[string]any, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		namespace := strings.TrimSpace(item.Namespace)
+		workloadType := strings.ToLower(strings.TrimSpace(item.WorkloadType))
+		workloadName := strings.TrimSpace(item.WorkloadName)
+		if namespace == "" || workloadType == "" || workloadName == "" {
+			return nil, errors.New("invalid workload item")
+		}
+
+		path, err := k8sWorkloadResourcePath(namespace, workloadType, workloadName)
+		if err != nil {
+			return nil, err
+		}
+
+		resource := map[string]any{}
+		if err := k8sGetJSON(client, runtime, path, &resource); err != nil {
+			return nil, errors.New(k8sClusterConnectError)
+		}
+
+		containers, err := extractWorkloadContainers(resource)
+		if err != nil {
+			return nil, err
+		}
+
+		patchedContainers := make([]map[string]any, 0, len(containers))
+		images := make([]string, 0, len(containers))
+		for _, container := range containers {
+			name := strings.TrimSpace(anyToString(container["name"]))
+			image := strings.TrimSpace(anyToString(container["image"]))
+			if name == "" || image == "" {
+				continue
+			}
+			nextImage := replaceImageVersion(image, version)
+			patchedContainers = append(patchedContainers, map[string]any{
+				"name":  name,
+				"image": nextImage,
+			})
+			images = append(images, nextImage)
+		}
+		if len(patchedContainers) == 0 {
+			return nil, errors.New("no containers found in selected workload")
+		}
+
+		patchBody := buildWorkloadImagePatchBody(patchedContainers)
+		if err := k8sPatchJSON(client, runtime, path, patchBody, "application/strategic-merge-patch+json", nil); err != nil {
+			return nil, errors.New(k8sClusterConnectError)
+		}
+
+		updated = append(updated, map[string]any{
+			"namespace":    namespace,
+			"workloadType": item.WorkloadType,
+			"workloadName": workloadName,
+			"images":       images,
+		})
+	}
+
+	return map[string]any{
+		"version": payload.Version,
+		"count":   len(updated),
+		"items":   updated,
+	}, nil
+}
+
 func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceName string) (model.K8sServiceDetail, error) {
 	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
@@ -2466,6 +2546,91 @@ func serviceExternalIP(service kubeService) string {
 		return "<none>"
 	}
 	return strings.Join(values, ", ")
+}
+
+func k8sWorkloadResourcePath(namespace string, workloadType string, workloadName string) (string, error) {
+	switch workloadType {
+	case "deployment":
+		return fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, workloadName), nil
+	case "statefulset":
+		return fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s", namespace, workloadName), nil
+	case "daemonset":
+		return fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets/%s", namespace, workloadName), nil
+	case "job":
+		return fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs/%s", namespace, workloadName), nil
+	case "cronjob":
+		return fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs/%s", namespace, workloadName), nil
+	default:
+		return "", errors.New("unsupported workload type")
+	}
+}
+
+func extractWorkloadContainers(resource map[string]any) ([]map[string]any, error) {
+	spec, ok := resource["spec"].(map[string]any)
+	if !ok {
+		return nil, errors.New("invalid workload spec")
+	}
+	template, ok := spec["template"].(map[string]any)
+	if !ok {
+		return nil, errors.New("invalid workload template")
+	}
+	templateSpec, ok := template["spec"].(map[string]any)
+	if !ok {
+		return nil, errors.New("invalid pod template spec")
+	}
+	rawContainers, ok := templateSpec["containers"].([]any)
+	if !ok {
+		return nil, errors.New("no containers found in workload")
+	}
+	containers := make([]map[string]any, 0, len(rawContainers))
+	for _, item := range rawContainers {
+		container, ok := item.(map[string]any)
+		if ok {
+			containers = append(containers, container)
+		}
+	}
+	return containers, nil
+}
+
+func buildWorkloadImagePatchBody(containers []map[string]any) map[string]any {
+	return map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"spec": map[string]any{
+					"containers": containers,
+				},
+			},
+		},
+	}
+}
+
+func replaceImageVersion(image string, version string) string {
+	trimmed := strings.TrimSpace(image)
+	if trimmed == "" {
+		return trimmed
+	}
+
+	base := trimmed
+	if at := strings.Index(base, "@"); at >= 0 {
+		base = base[:at]
+	}
+
+	lastSlash := strings.LastIndex(base, "/")
+	lastColon := strings.LastIndex(base, ":")
+	if lastColon > lastSlash {
+		base = base[:lastColon]
+	}
+
+	return base + ":" + version
+}
+
+func anyToString(value any) string {
+	switch item := value.(type) {
+	case string:
+		return item
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }
 
 func buildAdvancedNetworkSection(

@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 
 import MainLayout from '../layouts/MainLayout.vue'
 import Login from '../views/Login.vue'
@@ -16,6 +16,9 @@ import Host from '../views/assets/Host.vue'
 import HostGroup from '../views/assets/HostGroup.vue'
 import Credential from '../views/assets/Credential.vue'
 import CloudAccount from '../views/assets/CloudAccount.vue'
+import AssetOverview from '../views/assets/AssetOverview.vue'
+import Database from '../views/assets/Database.vue'
+import DatabaseWorkbench from '../views/assets/DatabaseWorkbench.vue'
 import TerminalLogin from '../views/assets/Terminal.vue'
 import K8s from '../views/assets/K8s.vue'
 import K8sClusterManage from '../views/assets/K8sClusterManage.vue'
@@ -51,12 +54,11 @@ const routes = [
 
       {
         path: '/assets/overview',
-        component: ModuleWorkspace,
+        component: AssetOverview,
         meta: {
           title: '资产概览',
           app: 'assets',
-          summary: '统一查看主机资产、凭据、云账号和主机组的整体状态。',
-          cards: moduleCards.assetOverview
+          summary: '统一查看主机资产、凭据、云账号、数据库和主机组的整体状态。'
         }
       },
       {
@@ -104,6 +106,23 @@ const routes = [
           summary: '维护云厂商访问账号，为云资产同步提供凭证来源。'
         }
       },
+      {
+        path: '/assets/databases',
+        component: Database,
+        meta: {
+          title: '数据库管理',
+          app: 'assets',
+          summary: '集中维护 MySQL 数据库资产，并进入 SQL 工作台进行表结构、数据与执行记录管理。'
+        }
+      },
+      {
+        path: '/assets/databases/:id/workbench',
+        name: 'DatabaseWorkbench',
+        component: DatabaseWorkbench,
+        meta: { title: '数据库工作台', app: 'assets' }
+      },
+      { path: '/assets/server/databases', redirect: '/assets/databases' },
+      { path: '/assets/server/databases/:id/workbench', redirect: (to) => `/assets/databases/${to.params.id}/workbench` },
       { path: '/assets/k8s', redirect: '/assets/k8s/clusters' },
       { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: 'Clusters', app: 'assets' } },
       { path: '/assets/k8s/overview', component: K8s, meta: { title: 'Overview', app: 'assets' } },
@@ -253,3 +272,4 @@ router.beforeEach((to, from, next) => {
 })
 
 export default router
+

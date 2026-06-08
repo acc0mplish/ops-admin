@@ -119,6 +119,28 @@ defineProps({
     </template>
   </el-dialog>
 
+  <el-dialog v-model="page.imageVersionDialogVisible" :title="page.t('k8sBatchUpdateImageVersion')" width="520px">
+    <el-form label-width="110px">
+      <el-form-item :label="page.t('k8sSelectedWorkloads')">
+        <span>{{ page.workloadSelectionCount }}</span>
+      </el-form-item>
+      <el-form-item :label="page.t('k8sTargetImageVersion')">
+        <el-input v-model="page.imageVersionForm.version" :placeholder="page.t('k8sTargetImageVersionPlaceholder')" />
+      </el-form-item>
+      <el-form-item>
+        <div class="dialog-tip">
+          {{ page.t('k8sBatchImageVersionHint') }}
+        </div>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="page.imageVersionDialogVisible = false">{{ page.t('cancel') }}</el-button>
+      <el-button type="primary" :loading="page.imageVersionSaving" @click="page.submitWorkloadImageVersionUpdate">
+        {{ page.t('save') }}
+      </el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog
     v-model="page.istioCreateDialogVisible"
     :title="page.t('k8sCreateIstioResourceTitle', { resource: page.yamlResourceLabel(page.istioCreateForm.resourceType) })"

@@ -23,6 +23,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AssetCredential{},
 		&model.AssetCloudAccount{},
 		&model.AssetHost{},
+		&model.AssetDatabase{},
+		&model.DatabaseSQLHistory{},
+		&model.DatabaseTransferTask{},
 		&model.K8sCluster{},
 	)
 }
