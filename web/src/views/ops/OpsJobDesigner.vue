@@ -235,6 +235,16 @@ function syncSelectionState() {
   loadSelectedNode('')
 }
 
+function setActiveNode(node) {
+  if (!node) {
+    selectedCellIds.value = []
+    loadSelectedNode('')
+    return
+  }
+  selectedCellIds.value = [node.id]
+  loadSelectedNode(node.id)
+}
+
 function initGraph() {
   Graph.registerNode(
     'job-step-node',
@@ -290,13 +300,24 @@ function initGraph() {
       }
     }
   })
-  graph.on('node:click', ({ node }) => {
-    graph.select(node)
-    syncSelectionState()
+  graph.on('cell:click', ({ cell }) => {
+    if (cell.isNode()) {
+      graph.cleanSelection()
+      graph.select(cell)
+      setActiveNode(cell)
+      return
+    }
+    graph.cleanSelection()
+    graph.select(cell)
+    selectedCellIds.value = [cell.id]
+    loadSelectedNode('')
   })
-  graph.on('edge:click', ({ edge }) => {
-    graph.select(edge)
-    syncSelectionState()
+  graph.on('node:selected', ({ node }) => {
+    setActiveNode(node)
+  })
+  graph.on('edge:selected', ({ edge }) => {
+    selectedCellIds.value = [edge.id]
+    loadSelectedNode('')
   })
   graph.on('blank:click', () => {
     graph.cleanSelection()
@@ -413,10 +434,36 @@ function addStep(type) {
 }
 
 function removeSelectedNode() {
-  if (!graph || !selectedCellIds.value.length) return
-  const cells = graph.getSelectedCells()
-  if (!cells.length) return
-  graph.removeCells(cells)
+  if (!graph) return
+  const selectedCells = graph.getSelectedCells()
+  const cellsToRemove = []
+  const appended = new Set()
+
+  const appendCell = (cell) => {
+    if (!cell || appended.has(cell.id)) return
+    appended.add(cell.id)
+    cellsToRemove.push(cell)
+  }
+
+  for (const cell of selectedCells) {
+    appendCell(cell)
+    if (cell.isNode?.()) {
+      const edges = graph.getConnectedEdges(cell) || []
+      edges.forEach(appendCell)
+    }
+  }
+
+  if (!cellsToRemove.length && selectedNodeId.value) {
+    const node = graph.getCellById(selectedNodeId.value)
+    if (node) {
+      appendCell(node)
+      const edges = graph.getConnectedEdges(node) || []
+      edges.forEach(appendCell)
+    }
+  }
+
+  if (!cellsToRemove.length) return
+  graph.removeCells(cellsToRemove)
   graph.cleanSelection()
   syncSelectionState()
 }
@@ -558,7 +605,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="head-actions">
         <el-button @click="importDialogVisible = true">导入作业模板</el-button>
-        <el-button @click="removeSelectedNode" :disabled="!selectedNodeId">删除选中步骤</el-button>
+        <el-button @click="removeSelectedNode" :disabled="!selectedCount && !selectedNodeId">
+          {{ selectedCount > 1 ? `删除选中项（${selectedCount}）` : '删除选中步骤' }}
+        </el-button>
         <el-button @click="clearCanvas" :disabled="!graphReady">清空画布</el-button>
         <el-button type="primary" :loading="saving" @click="save">{{ saveButtonText }}</el-button>
       </div>
