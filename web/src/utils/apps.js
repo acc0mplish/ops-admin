@@ -157,35 +157,122 @@ export const appDefinitions = [
     name: '标准运维',
     labelKey: 'appOps',
     icon: 'Operation',
-    defaultRoute: '/ops/jobs',
+    defaultRoute: '/ops/quick-exec/command',
     menus: [
       {
-        title: '作业中心',
+        title: '脚本库',
+        titleKey: 'opsScriptLibrary',
+        path: '/ops/scripts/library',
+        icon: 'Document',
+        children: []
+      },
+      {
+        title: '快速执行',
+        titleKey: 'opsQuickExecute',
+        path: '/ops/quick-exec',
+        icon: 'Timer',
+        children: [
+          {
+            title: '命令执行',
+            titleKey: 'opsCommandExecute',
+            path: '/ops/quick-exec/command',
+            icon: 'CaretRight',
+            children: []
+          },
+          {
+            title: '脚本执行',
+            titleKey: 'opsScriptExecute',
+            path: '/ops/quick-exec/script',
+            icon: 'EditPen',
+            children: []
+          },
+          {
+            title: '文件分发',
+            titleKey: 'opsFileDispatch',
+            path: '/ops/quick-exec/file-dispatch',
+            icon: 'Files',
+            children: []
+          },
+          {
+            title: '快速执行历史',
+            titleKey: 'opsExecutionHistory',
+            path: '/ops/quick-exec/history',
+            icon: 'DocumentCopy',
+            children: []
+          }
+        ]
+      },
+      {
+        title: '定时任务',
+        titleKey: 'opsSchedule',
+        path: '/ops/schedule',
+        icon: 'Clock',
+        children: [
+          {
+            title: '任务列表',
+            titleKey: 'opsScheduleTasks',
+            path: '/ops/schedule/tasks',
+            icon: 'List',
+            children: []
+          },
+          {
+            title: '任务日志',
+            titleKey: 'opsScheduleLogs',
+            path: '/ops/schedule/logs',
+            icon: 'Document',
+            children: []
+          },
+          {
+            title: '任务模板',
+            titleKey: 'opsScheduleTemplates',
+            path: '/ops/schedule/templates',
+            icon: 'Tickets',
+            children: []
+          }
+        ]
+      },
+      {
+        title: '作业',
         titleKey: 'opsJobs',
         path: '/ops/jobs',
-        icon: 'Timer',
-        children: []
-      },
-      {
-        title: '运维总览',
-        titleKey: 'opsOverview',
-        path: '/ops/overview',
-        icon: 'DataAnalysis',
-        children: []
-      },
-      {
-        title: '脚本执行',
-        titleKey: 'opsScripts',
-        path: '/ops/scripts',
-        icon: 'EditPen',
-        children: []
-      },
-      {
-        title: '发布编排',
-        titleKey: 'opsReleases',
-        path: '/ops/releases',
-        icon: 'Promotion',
-        children: []
+        icon: 'Share',
+        children: [
+          {
+            title: '作业编排',
+            titleKey: 'opsJobDesigner',
+            path: '/ops/jobs/designer',
+            icon: 'Grid',
+            children: []
+          },
+          {
+            title: '作业列表',
+            titleKey: 'opsJobList',
+            path: '/ops/jobs/list',
+            icon: 'List',
+            children: []
+          },
+          {
+            title: '人工确认',
+            titleKey: 'opsJobApprovals',
+            path: '/ops/jobs/approvals',
+            icon: 'Bell',
+            children: []
+          },
+          {
+            title: '作业历史',
+            titleKey: 'opsJobHistory',
+            path: '/ops/jobs/history',
+            icon: 'Document',
+            children: []
+          },
+          {
+            title: '作业模板',
+            titleKey: 'opsJobTemplates',
+            path: '/ops/jobs/templates',
+            icon: 'Tickets',
+            children: []
+          }
+        ]
       }
     ]
   },

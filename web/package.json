@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@antv/x6": "^3.1.7",
     "@element-plus/icons-vue": "^2.3.1",
     "@xterm/xterm": "^5.5.0",
     "axios": "^1.11.0",
     "element-plus": "^2.11.4",
+    "tslib": "^2.8.1",
     "vue": "^3.5.17",
     "vue-router": "^4.5.1"
   },

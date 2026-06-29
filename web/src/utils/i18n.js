@@ -723,6 +723,48 @@ Object.assign(messages['en-US'], {
   k8sNoImageData: 'No image data'
 })
 
+Object.assign(messages['zh-CN'], {
+  opsScriptLibrary: '脚本库',
+  opsQuickExecute: '快速执行',
+  opsCommandExecute: '命令执行',
+  opsScriptExecute: '脚本执行',
+  opsFileDispatch: '文件分发',
+  opsExecutionHistory: '快速执行历史',
+  opsSchedule: '定时任务',
+  opsScheduleTasks: '任务列表',
+  opsScheduleLogs: '任务日志',
+  opsScheduleTemplates: '任务模板'
+})
+
+Object.assign(messages['en-US'], {
+  opsScriptLibrary: 'Script Library',
+  opsQuickExecute: 'Quick Execute',
+  opsCommandExecute: 'Command Execution',
+  opsScriptExecute: 'Script Execution',
+  opsFileDispatch: 'File Distribution',
+  opsExecutionHistory: 'Quick Execution History',
+  opsSchedule: 'Scheduled Tasks',
+  opsScheduleTasks: 'Task List',
+  opsScheduleLogs: 'Task Logs',
+  opsScheduleTemplates: 'Task Templates'
+})
+
+Object.assign(messages['zh-CN'], {
+  opsJobDesigner: '作业编排',
+  opsJobList: '作业列表',
+  opsJobApprovals: '人工确认',
+  opsJobHistory: '作业历史',
+  opsJobTemplates: '作业模板'
+})
+
+Object.assign(messages['en-US'], {
+  opsJobDesigner: 'Job Designer',
+  opsJobList: 'Job List',
+  opsJobApprovals: 'Approvals',
+  opsJobHistory: 'Job History',
+  opsJobTemplates: 'Job Templates'
+})
+
 export const locale = ref(localStorage.getItem(LOCALE_KEY) || 'zh-CN')
 
 export function setLocale(value) {
@@ -783,7 +825,22 @@ const routeTitleMap = {
   '/assets/tags': 'assetsTags',
   '/ops/overview': 'opsOverview',
   '/ops/jobs': 'opsJobs',
+  '/ops/jobs/designer': 'opsJobDesigner',
+  '/ops/jobs/list': 'opsJobList',
+  '/ops/jobs/approvals': 'opsJobApprovals',
+  '/ops/jobs/history': 'opsJobHistory',
+  '/ops/jobs/templates': 'opsJobTemplates',
   '/ops/scripts': 'opsScripts',
+  '/ops/scripts/library': 'opsScriptLibrary',
+  '/ops/quick-exec': 'opsQuickExecute',
+  '/ops/quick-exec/command': 'opsCommandExecute',
+  '/ops/quick-exec/script': 'opsScriptExecute',
+  '/ops/quick-exec/file-dispatch': 'opsFileDispatch',
+  '/ops/quick-exec/history': 'opsExecutionHistory',
+  '/ops/schedule': 'opsSchedule',
+  '/ops/schedule/tasks': 'opsScheduleTasks',
+  '/ops/schedule/logs': 'opsScheduleLogs',
+  '/ops/schedule/templates': 'opsScheduleTemplates',
   '/ops/releases': 'opsReleases',
   '/monitor/overview': 'monitorOverview',
   '/monitor/alerts': 'monitorAlerts',

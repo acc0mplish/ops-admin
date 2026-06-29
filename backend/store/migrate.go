@@ -27,5 +27,15 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.DatabaseSQLHistory{},
 		&model.DatabaseTransferTask{},
 		&model.K8sCluster{},
+		&model.OpsScript{},
+		&model.OpsExecTask{},
+		&model.OpsExecTargetResult{},
+		&model.OpsScheduleTemplate{},
+		&model.OpsScheduleTask{},
+		&model.OpsScheduleTaskLog{},
+		&model.OpsJobTemplate{},
+		&model.OpsJob{},
+		&model.OpsJobHistory{},
+		&model.OpsJobHistoryStep{},
 	)
 }

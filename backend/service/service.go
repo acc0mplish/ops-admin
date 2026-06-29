@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"errors"
@@ -8,17 +8,20 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 	"ops-admin/backend/auth"
 	"ops-admin/backend/model"
 	"ops-admin/backend/util"
-	"golang.org/x/crypto/ssh"
-	"gorm.io/gorm"
 )
 
 type Service struct {
-	db *gorm.DB
+	db               *gorm.DB
+	opsScheduler     *OpsScheduler
+	opsSchedulerOnce sync.Once
 }
 
 type AssetTerminalSession struct {
@@ -31,7 +34,9 @@ type AssetTerminalSession struct {
 }
 
 func New(db *gorm.DB) *Service {
-	return &Service{db: db}
+	svc := &Service{db: db}
+	svc.initOpsScheduler()
+	return svc
 }
 
 type LoginRequest struct {
@@ -2280,4 +2285,3 @@ func defaultSSHPort(port int) int {
 	}
 	return 22
 }
-

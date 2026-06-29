@@ -23,6 +23,19 @@ import TerminalLogin from '../views/assets/Terminal.vue'
 import K8s from '../views/assets/K8s.vue'
 import K8sClusterManage from '../views/assets/K8sClusterManage.vue'
 import K8sPodTerminal from '../views/assets/K8sPodTerminal.vue'
+import OpsScriptLibrary from '../views/ops/OpsScriptLibrary.vue'
+import OpsExecutionHistory from '../views/ops/OpsExecutionHistory.vue'
+import OpsCommandExecute from '../views/ops/OpsCommandExecute.vue'
+import OpsScriptExecute from '../views/ops/OpsScriptExecute.vue'
+import OpsFileDispatch from '../views/ops/OpsFileDispatch.vue'
+import OpsScheduleTaskList from '../views/ops/OpsScheduleTaskList.vue'
+import OpsScheduleLog from '../views/ops/OpsScheduleLog.vue'
+import OpsScheduleTemplate from '../views/ops/OpsScheduleTemplate.vue'
+import OpsJobDesigner from '../views/ops/OpsJobDesigner.vue'
+import OpsJobList from '../views/ops/OpsJobList.vue'
+import OpsJobApprovals from '../views/ops/OpsJobApprovals.vue'
+import OpsJobHistory from '../views/ops/OpsJobHistory.vue'
+import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import { getToken } from '../utils/auth'
 
@@ -146,60 +159,129 @@ const routes = [
       { path: '/assets/hosts', redirect: '/assets/server/hosts' },
       { path: '/assets/tags', redirect: '/assets/server/groups' },
 
+      { path: '/ops', redirect: '/ops/quick-exec/command' },
+      { path: '/ops/jobs', redirect: '/ops/jobs/list' },
+      { path: '/ops/overview', redirect: '/ops/quick-exec/command' },
+      { path: '/ops/scripts', redirect: '/ops/scripts/library' },
+      { path: '/ops/history', redirect: '/ops/quick-exec/history' },
+      { path: '/ops/releases', redirect: '/ops/quick-exec/history' },
+      { path: '/ops/quick-exec', redirect: '/ops/quick-exec/command' },
+      { path: '/ops/schedule', redirect: '/ops/schedule/tasks' },
       {
-        path: '/ops/jobs',
-        component: ModuleWorkspace,
+        path: '/ops/scripts/library',
+        component: OpsScriptLibrary,
         meta: {
-          title: '作业中心',
+          title: '脚本库',
           app: 'ops',
-          summary: '管理标准化运维作业和自动化编排流程。',
-          cards: [
-            { title: '作业模板', description: '沉淀巡检、发布、变更和回收模板。' },
-            { title: '执行记录', description: '追踪作业开始、结束、耗时和结果。' },
-            { title: '流程编排', description: '为审批流和责任确认预留空间。' }
-          ]
+          summary: '统一管理标准运维脚本，支持启用、禁用和执行参数模板。'
         }
       },
       {
-        path: '/ops/overview',
-        component: ModuleWorkspace,
+        path: '/ops/quick-exec/command',
+        component: OpsCommandExecute,
         meta: {
-          title: '运维总览',
+          title: '命令执行',
           app: 'ops',
-          summary: '集中查看标准运维任务、执行情况和变更节奏。',
-          cards: [
-            { title: '任务视图', description: '统一查看执行中的任务、计划任务和历史记录。' },
-            { title: '变更节奏', description: '展示发布、回滚和脚本执行节奏。' },
-            { title: '执行效率', description: '为后续扩展 SLA 和任务分析打基础。' }
-          ]
+          summary: '通过 SSH 发起命令批量执行。'
         }
       },
       {
-        path: '/ops/scripts',
-        component: ModuleWorkspace,
+        path: '/ops/quick-exec/script',
+        component: OpsScriptExecute,
         meta: {
           title: '脚本执行',
           app: 'ops',
-          summary: '集中维护常用脚本和批量执行入口。',
-          cards: [
-            { title: '脚本仓库', description: '统一管理脚本内容、版本和执行说明。' },
-            { title: '批量执行', description: '支持按主机、分组和环境批量下发。' },
-            { title: '执行回显', description: '后续可接入实时日志和结果下载能力。' }
-          ]
+          summary: '从脚本库中选择脚本并通过 SSH 批量执行。'
         }
       },
       {
-        path: '/ops/releases',
-        component: ModuleWorkspace,
+        path: '/ops/quick-exec/file-dispatch',
+        component: OpsFileDispatch,
         meta: {
-          title: '发布编排',
+          title: '文件分发',
           app: 'ops',
-          summary: '面向标准运维发布流程的编排和记录中心。',
-          cards: [
-            { title: '发布流程', description: '设计构建、部署、验证和回滚节点。' },
-            { title: '版本记录', description: '追踪版本、环境和发布时间。' },
-            { title: '审计留痕', description: '沉淀发布责任人和操作过程。' }
-          ]
+          summary: '支持本地上传或源服务器读取的一对多文件分发。'
+        }
+      },
+      {
+        path: '/ops/quick-exec/history',
+        component: OpsExecutionHistory,
+        meta: {
+          title: '快速执行历史',
+          app: 'ops',
+          summary: '记录所有快速执行任务、结果和失败主机明细。'
+        }
+      },
+      {
+        path: '/ops/schedule/tasks',
+        component: OpsScheduleTaskList,
+        meta: {
+          title: '任务列表',
+          app: 'ops',
+          summary: '统一维护脚本任务和 HTTP 探针任务，支持批量启用、禁用和删除。'
+        }
+      },
+      {
+        path: '/ops/schedule/logs',
+        component: OpsScheduleLog,
+        meta: {
+          title: '任务日志',
+          app: 'ops',
+          summary: '查看定时任务每次调度的执行结果、摘要和详细输出。'
+        }
+      },
+      {
+        path: '/ops/schedule/templates',
+        component: OpsScheduleTemplate,
+        meta: {
+          title: '任务模板',
+          app: 'ops',
+          summary: '沉淀可复用的脚本任务模板和 HTTP 探针模板。'
+        }
+      },
+      {
+        path: '/ops/jobs/designer',
+        component: OpsJobDesigner,
+        meta: {
+          title: '作业编排',
+          app: 'ops',
+          summary: '通过可视化编排将脚本执行、文件分发和人工确认步骤组装成作业。'
+        }
+      },
+      {
+        path: '/ops/jobs/list',
+        component: OpsJobList,
+        meta: {
+          title: '作业列表',
+          app: 'ops',
+          summary: '管理作业定义，支持启用、禁用、运行与跳转编排。'
+        }
+      },
+      {
+        path: '/ops/jobs/approvals',
+        component: OpsJobApprovals,
+        meta: {
+          title: '人工确认',
+          app: 'ops',
+          summary: '集中处理卡在人工确认步骤的作业待办，确认通过后继续执行，拒绝后终止作业。'
+        }
+      },
+      {
+        path: '/ops/jobs/history',
+        component: OpsJobHistory,
+        meta: {
+          title: '作业历史',
+          app: 'ops',
+          summary: '查看作业执行过程、步骤结果和人工确认状态。'
+        }
+      },
+      {
+        path: '/ops/jobs/templates',
+        component: OpsJobTemplate,
+        meta: {
+          title: '作业模板',
+          app: 'ops',
+          summary: '沉淀可导入的作业模板，并在编排时一键套用。'
         }
       },
 
