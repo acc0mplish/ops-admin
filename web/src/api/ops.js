@@ -55,3 +55,23 @@ export const opsJobTemplateInfo = (id) => http.get('/api/v1/ops/job/template/inf
 export const addOpsJobTemplate = (data) => http.post('/api/v1/ops/job/template/add', data)
 export const updateOpsJobTemplate = (data) => http.put('/api/v1/ops/job/template/update', data)
 export const deleteOpsJobTemplate = (id) => http.delete('/api/v1/ops/job/template/delete', { data: { id } })
+
+export const queryNotifyTemplateList = (params) => http.get('/api/v1/notify/template/list', { params })
+export const queryNotifyTemplateOptions = (params) => http.get('/api/v1/notify/template/options', { params })
+export const notifyTemplateInfo = (id) => http.get('/api/v1/notify/template/info', { params: { id } })
+export const saveNotifyTemplate = (data) => http.post('/api/v1/notify/template/save', data)
+export const deleteNotifyTemplate = (id) => http.delete('/api/v1/notify/template/delete', { data: { id } })
+
+export const queryNotifyChannelList = (params) => http.get('/api/v1/notify/channel/list', { params })
+export const queryNotifyChannelOptions = (params) => http.get('/api/v1/notify/channel/options', { params })
+export const notifyChannelInfo = (id) => http.get('/api/v1/notify/channel/info', { params: { id } })
+export const saveNotifyChannel = (data) => http.post('/api/v1/notify/channel/save', data)
+export const deleteNotifyChannel = (id) => http.delete('/api/v1/notify/channel/delete', { data: { id } })
+
+export const queryNotifyRuleList = (params) => http.get('/api/v1/notify/rule/list', { params })
+export const queryNotifyRuleOptions = (params) => http.get('/api/v1/notify/rule/options', { params })
+export const notifyRuleInfo = (id) => http.get('/api/v1/notify/rule/info', { params: { id } })
+export const saveNotifyRule = (data) => http.post('/api/v1/notify/rule/save', data)
+export const deleteNotifyRule = (id) => http.delete('/api/v1/notify/rule/delete', { data: { id } })
+
+export const queryNotifySendLogList = (params) => http.get('/api/v1/notify/send-log/list', { params })

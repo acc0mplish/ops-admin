@@ -17,6 +17,8 @@ type OpsJobPayload struct {
 	Description    string `json:"description"`
 	Status         int    `json:"status"`
 	TemplateID     uint   `json:"templateId"`
+	NotifyEnabled  bool   `json:"notifyEnabled"`
+	NotifyRuleID   uint   `json:"notifyRuleId"`
 	GraphJSON      string `json:"graphJson"`
 	DefinitionJSON string `json:"definitionJson"`
 }
@@ -67,6 +69,8 @@ func normalizeJobNodeType(value string) string {
 		return "file"
 	case "approval":
 		return "approval"
+	case "notify":
+		return "notify"
 	default:
 		return "script"
 	}
@@ -150,6 +154,8 @@ func (s *Service) CreateOpsJob(payload OpsJobPayload) error {
 		Description:    Trimmed(payload.Description),
 		Status:         normalizeJobStatus(payload.Status),
 		TemplateID:     payload.TemplateID,
+		NotifyEnabled:  payload.NotifyEnabled,
+		NotifyRuleID:   payload.NotifyRuleID,
 		GraphJSON:      strings.TrimSpace(payload.GraphJSON),
 		DefinitionJSON: strings.TrimSpace(payload.DefinitionJSON),
 	}
@@ -171,6 +177,8 @@ func (s *Service) UpdateOpsJob(payload OpsJobPayload) error {
 		"description":     Trimmed(payload.Description),
 		"status":          normalizeJobStatus(payload.Status),
 		"template_id":     payload.TemplateID,
+		"notify_enabled":  payload.NotifyEnabled,
+		"notify_rule_id":  payload.NotifyRuleID,
 		"graph_json":      strings.TrimSpace(payload.GraphJSON),
 		"definition_json": strings.TrimSpace(payload.DefinitionJSON),
 	}).Error
@@ -519,6 +527,21 @@ func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused b
 	}).Error
 
 	switch node.Type {
+	case "notify":
+		status, summary, output, err := s.executeOpsJobNotifyNode(historyID, stepName, node)
+		finishedAt := time.Now()
+		duration := finishedAt.Sub(now).Milliseconds()
+		_ = s.db.Model(&model.OpsJobHistoryStep{}).Where("id = ?", step.ID).Updates(map[string]any{
+			"status":      status,
+			"summary":     summary,
+			"output":      output,
+			"finished_at": &finishedAt,
+			"duration_ms": duration,
+		}).Error
+		if err != nil {
+			s.finishOpsJobHistory(historyID, "failed", firstNonEmpty(summary, err.Error()), node.ID, stepName)
+			return false, true
+		}
 	case "approval":
 		_ = s.db.Model(&model.OpsJobHistoryStep{}).Where("id = ?", step.ID).Updates(map[string]any{
 			"status":  "waiting_approval",
@@ -669,6 +692,42 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 	return taskInfo.Status, taskInfo.Summary, strings.Join(outputs, "\n"), taskInfo.ID, nil
 }
 
+func (s *Service) executeOpsJobNotifyNode(historyID uint, stepName string, node OpsJobNode) (string, string, string, error) {
+	ruleID := uint(numberConfig(node.Config, "notifyRuleId"))
+	if ruleID == 0 {
+		return "failed", "缺少通知规则", "", errors.New("缺少通知规则")
+	}
+	var history model.OpsJobHistory
+	if err := s.db.First(&history, historyID).Error; err != nil {
+		return "failed", err.Error(), "", err
+	}
+	var job model.OpsJob
+	if err := s.db.First(&job, history.JobID).Error; err != nil {
+		return "failed", err.Error(), "", err
+	}
+	now := time.Now()
+	summary := firstNonEmpty(stringConfig(node.Config, "message"), stepName)
+	detail := firstNonEmpty(stringConfig(node.Config, "content"), history.Summary)
+	s.DispatchNotifyRule(ruleID, NotifyEvent{
+		Scope:      "job",
+		Event:      "notify",
+		TargetID:   job.ID,
+		TargetName: job.Name,
+		Status:     "notify",
+		Summary:    summary,
+		Detail:     detail,
+		StartedAt:  history.StartedAt,
+		FinishedAt: &now,
+		Extra: map[string]string{
+			"historyId":       fmt.Sprintf("%d", history.ID),
+			"triggerType":     history.TriggerType,
+			"currentStepId":   node.ID,
+			"currentStepName": stepName,
+		},
+	})
+	return "success", "通知已触发", detail, nil
+}
+
 func (s *Service) finishOpsJobHistory(historyID uint, status, summary, currentStepID, currentStepName string) {
 	finishedAt := time.Now()
 	_ = s.db.Model(&model.OpsJobHistory{}).Where("id = ?", historyID).Updates(map[string]any{
@@ -678,6 +737,37 @@ func (s *Service) finishOpsJobHistory(historyID uint, status, summary, currentSt
 		"current_step_name": currentStepName,
 		"finished_at":       &finishedAt,
 	}).Error
+}
+
+func (s *Service) dispatchOpsJobNotification(historyID uint, event, summary, detail string) {
+	var history model.OpsJobHistory
+	if err := s.db.First(&history, historyID).Error; err != nil {
+		return
+	}
+	var job model.OpsJob
+	if err := s.db.First(&job, history.JobID).Error; err != nil {
+		return
+	}
+	if !job.NotifyEnabled || job.NotifyRuleID == 0 {
+		return
+	}
+	s.DispatchNotifyRule(job.NotifyRuleID, NotifyEvent{
+		Scope:      "job",
+		Event:      event,
+		TargetID:   job.ID,
+		TargetName: job.Name,
+		Status:     event,
+		Summary:    summary,
+		Detail:     detail,
+		StartedAt:  history.StartedAt,
+		FinishedAt: history.FinishedAt,
+		Extra: map[string]string{
+			"historyId":       fmt.Sprintf("%d", history.ID),
+			"triggerType":     history.TriggerType,
+			"currentStepId":   history.CurrentStepID,
+			"currentStepName": history.CurrentStepName,
+		},
+	})
 }
 
 func stringConfig(config map[string]any, key string) string {

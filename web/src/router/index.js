@@ -36,6 +36,10 @@ import OpsJobList from '../views/ops/OpsJobList.vue'
 import OpsJobApprovals from '../views/ops/OpsJobApprovals.vue'
 import OpsJobHistory from '../views/ops/OpsJobHistory.vue'
 import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
+import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
+import NotifyChannel from '../views/notify/NotifyChannel.vue'
+import NotifyRule from '../views/notify/NotifyRule.vue'
+import NotifySendLog from '../views/notify/NotifySendLog.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import { getToken } from '../utils/auth'
 
@@ -283,6 +287,28 @@ const routes = [
           app: 'ops',
           summary: '沉淀可导入的作业模板，并在编排时一键套用。'
         }
+      },
+
+      { path: '/notify', redirect: '/notify/rules' },
+      {
+        path: '/notify/templates',
+        component: NotifyTemplate,
+        meta: { title: '消息模板', app: 'notify', summary: '维护钉钉、企微、飞书和自定义 Webhook 的消息模板。' }
+      },
+      {
+        path: '/notify/channels',
+        component: NotifyChannel,
+        meta: { title: '通知媒介', app: 'notify', summary: '维护机器人和 HTTP Webhook 通知媒介。' }
+      },
+      {
+        path: '/notify/rules',
+        component: NotifyRule,
+        meta: { title: '通知规则', app: 'notify', summary: '组合通知事件、模板与媒介，并绑定到作业编排或定时任务。' }
+      },
+      {
+        path: '/notify/send-logs',
+        component: NotifySendLog,
+        meta: { title: '发送日志', app: 'notify', summary: '查看通知发送请求、响应与失败原因。' }
       },
 
       {

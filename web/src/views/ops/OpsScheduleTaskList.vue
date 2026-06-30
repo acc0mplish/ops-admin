@@ -7,6 +7,7 @@ import {
   batchDeleteOpsScheduleTask,
   deleteOpsScheduleTask,
   opsScheduleTaskInfo,
+  queryNotifyRuleOptions,
   queryOpsScheduleTaskList,
   queryOpsScheduleTemplateList,
   queryOpsScriptOptions,
@@ -27,6 +28,7 @@ const scriptOptions = ref([])
 const hostOptions = ref([])
 const groupOptions = ref([])
 const templateOptions = ref([])
+const notifyRuleOptions = ref([])
 
 const query = reactive({
   pageNum: 1,
@@ -54,7 +56,9 @@ const form = reactive({
   timeoutSeconds: 10,
   cronExpr: '0 */5 * * * *',
   description: '',
-  status: 1
+  status: 1,
+  notifyEnabled: false,
+  notifyRuleId: undefined
 })
 
 const selectedScriptTimeout = computed(() => {
@@ -81,7 +85,9 @@ function resetForm() {
     timeoutSeconds: 10,
     cronExpr: '0 */5 * * * *',
     description: '',
-    status: 1
+    status: 1,
+    notifyEnabled: false,
+    notifyRuleId: undefined
   })
 }
 
@@ -104,16 +110,18 @@ watch(
 )
 
 async function loadBaseOptions() {
-  const [scripts, hosts, groups, templates] = await Promise.all([
+  const [scripts, hosts, groups, templates, notifyRules] = await Promise.all([
     queryOpsScriptOptions(),
     queryAssetHostList({ pageNum: 1, pageSize: 1000 }),
     queryAssetHostGroupList(),
-    queryOpsScheduleTemplateList({ pageNum: 1, pageSize: 1000, status: '1' })
+    queryOpsScheduleTemplateList({ pageNum: 1, pageSize: 1000, status: '1' }),
+    queryNotifyRuleOptions({ scope: 'schedule' })
   ])
   scriptOptions.value = scripts || []
   hostOptions.value = hosts.list || []
   groupOptions.value = groups.tree || []
   templateOptions.value = templates.list || []
+  notifyRuleOptions.value = notifyRules || []
 }
 
 async function loadData() {
@@ -171,7 +179,9 @@ async function openEdit(row) {
     timeoutSeconds: data.timeoutSeconds || 10,
     cronExpr: data.cronExpr || '0 */5 * * * *',
     description: data.description || '',
-    status: data.status || 1
+    status: data.status || 1,
+    notifyEnabled: !!data.notifyEnabled,
+    notifyRuleId: data.notifyRuleId || undefined
   })
   dialogVisible.value = true
 }
@@ -197,7 +207,9 @@ async function handleCopy(row) {
     timeoutSeconds: data.timeoutSeconds || 10,
     cronExpr: data.cronExpr || '0 */5 * * * *',
     description: data.description || '',
-    status: data.status || 1
+    status: data.status || 1,
+    notifyEnabled: !!data.notifyEnabled,
+    notifyRuleId: data.notifyRuleId || undefined
   })
   dialogVisible.value = true
 }
@@ -241,13 +253,19 @@ function buildPayload() {
     timeoutSeconds: form.timeoutSeconds,
     cronExpr: form.cronExpr,
     description: form.description,
-    status: form.status
+    status: form.status,
+    notifyEnabled: form.notifyEnabled,
+    notifyRuleId: form.notifyEnabled ? form.notifyRuleId : undefined
   }
 }
 
 async function submit() {
   if (!form.name.trim()) {
     ElMessage.warning('请输入任务名称')
+    return
+  }
+  if (form.notifyEnabled && !form.notifyRuleId) {
+    ElMessage.warning('请选择通知规则')
     return
   }
   saving.value = true
@@ -443,6 +461,19 @@ onMounted(async () => {
                 <el-radio :value="1">启用</el-radio>
                 <el-radio :value="2">禁用</el-radio>
               </el-radio-group>
+            </el-form-item>
+          </el-col>
+
+          <el-col :span="8">
+            <el-form-item label="消息通知">
+              <el-switch v-model="form.notifyEnabled" />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.notifyEnabled" :span="16">
+            <el-form-item label="通知规则" required>
+              <el-select v-model="form.notifyRuleId" filterable placeholder="选择通知规则" style="width: 100%">
+                <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
             </el-form-item>
           </el-col>
 

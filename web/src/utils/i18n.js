@@ -765,6 +765,22 @@ Object.assign(messages['en-US'], {
   opsJobTemplates: 'Job Templates'
 })
 
+Object.assign(messages['zh-CN'], {
+  appNotify: '消息通知',
+  notifyRules: '通知规则',
+  notifyTemplates: '消息模板',
+  notifyChannels: '通知媒介',
+  notifySendLogs: '发送日志'
+})
+
+Object.assign(messages['en-US'], {
+  appNotify: 'Notifications',
+  notifyRules: 'Notification Rules',
+  notifyTemplates: 'Message Templates',
+  notifyChannels: 'Notification Channels',
+  notifySendLogs: 'Send Logs'
+})
+
 export const locale = ref(localStorage.getItem(LOCALE_KEY) || 'zh-CN')
 
 export function setLocale(value) {
@@ -830,6 +846,10 @@ const routeTitleMap = {
   '/ops/jobs/approvals': 'opsJobApprovals',
   '/ops/jobs/history': 'opsJobHistory',
   '/ops/jobs/templates': 'opsJobTemplates',
+  '/notify/rules': 'notifyRules',
+  '/notify/templates': 'notifyTemplates',
+  '/notify/channels': 'notifyChannels',
+  '/notify/send-logs': 'notifySendLogs',
   '/ops/scripts': 'opsScripts',
   '/ops/scripts/library': 'opsScriptLibrary',
   '/ops/quick-exec': 'opsQuickExecute',

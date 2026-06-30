@@ -52,6 +52,8 @@ type OpsScheduleTaskPayload struct {
 	CronExpr       string `json:"cronExpr"`
 	Description    string `json:"description"`
 	Status         int    `json:"status"`
+	NotifyEnabled  bool   `json:"notifyEnabled"`
+	NotifyRuleID   uint   `json:"notifyRuleId"`
 }
 
 type OpsScheduleTaskStatusPayload struct {
@@ -245,6 +247,8 @@ func mapScheduleTaskItem(item model.OpsScheduleTask) map[string]any {
 		"cronExpr":       item.CronExpr,
 		"description":    item.Description,
 		"status":         item.Status,
+		"notifyEnabled":  item.NotifyEnabled,
+		"notifyRuleId":   item.NotifyRuleID,
 		"lastStatus":     item.LastStatus,
 		"lastSummary":    item.LastSummary,
 		"lastRunAt":      item.LastRunAt,
@@ -353,6 +357,8 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		"cron_expr":       normalizeCronExpr(payload.CronExpr),
 		"description":     Trimmed(payload.Description),
 		"status":          normalizeScheduleStatus(payload.Status),
+		"notify_enabled":  payload.NotifyEnabled,
+		"notify_rule_id":  payload.NotifyRuleID,
 		"next_run_at":     nil,
 	}
 
@@ -730,6 +736,24 @@ func (s *Service) executeScheduledTask(taskID uint, triggerType string) {
 		"last_run_at":  &finishedAt,
 		"next_run_at":  nextRunAt,
 	}).Error
+	if task.NotifyEnabled && task.NotifyRuleID > 0 {
+		s.DispatchNotifyRule(task.NotifyRuleID, NotifyEvent{
+			Scope:      "schedule",
+			Event:      status,
+			TargetID:   task.ID,
+			TargetName: task.Name,
+			Status:     status,
+			Summary:    summary,
+			Detail:     detail,
+			StartedAt:  &startedAt,
+			FinishedAt: &finishedAt,
+			Extra: map[string]string{
+				"taskType":    task.TaskType,
+				"triggerType": triggerType,
+				"cronExpr":    task.CronExpr,
+			},
+		})
+	}
 }
 
 func nextRunTime(expr string) *time.Time {

@@ -277,6 +277,43 @@ export const appDefinitions = [
     ]
   },
   {
+    key: 'notify',
+    name: '消息通知',
+    labelKey: 'appNotify',
+    icon: 'Bell',
+    defaultRoute: '/notify/rules',
+    menus: [
+      {
+        title: '通知规则',
+        titleKey: 'notifyRules',
+        path: '/notify/rules',
+        icon: 'Operation',
+        children: []
+      },
+      {
+        title: '消息模板',
+        titleKey: 'notifyTemplates',
+        path: '/notify/templates',
+        icon: 'Document',
+        children: []
+      },
+      {
+        title: '通知媒介',
+        titleKey: 'notifyChannels',
+        path: '/notify/channels',
+        icon: 'Connection',
+        children: []
+      },
+      {
+        title: '发送日志',
+        titleKey: 'notifySendLogs',
+        path: '/notify/send-logs',
+        icon: 'Tickets',
+        children: []
+      }
+    ]
+  },
+  {
     key: 'monitor',
     name: '监控中心',
     labelKey: 'appMonitor',
@@ -318,6 +355,9 @@ export function getAppByRoute(path) {
   }
   if (path.startsWith('/ops')) {
     return getAppByKey('ops')
+  }
+  if (path.startsWith('/notify')) {
+    return getAppByKey('notify')
   }
   if (path.startsWith('/monitor')) {
     return getAppByKey('monitor')

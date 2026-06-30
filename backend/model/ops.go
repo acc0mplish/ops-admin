@@ -115,6 +115,8 @@ type OpsScheduleTask struct {
 	CronExpr       string     `json:"cronExpr" gorm:"size:128;not null"`
 	Description    string     `json:"description" gorm:"size:255"`
 	Status         int        `json:"status" gorm:"default:1;index"`
+	NotifyEnabled  bool       `json:"notifyEnabled" gorm:"default:false;index"`
+	NotifyRuleID   uint       `json:"notifyRuleId" gorm:"index"`
 	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
 	LastSummary    string     `json:"lastSummary" gorm:"type:text"`
 	LastRunAt      *time.Time `json:"lastRunAt"`
@@ -171,6 +173,8 @@ type OpsJob struct {
 	Description    string    `json:"description" gorm:"size:255"`
 	Status         int       `json:"status" gorm:"default:1;index"`
 	TemplateID     uint      `json:"templateId" gorm:"index"`
+	NotifyEnabled  bool      `json:"notifyEnabled" gorm:"default:false;index"`
+	NotifyRuleID   uint      `json:"notifyRuleId" gorm:"index"`
 	GraphJSON      string    `json:"graphJson" gorm:"type:longtext"`
 	DefinitionJSON string    `json:"definitionJson" gorm:"type:longtext"`
 	CreatedAt      time.Time `json:"createTime"`
@@ -182,7 +186,7 @@ func (OpsJob) TableName() string {
 }
 
 type OpsJobHistory struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
+	ID              uint       `json:"id" gorm:"primaryKey"`
 	JobID           uint       `json:"jobId" gorm:"index;not null"`
 	JobName         string     `json:"jobName" gorm:"size:128"`
 	TriggerType     string     `json:"triggerType" gorm:"size:32"`
@@ -202,22 +206,94 @@ func (OpsJobHistory) TableName() string {
 
 type OpsJobHistoryStep struct {
 	ID               uint       `json:"id" gorm:"primaryKey"`
-	HistoryID         uint       `json:"historyId" gorm:"index;not null"`
-	StepID            string     `json:"stepId" gorm:"size:64;index"`
-	StepName          string     `json:"stepName" gorm:"size:128"`
-	StepType          string     `json:"stepType" gorm:"size:32;index"`
-	Status            string     `json:"status" gorm:"size:32;index"`
-	Summary           string     `json:"summary" gorm:"type:text"`
-	Output            string     `json:"output" gorm:"type:longtext"`
-	ExecTaskID        uint       `json:"execTaskId" gorm:"index"`
-	ApprovalDecision  string     `json:"approvalDecision" gorm:"size:32"`
-	ApprovalNote      string     `json:"approvalNote" gorm:"type:text"`
-	StartedAt         *time.Time `json:"startedAt"`
-	FinishedAt        *time.Time `json:"finishedAt"`
-	DurationMs        int64      `json:"durationMs" gorm:"default:0"`
-	CreatedAt         time.Time  `json:"createTime"`
+	HistoryID        uint       `json:"historyId" gorm:"index;not null"`
+	StepID           string     `json:"stepId" gorm:"size:64;index"`
+	StepName         string     `json:"stepName" gorm:"size:128"`
+	StepType         string     `json:"stepType" gorm:"size:32;index"`
+	Status           string     `json:"status" gorm:"size:32;index"`
+	Summary          string     `json:"summary" gorm:"type:text"`
+	Output           string     `json:"output" gorm:"type:longtext"`
+	ExecTaskID       uint       `json:"execTaskId" gorm:"index"`
+	ApprovalDecision string     `json:"approvalDecision" gorm:"size:32"`
+	ApprovalNote     string     `json:"approvalNote" gorm:"type:text"`
+	StartedAt        *time.Time `json:"startedAt"`
+	FinishedAt       *time.Time `json:"finishedAt"`
+	DurationMs       int64      `json:"durationMs" gorm:"default:0"`
+	CreatedAt        time.Time  `json:"createTime"`
 }
 
 func (OpsJobHistoryStep) TableName() string {
 	return "ops_job_history_step"
+}
+
+type NotifyTemplate struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"size:128;not null;index"`
+	ChannelType string    `json:"channelType" gorm:"size:32;not null;index"`
+	Title       string    `json:"title" gorm:"size:255"`
+	Content     string    `json:"content" gorm:"type:longtext"`
+	Status      int       `json:"status" gorm:"default:1;index"`
+	Description string    `json:"description" gorm:"size:255"`
+	CreatedAt   time.Time `json:"createTime"`
+	UpdatedAt   time.Time `json:"updateTime"`
+}
+
+func (NotifyTemplate) TableName() string {
+	return "notify_template"
+}
+
+type NotifyChannel struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"size:128;not null;index"`
+	ChannelType string    `json:"channelType" gorm:"size:32;not null;index"`
+	WebhookURL  string    `json:"webhookUrl" gorm:"size:1024;not null"`
+	Secret      string    `json:"secret" gorm:"size:255"`
+	HeadersJSON string    `json:"headersJson" gorm:"type:text"`
+	Status      int       `json:"status" gorm:"default:1;index"`
+	Description string    `json:"description" gorm:"size:255"`
+	CreatedAt   time.Time `json:"createTime"`
+	UpdatedAt   time.Time `json:"updateTime"`
+}
+
+func (NotifyChannel) TableName() string {
+	return "notify_channel"
+}
+
+type NotifyRule struct {
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	Name           string    `json:"name" gorm:"size:128;not null;index"`
+	Scope          string    `json:"scope" gorm:"size:32;not null;index"`
+	EventsJSON     string    `json:"eventsJson" gorm:"type:text"`
+	TemplateID     uint      `json:"templateId" gorm:"index;not null"`
+	ChannelIDsJSON string    `json:"channelIdsJson" gorm:"type:text"`
+	Status         int       `json:"status" gorm:"default:1;index"`
+	Description    string    `json:"description" gorm:"size:255"`
+	CreatedAt      time.Time `json:"createTime"`
+	UpdatedAt      time.Time `json:"updateTime"`
+}
+
+func (NotifyRule) TableName() string {
+	return "notify_rule"
+}
+
+type NotifySendLog struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	RuleID      uint      `json:"ruleId" gorm:"index"`
+	RuleName    string    `json:"ruleName" gorm:"size:128"`
+	ChannelID   uint      `json:"channelId" gorm:"index"`
+	ChannelName string    `json:"channelName" gorm:"size:128"`
+	ChannelType string    `json:"channelType" gorm:"size:32;index"`
+	Event       string    `json:"event" gorm:"size:64;index"`
+	Scope       string    `json:"scope" gorm:"size:32;index"`
+	TargetID    uint      `json:"targetId" gorm:"index"`
+	TargetName  string    `json:"targetName" gorm:"size:128"`
+	Status      string    `json:"status" gorm:"size:32;index"`
+	RequestBody string    `json:"requestBody" gorm:"type:longtext"`
+	Response    string    `json:"response" gorm:"type:longtext"`
+	ErrorText   string    `json:"errorText" gorm:"type:text"`
+	CreatedAt   time.Time `json:"createTime"`
+}
+
+func (NotifySendLog) TableName() string {
+	return "notify_send_log"
 }

@@ -9,6 +9,7 @@ import {
   addOpsJobTemplate,
   opsJobInfo,
   opsJobTemplateInfo,
+  queryNotifyRuleOptions,
   queryOpsJobTemplateOptions,
   queryOpsScriptOptions,
   updateOpsJob,
@@ -32,13 +33,16 @@ const scriptOptions = ref([])
 const hostOptions = ref([])
 const groupOptions = ref([])
 const templateOptions = ref([])
+const notifyRuleOptions = ref([])
 
 const form = reactive({
   id: undefined,
   name: '',
   description: '',
   status: 1,
-  templateId: undefined
+  templateId: undefined,
+  notifyEnabled: false,
+  notifyRuleId: undefined
 })
 
 const selectedNodeForm = reactive({
@@ -90,6 +94,8 @@ watch(
     form.description = ''
     form.status = 1
     form.templateId = undefined
+    form.notifyEnabled = false
+    form.notifyRuleId = undefined
     graph.clearCells()
     loadSelectedNode('')
     await loadCurrentRecord()
@@ -103,11 +109,13 @@ function cloneValue(value) {
 function defaultNodeLabel(type) {
   switch (type) {
     case 'file':
-      return '文件分发'
+      return '\u6587\u4ef6\u5206\u53d1'
     case 'approval':
-      return '人工确认'
+      return '\u4eba\u5de5\u786e\u8ba4'
+    case 'notify':
+      return '\u6d88\u606f\u901a\u77e5'
     default:
-      return '脚本执行'
+      return '\u811a\u672c\u6267\u884c'
   }
 }
 
@@ -126,8 +134,14 @@ function createDefaultConfig(type) {
       }
     case 'approval':
       return {
-        message: '等待人工确认',
-        content: '请确认后继续执行该作业'
+        message: '\u7b49\u5f85\u4eba\u5de5\u786e\u8ba4',
+        content: '\u8bf7\u786e\u8ba4\u540e\u7ee7\u7eed\u6267\u884c\u8be5\u4f5c\u4e1a'
+      }
+    case 'notify':
+      return {
+        notifyRuleId: undefined,
+        message: '\u4f5c\u4e1a\u901a\u77e5',
+        content: '\u4f5c\u4e1a\u6267\u884c\u5230\u6d88\u606f\u901a\u77e5\u6b65\u9aa4'
       }
     default:
       return {
@@ -487,16 +501,18 @@ async function clearCanvas() {
 }
 
 async function loadBaseOptions() {
-  const [scripts, hosts, groups, templates] = await Promise.all([
+  const [scripts, hosts, groups, templates, notifyRules] = await Promise.all([
     queryOpsScriptOptions(),
     queryAssetHostList({ pageNum: 1, pageSize: 1000 }),
     queryAssetHostGroupList(),
-    queryOpsJobTemplateOptions()
+    queryOpsJobTemplateOptions(),
+    queryNotifyRuleOptions({ scope: 'job' })
   ])
   scriptOptions.value = scripts || []
   hostOptions.value = hosts.list || []
   groupOptions.value = groups.tree || []
   templateOptions.value = templates || []
+  notifyRuleOptions.value = notifyRules || []
 }
 
 async function loadCurrentRecord() {
@@ -510,6 +526,8 @@ async function loadCurrentRecord() {
     form.description = data.description || ''
     form.status = data.status || 1
     form.templateId = data.templateId || undefined
+    form.notifyEnabled = !!data.notifyEnabled
+    form.notifyRuleId = data.notifyRuleId || undefined
     const definition = JSON.parse(data.definitionJson || '{"nodes":[],"edges":[]}')
     loadDefinition(definition, data.graphJson || '')
   } finally {
@@ -546,6 +564,11 @@ async function save() {
     ElMessage.warning('请至少添加一个步骤')
     return
   }
+  const invalidNotifyNode = definition.nodes.find((node) => node.type === 'notify' && !node.config?.notifyRuleId)
+  if (invalidNotifyNode) {
+    ElMessage.warning('\u8bf7\u4e3a\u6d88\u606f\u901a\u77e5\u6b65\u9aa4\u9009\u62e9\u901a\u77e5\u89c4\u5219')
+    return
+  }
   saving.value = true
   try {
     const payload = {
@@ -554,6 +577,8 @@ async function save() {
       description: form.description,
       status: form.status,
       templateId: form.templateId,
+      notifyEnabled: false,
+      notifyRuleId: undefined,
       graphJson: getGraphJson(),
       definitionJson: JSON.stringify(definition)
     }
@@ -651,6 +676,7 @@ onBeforeUnmount(() => {
         <el-button class="palette-btn" @click="addStep('script')">脚本执行</el-button>
         <el-button class="palette-btn" @click="addStep('file')">文件分发</el-button>
         <el-button class="palette-btn" @click="addStep('approval')">人工确认</el-button>
+        <el-button class="palette-btn" @click="addStep('notify')">&#x6d88;&#x606f;&#x901a;&#x77e5;</el-button>
         <div class="panel-tip">拖动节点可调整位置，连线决定执行顺序。</div>
       </div>
 
@@ -723,6 +749,19 @@ onBeforeUnmount(() => {
               @update:host-ids="selectedNodeForm.config.hostIds = $event"
               @update:group-ids="selectedNodeForm.config.groupIds = $event"
             />
+          </template>
+          <template v-else-if="selectedNodeForm.type === 'notify'">
+            <el-form-item label="&#x901a;&#x77e5;&#x89c4;&#x5219;" required>
+              <el-select v-model="selectedNodeForm.config.notifyRuleId" filterable placeholder="&#x9009;&#x62e9;&#x901a;&#x77e5;&#x89c4;&#x5219;">
+                <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="&#x901a;&#x77e5;&#x6458;&#x8981;">
+              <el-input v-model="selectedNodeForm.config.message" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x53d1;&#x5e03;&#x5b8c;&#x6210;&#x901a;&#x77e5;" />
+            </el-form-item>
+            <el-form-item label="&#x901a;&#x77e5;&#x5185;&#x5bb9;">
+              <el-input v-model="selectedNodeForm.config.content" type="textarea" :rows="6" placeholder="&#x8fd9;&#x91cc;&#x4f1a;&#x4f5c;&#x4e3a; {{detail}} &#x53d8;&#x91cf;&#x4f20;&#x7ed9;&#x6d88;&#x606f;&#x6a21;&#x677f;" />
+            </el-form-item>
           </template>
 
           <template v-else>
