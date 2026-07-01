@@ -40,6 +40,14 @@ import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
 import NotifySendLog from '../views/notify/NotifySendLog.vue'
+import MonitorOverview from '../views/monitor/MonitorOverview.vue'
+import MonitorDatasource from '../views/monitor/MonitorDatasource.vue'
+import MonitorQuery from '../views/monitor/MonitorQuery.vue'
+import MonitorAlertRule from '../views/monitor/MonitorAlertRule.vue'
+import MonitorAlertEvent from '../views/monitor/MonitorAlertEvent.vue'
+import MonitorSilenceRule from '../views/monitor/MonitorSilenceRule.vue'
+import MonitorAggregationRule from '../views/monitor/MonitorAggregationRule.vue'
+import MonitorDashboard from '../views/monitor/MonitorDashboard.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import { getToken } from '../utils/auth'
 
@@ -313,46 +321,58 @@ const routes = [
 
       {
         path: '/monitor/overview',
-        component: ModuleWorkspace,
+        component: MonitorOverview,
         meta: {
-          title: '监控大盘',
+          title: '监控概览',
           app: 'monitor',
-          summary: '统一查看系统健康、可用性和告警趋势。',
-          cards: [
-            { title: '健康概览', description: '展示主机、服务和任务的总体健康状态。' },
-            { title: '趋势分析', description: '按时间维度查看异常波动和抖动。' },
-            { title: '值班视角', description: '为后续扩展 NOC 和值班视角打基础。' }
-          ]
+          summary: '统一查看数据源、规则、当前告警和最近事件。'
         }
       },
       {
-        path: '/monitor/alerts',
-        component: ModuleWorkspace,
+        path: '/monitor/datasources',
+        component: MonitorDatasource,
         meta: {
-          title: '告警中心',
+          title: '数据源管理',
           app: 'monitor',
-          summary: '集中接收、筛选和处理告警事件。',
-          cards: [
-            { title: '告警列表', description: '按等级、状态和来源查看告警。' },
-            { title: '告警归并', description: '减少重复告警，突出核心故障。' },
-            { title: '处理闭环', description: '沉淀认领、处理和恢复流程。' }
-          ]
+          summary: '接入 Prometheus 或 VictoriaMetrics 数据源。'
         }
       },
       {
-        path: '/monitor/metrics',
-        component: ModuleWorkspace,
+        path: '/monitor/query',
+        component: MonitorQuery,
         meta: {
-          title: '指标看板',
+          title: '即时查询',
           app: 'monitor',
-          summary: '为核心资源和业务指标提供统一看板。',
-          cards: [
-            { title: '主机指标', description: 'CPU、内存、磁盘和网络等基础监控。' },
-            { title: '服务指标', description: '接口耗时、错误率和吞吐等关键指标。' },
-            { title: '自定义看板', description: '为不同团队预留自定义看板能力。' }
-          ]
+          summary: '输入 PromQL 即时查询指标结果。'
         }
-      }
+      },
+      {
+        path: '/monitor/alert-rules',
+        component: MonitorAlertRule,
+        meta: { title: '告警规则', app: 'monitor', summary: '维护基于 PromQL 的周期告警规则。' }
+      },
+      {
+        path: '/monitor/alert-events',
+        component: MonitorAlertEvent,
+        meta: { title: '告警事件', app: 'monitor', summary: '查看、认领和关闭告警事件。' }
+      },
+      {
+        path: '/monitor/silences',
+        component: MonitorSilenceRule,
+        meta: { title: '告警屏蔽', app: 'monitor', summary: '按规则、等级、标签和时间窗口静默告警通知。' }
+      },
+      {
+        path: '/monitor/aggregations',
+        component: MonitorAggregationRule,
+        meta: { title: '聚合收敛', app: 'monitor', summary: '按 Label 分组收敛重复告警通知。' }
+      },
+      {
+        path: '/monitor/dashboards',
+        component: MonitorDashboard,
+        meta: { title: '仪表盘', app: 'monitor', summary: '预留自定义监控看板能力。' }
+      },
+      { path: '/monitor/alerts', redirect: '/monitor/alert-events' },
+      { path: '/monitor/metrics', redirect: '/monitor/query' }
     ]
   }
 ]

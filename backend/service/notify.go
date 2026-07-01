@@ -90,6 +90,8 @@ func normalizeNotifyScope(value string) string {
 		return "schedule"
 	case "job":
 		return "job"
+	case "monitor", "alert":
+		return "monitor"
 	default:
 		return "all"
 	}

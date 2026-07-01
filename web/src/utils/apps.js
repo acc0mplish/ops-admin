@@ -321,23 +321,58 @@ export const appDefinitions = [
     defaultRoute: '/monitor/overview',
     menus: [
       {
-        title: '监控大盘',
+        title: '监控概览',
         titleKey: 'monitorOverview',
         path: '/monitor/overview',
         icon: 'TrendCharts',
         children: []
       },
       {
-        title: '告警中心',
-        titleKey: 'monitorAlerts',
-        path: '/monitor/alerts',
+        title: '数据源管理',
+        titleKey: 'monitorDatasources',
+        path: '/monitor/datasources',
+        icon: 'Connection',
+        children: []
+      },
+      {
+        title: '即时查询',
+        titleKey: 'monitorQuery',
+        path: '/monitor/query',
+        icon: 'Search',
+        children: []
+      },
+      {
+        title: '告警规则',
+        titleKey: 'monitorAlertRules',
+        path: '/monitor/alert-rules',
         icon: 'Bell',
         children: []
       },
       {
-        title: '指标看板',
-        titleKey: 'monitorMetrics',
-        path: '/monitor/metrics',
+        title: '告警事件',
+        titleKey: 'monitorAlertEvents',
+        path: '/monitor/alert-events',
+        icon: 'Warning',
+        children: []
+      },
+      {
+        title: '告警屏蔽',
+        titleKey: 'monitorSilences',
+        path: '/monitor/silences',
+        icon: 'MuteNotification',
+        children: []
+      },
+      {
+        title: '聚合收敛',
+        titleKey: 'monitorAggregations',
+        path: '/monitor/aggregations',
+        icon: 'Filter',
+        children: []
+      },
+      {
+        title: '仪表盘',
+        titleKey: 'monitorDashboards',
+        path: '/monitor/dashboards',
         icon: 'PieChart',
         children: []
       }

@@ -19,9 +19,11 @@ import (
 )
 
 type Service struct {
-	db               *gorm.DB
-	opsScheduler     *OpsScheduler
-	opsSchedulerOnce sync.Once
+	db                   *gorm.DB
+	opsScheduler         *OpsScheduler
+	opsSchedulerOnce     sync.Once
+	monitorScheduler     *MonitorScheduler
+	monitorSchedulerOnce sync.Once
 }
 
 type AssetTerminalSession struct {
@@ -36,6 +38,7 @@ type AssetTerminalSession struct {
 func New(db *gorm.DB) *Service {
 	svc := &Service{db: db}
 	svc.initOpsScheduler()
+	svc.initMonitorScheduler()
 	return svc
 }
 

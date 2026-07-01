@@ -34,14 +34,18 @@ const form = reactive({
 const scopeOptions = [
   { label: '全部场景', value: 'all' },
   { label: '作业编排', value: 'job' },
-  { label: '定时任务', value: 'schedule' }
+  { label: '定时任务', value: 'schedule' },
+  { label: '监控告警', value: 'monitor' }
 ]
 
 const eventOptions = [
   { label: '成功', value: 'success' },
   { label: '失败', value: 'failed' },
   { label: '等待人工确认', value: 'waiting_approval' },
-  { label: '已拒绝', value: 'rejected' }
+  { label: '已拒绝', value: 'rejected' },
+  { label: '告警触发', value: 'firing' },
+  { label: '告警恢复', value: 'recovered' },
+  { label: '全部事件', value: 'all' }
 ]
 
 function scopeLabel(value) {
@@ -109,7 +113,7 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim() || !form.templateId || !form.channelIds.length) {
-    ElMessage.warning('请填写规则名称，并选择模板和通知媒介')
+    ElMessage.warning('请填写规则名称，并选择消息模板和通知媒介')
     return
   }
   saving.value = true
@@ -152,7 +156,7 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h2 class="page-title">通知规则</h2>
-        <p class="page-desc">像夜莺的告警规则一样，把触发事件、消息模板和通知媒介组合成可复用规则。</p>
+        <p class="page-desc">把触发场景、消息模板和通知媒介组合成可复用规则，供定时任务、作业编排和监控告警调用。</p>
       </div>
       <el-button type="primary" @click="openCreate">新增规则</el-button>
     </div>
@@ -174,7 +178,7 @@ onMounted(async () => {
       <el-table-column label="适用范围" width="140">
         <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
       </el-table-column>
-      <el-table-column label="触发事件" min-width="220">
+      <el-table-column label="触发事件" min-width="240">
         <template #default="{ row }">
           <el-tag v-for="item in row.events || []" :key="item" class="tag">{{ eventLabel(item) }}</el-tag>
         </template>
@@ -247,6 +251,6 @@ onMounted(async () => {
 .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 700; color: #14213d; }
 .page-desc { margin: 0; color: #7282a0; }
 .toolbar { display: flex; gap: 12px; flex-wrap: wrap; }
-.tag { margin-right: 6px; }
+.tag { margin-right: 6px; margin-bottom: 4px; }
 .pager { display: flex; justify-content: flex-end; }
 </style>

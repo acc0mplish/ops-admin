@@ -41,5 +41,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.NotifyChannel{},
 		&model.NotifyRule{},
 		&model.NotifySendLog{},
+		&model.MonitorDatasource{},
+		&model.MonitorAlertRule{},
+		&model.MonitorAlertEvent{},
+		&model.MonitorSilenceRule{},
+		&model.MonitorAggregationRule{},
+		&model.MonitorQueryHistory{},
+		&model.MonitorDashboard{},
+		&model.MonitorDashboardPanel{},
 	)
 }

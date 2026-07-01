@@ -781,6 +781,32 @@ Object.assign(messages['en-US'], {
   notifySendLogs: 'Send Logs'
 })
 
+Object.assign(messages['zh-CN'], {
+  monitorOverview: '监控概览',
+  monitorDatasources: '数据源管理',
+  monitorQuery: '即时查询',
+  monitorAlertRules: '告警规则',
+  monitorAlertEvents: '告警事件',
+  monitorSilences: '告警屏蔽',
+  monitorAggregations: '聚合收敛',
+  monitorDashboards: '仪表盘',
+  monitorAlerts: '告警事件',
+  monitorMetrics: '即时查询'
+})
+
+Object.assign(messages['en-US'], {
+  monitorOverview: 'Monitoring Overview',
+  monitorDatasources: 'Datasources',
+  monitorQuery: 'Instant Query',
+  monitorAlertRules: 'Alert Rules',
+  monitorAlertEvents: 'Alert Events',
+  monitorSilences: 'Silences',
+  monitorAggregations: 'Aggregations',
+  monitorDashboards: 'Dashboards',
+  monitorAlerts: 'Alert Events',
+  monitorMetrics: 'Instant Query'
+})
+
 export const locale = ref(localStorage.getItem(LOCALE_KEY) || 'zh-CN')
 
 export function setLocale(value) {
@@ -863,6 +889,13 @@ const routeTitleMap = {
   '/ops/schedule/templates': 'opsScheduleTemplates',
   '/ops/releases': 'opsReleases',
   '/monitor/overview': 'monitorOverview',
+  '/monitor/datasources': 'monitorDatasources',
+  '/monitor/query': 'monitorQuery',
+  '/monitor/alert-rules': 'monitorAlertRules',
+  '/monitor/alert-events': 'monitorAlertEvents',
+  '/monitor/silences': 'monitorSilences',
+  '/monitor/aggregations': 'monitorAggregations',
+  '/monitor/dashboards': 'monitorDashboards',
   '/monitor/alerts': 'monitorAlerts',
   '/monitor/metrics': 'monitorMetrics'
 }
