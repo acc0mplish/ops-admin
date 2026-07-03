@@ -115,6 +115,12 @@ type AssetHostBatchCredentialPayload struct {
 	CredentialID uint   `json:"credentialId"`
 }
 
+type AssetHostGroupMemberPayload struct {
+	HostID  uint   `json:"hostId"`
+	HostIDs []uint `json:"hostIds"`
+	GroupID uint   `json:"groupId"`
+}
+
 type AdminStatusPayload struct {
 	ID     uint `json:"id"`
 	Status int  `json:"status"`
@@ -1220,14 +1226,63 @@ func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSess
 }
 
 func (s *Service) DeleteAssetHost(id uint) error {
-	return s.db.Delete(&model.AssetHost{}, id).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("host_id = ?", id).Delete(&model.AssetHostGroupRelation{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.AssetHost{}, id).Error
+	})
 }
 
 func (s *Service) BatchDeleteAssetHosts(ids []uint) error {
 	if len(ids) == 0 {
 		return errors.New("no host selected")
 	}
-	return s.db.Where("id IN ?", ids).Delete(&model.AssetHost{}).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("host_id IN ?", ids).Delete(&model.AssetHostGroupRelation{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id IN ?", ids).Delete(&model.AssetHost{}).Error
+	})
+}
+
+func (s *Service) RemoveAssetHostsFromGroup(groupID uint, hostIDs []uint) error {
+	if groupID == 0 {
+		return errors.New("host group is required")
+	}
+	if len(hostIDs) == 0 {
+		return errors.New("no host selected")
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("group_id = ? AND host_id IN ?", groupID, hostIDs).Delete(&model.AssetHostGroupRelation{}).Error; err != nil {
+			return err
+		}
+		for _, hostID := range hostIDs {
+			var host model.AssetHost
+			if err := tx.Select("id", "group_id").First(&host, hostID).Error; err != nil {
+				return err
+			}
+			if host.GroupID != groupID {
+				continue
+			}
+			var nextGroupID uint
+			if err := tx.Model(&model.AssetHostGroupRelation{}).
+				Where("host_id = ?", hostID).
+				Order("group_id asc").
+				Limit(1).
+				Pluck("group_id", &nextGroupID).Error; err != nil {
+				return err
+			}
+			nextGroupValue := any(nil)
+			if nextGroupID > 0 {
+				nextGroupValue = nextGroupID
+			}
+			if err := tx.Model(&model.AssetHost{}).Where("id = ?", hostID).Update("group_id", nextGroupValue).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Service) BatchSyncAssetHosts(ids []uint) (map[string]any, error) {

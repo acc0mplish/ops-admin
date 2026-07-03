@@ -107,6 +107,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/asset/host/sync", ctl.SyncAssetHost)
 		authGroup.POST("/asset/host/batch/sync", ctl.BatchSyncAssetHosts)
 		authGroup.PUT("/asset/host/batch/credential", ctl.BatchReplaceAssetHostCredential)
+		authGroup.DELETE("/asset/host/group/remove", ctl.RemoveAssetHostsFromGroup)
 		authGroup.DELETE("/asset/host/delete", ctl.DeleteAssetHost)
 		authGroup.DELETE("/asset/host/batch/delete", ctl.BatchDeleteAssetHosts)
 

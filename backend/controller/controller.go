@@ -956,6 +956,23 @@ func (ctl *Controller) BatchDeleteAssetHosts(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) RemoveAssetHostsFromGroup(c *gin.Context) {
+	var payload service.AssetHostGroupMemberPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid remove group member payload")
+		return
+	}
+	hostIDs := payload.HostIDs
+	if payload.HostID > 0 {
+		hostIDs = append(hostIDs, payload.HostID)
+	}
+	if err := ctl.service.RemoveAssetHostsFromGroup(payload.GroupID, hostIDs); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) BatchReplaceAssetHostCredential(c *gin.Context) {
 	var payload service.AssetHostBatchCredentialPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

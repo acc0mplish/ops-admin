@@ -15,6 +15,7 @@ import {
   queryAssetCredentialOptions,
   queryAssetHostGroupList,
   queryAssetHostList,
+  removeAssetHostsFromGroup,
   syncAssetHost,
   syncAssetHostsFromCloud,
   updateAssetHost
@@ -73,6 +74,7 @@ const batchCredentialForm = reactive({
 const filteredCloudAccounts = computed(() =>
   cloudAccountOptions.value.filter((item) => (item.provider || '').toLowerCase() === cloudSyncForm.provider)
 )
+const isGroupView = computed(() => Number(query.groupId || 0) > 0)
 
 function resetForm() {
   Object.assign(form, {
@@ -232,9 +234,20 @@ async function handleSync(row) {
 }
 
 async function handleDelete(row) {
+  if (isGroupView.value) {
+    await handleRemoveFromGroup(row)
+    return
+  }
   await ElMessageBox.confirm(`确认删除主机 ${row.hostName} 吗？`, '提示', { type: 'warning' })
   await deleteAssetHost(row.id)
   ElMessage.success('删除成功')
+  await loadData()
+}
+
+async function handleRemoveFromGroup(row) {
+  await ElMessageBox.confirm(`确认将主机 ${row.hostName} 移出当前主机组吗？主机资产不会被删除。`, '提示', { type: 'warning' })
+  await removeAssetHostsFromGroup({ groupId: query.groupId, hostId: row.id })
+  ElMessage.success('已移出当前主机组')
   await loadData()
 }
 
@@ -261,6 +274,14 @@ async function handleBatchDelete() {
   const ids = selectedIds()
   if (!ids.length) {
     ElMessage.warning('请先选择主机')
+    return
+  }
+  if (isGroupView.value) {
+    await ElMessageBox.confirm(`确认将已选中的 ${ids.length} 台主机移出当前主机组吗？主机资产不会被删除。`, '提示', { type: 'warning' })
+    await removeAssetHostsFromGroup({ groupId: query.groupId, hostIds: ids })
+    ElMessage.success('已批量移出当前主机组')
+    selectedRows.value = []
+    await loadData()
     return
   }
   await ElMessageBox.confirm(`确认批量删除已选中的 ${ids.length} 台主机吗？`, '提示', { type: 'warning' })
@@ -465,7 +486,7 @@ watch(
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="batch-sync">批量同步</el-dropdown-item>
-              <el-dropdown-item command="batch-delete">批量删除</el-dropdown-item>
+              <el-dropdown-item command="batch-delete">{{ isGroupView ? '批量移出当前组' : '批量删除' }}</el-dropdown-item>
               <el-dropdown-item command="batch-credential">批量替换认证凭据</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -533,7 +554,7 @@ watch(
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="success" :loading="syncingId === row.id" @click="handleSync(row)">同步</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ isGroupView ? '移出组' : '删除' }}</el-button>
         </template>
       </el-table-column>
     </el-table>
