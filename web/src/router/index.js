@@ -369,7 +369,12 @@ const routes = [
       {
         path: '/monitor/dashboards',
         component: MonitorDashboard,
-        meta: { title: '仪表盘', app: 'monitor', summary: '预留自定义监控看板能力。' }
+        meta: { title: '监控大屏', app: 'monitor', summary: '以网格方式展示监控指标大屏。' }
+      },
+      {
+        path: '/monitor/inspections',
+        component: MonitorDashboard,
+        meta: { title: '巡检大屏', app: 'monitor', summary: '以列表方式巡检监控面板并导出报告。' }
       },
       { path: '/monitor/alerts', redirect: '/monitor/alert-events' },
       { path: '/monitor/metrics', redirect: '/monitor/query' }

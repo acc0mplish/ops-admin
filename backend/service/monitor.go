@@ -111,6 +111,11 @@ type MonitorDashboardPanelPayload struct {
 	Description  string `json:"description"`
 }
 
+type MonitorDashboardPanelQueryPayload struct {
+	ID           uint `json:"id"`
+	DatasourceID uint `json:"datasourceId"`
+}
+
 type MonitorScheduler struct {
 	cron    *cron.Cron
 	mu      sync.Mutex
@@ -1177,6 +1182,10 @@ func normalizePanelChartType(value string) string {
 		return "table"
 	case "line":
 		return "line"
+	case "bar":
+		return "bar"
+	case "gauge":
+		return "gauge"
 	default:
 		return "stat"
 	}
@@ -1239,9 +1248,9 @@ func (s *Service) GetMonitorDashboard(id uint) (map[string]any, error) {
 	return map[string]any{"dashboard": dashboard, "panels": panels}, nil
 }
 
-func (s *Service) SaveMonitorDashboard(payload MonitorDashboardPayload) error {
+func (s *Service) SaveMonitorDashboard(payload MonitorDashboardPayload) (*model.MonitorDashboard, error) {
 	if strings.TrimSpace(payload.Name) == "" {
-		return errors.New("dashboard name is required")
+		return nil, errors.New("dashboard name is required")
 	}
 	updates := map[string]any{
 		"name":        Trimmed(payload.Name),
@@ -1250,9 +1259,25 @@ func (s *Service) SaveMonitorDashboard(payload MonitorDashboardPayload) error {
 		"description": Trimmed(payload.Description),
 	}
 	if payload.ID > 0 {
-		return s.db.Model(&model.MonitorDashboard{}).Where("id = ?", payload.ID).Updates(updates).Error
+		if err := s.db.Model(&model.MonitorDashboard{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+		var item model.MonitorDashboard
+		if err := s.db.First(&item, payload.ID).Error; err != nil {
+			return nil, err
+		}
+		return &item, nil
 	}
-	return s.db.Model(&model.MonitorDashboard{}).Create(updates).Error
+	item := model.MonitorDashboard{
+		Name:        Trimmed(payload.Name),
+		Layout:      normalizeDashboardLayout(payload.Layout),
+		Status:      normalizeMonitorStatus(payload.Status),
+		Description: Trimmed(payload.Description),
+	}
+	if err := s.db.Create(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
 }
 
 func (s *Service) DeleteMonitorDashboard(id uint) error {
@@ -1301,12 +1326,16 @@ func (s *Service) DeleteMonitorDashboardPanel(id uint) error {
 	return s.db.Delete(&model.MonitorDashboardPanel{}, id).Error
 }
 
-func (s *Service) QueryMonitorDashboardPanel(id uint) (map[string]any, error) {
+func (s *Service) QueryMonitorDashboardPanel(id uint, datasourceID uint) (map[string]any, error) {
 	var panel model.MonitorDashboardPanel
 	if err := s.db.First(&panel, id).Error; err != nil {
 		return nil, err
 	}
-	ds, err := s.GetMonitorDatasource(panel.DatasourceID)
+	queryDatasourceID := panel.DatasourceID
+	if datasourceID > 0 {
+		queryDatasourceID = datasourceID
+	}
+	ds, err := s.GetMonitorDatasource(queryDatasourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1315,6 +1344,6 @@ func (s *Service) QueryMonitorDashboardPanel(id uint) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{
-		"panel": panel, "resultType": result.Data.ResultType, "result": result.Data.Result,
+		"panel": panel, "datasource": ds, "resultType": result.Data.ResultType, "result": result.Data.Result,
 	}, nil
 }

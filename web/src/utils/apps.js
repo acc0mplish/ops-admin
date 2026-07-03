@@ -370,10 +370,17 @@ export const appDefinitions = [
         children: []
       },
       {
-        title: '仪表盘',
+        title: '监控大屏',
         titleKey: 'monitorDashboards',
         path: '/monitor/dashboards',
         icon: 'PieChart',
+        children: []
+      },
+      {
+        title: '巡检大屏',
+        titleKey: 'monitorInspections',
+        path: '/monitor/inspections',
+        icon: 'Tickets',
         children: []
       }
     ]

@@ -39,4 +39,4 @@ export const saveMonitorDashboard = (data) => http.post('/api/v1/monitor/dashboa
 export const deleteMonitorDashboard = (id) => http.delete('/api/v1/monitor/dashboard/delete', { data: { id } })
 export const saveMonitorDashboardPanel = (data) => http.post('/api/v1/monitor/dashboard/panel/save', data)
 export const deleteMonitorDashboardPanel = (id) => http.delete('/api/v1/monitor/dashboard/panel/delete', { data: { id } })
-export const queryMonitorDashboardPanel = (id) => http.post('/api/v1/monitor/dashboard/panel/query', { id })
+export const queryMonitorDashboardPanel = (payload) => http.post('/api/v1/monitor/dashboard/panel/query', typeof payload === 'object' ? payload : { id: payload })

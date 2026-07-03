@@ -789,7 +789,8 @@ Object.assign(messages['zh-CN'], {
   monitorAlertEvents: '告警事件',
   monitorSilences: '告警屏蔽',
   monitorAggregations: '聚合收敛',
-  monitorDashboards: '仪表盘',
+  monitorDashboards: '监控大屏',
+  monitorInspections: '巡检大屏',
   monitorAlerts: '告警事件',
   monitorMetrics: '即时查询'
 })
@@ -802,7 +803,8 @@ Object.assign(messages['en-US'], {
   monitorAlertEvents: 'Alert Events',
   monitorSilences: 'Silences',
   monitorAggregations: 'Aggregations',
-  monitorDashboards: 'Dashboards',
+  monitorDashboards: 'Monitoring Screens',
+  monitorInspections: 'Inspection Screens',
   monitorAlerts: 'Alert Events',
   monitorMetrics: 'Instant Query'
 })
@@ -896,6 +898,7 @@ const routeTitleMap = {
   '/monitor/silences': 'monitorSilences',
   '/monitor/aggregations': 'monitorAggregations',
   '/monitor/dashboards': 'monitorDashboards',
+  '/monitor/inspections': 'monitorInspections',
   '/monitor/alerts': 'monitorAlerts',
   '/monitor/metrics': 'monitorMetrics'
 }

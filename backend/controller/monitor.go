@@ -347,11 +347,12 @@ func (ctl *Controller) SaveMonitorDashboard(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid dashboard payload")
 		return
 	}
-	if err := ctl.service.SaveMonitorDashboard(payload); err != nil {
+	data, err := ctl.service.SaveMonitorDashboard(payload)
+	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
-	httpx.Success(c, true)
+	httpx.Success(c, data)
 }
 
 func (ctl *Controller) DeleteMonitorDashboard(c *gin.Context) {
@@ -394,12 +395,12 @@ func (ctl *Controller) DeleteMonitorDashboardPanel(c *gin.Context) {
 }
 
 func (ctl *Controller) QueryMonitorDashboardPanel(c *gin.Context) {
-	var payload service.IDPayload
+	var payload service.MonitorDashboardPanelQueryPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		httpx.Failed(c, 400, "invalid query payload")
 		return
 	}
-	data, err := ctl.service.QueryMonitorDashboardPanel(payload.ID)
+	data, err := ctl.service.QueryMonitorDashboardPanel(payload.ID, payload.DatasourceID)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
