@@ -226,6 +226,87 @@ func (OpsJobHistoryStep) TableName() string {
 	return "ops_job_history_step"
 }
 
+type OpsApplication struct {
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	Name           string     `json:"name" gorm:"size:128;not null;index"`
+	Code           string     `json:"code" gorm:"size:128;not null;uniqueIndex"`
+	ServiceType    string     `json:"serviceType" gorm:"size:64;index"`
+	RepoType       string     `json:"repoType" gorm:"size:16;not null;index"`
+	RepoURL        string     `json:"repoUrl" gorm:"size:1024;not null"`
+	Branch         string     `json:"branch" gorm:"size:128"`
+	Workspace      string     `json:"workspace" gorm:"size:512"`
+	BuildScript    string     `json:"buildScript" gorm:"type:longtext"`
+	DeployScript   string     `json:"deployScript" gorm:"type:longtext"`
+	Env            string     `json:"env" gorm:"size:64;index"`
+	Status         int        `json:"status" gorm:"default:1;index"`
+	Description    string     `json:"description" gorm:"size:255"`
+	LastReleaseID  uint       `json:"lastReleaseId" gorm:"index"`
+	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
+	LastReleasedAt *time.Time `json:"lastReleasedAt"`
+	CreatedAt      time.Time  `json:"createTime"`
+	UpdatedAt      time.Time  `json:"updateTime"`
+}
+
+func (OpsApplication) TableName() string {
+	return "ops_application"
+}
+
+type OpsAppBuildTask struct {
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	Name           string     `json:"name" gorm:"size:128;not null;index"`
+	AppID          uint       `json:"appId" gorm:"index;not null"`
+	AppName        string     `json:"appName" gorm:"size:128;index"`
+	AppCode        string     `json:"appCode" gorm:"size:128;index"`
+	Env            string     `json:"env" gorm:"size:64;index"`
+	Branch         string     `json:"branch" gorm:"size:128"`
+	BuildScript    string     `json:"buildScript" gorm:"type:longtext"`
+	DeployScript   string     `json:"deployScript" gorm:"type:longtext"`
+	TimeoutSeconds int        `json:"timeoutSeconds" gorm:"default:1800"`
+	Status         int        `json:"status" gorm:"default:1;index"`
+	Description    string     `json:"description" gorm:"size:255"`
+	LastReleaseID  uint       `json:"lastReleaseId" gorm:"index"`
+	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
+	LastRunAt      *time.Time `json:"lastRunAt"`
+	SuccessCount   int        `json:"successCount" gorm:"default:0"`
+	FailedCount    int        `json:"failedCount" gorm:"default:0"`
+	CreatedAt      time.Time  `json:"createTime"`
+	UpdatedAt      time.Time  `json:"updateTime"`
+}
+
+func (OpsAppBuildTask) TableName() string {
+	return "ops_app_build_task"
+}
+
+type OpsAppRelease struct {
+	ID            uint       `json:"id" gorm:"primaryKey"`
+	AppID         uint       `json:"appId" gorm:"index;not null"`
+	AppName       string     `json:"appName" gorm:"size:128;index"`
+	AppCode       string     `json:"appCode" gorm:"size:128;index"`
+	BuildTaskID   uint       `json:"buildTaskId" gorm:"index"`
+	BuildTaskName string     `json:"buildTaskName" gorm:"size:128;index"`
+	Env           string     `json:"env" gorm:"size:64;index"`
+	Version       string     `json:"version" gorm:"size:128;index"`
+	RepoType      string     `json:"repoType" gorm:"size:16"`
+	RepoURL       string     `json:"repoUrl" gorm:"size:1024"`
+	Branch        string     `json:"branch" gorm:"size:128"`
+	CommitID      string     `json:"commitId" gorm:"size:128"`
+	Workspace     string     `json:"workspace" gorm:"size:512"`
+	Status        string     `json:"status" gorm:"size:32;not null;index"`
+	Stage         string     `json:"stage" gorm:"size:32;index"`
+	Summary       string     `json:"summary" gorm:"type:text"`
+	BuildLog      string     `json:"buildLog" gorm:"type:longtext"`
+	DeployLog     string     `json:"deployLog" gorm:"type:longtext"`
+	StartedAt     *time.Time `json:"startedAt"`
+	FinishedAt    *time.Time `json:"finishedAt"`
+	DurationMs    int64      `json:"durationMs" gorm:"default:0"`
+	CreatedAt     time.Time  `json:"createTime"`
+	UpdatedAt     time.Time  `json:"updateTime"`
+}
+
+func (OpsAppRelease) TableName() string {
+	return "ops_app_release"
+}
+
 type NotifyTemplate struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"size:128;not null;index"`

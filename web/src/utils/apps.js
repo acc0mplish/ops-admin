@@ -277,6 +277,52 @@ export const appDefinitions = [
     ]
   },
   {
+    key: 'applications',
+    name: '应用中心',
+    labelKey: 'appApplications',
+    icon: 'Box',
+    defaultRoute: '/applications/projects',
+    menus: [
+      {
+        title: '项目管理',
+        titleKey: 'appProjectManage',
+        path: '/applications/projects',
+        icon: 'FolderOpened',
+        children: [
+          {
+            title: '项目列表',
+            titleKey: 'appProjectList',
+            path: '/applications/projects',
+            icon: 'Tickets',
+            children: []
+          }
+        ]
+      },
+      {
+        title: '构建与部署',
+        titleKey: 'appBuildDeploy',
+        path: '/applications/build-tasks',
+        icon: 'SetUp',
+        children: [
+          {
+            title: '构建任务',
+            titleKey: 'appBuildTasks',
+            path: '/applications/build-tasks',
+            icon: 'Operation',
+            children: []
+          },
+          {
+            title: '构建历史',
+            titleKey: 'appBuildHistory',
+            path: '/applications/build-history',
+            icon: 'Document',
+            children: []
+          }
+        ]
+      }
+    ]
+  },
+  {
     key: 'notify',
     name: '消息通知',
     labelKey: 'appNotify',
@@ -397,6 +443,9 @@ export function getAppByRoute(path) {
   }
   if (path.startsWith('/ops')) {
     return getAppByKey('ops')
+  }
+  if (path.startsWith('/applications')) {
+    return getAppByKey('applications')
   }
   if (path.startsWith('/notify')) {
     return getAppByKey('notify')

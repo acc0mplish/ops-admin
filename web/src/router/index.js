@@ -36,6 +36,9 @@ import OpsJobList from '../views/ops/OpsJobList.vue'
 import OpsJobApprovals from '../views/ops/OpsJobApprovals.vue'
 import OpsJobHistory from '../views/ops/OpsJobHistory.vue'
 import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
+import AppProjectList from '../views/applications/AppProjectList.vue'
+import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
+import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
 import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
@@ -179,6 +182,8 @@ const routes = [
       { path: '/ops/releases', redirect: '/ops/quick-exec/history' },
       { path: '/ops/quick-exec', redirect: '/ops/quick-exec/command' },
       { path: '/ops/schedule', redirect: '/ops/schedule/tasks' },
+      { path: '/ops/applications', redirect: '/applications/projects' },
+      { path: '/ops/applications/center', redirect: '/applications/projects' },
       {
         path: '/ops/scripts/library',
         component: OpsScriptLibrary,
@@ -295,6 +300,23 @@ const routes = [
           app: 'ops',
           summary: '沉淀可导入的作业模板，并在编排时一键套用。'
         }
+      },
+      { path: '/applications', redirect: '/applications/projects' },
+      { path: '/applications/center', redirect: '/applications/projects' },
+      {
+        path: '/applications/projects',
+        component: AppProjectList,
+        meta: { title: '项目列表', app: 'applications', summary: '维护应用项目、服务类别和 Git/SVN 仓库地址。' }
+      },
+      {
+        path: '/applications/build-tasks',
+        component: AppBuildTaskList,
+        meta: { title: '构建任务', app: 'applications', summary: '基于项目仓库创建构建发布任务，并支持立即构建。' }
+      },
+      {
+        path: '/applications/build-history',
+        component: AppBuildHistory,
+        meta: { title: '构建历史', app: 'applications', summary: '查看构建记录、阶段结果和完整构建日志。' }
       },
 
       { path: '/notify', redirect: '/notify/rules' },

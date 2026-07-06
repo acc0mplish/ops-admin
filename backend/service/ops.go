@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"bytes"
@@ -34,36 +34,36 @@ type OpsScriptStatusPayload struct {
 }
 
 type OpsExecCommandPayload struct {
-	Title       string `json:"title"`
-	CommandText string `json:"commandText"`
-	Parameters  string `json:"parameters"`
-	HostIDs     []uint `json:"hostIds"`
-	GroupIDs    []uint `json:"groupIds"`
-	Concurrency int    `json:"concurrency"`
-	TimeoutSeconds int `json:"timeoutSeconds"`
+	Title          string `json:"title"`
+	CommandText    string `json:"commandText"`
+	Parameters     string `json:"parameters"`
+	HostIDs        []uint `json:"hostIds"`
+	GroupIDs       []uint `json:"groupIds"`
+	Concurrency    int    `json:"concurrency"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
 type OpsExecScriptPayload struct {
-	Title       string `json:"title"`
-	ScriptID    uint   `json:"scriptId"`
-	Parameters  string `json:"parameters"`
-	HostIDs     []uint `json:"hostIds"`
-	GroupIDs    []uint `json:"groupIds"`
-	Concurrency int    `json:"concurrency"`
-	TimeoutSeconds int `json:"timeoutSeconds"`
+	Title          string `json:"title"`
+	ScriptID       uint   `json:"scriptId"`
+	Parameters     string `json:"parameters"`
+	HostIDs        []uint `json:"hostIds"`
+	GroupIDs       []uint `json:"groupIds"`
+	Concurrency    int    `json:"concurrency"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
 type OpsFileDispatchPayload struct {
-	Title       string `json:"title"`
-	SourceType  string `json:"sourceType"`
-	SourceHostID uint  `json:"sourceHostId"`
-	SourcePath  string `json:"sourcePath"`
-	TargetPath  string `json:"targetPath"`
-	HostIDs     []uint `json:"hostIds"`
-	GroupIDs    []uint `json:"groupIds"`
-	Concurrency int    `json:"concurrency"`
-	TimeoutSeconds int `json:"timeoutSeconds"`
-	Overwrite   bool   `json:"overwrite"`
+	Title          string `json:"title"`
+	SourceType     string `json:"sourceType"`
+	SourceHostID   uint   `json:"sourceHostId"`
+	SourcePath     string `json:"sourcePath"`
+	TargetPath     string `json:"targetPath"`
+	HostIDs        []uint `json:"hostIds"`
+	GroupIDs       []uint `json:"groupIds"`
+	Concurrency    int    `json:"concurrency"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
+	Overwrite      bool   `json:"overwrite"`
 }
 
 func normalizeOpsScriptType(v string) string {
@@ -173,10 +173,10 @@ func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
 		Description:    Trimmed(payload.Description),
 	}
 	if item.Name == "" {
-		return errors.New("鑴氭湰鍚嶇О涓嶈兘涓虹┖")
+		return errors.New("脚本名称不能为空")
 	}
 	if item.Content == "" {
-		return errors.New("鑴氭湰鍐呭涓嶈兘涓虹┖")
+		return errors.New("脚本内容不能为空")
 	}
 	if item.TimeoutSeconds <= 0 {
 		item.TimeoutSeconds = 300
@@ -203,10 +203,10 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 		"description":     Trimmed(payload.Description),
 	}
 	if updates["name"] == "" {
-		return errors.New("鑴氭湰鍚嶇О涓嶈兘涓虹┖")
+		return errors.New("脚本名称不能为空")
 	}
 	if updates["content"] == "" {
-		return errors.New("鑴氭湰鍐呭涓嶈兘涓虹┖")
+		return errors.New("脚本内容不能为空")
 	}
 	if payload.TimeoutSeconds <= 0 {
 		updates["timeout_seconds"] = 300
@@ -231,22 +231,22 @@ func (s *Service) UpdateOpsScriptStatus(payload OpsScriptStatusPayload) error {
 func (s *Service) ExecuteOpsCommand(payload OpsExecCommandPayload) (map[string]any, error) {
 	command := strings.TrimSpace(payload.CommandText)
 	if command == "" {
-		return nil, errors.New("鎵ц鍛戒护涓嶈兘涓虹┖")
+		return nil, errors.New("执行命令不能为空")
 	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
 		return nil, err
 	}
 	task := model.OpsExecTask{
-		TaskType:    "command",
-		Title:       opsTaskTitle(payload.Title, "鍛戒护鎵ц"),
-		CommandText: command,
-		Parameters:  strings.TrimSpace(payload.Parameters),
-		Concurrency: normalizeOpsConcurrency(payload.Concurrency),
+		TaskType:       "command",
+		Title:          opsTaskTitle(payload.Title, "命令执行"),
+		CommandText:    command,
+		Parameters:     strings.TrimSpace(payload.Parameters),
+		Concurrency:    normalizeOpsConcurrency(payload.Concurrency),
 		TimeoutSeconds: normalizeOpsTimeout(payload.TimeoutSeconds),
-		Status:      "running",
-		Summary:     "浠诲姟鍒涘缓鎴愬姛锛屾鍦ㄦ墽琛屼腑",
-		HostCount:   len(hosts),
+		Status:         "running",
+		Summary:        "任务创建成功，正在执行中",
+		HostCount:      len(hosts),
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		finalCommand := command
@@ -259,30 +259,30 @@ func (s *Service) ExecuteOpsCommand(payload OpsExecCommandPayload) (map[string]a
 
 func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any, error) {
 	if payload.ScriptID == 0 {
-		return nil, errors.New("璇烽€夋嫨鑴氭湰")
+		return nil, errors.New("请选择脚本")
 	}
 	script, err := s.GetOpsScript(payload.ScriptID)
 	if err != nil {
 		return nil, err
 	}
 	if script.Status != 1 {
-		return nil, errors.New("褰撳墠鑴氭湰宸茬鐢紝鏃犳硶鎵ц")
+		return nil, errors.New("当前脚本已禁用，无法执行")
 	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
 		return nil, err
 	}
 	task := model.OpsExecTask{
-		TaskType:    "script",
-		Title:       opsTaskTitle(payload.Title, "鑴氭湰鎵ц"),
-		ScriptID:    script.ID,
-		ScriptName:  script.Name,
-		Parameters:  strings.TrimSpace(payload.Parameters),
-		Concurrency: normalizeOpsConcurrency(payload.Concurrency),
+		TaskType:       "script",
+		Title:          opsTaskTitle(payload.Title, "脚本执行"),
+		ScriptID:       script.ID,
+		ScriptName:     script.Name,
+		Parameters:     strings.TrimSpace(payload.Parameters),
+		Concurrency:    normalizeOpsConcurrency(payload.Concurrency),
 		TimeoutSeconds: normalizeOpsTimeout(script.TimeoutSeconds),
-		Status:      "running",
-		Summary:     "浠诲姟鍒涘缓鎴愬姛锛屾鍦ㄦ墽琛屼腑",
-		HostCount:   len(hosts),
+		Status:         "running",
+		Summary:        "任务创建成功，正在执行中",
+		HostCount:      len(hosts),
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		params := strings.TrimSpace(payload.Parameters)
@@ -296,7 +296,7 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadName string, uploadBytes []byte) (map[string]any, error) {
 	targetPath := strings.TrimSpace(payload.TargetPath)
 	if targetPath == "" {
-		return nil, errors.New("鐩爣璺緞涓嶈兘涓虹┖")
+		return nil, errors.New("目标路径不能为空")
 	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
@@ -311,16 +311,16 @@ func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadN
 	switch sourceType {
 	case "upload":
 		if len(uploadBytes) == 0 {
-			return nil, errors.New("璇蜂笂浼犲緟鍒嗗彂鏂囦欢")
+			return nil, errors.New("请上传待分发文件")
 		}
 		content = uploadBytes
 		fileName = strings.TrimSpace(uploadName)
 	case "server":
 		if payload.SourceHostID == 0 {
-			return nil, errors.New("璇烽€夋嫨婧愭湇鍔″櫒")
+			return nil, errors.New("请选择源服务器")
 		}
 		if strings.TrimSpace(payload.SourcePath) == "" {
-            return nil, errors.New("源文件路径不能为空")
+			return nil, errors.New("源文件路径不能为空")
 		}
 		sourceHost, readBytes, err := s.readRemoteFile(payload.SourceHostID, payload.SourcePath)
 		if err != nil {
@@ -330,12 +330,12 @@ func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadN
 		content = readBytes
 		fileName = path.Base(strings.TrimSpace(payload.SourcePath))
 	default:
-		return nil, errors.New("涓嶆敮鎸佺殑鏂囦欢鏉ユ簮绫诲瀷")
+		return nil, errors.New("不支持的文件来源类型")
 	}
 
 	task := model.OpsExecTask{
 		TaskType:       "file",
-		Title:          opsTaskTitle(payload.Title, "鏂囦欢鍒嗗彂"),
+		Title:          opsTaskTitle(payload.Title, "文件分发"),
 		SourceType:     sourceType,
 		SourceHostID:   payload.SourceHostID,
 		SourceHostName: sourceHostName,
@@ -345,7 +345,7 @@ func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadN
 		Concurrency:    normalizeOpsConcurrency(payload.Concurrency),
 		TimeoutSeconds: normalizeOpsTimeout(payload.TimeoutSeconds),
 		Status:         "running",
-		Summary:        "浠诲姟鍒涘缓鎴愬姛锛屾鍦ㄦ墽琛屼腑",
+		Summary:        "任务创建成功，正在执行中",
 		HostCount:      len(hosts),
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
@@ -412,7 +412,7 @@ func opsTaskTitle(title string, fallback string) string {
 
 func (s *Service) resolveOpsTargetHosts(hostIDs []uint, groupIDs []uint) ([]model.AssetHost, error) {
 	if len(hostIDs) > 0 && len(groupIDs) > 0 {
-		return nil, errors.New("鐩爣涓绘満鍜屼富鏈虹粍鍙兘浜岄€変竴")
+		return nil, errors.New("目标主机和主机组只能二选一")
 	}
 	hostMap := map[uint]model.AssetHost{}
 
@@ -443,7 +443,7 @@ func (s *Service) resolveOpsTargetHosts(hostIDs []uint, groupIDs []uint) ([]mode
 	}
 
 	if len(hostMap) == 0 {
-		return nil, errors.New("璇疯嚦灏戦€夋嫨涓€鍙颁富鏈烘垨涓€涓富鏈虹粍")
+		return nil, errors.New("请至少选择一台主机或一个主机组")
 	}
 
 	hosts := make([]model.AssetHost, 0, len(hostMap))
@@ -498,7 +498,7 @@ func (s *Service) runOpsTaskLegacy(task model.OpsExecTask, hosts []model.AssetHo
 	case failedCount > 0:
 		status = "partial"
 	}
-    summary := fmt.Sprintf("成功 %d 台，失败 %d 台", successCount, failedCount)
+	summary := fmt.Sprintf("成功 %d 台，失败 %d 台", successCount, failedCount)
 	_ = s.db.Model(&model.OpsExecTask{}).Where("id = ?", task.ID).Updates(map[string]any{
 		"success_count": successCount,
 		"failed_count":  failedCount,
@@ -570,7 +570,7 @@ func (s *Service) refreshOpsTaskProgress(taskID uint) {
 	_ = s.db.Model(&model.OpsExecTargetResult{}).Where("task_id = ? AND status = ?", taskID, "running").Count(&runningCount).Error
 	_ = s.db.Model(&model.OpsExecTargetResult{}).Where("task_id = ? AND status NOT IN ?", taskID, []string{"success", "running"}).Count(&failedCount).Error
 	completedCount := successCount + failedCount
-    summary := fmt.Sprintf("已完成 %d 台，成功 %d 台，失败 %d 台，执行中 %d 台", completedCount, successCount, failedCount, runningCount)
+	summary := fmt.Sprintf("已完成 %d 台，成功 %d 台，失败 %d 台，执行中 %d 台", completedCount, successCount, failedCount, runningCount)
 	_ = s.db.Model(&model.OpsExecTask{}).Where("id = ?", taskID).Updates(map[string]any{
 		"success_count": int(successCount),
 		"failed_count":  int(failedCount),
@@ -591,7 +591,7 @@ func (s *Service) finishOpsTask(taskID uint) {
 	case failedCount > 0:
 		status = "partial"
 	}
-    summary := fmt.Sprintf("执行完成，成功 %d 台，失败 %d 台", successCount, failedCount)
+	summary := fmt.Sprintf("执行完成，成功 %d 台，失败 %d 台", successCount, failedCount)
 	_ = s.db.Model(&model.OpsExecTask{}).Where("id = ?", taskID).Updates(map[string]any{
 		"success_count": int(successCount),
 		"failed_count":  int(failedCount),
@@ -738,14 +738,14 @@ func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds in
 	case <-time.After(time.Duration(timeoutSeconds) * time.Second):
 		_ = session.Signal(ssh.SIGKILL)
 		_ = session.Close()
-		err = fmt.Errorf("鎵ц瓒呮椂锛屽凡锟?%d 绉掑悗缁堟", timeoutSeconds)
+		err = fmt.Errorf("执行超时，已在 %d 秒后终止", timeoutSeconds)
 	}
 	exitCode := 0
 	if err != nil {
 		var exitErr *ssh.ExitError
 		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitStatus()
-		} else if strings.Contains(err.Error(), "鎵ц瓒呮椂") {
+		} else if strings.Contains(err.Error(), "执行超时") {
 			exitCode = 124
 		} else {
 			exitCode = -1
