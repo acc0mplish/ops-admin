@@ -134,7 +134,7 @@ func normalizeHeadersJSON(raw string) (string, error) {
 	}
 	var headers map[string]string
 	if err := json.Unmarshal([]byte(value), &headers); err != nil {
-		return "", errors.New("璇锋眰澶村繀椤绘槸 JSON 瀵硅薄")
+		return "", errors.New("请求头必须是 JSON 对象")
 	}
 	data, _ := json.Marshal(headers)
 	return string(data), nil
@@ -330,10 +330,10 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 	taskType := normalizeScheduleTaskType(payload.TaskType)
 	name := Trimmed(payload.Name)
 	if name == "" {
-		return nil, errors.New("浠诲姟鍚嶇О涓嶈兘涓虹┖")
+		return nil, errors.New("任务名称不能为空")
 	}
 	if _, err := parseCronExpr(payload.CronExpr); err != nil {
-		return nil, errors.New("Cron 琛ㄨ揪寮忔牸寮忎笉姝ｇ‘")
+		return nil, errors.New("Cron 表达式格式不正确")
 	}
 	headersJSON, err := normalizeHeadersJSON(payload.HeadersJSON)
 	if err != nil {
@@ -365,20 +365,20 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 	switch taskType {
 	case "script":
 		if payload.ScriptID == 0 {
-			return nil, errors.New("璇烽€夋嫨鑴氭湰")
+			return nil, errors.New("请选择脚本")
 		}
 		script, err := s.GetOpsScript(payload.ScriptID)
 		if err != nil {
 			return nil, err
 		}
 		if script.Status != 1 {
-			return nil, errors.New("鑴氭湰宸茬鐢紝涓嶈兘鐢ㄤ簬瀹氭椂浠诲姟")
+			return nil, errors.New("脚本已禁用，不能用于定时任务")
 		}
 		if len(payload.HostIDs) == 0 && len(payload.GroupIDs) == 0 {
-			return nil, errors.New("璇烽€夋嫨鐩爣涓绘満鎴栦富鏈虹粍")
+			return nil, errors.New("请选择目标主机或主机组")
 		}
 		if len(payload.HostIDs) > 0 && len(payload.GroupIDs) > 0 {
-			return nil, errors.New("鐩爣涓绘満鍜屼富鏈虹粍鍙兘浜岄€変竴")
+			return nil, errors.New("目标主机和主机组只能二选一")
 		}
 		updates["script_id"] = script.ID
 		updates["script_name"] = script.Name
@@ -390,7 +390,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		updates["expected_status"] = 0
 	case "http":
 		if strings.TrimSpace(payload.URL) == "" {
-			return nil, errors.New("HTTP 鍦板潃涓嶈兘涓虹┖")
+			return nil, errors.New("HTTP 地址不能为空")
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
@@ -398,7 +398,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		updates["group_ids_json"] = "[]"
 		updates["concurrency"] = 1
 	default:
-		return nil, errors.New("涓嶆敮鎸佺殑浠诲姟绫诲瀷")
+		return nil, errors.New("不支持的任务类型")
 	}
 
 	if existing != nil {
@@ -477,7 +477,7 @@ func (s *Service) BatchDeleteOpsScheduleTasks(ids []uint) error {
 
 func (s *Service) UpdateOpsScheduleTaskStatus(payload OpsScheduleTaskStatusPayload) error {
 	if len(payload.IDs) == 0 {
-		return errors.New("璇烽€夋嫨浠诲姟")
+		return errors.New("请选择任务")
 	}
 	status := normalizeScheduleStatus(payload.Status)
 	if err := s.db.Model(&model.OpsScheduleTask{}).Where("id IN ?", payload.IDs).Update("status", status).Error; err != nil {
@@ -558,7 +558,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	taskType := normalizeScheduleTaskType(payload.TaskType)
 	name := Trimmed(payload.Name)
 	if name == "" {
-		return nil, errors.New("妯℃澘鍚嶇О涓嶈兘涓虹┖")
+		return nil, errors.New("模板名称不能为空")
 	}
 	headersJSON, err := normalizeHeadersJSON(payload.HeadersJSON)
 	if err != nil {
@@ -566,7 +566,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	}
 	if strings.TrimSpace(payload.CronExpr) != "" {
 		if _, err := parseCronExpr(payload.CronExpr); err != nil {
-			return nil, errors.New("Cron 琛ㄨ揪寮忔牸寮忎笉姝ｇ‘")
+			return nil, errors.New("Cron 表达式格式不正确")
 		}
 	}
 	updates := map[string]any{
@@ -586,7 +586,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	switch taskType {
 	case "script":
 		if payload.ScriptID == 0 {
-			return nil, errors.New("璇烽€夋嫨鑴氭湰")
+			return nil, errors.New("请选择脚本")
 		}
 		script, err := s.GetOpsScript(payload.ScriptID)
 		if err != nil {
@@ -602,12 +602,12 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 		updates["expected_status"] = 0
 	case "http":
 		if strings.TrimSpace(payload.URL) == "" {
-			return nil, errors.New("HTTP 鍦板潃涓嶈兘涓虹┖")
+			return nil, errors.New("HTTP 地址不能为空")
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
 	default:
-		return nil, errors.New("涓嶆敮鎸佺殑妯℃澘绫诲瀷")
+		return nil, errors.New("不支持的模板类型")
 	}
 	return updates, nil
 }
@@ -634,7 +634,7 @@ func (s *Service) DeleteOpsScheduleTemplate(id uint) error {
 		return err
 	}
 	if count > 0 {
-		return errors.New("璇ユā鏉夸粛琚换鍔″紩鐢紝涓嶈兘鍒犻櫎")
+		return errors.New("该模板仍被任务引用，不能删除")
 	}
 	return s.db.Delete(&model.OpsScheduleTemplate{}, id).Error
 }
@@ -805,7 +805,7 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 		lines = append(lines, fmt.Sprintf("%s [%s] exit=%d", row.HostName, row.Status, row.ExitCode))
 	}
 	status := firstNonEmpty(taskInfo.Status, "success")
-	return status, firstNonEmpty(taskInfo.Summary, "鎵ц瀹屾垚"), strings.Join(lines, "\n"), taskInfo.ID
+	return status, firstNonEmpty(taskInfo.Summary, "执行完成"), strings.Join(lines, "\n"), taskInfo.ID
 }
 
 func (s *Service) runScheduledHTTPTask(task model.OpsScheduleTask) (string, string, string, int, string) {

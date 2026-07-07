@@ -319,6 +319,13 @@ export const appDefinitions = [
             children: []
           }
         ]
+      },
+      {
+        title: 'CI/CD 流水线',
+        titleKey: 'appPipelines',
+        path: '/applications/pipelines',
+        icon: 'Share',
+        children: []
       }
     ]
   },

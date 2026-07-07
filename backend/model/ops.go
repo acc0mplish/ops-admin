@@ -307,6 +307,79 @@ func (OpsAppRelease) TableName() string {
 	return "ops_app_release"
 }
 
+type OpsAppPipeline struct {
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	Name           string     `json:"name" gorm:"size:128;not null;index"`
+	AppID          uint       `json:"appId" gorm:"index;not null"`
+	AppName        string     `json:"appName" gorm:"size:128;index"`
+	AppCode        string     `json:"appCode" gorm:"size:128;index"`
+	RepoType       string     `json:"repoType" gorm:"size:16;index"`
+	RepoURL        string     `json:"repoUrl" gorm:"size:1024"`
+	DefaultBranch  string     `json:"defaultBranch" gorm:"size:128"`
+	Env            string     `json:"env" gorm:"size:64;index"`
+	TechStack      string     `json:"techStack" gorm:"size:64;index"`
+	TemplateID     uint       `json:"templateId" gorm:"index"`
+	StageCount     int        `json:"stageCount" gorm:"default:0"`
+	Status         int        `json:"status" gorm:"default:1;index"`
+	Description    string     `json:"description" gorm:"size:255"`
+	DefinitionJSON string     `json:"definitionJson" gorm:"type:longtext"`
+	LastRunID      uint       `json:"lastRunId" gorm:"index"`
+	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
+	LastRunAt      *time.Time `json:"lastRunAt"`
+	CreatedAt      time.Time  `json:"createTime"`
+	UpdatedAt      time.Time  `json:"updateTime"`
+}
+
+func (OpsAppPipeline) TableName() string {
+	return "ops_app_pipeline"
+}
+
+type OpsAppPipelineRun struct {
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	PipelineID     uint       `json:"pipelineId" gorm:"index;not null"`
+	PipelineName   string     `json:"pipelineName" gorm:"size:128;index"`
+	AppID          uint       `json:"appId" gorm:"index"`
+	AppName        string     `json:"appName" gorm:"size:128;index"`
+	AppCode        string     `json:"appCode" gorm:"size:128;index"`
+	Env            string     `json:"env" gorm:"size:64;index"`
+	Branch         string     `json:"branch" gorm:"size:128"`
+	ImageTag       string     `json:"imageTag" gorm:"size:128;index"`
+	TriggerType    string     `json:"triggerType" gorm:"size:32;index"`
+	TriggerUser    string     `json:"triggerUser" gorm:"size:128"`
+	Status         string     `json:"status" gorm:"size:32;not null;index"`
+	Summary        string     `json:"summary" gorm:"type:text"`
+	ParamsJSON     string     `json:"paramsJson" gorm:"type:text"`
+	DefinitionJSON string     `json:"definitionJson" gorm:"type:longtext"`
+	StartedAt      *time.Time `json:"startedAt"`
+	FinishedAt     *time.Time `json:"finishedAt"`
+	DurationMs     int64      `json:"durationMs" gorm:"default:0"`
+	CreatedAt      time.Time  `json:"createTime"`
+	UpdatedAt      time.Time  `json:"updateTime"`
+}
+
+func (OpsAppPipelineRun) TableName() string {
+	return "ops_app_pipeline_run"
+}
+
+type OpsAppPipelineRunStage struct {
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	RunID      uint       `json:"runId" gorm:"index;not null"`
+	StageID    string     `json:"stageId" gorm:"size:64;index"`
+	StageName  string     `json:"stageName" gorm:"size:128;index"`
+	StageType  string     `json:"stageType" gorm:"size:64;index"`
+	Status     string     `json:"status" gorm:"size:32;not null;index"`
+	Summary    string     `json:"summary" gorm:"type:text"`
+	Log        string     `json:"log" gorm:"type:longtext"`
+	StartedAt  *time.Time `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
+	DurationMs int64      `json:"durationMs" gorm:"default:0"`
+	CreatedAt  time.Time  `json:"createTime"`
+}
+
+func (OpsAppPipelineRunStage) TableName() string {
+	return "ops_app_pipeline_run_stage"
+}
+
 type NotifyTemplate struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"size:128;not null;index"`

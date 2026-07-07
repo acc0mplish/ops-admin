@@ -39,6 +39,7 @@ import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
 import AppProjectList from '../views/applications/AppProjectList.vue'
 import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
 import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
+import AppPipelineCenter from '../views/applications/AppPipelineCenter.vue'
 import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
@@ -317,6 +318,11 @@ const routes = [
         path: '/applications/build-history',
         component: AppBuildHistory,
         meta: { title: '构建历史', app: 'applications', summary: '查看构建记录、阶段结果和完整构建日志。' }
+      },
+      {
+        path: '/applications/pipelines',
+        component: AppPipelineCenter,
+        meta: { title: 'CI/CD 流水线', app: 'applications', summary: '从模板创建流水线，编排代码拉取、构建、镜像、发布和通知阶段。' }
       },
 
       { path: '/notify', redirect: '/notify/rules' },

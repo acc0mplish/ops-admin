@@ -177,3 +177,135 @@ func (ctl *Controller) GetOpsAppReleaseInfo(c *gin.Context) {
 	}
 	httpx.Success(c, data)
 }
+
+func (ctl *Controller) GetOpsAppPipelineTemplateList(c *gin.Context) {
+	data, err := ctl.service.ListOpsAppPipelineTemplates(c.Query("category"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetOpsAppPipelineList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListOpsAppPipelines(
+		pageNum,
+		pageSize,
+		uint(mustAtoi(c.Query("appId"))),
+		c.Query("keyword"),
+		c.Query("env"),
+		c.Query("status"),
+		c.Query("techStack"),
+	)
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetOpsAppPipelineInfo(c *gin.Context) {
+	data, err := ctl.service.GetOpsAppPipeline(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SaveOpsAppPipeline(c *gin.Context) {
+	var payload service.OpsAppPipelinePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid pipeline payload")
+		return
+	}
+	if err := ctl.service.SaveOpsAppPipeline(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateOpsAppPipelineStatus(c *gin.Context) {
+	var payload service.OpsAppPipelineStatusPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid pipeline status payload")
+		return
+	}
+	if err := ctl.service.UpdateOpsAppPipelineStatus(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteOpsAppPipeline(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteOpsAppPipeline(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) CopyOpsAppPipeline(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid copy payload")
+		return
+	}
+	data, err := ctl.service.CopyOpsAppPipeline(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) RunOpsAppPipeline(c *gin.Context) {
+	var payload service.OpsAppPipelineRunPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid pipeline run payload")
+		return
+	}
+	data, err := ctl.service.RunOpsAppPipeline(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetOpsAppPipelineRunList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListOpsAppPipelineRuns(
+		pageNum,
+		pageSize,
+		uint(mustAtoi(c.Query("pipelineId"))),
+		uint(mustAtoi(c.Query("appId"))),
+		c.Query("keyword"),
+		c.Query("status"),
+		c.Query("env"),
+	)
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetOpsAppPipelineRunInfo(c *gin.Context) {
+	data, err := ctl.service.GetOpsAppPipelineRun(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}

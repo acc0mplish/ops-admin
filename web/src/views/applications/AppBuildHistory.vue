@@ -210,6 +210,8 @@ onMounted(async () => {
 .app-header h1 { margin: 0; font-size: 28px; color: #071b3d; }
 .app-header p { margin: 8px 0 0; color: #6b7c9b; }
 .filter-panel { padding: 18px 24px 0; margin-bottom: 16px; }
+:deep(.filter-panel .el-select) { width: 220px; }
+:deep(.filter-panel .el-input) { width: 280px; }
 .history-list { padding: 20px 24px; }
 .history-card { display: grid; grid-template-columns: 18px 1fr; gap: 18px; padding: 18px 0; border-bottom: 1px solid #edf2f9; }
 .timeline-dot { width: 14px; height: 14px; border-radius: 50%; margin-top: 6px; background: #b8c5d9; }
