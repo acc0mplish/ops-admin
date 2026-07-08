@@ -22,6 +22,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AssetHostGroupRelation{},
 		&model.AssetCredential{},
 		&model.AssetCloudAccount{},
+		&model.AssetGateway{},
 		&model.AssetHost{},
 		&model.AssetDatabase{},
 		&model.DatabaseSQLHistory{},

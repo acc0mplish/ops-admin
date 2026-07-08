@@ -3,17 +3,20 @@ package model
 import "time"
 
 type K8sCluster struct {
-	ID          uint       `json:"id" gorm:"primaryKey"`
-	Name        string     `json:"name" gorm:"size:128;not null;uniqueIndex"`
-	Status      string     `json:"status" gorm:"size:32;not null;default:running"`
-	APIServer   string     `json:"apiServer" gorm:"size:255;not null"`
-	Version     string     `json:"version" gorm:"size:64;not null"`
-	NodeCount   int        `json:"nodeCount" gorm:"default:0"`
-	Description string     `json:"description" gorm:"size:255"`
-	KubeConfig  string     `json:"kubeConfig" gorm:"type:text"`
-	LastSyncAt  *time.Time `json:"lastSyncAt"`
-	CreatedAt   time.Time  `json:"createTime"`
-	UpdatedAt   time.Time  `json:"updateTime"`
+	ID             uint         `json:"id" gorm:"primaryKey"`
+	Name           string       `json:"name" gorm:"size:128;not null;uniqueIndex"`
+	Status         string       `json:"status" gorm:"size:32;not null;default:running"`
+	APIServer      string       `json:"apiServer" gorm:"size:255;not null"`
+	Version        string       `json:"version" gorm:"size:64;not null"`
+	NodeCount      int          `json:"nodeCount" gorm:"default:0"`
+	ConnectionMode string       `json:"connectionMode" gorm:"size:32;default:direct;index"`
+	GatewayID      *uint        `json:"gatewayId" gorm:"index"`
+	Gateway        AssetGateway `json:"gateway" gorm:"foreignKey:GatewayID"`
+	Description    string       `json:"description" gorm:"size:255"`
+	KubeConfig     string       `json:"kubeConfig" gorm:"type:text"`
+	LastSyncAt     *time.Time   `json:"lastSyncAt"`
+	CreatedAt      time.Time    `json:"createTime"`
+	UpdatedAt      time.Time    `json:"updateTime"`
 }
 
 func (K8sCluster) TableName() string {
@@ -21,10 +24,12 @@ func (K8sCluster) TableName() string {
 }
 
 type K8sClusterPayload struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	KubeConfig  string `json:"kubeConfig"`
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	KubeConfig     string `json:"kubeConfig"`
+	ConnectionMode string `json:"connectionMode"`
+	GatewayID      uint   `json:"gatewayId"`
 }
 
 type K8sWorkloadActionPayload struct {
@@ -81,17 +86,20 @@ type K8sIstioTrafficPayload struct {
 }
 
 type K8sClusterView struct {
-	ID          uint       `json:"id"`
-	Name        string     `json:"name"`
-	Status      string     `json:"status"`
-	StatusText  string     `json:"statusText"`
-	APIServer   string     `json:"apiServer"`
-	Version     string     `json:"version"`
-	NodeCount   int        `json:"nodeCount"`
-	Description string     `json:"description"`
-	LastSyncAt  *time.Time `json:"lastSyncAt"`
-	CreatedAt   time.Time  `json:"createTime"`
-	UpdatedAt   time.Time  `json:"updateTime"`
+	ID             uint       `json:"id"`
+	Name           string     `json:"name"`
+	Status         string     `json:"status"`
+	StatusText     string     `json:"statusText"`
+	APIServer      string     `json:"apiServer"`
+	Version        string     `json:"version"`
+	NodeCount      int        `json:"nodeCount"`
+	ConnectionMode string     `json:"connectionMode"`
+	GatewayID      *uint      `json:"gatewayId"`
+	GatewayName    string     `json:"gatewayName"`
+	Description    string     `json:"description"`
+	LastSyncAt     *time.Time `json:"lastSyncAt"`
+	CreatedAt      time.Time  `json:"createTime"`
+	UpdatedAt      time.Time  `json:"updateTime"`
 }
 
 type K8sOverview struct {

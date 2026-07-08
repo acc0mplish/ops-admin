@@ -7,6 +7,7 @@ import {
   assetDatabaseInfo,
   deleteAssetDatabase,
   queryAssetDatabaseList,
+  queryAssetGatewayOptions,
   testAssetDatabase,
   updateAssetDatabase
 } from '../../api/asset'
@@ -19,6 +20,7 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const tableData = ref([])
 const total = ref(0)
+const gatewayOptions = ref([])
 
 const query = reactive({
   pageNum: 1,
@@ -36,6 +38,8 @@ const form = reactive({
   port: 3306,
   username: '',
   password: '',
+  connectionMode: 'direct',
+  gatewayId: undefined,
   dbName: '',
   charset: 'utf8mb4',
   status: 1,
@@ -51,6 +55,8 @@ function resetForm() {
     port: 3306,
     username: '',
     password: '',
+    connectionMode: 'direct',
+    gatewayId: undefined,
     dbName: '',
     charset: 'utf8mb4',
     status: 1,
@@ -81,6 +87,10 @@ async function loadData() {
   }
 }
 
+async function loadGateways() {
+  gatewayOptions.value = await queryAssetGatewayOptions()
+}
+
 function openCreate() {
   isEdit.value = false
   resetForm()
@@ -105,6 +115,10 @@ async function handleTest() {
 }
 
 async function submit() {
+  if (form.connectionMode === 'gateway' && !form.gatewayId) {
+    ElMessage.warning('请选择访问网关')
+    return
+  }
   if (isEdit.value) {
     await updateAssetDatabase(form)
     ElMessage.success('数据库资产已更新')
@@ -127,7 +141,10 @@ function openWorkbench(row) {
   router.push({ name: 'DatabaseWorkbench', params: { id: row.id } })
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadGateways()
+  loadData()
+})
 </script>
 
 <template>
@@ -170,6 +187,12 @@ onMounted(loadData)
       <el-table-column prop="dbType" label="类型" width="100" />
       <el-table-column label="连接地址" min-width="220">
         <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
+      </el-table-column>
+      <el-table-column label="访问方式" min-width="150">
+        <template #default="{ row }">
+          <span v-if="row.connectionMode === 'gateway'">网关：{{ row.gateway?.name || '-' }}</span>
+          <span v-else>直连</span>
+        </template>
       </el-table-column>
       <el-table-column prop="dbName" label="默认库" min-width="140" />
       <el-table-column prop="username" label="账号" min-width="120" />
@@ -231,6 +254,21 @@ onMounted(loadData)
           </el-col>
           <el-col :span="12">
             <el-form-item label="字符集"><el-input v-model="form.charset" placeholder="默认 utf8mb4" /></el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="连接方式">
+              <el-radio-group v-model="form.connectionMode">
+                <el-radio-button label="direct">直连</el-radio-button>
+                <el-radio-button label="gateway">通过网关</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.connectionMode === 'gateway'" :span="12">
+            <el-form-item label="访问网关" required>
+              <el-select v-model="form.gatewayId" filterable placeholder="请选择网关" style="width: 100%">
+                <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="备注"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>

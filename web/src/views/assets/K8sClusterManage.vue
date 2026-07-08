@@ -9,6 +9,7 @@ import {
   queryK8sClusterList,
   updateK8sCluster
 } from '../../api/k8s'
+import { queryAssetGatewayOptions } from '../../api/asset'
 import { t } from '../../utils/i18n'
 
 const loading = ref(false)
@@ -16,12 +17,15 @@ const submitting = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const clusterList = ref([])
+const gatewayOptions = ref([])
 
 const form = reactive({
   id: undefined,
   name: '',
   description: '',
-  kubeConfig: ''
+  kubeConfig: '',
+  connectionMode: 'direct',
+  gatewayId: undefined
 })
 
 const dialogTitle = computed(() => (isEdit.value ? t('k8sEditCluster') : t('k8sCreateCluster')))
@@ -40,7 +44,9 @@ function resetForm() {
     id: undefined,
     name: '',
     description: '',
-    kubeConfig: ''
+    kubeConfig: '',
+    connectionMode: 'direct',
+    gatewayId: undefined
   })
 }
 
@@ -51,6 +57,10 @@ async function loadClusters() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadGateways() {
+  gatewayOptions.value = await queryAssetGatewayOptions()
 }
 
 function openCreate() {
@@ -66,7 +76,9 @@ async function openEdit(row) {
     id: data.id,
     name: data.name,
     description: data.description || '',
-    kubeConfig: data.kubeConfig || ''
+    kubeConfig: data.kubeConfig || '',
+    connectionMode: data.connectionMode || 'direct',
+    gatewayId: data.gatewayId || undefined
   })
   dialogVisible.value = true
 }
@@ -78,6 +90,10 @@ async function submit() {
   }
   if (!form.kubeConfig.trim()) {
     ElMessage.warning(t('k8sPleaseInputKubeconfig'))
+    return
+  }
+  if (form.connectionMode === 'gateway' && !form.gatewayId) {
+    ElMessage.warning('请选择访问网关')
     return
   }
 
@@ -118,6 +134,7 @@ function tagType(status) {
 }
 
 onMounted(async () => {
+  await loadGateways()
   await loadClusters()
 })
 </script>
@@ -146,6 +163,12 @@ onMounted(async () => {
         <el-table-column prop="apiServer" :label="t('k8sApiServer')" min-width="260" />
         <el-table-column prop="version" :label="t('k8sVersion')" width="140" />
         <el-table-column prop="nodeCount" :label="t('k8sNodeCount')" width="100" />
+        <el-table-column label="访问方式" min-width="150">
+          <template #default="{ row }">
+            <span v-if="row.connectionMode === 'gateway'">网关：{{ row.gatewayName || row.gatewayId || '-' }}</span>
+            <span v-else>直连</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" :label="t('k8sDescription')" min-width="180" show-overflow-tooltip />
         <el-table-column :label="t('k8sOperations')" width="160" fixed="right">
           <template #default="{ row }">
@@ -173,6 +196,23 @@ onMounted(async () => {
             :placeholder="t('k8sClusterDescriptionPlaceholder')"
           />
         </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="连接方式">
+              <el-radio-group v-model="form.connectionMode">
+                <el-radio-button label="direct">直连</el-radio-button>
+                <el-radio-button label="gateway">通过网关</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.connectionMode === 'gateway'" :span="12">
+            <el-form-item label="访问网关" required>
+              <el-select v-model="form.gatewayId" filterable placeholder="请选择网关" style="width: 100%">
+                <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item :label="t('k8sKubeConfig')" required>
           <el-input
             v-model="form.kubeConfig"

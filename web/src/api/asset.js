@@ -38,6 +38,15 @@ export const addAssetCloudAccount = (data) => http.post('/api/v1/asset/cloudAcco
 export const updateAssetCloudAccount = (data) => http.put('/api/v1/asset/cloudAccount/update', data)
 export const deleteAssetCloudAccount = (id) => http.delete('/api/v1/asset/cloudAccount/delete', { data: { id } })
 
+export const queryAssetGatewayList = (params) => http.get('/api/v1/asset/gateway/list', { params })
+export const queryAssetGatewayOptions = () => http.get('/api/v1/asset/gateway/options')
+export const assetGatewayInfo = (id) => http.get('/api/v1/asset/gateway/info', { params: { id } })
+export const addAssetGateway = (data) => http.post('/api/v1/asset/gateway/add', data)
+export const updateAssetGateway = (data) => http.put('/api/v1/asset/gateway/update', data)
+export const deleteAssetGateway = (id) => http.delete('/api/v1/asset/gateway/delete', { data: { id } })
+export const updateAssetGatewayStatus = (data) => http.put('/api/v1/asset/gateway/status', data)
+export const testAssetGateway = (id) => http.post('/api/v1/asset/gateway/test', { id })
+
 export const queryAssetDatabaseList = (params) => http.get('/api/v1/asset/database/list', { params })
 export const assetDatabaseInfo = (id) => http.get('/api/v1/asset/database/info', { params: { id } })
 export const addAssetDatabase = (data) => http.post('/api/v1/asset/database/add', data)

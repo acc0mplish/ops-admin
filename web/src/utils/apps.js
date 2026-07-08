@@ -73,6 +73,13 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '网关管理',
+        titleKey: 'gatewayManagement',
+        path: '/assets/gateways',
+        icon: 'Switch',
+        children: []
+      },
+      {
         title: 'K8s 管理',
         titleKey: 'k8sManagement',
         path: '/assets/k8s',

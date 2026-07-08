@@ -135,7 +135,7 @@ function defaultStage(type = 'command') {
     command: '构建命令',
     test: '单元测试',
     dockerBuild: 'Docker 镜像构建',
-    dockerPush: '镜像推送',
+    dockerPush: '上传镜像仓库',
     k8sDeploy: 'K8s 发布',
     manual: '人工确认',
     notify: '消息通知'
@@ -413,7 +413,7 @@ function stageTypeText(type) {
     test: '测试',
     build: '构建',
     dockerBuild: '镜像构建',
-    dockerPush: '镜像推送',
+    dockerPush: '上传镜像仓库',
     k8sDeploy: 'K8s 发布',
     manual: '人工确认',
     notify: '消息通知'
@@ -674,6 +674,7 @@ onBeforeUnmount(stopRunRefresh)
           <el-button size="small" @click="addStage('checkout')">代码拉取</el-button>
           <el-button size="small" @click="addStage('command')">命令</el-button>
           <el-button size="small" @click="addStage('dockerBuild')">镜像构建</el-button>
+          <el-button size="small" @click="addStage('dockerPush')">上传镜像仓库</el-button>
           <el-button size="small" @click="addStage('k8sDeploy')">K8s 发布</el-button>
           <el-button size="small" @click="addStage('manual')">人工确认</el-button>
           <el-button size="small" @click="addStage('notify')">消息通知</el-button>
@@ -691,7 +692,7 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="测试" value="test" />
               <el-option label="构建" value="build" />
               <el-option label="镜像构建" value="dockerBuild" />
-              <el-option label="镜像推送" value="dockerPush" />
+              <el-option label="上传镜像仓库" value="dockerPush" />
               <el-option label="K8s 发布" value="k8sDeploy" />
               <el-option label="人工确认" value="manual" />
               <el-option label="消息通知" value="notify" />
@@ -716,7 +717,7 @@ onBeforeUnmount(stopRunRefresh)
             <el-input v-model="stage.config.context" placeholder="构建上下文，默认 ." />
           </div>
           <div v-else-if="stage.type === 'dockerPush'" class="stage-config-grid">
-            <el-input v-model="stage.config.repository" placeholder="镜像名，例如 registry.example.com/app/{{appCode}}，Tag 默认使用执行参数" />
+            <el-input v-model="stage.config.repository" placeholder="镜像仓库地址，例如 registry.example.com/app/{{appCode}}，Tag 默认使用执行参数" />
           </div>
           <div v-else-if="stage.type === 'k8sDeploy'" class="stage-config-grid">
             <el-select v-model="stage.config.clusterId" filterable placeholder="选择 K8s 集群">

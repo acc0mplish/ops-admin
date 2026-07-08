@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -156,6 +157,8 @@ type AssetHostPayload struct {
 	GroupID        uint   `json:"groupId"`
 	GroupIDs       []uint `json:"groupIds"`
 	CredentialID   uint   `json:"credentialId"`
+	ConnectionMode string `json:"connectionMode"`
+	GatewayID      uint   `json:"gatewayId"`
 	CloudAccountID uint   `json:"cloudAccountId"`
 	PrivateIP      string `json:"privateIp"`
 	PublicIP       string `json:"publicIp"`
@@ -229,17 +232,19 @@ type AssetCloudAccountPayload struct {
 }
 
 type AssetDatabasePayload struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	DBType      string `json:"dbType"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	DBName      string `json:"dbName"`
-	Charset     string `json:"charset"`
-	Status      int    `json:"status"`
-	Description string `json:"description"`
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	DBType         string `json:"dbType"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	ConnectionMode string `json:"connectionMode"`
+	GatewayID      uint   `json:"gatewayId"`
+	DBName         string `json:"dbName"`
+	Charset        string `json:"charset"`
+	Status         int    `json:"status"`
+	Description    string `json:"description"`
 }
 
 type AssetHostGroupNode struct {
@@ -869,7 +874,7 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 	if pageSize < 1 {
 		pageSize = 10
 	}
-	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("HostGroups").Preload("Credential").Preload("CloudAccount")
+	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("HostGroups").Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").Preload("CloudAccount")
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where("host_name like ? or alias like ? or private_ip like ? or public_ip like ? or ssh_ip like ?", like, like, like, like, like)
@@ -895,7 +900,7 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 
 func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
 	var item model.AssetHost
-	if err := s.db.Preload("Group").Preload("HostGroups").Preload("Credential").Preload("CloudAccount").First(&item, id).Error; err != nil {
+	if err := s.db.Preload("Group").Preload("HostGroups").Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").Preload("CloudAccount").First(&item, id).Error; err != nil {
 		return &item, err
 	}
 	ensureHostGroupFallback(&item)
@@ -904,6 +909,9 @@ func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
 
 func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 	host := assetHostFromPayload(payload)
+	if err := validateGatewaySelection(host.ConnectionMode, host.GatewayID); err != nil {
+		return err
+	}
 	if host.SSHPort == 0 {
 		host.SSHPort = 22
 	}
@@ -920,6 +928,9 @@ func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 
 func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 	updates := assetHostUpdates(payload)
+	if err := validateGatewaySelection(normalizeConnectionMode(payload.ConnectionMode), optionalGatewayID(payload.ConnectionMode, payload.GatewayID)); err != nil {
+		return err
+	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.AssetHost{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
 			return err
@@ -930,7 +941,7 @@ func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 
 func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	var host model.AssetHost
-	if err := s.db.Preload("Credential").First(&host, id).Error; err != nil {
+	if err := s.db.Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, id).Error; err != nil {
 		return nil, err
 	}
 
@@ -942,12 +953,20 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	}
 
 	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
-	if conn, err := net.DialTimeout("tcp", address, 3*time.Second); err == nil {
+	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address); err == nil {
+			_ = conn.Close()
+			cleanup()
+			updates["alive_status"] = 1
+		}
+		cancel()
+	} else if conn, err := net.DialTimeout("tcp", address, 3*time.Second); err == nil {
 		_ = conn.Close()
 		updates["alive_status"] = 1
 	}
 
-	client, err := newSSHClient(host)
+	client, err := s.newSSHClient(host)
 	if err != nil {
 		_ = s.db.Model(&host).Updates(updates).Error
 		return s.GetAssetHost(id)
@@ -1160,7 +1179,7 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 
 func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSession, error) {
 	var host model.AssetHost
-	if err := s.db.Preload("Credential").First(&host, id).Error; err != nil {
+	if err := s.db.Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, id).Error; err != nil {
 		return nil, err
 	}
 	if rows <= 0 {
@@ -1170,7 +1189,7 @@ func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSess
 		cols = 120
 	}
 
-	client, err := newSSHClient(host)
+	client, err := s.newSSHClient(host)
 	if err != nil {
 		return nil, err
 	}
@@ -2042,6 +2061,8 @@ func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
 		Alias:          Trimmed(payload.Alias),
 		GroupID:        firstGroupID(groupIDs),
 		CredentialID:   payload.CredentialID,
+		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
+		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		CloudAccountID: optionalUint(payload.CloudAccountID),
 		PrivateIP:      Trimmed(payload.PrivateIP),
 		PublicIP:       Trimmed(payload.PublicIP),
@@ -2081,6 +2102,8 @@ func assetHostUpdates(payload AssetHostPayload) map[string]any {
 		"alias":            host.Alias,
 		"group_id":         host.GroupID,
 		"credential_id":    host.CredentialID,
+		"connection_mode":  host.ConnectionMode,
+		"gateway_id":       host.GatewayID,
 		"cloud_account_id": host.CloudAccountID,
 		"private_ip":       host.PrivateIP,
 		"public_ip":        host.PublicIP,
@@ -2181,7 +2204,7 @@ func maskedSecret(value string) string {
 	return "******"
 }
 
-func newSSHClient(host model.AssetHost) (*ssh.Client, error) {
+func (s *Service) newSSHClient(host model.AssetHost) (*ssh.Client, error) {
 	if host.SSHIP == "" {
 		return nil, errors.New("主机未配置 SSH 地址")
 	}
@@ -2198,7 +2221,27 @@ func newSSHClient(host model.AssetHost) (*ssh.Client, error) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         5 * time.Second,
 	}
-	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort), config)
+	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
+	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		clientConn, chans, reqs, err := ssh.NewClientConn(conn, address, config)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		client := ssh.NewClient(clientConn, chans, reqs)
+		go func() {
+			_ = clientConn.Wait()
+			cleanup()
+		}()
+		return client, nil
+	}
+	return ssh.Dial("tcp", address, config)
 }
 
 func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, error) {

@@ -418,7 +418,7 @@ func (s *Service) resolveOpsTargetHosts(hostIDs []uint, groupIDs []uint) ([]mode
 
 	if len(hostIDs) > 0 {
 		var hosts []model.AssetHost
-		if err := s.db.Preload("Group").Preload("Credential").Where("id IN ?", hostIDs).Find(&hosts).Error; err != nil {
+		if err := s.db.Preload("Group").Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").Where("id IN ?", hostIDs).Find(&hosts).Error; err != nil {
 			return nil, err
 		}
 		for _, host := range hosts {
@@ -433,7 +433,7 @@ func (s *Service) resolveOpsTargetHosts(hostIDs []uint, groupIDs []uint) ([]mode
 		}
 		if len(relationIDs) > 0 {
 			var hosts []model.AssetHost
-			if err := s.db.Preload("Group").Preload("Credential").Where("id IN ?", relationIDs).Find(&hosts).Error; err != nil {
+			if err := s.db.Preload("Group").Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").Where("id IN ?", relationIDs).Find(&hosts).Error; err != nil {
 				return nil, err
 			}
 			for _, host := range hosts {
@@ -610,7 +610,7 @@ func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeou
 		SSHIP:     host.SSHIP,
 		Status:    "failed",
 	}
-	client, err := newSSHClient(host)
+	client, err := s.newSSHClient(host)
 	if err != nil {
 		result.ErrorText = err.Error()
 		result.DurationMs = time.Since(started).Milliseconds()
@@ -652,7 +652,7 @@ func (s *Service) dispatchFileToHost(host model.AssetHost, fileName, targetPath 
 		SSHIP:     host.SSHIP,
 		Status:    "failed",
 	}
-	client, err := newSSHClient(host)
+	client, err := s.newSSHClient(host)
 	if err != nil {
 		result.ErrorText = err.Error()
 		result.DurationMs = time.Since(started).Milliseconds()
@@ -689,10 +689,10 @@ func (s *Service) dispatchFileToHost(host model.AssetHost, fileName, targetPath 
 
 func (s *Service) readRemoteFile(hostID uint, sourcePath string) (*model.AssetHost, []byte, error) {
 	var host model.AssetHost
-	if err := s.db.Preload("Credential").First(&host, hostID).Error; err != nil {
+	if err := s.db.Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, hostID).Error; err != nil {
 		return nil, nil, err
 	}
-	client, err := newSSHClient(host)
+	client, err := s.newSSHClient(host)
 	if err != nil {
 		return nil, nil, err
 	}

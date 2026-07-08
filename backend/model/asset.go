@@ -62,6 +62,28 @@ func (AssetCloudAccount) TableName() string {
 	return "asset_cloud_account"
 }
 
+type AssetGateway struct {
+	ID            uint            `json:"id" gorm:"primaryKey"`
+	Name          string          `json:"name" gorm:"size:128;not null;index"`
+	Code          string          `json:"code" gorm:"size:128;index"`
+	GatewayType   string          `json:"gatewayType" gorm:"size:32;not null;default:ssh;index"`
+	Host          string          `json:"host" gorm:"size:128;not null;index"`
+	Port          int             `json:"port" gorm:"default:22"`
+	CredentialID  uint            `json:"credentialId" gorm:"index"`
+	Credential    AssetCredential `json:"credential" gorm:"foreignKey:CredentialID"`
+	NetworkZone   string          `json:"networkZone" gorm:"size:128;index"`
+	Status        int             `json:"status" gorm:"default:1;not null"`
+	ConnectStatus int             `json:"connectStatus" gorm:"default:0;not null"`
+	Description   string          `json:"description" gorm:"size:255"`
+	LastCheckTime *time.Time      `json:"lastCheckTime"`
+	CreatedAt     time.Time       `json:"createTime"`
+	UpdatedAt     time.Time       `json:"updateTime"`
+}
+
+func (AssetGateway) TableName() string {
+	return "asset_gateway"
+}
+
 type AssetHost struct {
 	ID             uint              `json:"id" gorm:"primaryKey"`
 	HostName       string            `json:"hostName" gorm:"size:128;not null;index"`
@@ -71,6 +93,9 @@ type AssetHost struct {
 	HostGroups     []AssetHostGroup  `json:"hostGroups" gorm:"many2many:asset_host_group_rel;joinForeignKey:HostID;joinReferences:GroupID"`
 	CredentialID   uint              `json:"credentialId" gorm:"index"`
 	Credential     AssetCredential   `json:"credential" gorm:"foreignKey:CredentialID"`
+	ConnectionMode string            `json:"connectionMode" gorm:"size:32;default:direct;index"`
+	GatewayID      *uint             `json:"gatewayId" gorm:"index"`
+	Gateway        AssetGateway      `json:"gateway" gorm:"foreignKey:GatewayID"`
 	CloudAccountID *uint             `json:"cloudAccountId" gorm:"index"`
 	CloudAccount   AssetCloudAccount `json:"cloudAccount" gorm:"foreignKey:CloudAccountID"`
 	PrivateIP      string            `json:"privateIp" gorm:"size:64;index"`
@@ -101,22 +126,25 @@ func (AssetHost) TableName() string {
 }
 
 type AssetDatabase struct {
-	ID            uint       `json:"id" gorm:"primaryKey"`
-	Name          string     `json:"name" gorm:"size:128;not null;index"`
-	DBType        string     `json:"dbType" gorm:"size:32;not null;index"`
-	Host          string     `json:"host" gorm:"size:128;not null;index"`
-	Port          int        `json:"port" gorm:"default:3306"`
-	Username      string     `json:"username" gorm:"size:128;not null"`
-	Password      string     `json:"password,omitempty" gorm:"size:512"`
-	DBName        string     `json:"dbName" gorm:"size:128"`
-	Charset       string     `json:"charset" gorm:"size:64"`
-	Version       string     `json:"version" gorm:"size:128"`
-	Status        int        `json:"status" gorm:"default:1;not null"`
-	ConnectStatus int        `json:"connectStatus" gorm:"default:0;not null"`
-	Description   string     `json:"description" gorm:"size:255"`
-	LastCheckTime *time.Time `json:"lastCheckTime"`
-	CreatedAt     time.Time  `json:"createTime"`
-	UpdatedAt     time.Time  `json:"updateTime"`
+	ID             uint         `json:"id" gorm:"primaryKey"`
+	Name           string       `json:"name" gorm:"size:128;not null;index"`
+	DBType         string       `json:"dbType" gorm:"size:32;not null;index"`
+	Host           string       `json:"host" gorm:"size:128;not null;index"`
+	Port           int          `json:"port" gorm:"default:3306"`
+	Username       string       `json:"username" gorm:"size:128;not null"`
+	Password       string       `json:"password,omitempty" gorm:"size:512"`
+	ConnectionMode string       `json:"connectionMode" gorm:"size:32;default:direct;index"`
+	GatewayID      *uint        `json:"gatewayId" gorm:"index"`
+	Gateway        AssetGateway `json:"gateway" gorm:"foreignKey:GatewayID"`
+	DBName         string       `json:"dbName" gorm:"size:128"`
+	Charset        string       `json:"charset" gorm:"size:64"`
+	Version        string       `json:"version" gorm:"size:128"`
+	Status         int          `json:"status" gorm:"default:1;not null"`
+	ConnectStatus  int          `json:"connectStatus" gorm:"default:0;not null"`
+	Description    string       `json:"description" gorm:"size:255"`
+	LastCheckTime  *time.Time   `json:"lastCheckTime"`
+	CreatedAt      time.Time    `json:"createTime"`
+	UpdatedAt      time.Time    `json:"updateTime"`
 }
 
 func (AssetDatabase) TableName() string {

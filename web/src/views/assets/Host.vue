@@ -13,6 +13,7 @@ import {
   importAssetHosts,
   queryAssetCloudAccountOptions,
   queryAssetCredentialOptions,
+  queryAssetGatewayOptions,
   queryAssetHostGroupList,
   queryAssetHostList,
   removeAssetHostsFromGroup,
@@ -33,10 +34,12 @@ const importSubmitting = ref(false)
 const cloudSyncSubmitting = ref(false)
 const batchCredentialSubmitting = ref(false)
 const isEdit = ref(false)
+const isCopy = ref(false)
 const tableData = ref([])
 const selectedRows = ref([])
 const groupOptions = ref([])
 const credentialOptions = ref([])
+const gatewayOptions = ref([])
 const cloudAccountOptions = ref([])
 const total = ref(0)
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined })
@@ -49,6 +52,8 @@ const form = reactive({
   sshIp: '',
   sshPort: 22,
   credentialId: undefined,
+  connectionMode: 'direct',
+  gatewayId: undefined,
   status: 1,
   description: ''
 })
@@ -86,6 +91,8 @@ function resetForm() {
     sshIp: '',
     sshPort: 22,
     credentialId: undefined,
+    connectionMode: 'direct',
+    gatewayId: undefined,
     status: 1,
     description: ''
   })
@@ -117,14 +124,16 @@ function resetBatchCredentialForm() {
 }
 
 async function loadOptions() {
-  const [groups, credentials, cloudAccounts] = await Promise.all([
+  const [groups, credentials, cloudAccounts, gateways] = await Promise.all([
     queryAssetHostGroupList(),
     queryAssetCredentialOptions(),
-    queryAssetCloudAccountOptions()
+    queryAssetCloudAccountOptions(),
+    queryAssetGatewayOptions()
   ])
   groupOptions.value = groups.list || []
   credentialOptions.value = credentials || []
   cloudAccountOptions.value = cloudAccounts || []
+  gatewayOptions.value = gateways || []
 }
 
 async function loadData() {
@@ -162,6 +171,7 @@ function applyRouteGroupFilter() {
 
 function openCreate() {
   isEdit.value = false
+  isCopy.value = false
   resetForm()
   dialogVisible.value = true
 }
@@ -187,6 +197,7 @@ function openBatchCredentialDialog() {
 
 async function openEdit(row) {
   isEdit.value = true
+  isCopy.value = false
   const data = await assetHostInfo(row.id)
   resetForm()
   Object.assign(form, {
@@ -198,6 +209,30 @@ async function openEdit(row) {
     sshIp: data.sshIp,
     sshPort: data.sshPort || 22,
     credentialId: data.credentialId,
+    connectionMode: data.connectionMode || 'direct',
+    gatewayId: data.gatewayId || undefined,
+    status: data.status || 1,
+    description: data.description
+  })
+  dialogVisible.value = true
+}
+
+async function openCopy(row) {
+  isEdit.value = false
+  isCopy.value = true
+  const data = await assetHostInfo(row.id)
+  resetForm()
+  Object.assign(form, {
+    id: undefined,
+    hostName: `${data.hostName || row.hostName || ''}-副本`,
+    groupId: data.groupId,
+    groupIds: (data.hostGroups || []).map((item) => item.id).length ? (data.hostGroups || []).map((item) => item.id) : (data.groupId ? [data.groupId] : []),
+    sshUser: data.sshUser,
+    sshIp: data.sshIp,
+    sshPort: data.sshPort || 22,
+    credentialId: data.credentialId,
+    connectionMode: data.connectionMode || 'direct',
+    gatewayId: data.gatewayId || undefined,
     status: data.status || 1,
     description: data.description
   })
@@ -209,6 +244,10 @@ async function submit() {
     ElMessage.warning('请填写主机名称、所属主机组、SSH 连接和认证凭据')
     return
   }
+  if (form.connectionMode === 'gateway' && !form.gatewayId) {
+    ElMessage.warning('请选择访问网关')
+    return
+  }
   form.groupId = form.groupIds[0]
 
   if (isEdit.value) {
@@ -216,8 +255,9 @@ async function submit() {
     ElMessage.success('主机已更新')
   } else {
     await addAssetHost(form)
-    ElMessage.success('主机已创建，可以点击同步采集公网地址和配置信息')
+    ElMessage.success(isCopy.value ? '主机已复制，请按需同步采集公网地址和配置信息' : '主机已创建，可以点击同步采集公网地址和配置信息')
   }
+  isCopy.value = false
   dialogVisible.value = false
   await loadData()
 }
@@ -544,15 +584,22 @@ watch(
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="访问方式" min-width="140">
+        <template #default="{ row }">
+          <span v-if="row.connectionMode === 'gateway'">网关：{{ row.gateway?.name || '-' }}</span>
+          <span v-else>直连</span>
+        </template>
+      </el-table-column>
       <el-table-column label="主机类型" width="100">
         <template #default="{ row }">{{ row.provider || '自建' }}</template>
       </el-table-column>
       <el-table-column label="所属分组" min-width="120">
         <template #default="{ row }">{{ groupName(row) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="190" fixed="right">
+      <el-table-column label="操作" width="230" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="primary" @click="openCopy(row)">复制</el-button>
           <el-button link type="success" :loading="syncingId === row.id" @click="handleSync(row)">同步</el-button>
           <el-button link type="danger" @click="handleDelete(row)">{{ isGroupView ? '移出组' : '删除' }}</el-button>
         </template>
@@ -570,7 +617,7 @@ watch(
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑主机' : '新增主机'" width="640px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑主机' : (isCopy ? '复制主机' : '新增主机')" width="640px">
       <el-form label-width="96px">
         <el-row :gutter="18">
           <el-col :span="12">
@@ -604,6 +651,21 @@ watch(
                 </el-select>
                 <el-button color="#f59e0b" @click="goCredential">+ 创建凭据</el-button>
               </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="连接方式">
+              <el-radio-group v-model="form.connectionMode">
+                <el-radio-button label="direct">直连</el-radio-button>
+                <el-radio-button label="gateway">通过网关</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="form.connectionMode === 'gateway'" :span="12">
+            <el-form-item label="访问网关" required>
+              <el-select v-model="form.gatewayId" filterable placeholder="请选择网关" style="width: 100%">
+                <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">

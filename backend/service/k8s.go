@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -605,7 +606,7 @@ type k8sManifestIdentity struct {
 
 func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
 	var list []model.K8sCluster
-	if err := s.db.Order("id asc").Find(&list).Error; err != nil {
+	if err := s.db.Preload("Gateway").Order("id asc").Find(&list).Error; err != nil {
 		return nil, err
 	}
 
@@ -626,9 +627,11 @@ func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 
 func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
 	cluster := model.K8sCluster{
-		Name:        strings.TrimSpace(payload.Name),
-		Description: strings.TrimSpace(payload.Description),
-		KubeConfig:  strings.TrimSpace(payload.KubeConfig),
+		Name:           strings.TrimSpace(payload.Name),
+		Description:    strings.TrimSpace(payload.Description),
+		KubeConfig:     strings.TrimSpace(payload.KubeConfig),
+		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
+		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 	}
 	if err := validateK8sClusterPayload(cluster); err != nil {
 		return cluster, err
@@ -639,10 +642,10 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		return cluster, err
 	}
 	if count > 0 {
-		return cluster, errors.New("k8s cluster name already exists")
+		return cluster, errors.New("K8s 集群名称已存在")
 	}
 
-	probe, err := probeK8sCluster(cluster.KubeConfig)
+	probe, err := s.probeK8sCluster(cluster)
 	if err != nil {
 		return cluster, err
 	}
@@ -666,6 +669,8 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Name = strings.TrimSpace(payload.Name)
 	cluster.Description = strings.TrimSpace(payload.Description)
 	cluster.KubeConfig = strings.TrimSpace(payload.KubeConfig)
+	cluster.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
+	cluster.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
 
 	if err := validateK8sClusterPayload(cluster); err != nil {
 		return cluster, err
@@ -676,10 +681,10 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		return cluster, err
 	}
 	if count > 0 {
-		return cluster, errors.New("k8s cluster name already exists")
+		return cluster, errors.New("K8s 集群名称已存在")
 	}
 
-	probe, err := probeK8sCluster(cluster.KubeConfig)
+	probe, err := s.probeK8sCluster(cluster)
 	if err != nil {
 		return cluster, err
 	}
@@ -1936,10 +1941,11 @@ func (s *Service) k8sClientForCluster(clusterID uint) (model.K8sCluster, kubeClu
 	if err != nil {
 		return cluster, kubeClusterRuntime{}, nil, errors.New(k8sClusterConnectError)
 	}
-	client, err := newK8sHTTPClient(runtime)
+	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
 	if err != nil {
 		return cluster, kubeClusterRuntime{}, nil, errors.New(k8sClusterConnectError)
 	}
+	_ = cleanup
 	return cluster, runtime, client, nil
 }
 
@@ -3108,40 +3114,47 @@ func calculateK8sAggregateMetrics(nodes []kubeNode, pods []kubePod) k8sAggregate
 
 func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 	return model.K8sClusterView{
-		ID:          cluster.ID,
-		Name:        cluster.Name,
-		Status:      cluster.Status,
-		StatusText:  k8sStatusText(cluster.Status),
-		APIServer:   cluster.APIServer,
-		Version:     cluster.Version,
-		NodeCount:   cluster.NodeCount,
-		Description: cluster.Description,
-		LastSyncAt:  cluster.LastSyncAt,
-		CreatedAt:   cluster.CreatedAt,
-		UpdatedAt:   cluster.UpdatedAt,
+		ID:             cluster.ID,
+		Name:           cluster.Name,
+		Status:         cluster.Status,
+		StatusText:     k8sStatusText(cluster.Status),
+		APIServer:      cluster.APIServer,
+		Version:        cluster.Version,
+		NodeCount:      cluster.NodeCount,
+		ConnectionMode: normalizeConnectionMode(cluster.ConnectionMode),
+		GatewayID:      cluster.GatewayID,
+		GatewayName:    cluster.Gateway.Name,
+		Description:    cluster.Description,
+		LastSyncAt:     cluster.LastSyncAt,
+		CreatedAt:      cluster.CreatedAt,
+		UpdatedAt:      cluster.UpdatedAt,
 	}
 }
 
 func validateK8sClusterPayload(cluster model.K8sCluster) error {
 	if cluster.Name == "" {
-		return errors.New("cluster name is required")
+		return errors.New("集群名称不能为空")
 	}
 	if cluster.KubeConfig == "" {
-		return errors.New("kubeconfig is required")
+		return errors.New("kubeconfig 不能为空")
+	}
+	if err := validateGatewaySelection(cluster.ConnectionMode, cluster.GatewayID); err != nil {
+		return err
 	}
 	return nil
 }
 
-func probeK8sCluster(content string) (k8sClusterProbe, error) {
-	runtime, err := parseKubeConfig(content)
+func (s *Service) probeK8sCluster(cluster model.K8sCluster) (k8sClusterProbe, error) {
+	runtime, err := parseKubeConfig(cluster.KubeConfig)
 	if err != nil {
 		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
 	}
 
-	client, err := newK8sHTTPClient(runtime)
+	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
 	if err != nil {
 		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
 	}
+	defer cleanup()
 
 	version, err := fetchK8sVersion(client, runtime)
 	if err != nil {
@@ -3216,6 +3229,11 @@ func parseKubeConfig(content string) (kubeClusterRuntime, error) {
 }
 
 func newK8sHTTPClient(runtime kubeClusterRuntime) (*http.Client, error) {
+	client, err := newK8sHTTPClientWithDial(runtime, nil)
+	return client, err
+}
+
+func newK8sHTTPClientWithDial(runtime kubeClusterRuntime, dialContext func(context.Context, string, string) (net.Conn, error)) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: runtime.InsecureSkipTLSVerify,
@@ -3249,12 +3267,33 @@ func newK8sHTTPClient(runtime kubeClusterRuntime) (*http.Client, error) {
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	return &http.Client{
-		Timeout: 8 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}, nil
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+	if dialContext != nil {
+		transport.DialContext = dialContext
+	}
+	return &http.Client{Timeout: 8 * time.Second, Transport: transport}, nil
+}
+
+func (s *Service) newK8sHTTPClientForCluster(cluster model.K8sCluster, runtime kubeClusterRuntime) (*http.Client, func(), error) {
+	if normalizeConnectionMode(cluster.ConnectionMode) != "gateway" || cluster.GatewayID == nil || *cluster.GatewayID == 0 {
+		client, err := newK8sHTTPClient(runtime)
+		return client, func() {}, err
+	}
+	gatewayID := *cluster.GatewayID
+	dialContext := func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, cleanup, err := s.dialThroughGateway(ctx, gatewayID, network, address)
+		if err != nil {
+			return nil, err
+		}
+		return cleanupConn{Conn: conn, cleanup: cleanup}, nil
+	}
+	client, err := newK8sHTTPClientWithDial(runtime, dialContext)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	return client, func() {}, nil
 }
 
 func fetchK8sVersion(client *http.Client, runtime kubeClusterRuntime) (string, error) {

@@ -19,6 +19,7 @@ import CloudAccount from '../views/assets/CloudAccount.vue'
 import AssetOverview from '../views/assets/AssetOverview.vue'
 import Database from '../views/assets/Database.vue'
 import DatabaseWorkbench from '../views/assets/DatabaseWorkbench.vue'
+import Gateway from '../views/assets/Gateway.vue'
 import TerminalLogin from '../views/assets/Terminal.vue'
 import K8s from '../views/assets/K8s.vue'
 import K8sClusterManage from '../views/assets/K8sClusterManage.vue'
@@ -152,23 +153,32 @@ const routes = [
       },
       { path: '/assets/server/databases', redirect: '/assets/databases' },
       { path: '/assets/server/databases/:id/workbench', redirect: (to) => `/assets/databases/${to.params.id}/workbench` },
+      {
+        path: '/assets/gateways',
+        component: Gateway,
+        meta: {
+          title: '网关管理',
+          app: 'assets',
+          summary: '维护 SSH 跳板网关，为内网主机、数据库和 K8s 集群提供访问入口。'
+        }
+      },
       { path: '/assets/k8s', redirect: '/assets/k8s/clusters' },
-      { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: 'Clusters', app: 'assets' } },
-      { path: '/assets/k8s/overview', component: K8s, meta: { title: 'Overview', app: 'assets' } },
-      { path: '/assets/k8s/nodes', component: K8s, meta: { title: 'Nodes', app: 'assets' } },
-      { path: '/assets/k8s/namespaces', component: K8s, meta: { title: 'Namespaces', app: 'assets' } },
-      { path: '/assets/k8s/workloads', component: K8s, meta: { title: 'Workloads', app: 'assets' } },
-      { path: '/assets/k8s/pods', component: K8s, meta: { title: 'Pods', app: 'assets' } },
+      { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: '集群管理', app: 'assets' } },
+      { path: '/assets/k8s/overview', component: K8s, meta: { title: '集群概览', app: 'assets' } },
+      { path: '/assets/k8s/nodes', component: K8s, meta: { title: '节点管理', app: 'assets' } },
+      { path: '/assets/k8s/namespaces', component: K8s, meta: { title: '命名空间', app: 'assets' } },
+      { path: '/assets/k8s/workloads', component: K8s, meta: { title: '工作负载', app: 'assets' } },
+      { path: '/assets/k8s/pods', component: K8s, meta: { title: 'Pod 管理', app: 'assets' } },
       { path: '/assets/k8s/network', redirect: '/assets/k8s/services' },
-      { path: '/assets/k8s/services', component: K8s, meta: { title: 'Services', app: 'assets' } },
+      { path: '/assets/k8s/services', component: K8s, meta: { title: '服务', app: 'assets' } },
       { path: '/assets/k8s/ingresses', component: K8s, meta: { title: 'Ingress', app: 'assets' } },
-      { path: '/assets/k8s/advanced-network', component: K8s, meta: { title: 'Advanced Network', app: 'assets' } },
-      { path: '/assets/k8s/config-storage', component: K8s, meta: { title: 'Config & Storage', app: 'assets' } },
+      { path: '/assets/k8s/advanced-network', component: K8s, meta: { title: '高级网络', app: 'assets' } },
+      { path: '/assets/k8s/config-storage', component: K8s, meta: { title: '配置与存储', app: 'assets' } },
       {
         path: '/assets/k8s/pod-terminal/:clusterId/:namespace/:podName',
         name: 'K8sPodTerminal',
         component: K8sPodTerminal,
-        meta: { title: 'Pod Terminal', app: 'assets' }
+        meta: { title: 'Pod 终端', app: 'assets' }
       },
       { path: '/assets/server/credentials/password', redirect: '/assets/server/credentials' },
       { path: '/assets/server/credentials/key', redirect: '/assets/server/credentials' },

@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"sync"
+
+	"ops-admin/backend/model"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 
@@ -115,10 +119,11 @@ func (s *Service) OpenK8sPodTerminal(clusterID uint, namespace string, podName s
 	if err != nil {
 		return err
 	}
-	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
 		return errors.New(k8sClusterConnectError)
 	}
+	defer cleanup()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return errors.New(k8sClusterConnectError)
@@ -234,15 +239,34 @@ func (s *Service) newK8sClientset(clusterID uint) (*kubernetes.Clientset, error)
 	if err != nil {
 		return nil, err
 	}
-	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
 		return nil, errors.New(k8sClusterConnectError)
 	}
+	defer cleanup()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, errors.New(k8sClusterConnectError)
 	}
 	return clientset, nil
+}
+
+func (s *Service) k8sRESTConfigForCluster(cluster model.K8sCluster) (*rest.Config, func(), error) {
+	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+	if err != nil {
+		return nil, func() {}, err
+	}
+	if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" && cluster.GatewayID != nil && *cluster.GatewayID > 0 {
+		gatewayID := *cluster.GatewayID
+		config.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, cleanup, err := s.dialThroughGateway(ctx, gatewayID, network, address)
+			if err != nil {
+				return nil, err
+			}
+			return cleanupConn{Conn: conn, cleanup: cleanup}, nil
+		}
+	}
+	return config, func() {}, nil
 }
 
 func chooseK8sContainerName(pod *corev1.Pod, container string) string {

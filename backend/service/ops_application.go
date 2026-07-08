@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 
 	"ops-admin/backend/model"
@@ -466,14 +468,14 @@ func builtinOpsAppPipelineTemplates() []map[string]any {
 	}{
 		{
 			ID: 1, Name: "Go 后端通用模板", Category: "Go", TechStack: "go",
-			Description: "Go 编译、镜像推送、工作负载更新",
+			Description: "Go 编译、镜像构建、上传镜像仓库、工作负载更新",
 			Stages: []OpsAppPipelineStageDefinition{
 				{ID: "checkout", Name: "代码拉取", Type: "checkout", TimeoutSeconds: 600, FailurePolicy: "stop"},
 				{ID: "deps", Name: "Go 依赖安装", Type: "command", TimeoutSeconds: 600, FailurePolicy: "stop", Config: map[string]any{"script": "go mod download"}},
 				{ID: "test", Name: "单元测试", Type: "test", TimeoutSeconds: 900, FailurePolicy: "stop", Config: map[string]any{"script": "go test ./..."}},
 				{ID: "build", Name: "Go 编译", Type: "build", TimeoutSeconds: 900, FailurePolicy: "stop", Config: map[string]any{"script": "go build ./..."}},
 				{ID: "docker-build", Name: "Docker 镜像构建", Type: "dockerBuild", TimeoutSeconds: 1200, FailurePolicy: "stop"},
-				{ID: "docker-push", Name: "镜像推送", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
+				{ID: "docker-push", Name: "上传镜像仓库", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
 				{ID: "k8s-deploy", Name: "K8s 工作负载更新", Type: "k8sDeploy", TimeoutSeconds: 900, FailurePolicy: "stop"},
 			},
 		},
@@ -486,7 +488,7 @@ func builtinOpsAppPipelineTemplates() []map[string]any {
 				{ID: "test", Name: "单元测试", Type: "test", TimeoutSeconds: 1200, FailurePolicy: "stop", Config: map[string]any{"script": "mvn test"}},
 				{ID: "package", Name: "Maven 打包", Type: "build", TimeoutSeconds: 1200, FailurePolicy: "stop", Config: map[string]any{"script": "mvn clean package -DskipTests"}},
 				{ID: "docker-build", Name: "Docker 镜像构建", Type: "dockerBuild", TimeoutSeconds: 1200, FailurePolicy: "stop"},
-				{ID: "docker-push", Name: "镜像推送", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
+				{ID: "docker-push", Name: "上传镜像仓库", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
 				{ID: "k8s-deploy", Name: "K8s 发布", Type: "k8sDeploy", TimeoutSeconds: 900, FailurePolicy: "stop"},
 			},
 		},
@@ -498,7 +500,7 @@ func builtinOpsAppPipelineTemplates() []map[string]any {
 				{ID: "install", Name: "npm install", Type: "command", TimeoutSeconds: 900, FailurePolicy: "stop", Config: map[string]any{"script": "npm install"}},
 				{ID: "build", Name: "npm run build", Type: "build", TimeoutSeconds: 900, FailurePolicy: "stop", Config: map[string]any{"script": "npm run build"}},
 				{ID: "docker-build", Name: "Docker 镜像构建", Type: "dockerBuild", TimeoutSeconds: 1200, FailurePolicy: "stop"},
-				{ID: "docker-push", Name: "镜像推送", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
+				{ID: "docker-push", Name: "上传镜像仓库", Type: "dockerPush", TimeoutSeconds: 1200, FailurePolicy: "stop"},
 				{ID: "k8s-deploy", Name: "K8s 滚动发布", Type: "k8sDeploy", TimeoutSeconds: 900, FailurePolicy: "stop"},
 				{ID: "notify", Name: "发布通知", Type: "notify", TimeoutSeconds: 60, FailurePolicy: "ignore"},
 			},
@@ -895,7 +897,7 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 		}
 		image := opsPipelineImageName(stage.Config, execInfo)
 		output, err := runOpsAppCommand(execInfo.Workspace, timeout, "docker", "push", image)
-		return header + sectionLog("Docker Push: "+image, appendOpsAppCommandError(output, err)), err
+		return header + sectionLog("上传镜像仓库: "+image, appendOpsAppCommandError(output, err)), err
 	case "k8sDeploy":
 		clusterID := opsPipelineConfigUint(stage.Config, "clusterId")
 		if clusterID == 0 {
@@ -952,21 +954,79 @@ func (s *Service) opsPipelineKubeconfigFile(clusterID uint) (string, func(), err
 	if strings.TrimSpace(cluster.KubeConfig) == "" {
 		return "", func() {}, errors.New("目标集群 kubeconfig 为空")
 	}
+	content := cluster.KubeConfig
+	tunnelCleanup := func() {}
+	if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" && cluster.GatewayID != nil && *cluster.GatewayID > 0 {
+		rewritten, cleanup, err := s.gatewayKubeconfigForKubectl(cluster)
+		if err != nil {
+			return "", func() {}, err
+		}
+		content = rewritten
+		tunnelCleanup = cleanup
+	}
 	file, err := os.CreateTemp("", fmt.Sprintf("ops-admin-kubeconfig-%d-*.yaml", clusterID))
 	if err != nil {
+		tunnelCleanup()
 		return "", func() {}, err
 	}
 	path := file.Name()
-	if _, err := file.WriteString(cluster.KubeConfig); err != nil {
+	if _, err := file.WriteString(content); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
+		tunnelCleanup()
 		return "", func() {}, err
 	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(path)
+		tunnelCleanup()
 		return "", func() {}, err
 	}
-	return path, func() { _ = os.Remove(path) }, nil
+	return path, func() {
+		_ = os.Remove(path)
+		tunnelCleanup()
+	}, nil
+}
+
+func (s *Service) gatewayKubeconfigForKubectl(cluster model.K8sCluster) (string, func(), error) {
+	var cfg kubeConfig
+	if err := yaml.Unmarshal([]byte(cluster.KubeConfig), &cfg); err != nil {
+		return "", func() {}, err
+	}
+	runtime, err := parseKubeConfig(cluster.KubeConfig)
+	if err != nil {
+		return "", func() {}, err
+	}
+	parsed, err := url.Parse(runtime.Server)
+	if err != nil {
+		return "", func() {}, err
+	}
+	targetAddress := parsed.Host
+	if !strings.Contains(targetAddress, ":") {
+		if parsed.Scheme == "http" {
+			targetAddress += ":80"
+		} else {
+			targetAddress += ":443"
+		}
+	}
+	localAddress, cleanup, err := s.startGatewayTunnel(*cluster.GatewayID, targetAddress)
+	if err != nil {
+		return "", func() {}, err
+	}
+	localScheme := parsed.Scheme
+	if localScheme == "" {
+		localScheme = "https"
+	}
+	for i := range cfg.Clusters {
+		cfg.Clusters[i].Cluster.Server = localScheme + "://" + localAddress
+		cfg.Clusters[i].Cluster.InsecureSkipTLSVerify = true
+		cfg.Clusters[i].Cluster.CertificateAuthorityData = ""
+	}
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return string(data), cleanup, nil
 }
 
 func ensureOpsAppPipelineWorkspace(workspace string) error {
