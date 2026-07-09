@@ -778,7 +778,7 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 	}
 	execTask := model.OpsExecTask{
 		TaskType:       "script",
-		Title:          fmt.Sprintf("瀹氭椂浠诲姟 - %s", task.Name),
+		Title:          fmt.Sprintf("定时任务 - %s", task.Name),
 		ScriptID:       script.ID,
 		ScriptName:     script.Name,
 		Parameters:     task.Parameters,

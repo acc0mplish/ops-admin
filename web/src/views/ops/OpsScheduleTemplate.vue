@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryOpsScriptOptions, queryOpsScheduleTemplateList, addOpsScheduleTemplate, updateOpsScheduleTemplate, deleteOpsScheduleTemplate, opsScheduleTemplateInfo } from '../../api/ops'
+import OpsCronEditor from './components/OpsCronEditor.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -213,9 +214,10 @@ onMounted(async () => {
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑模板' : '新建模板'" width="920px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑模板' : '新建模板'" width="min(1080px, 92vw)" class="schedule-template-dialog">
       <el-form label-width="110px">
         <el-row :gutter="16">
+          <el-col :span="24"><div class="form-section-title">基础信息</div></el-col>
           <el-col :span="12">
             <el-form-item label="模板名称" required>
               <el-input v-model="form.name" placeholder="例如：核心服务 HTTP 健康检查" />
@@ -238,15 +240,17 @@ onMounted(async () => {
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="默认 Cron">
-              <el-input v-model="form.cronExpr" placeholder="例如：0 */5 * * * *" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="描述">
               <el-input v-model="form.description" />
             </el-form-item>
           </el-col>
+          <el-col :span="24"><div class="form-section-title">调度计划</div></el-col>
+          <el-col :span="24">
+            <el-form-item label="默认 Cron" required>
+              <OpsCronEditor v-model="form.cronExpr" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24"><div class="form-section-title">执行配置</div></el-col>
 
           <template v-if="form.taskType === 'script'">
             <el-col :span="12">
@@ -325,4 +329,12 @@ onMounted(async () => {
 .page-desc { margin: 0; color: #7282a0; }
 .toolbar-left { display: flex; gap: 12px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; }
+.form-section-title {
+  margin: 4px 0 16px;
+  padding-left: 10px;
+  border-left: 3px solid #3b73e8;
+  color: #172744;
+  font-size: 15px;
+  font-weight: 700;
+}
 </style>

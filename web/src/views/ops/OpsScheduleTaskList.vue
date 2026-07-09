@@ -16,6 +16,7 @@ import {
   updateOpsScheduleTaskStatus
 } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
+import OpsCronEditor from './components/OpsCronEditor.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -427,7 +428,7 @@ onMounted(async () => {
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑任务' : '新建任务'" width="980px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑任务' : '新建任务'" width="min(1080px, 92vw)">
       <el-form label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
@@ -451,16 +452,16 @@ onMounted(async () => {
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Cron 表达式">
-              <el-input v-model="form.cronExpr" placeholder="例如：0 */5 * * * *" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
             <el-form-item label="状态">
               <el-radio-group v-model="form.status">
                 <el-radio :value="1">启用</el-radio>
                 <el-radio :value="2">禁用</el-radio>
               </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="Cron 表达式" required>
+              <OpsCronEditor v-model="form.cronExpr" />
             </el-form-item>
           </el-col>
 
