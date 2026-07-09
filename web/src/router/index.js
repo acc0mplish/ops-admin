@@ -38,7 +38,6 @@ import OpsJobApprovals from '../views/ops/OpsJobApprovals.vue'
 import OpsJobHistory from '../views/ops/OpsJobHistory.vue'
 import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
 import OpsEnvironment from '../views/ops/OpsEnvironment.vue'
-import OpsChangeCenter from '../views/ops/OpsChangeCenter.vue'
 import AppProjectList from '../views/applications/AppProjectList.vue'
 import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
 import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
@@ -190,7 +189,6 @@ const routes = [
 
       { path: '/ops', redirect: '/ops/quick-exec/command' },
       { path: '/ops/jobs', redirect: '/ops/jobs/list' },
-      { path: '/ops/changes', component: OpsChangeCenter, meta: { title: '变更中心', app: 'ops' } },
       { path: '/ops/environments', component: OpsEnvironment, meta: { title: '环境模型', app: 'ops' } },
       { path: '/ops/overview', redirect: '/ops/quick-exec/command' },
       { path: '/ops/scripts', redirect: '/ops/scripts/library' },

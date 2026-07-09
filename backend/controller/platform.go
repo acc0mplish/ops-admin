@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"strconv"
-
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/service"
 
@@ -42,17 +40,6 @@ func (ctl *Controller) DeleteOpsEnvironment(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, true)
-}
-
-func (ctl *Controller) GetOpsChangeRecordList(c *gin.Context) {
-	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListChangeRecords(pageNum, pageSize, c.Query("keyword"), c.Query("env"), c.Query("changeType"), c.Query("status"))
-	if err != nil {
-		httpx.Failed(c, 500, err.Error())
-		return
-	}
-	httpx.Success(c, data)
 }
 
 func (ctl *Controller) GetApplicationTopology(c *gin.Context) {

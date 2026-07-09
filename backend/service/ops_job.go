@@ -346,17 +346,6 @@ func (s *Service) RunOpsJob(id uint) error {
 	if err := s.db.Create(&history).Error; err != nil {
 		return err
 	}
-	s.CreateChangeRecord(OpsChangeRecordPayload{
-		Title:      "作业执行：" + job.Name,
-		ChangeType: "job",
-		SourceType: "ops_job",
-		SourceID:   history.ID,
-		SourceName: job.Name,
-		RiskLevel:  "medium",
-		Status:     "running",
-		Summary:    "作业已触发，等待执行结果",
-		StartedAt:  &startedAt,
-	})
 	go s.runOpsJobDefinition(history.ID, *definition)
 	return nil
 }
@@ -613,7 +602,8 @@ func (s *Service) executeOpsJobScriptNode(stepName string, config map[string]any
 	if err != nil {
 		return "failed", err.Error(), "", 0, err
 	}
-	hosts, err := s.resolveOpsTargetHosts(uintSliceConfig(config, "hostIds"), uintSliceConfig(config, "groupIds"))
+	hostIDs, groupIDs := opsJobTargetIDs(config)
+	hosts, err := s.resolveOpsTargetHosts(hostIDs, groupIDs)
 	if err != nil {
 		return "failed", err.Error(), "", 0, err
 	}
@@ -660,7 +650,8 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 	if sourceHostID == 0 || sourcePath == "" || targetPath == "" {
 		return "failed", "文件分发配置不完整", "", 0, errors.New("文件分发配置不完整")
 	}
-	hosts, err := s.resolveOpsTargetHosts(uintSliceConfig(config, "hostIds"), uintSliceConfig(config, "groupIds"))
+	hostIDs, groupIDs := opsJobTargetIDs(config)
+	hosts, err := s.resolveOpsTargetHosts(hostIDs, groupIDs)
 	if err != nil {
 		return "failed", err.Error(), "", 0, err
 	}
@@ -845,6 +836,17 @@ func uintSliceConfig(config map[string]any, key string) []uint {
 		}
 	}
 	return list
+}
+
+// Older job definitions may retain groupIds after the user switches to explicit hosts.
+// Explicit host selection is the more specific scope, so it wins during execution.
+func opsJobTargetIDs(config map[string]any) ([]uint, []uint) {
+	hostIDs := uintSliceConfig(config, "hostIds")
+	groupIDs := uintSliceConfig(config, "groupIds")
+	if len(hostIDs) > 0 {
+		return hostIDs, nil
+	}
+	return nil, groupIDs
 }
 
 func boolConfig(config map[string]any, key string) bool {

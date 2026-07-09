@@ -106,6 +106,43 @@ function cloneValue(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function normalizeTargetIds(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map((item) => Number(item)).filter((item) => item > 0))]
+}
+
+function normalizeNodeTargets(config = {}) {
+  const normalized = cloneValue(config || {})
+  const hostIds = normalizeTargetIds(normalized.hostIds)
+  const groupIds = normalizeTargetIds(normalized.groupIds)
+  if (hostIds.length) {
+    normalized.hostIds = hostIds
+    normalized.groupIds = []
+  } else {
+    normalized.hostIds = []
+    normalized.groupIds = groupIds
+  }
+  return normalized
+}
+
+function updateSelectedHostIds(hostIds) {
+  const normalizedHostIds = normalizeTargetIds(hostIds)
+  selectedNodeForm.config = {
+    ...selectedNodeForm.config,
+    hostIds: normalizedHostIds,
+    groupIds: normalizedHostIds.length ? [] : normalizeTargetIds(selectedNodeForm.config.groupIds)
+  }
+}
+
+function updateSelectedGroupIds(groupIds) {
+  const normalizedGroupIds = normalizeTargetIds(groupIds)
+  selectedNodeForm.config = {
+    ...selectedNodeForm.config,
+    hostIds: normalizedGroupIds.length ? [] : normalizeTargetIds(selectedNodeForm.config.hostIds),
+    groupIds: normalizedGroupIds
+  }
+}
+
 function defaultNodeLabel(type) {
   switch (type) {
     case 'file':
@@ -354,11 +391,14 @@ function serializeDefinition() {
     const data = node.getData() || {}
     const position = node.position()
     const size = node.size()
+    const config = ['script', 'file'].includes(data.type)
+      ? normalizeNodeTargets(data.config)
+      : cloneValue(data.config || {})
     return {
       id: data.id || node.id,
       type: data.type || 'script',
       label: data.label || node.attr('label/text') || '',
-      config: cloneValue(data.config || {}),
+      config,
       meta: {
         x: position.x,
         y: position.y,
@@ -715,8 +755,8 @@ onBeforeUnmount(() => {
               :group-options="groupOptions"
               :host-ids="selectedNodeForm.config.hostIds || []"
               :group-ids="selectedNodeForm.config.groupIds || []"
-              @update:host-ids="selectedNodeForm.config.hostIds = $event"
-              @update:group-ids="selectedNodeForm.config.groupIds = $event"
+              @update:host-ids="updateSelectedHostIds"
+              @update:group-ids="updateSelectedGroupIds"
             />
           </template>
 
@@ -746,8 +786,8 @@ onBeforeUnmount(() => {
               :group-options="groupOptions"
               :host-ids="selectedNodeForm.config.hostIds || []"
               :group-ids="selectedNodeForm.config.groupIds || []"
-              @update:host-ids="selectedNodeForm.config.hostIds = $event"
-              @update:group-ids="selectedNodeForm.config.groupIds = $event"
+              @update:host-ids="updateSelectedHostIds"
+              @update:group-ids="updateSelectedGroupIds"
             />
           </template>
           <template v-else-if="selectedNodeForm.type === 'notify'">

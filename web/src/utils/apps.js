@@ -181,13 +181,6 @@ export const appDefinitions = [
         children: []
       },
       {
-        title: '变更中心',
-        titleKey: 'opsChangeCenter',
-        path: '/ops/changes',
-        icon: 'Tickets',
-        children: []
-      },
-      {
         title: '快速执行',
         titleKey: 'opsQuickExecute',
         path: '/ops/quick-exec',

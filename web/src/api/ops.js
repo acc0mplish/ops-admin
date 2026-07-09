@@ -86,8 +86,6 @@ export const queryOpsEnvironmentList = (params) => http.get('/api/v1/ops/environ
 export const saveOpsEnvironment = (data) => http.post('/api/v1/ops/environment/save', data)
 export const deleteOpsEnvironment = (id) => http.delete('/api/v1/ops/environment/delete', { data: { id } })
 
-export const queryOpsChangeList = (params) => http.get('/api/v1/ops/change/list', { params })
-
 export const queryNotifyTemplateList = (params) => http.get('/api/v1/notify/template/list', { params })
 export const queryNotifyTemplateOptions = (params) => http.get('/api/v1/notify/template/options', { params })
 export const notifyTemplateInfo = (id) => http.get('/api/v1/notify/template/info', { params: { id } })

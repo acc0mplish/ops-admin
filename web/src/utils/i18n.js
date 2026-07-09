@@ -105,7 +105,6 @@ const messages = {
     opsReleases: '发布编排',
     opsScriptLibrary: '脚本库',
     opsEnvironments: '环境模型',
-    opsChangeCenter: '变更中心',
     opsApplicationCenter: '应用中心',
     applicationCenter: '应用中心',
     appProjectManage: '项目管理',
@@ -769,7 +768,6 @@ Object.assign(messages['en-US'], {
 Object.assign(messages['zh-CN'], {
   opsScriptLibrary: '脚本库',
   opsEnvironments: '环境模型',
-  opsChangeCenter: '变更中心',
   opsApplicationCenter: '应用中心',
   applicationCenter: '应用中心',
   appProjectManage: '项目管理',
@@ -793,7 +791,6 @@ Object.assign(messages['zh-CN'], {
 Object.assign(messages['en-US'], {
   opsScriptLibrary: 'Script Library',
   opsEnvironments: 'Environment Model',
-  opsChangeCenter: 'Change Center',
   opsApplicationCenter: 'Application Center',
   applicationCenter: 'Application Center',
   appProjectManage: 'Project Management',
@@ -947,7 +944,6 @@ const routeTitleMap = {
   '/ops/scripts': 'opsScripts',
   '/ops/scripts/library': 'opsScriptLibrary',
   '/ops/environments': 'opsEnvironments',
-  '/ops/changes': 'opsChangeCenter',
   '/ops/quick-exec': 'opsQuickExecute',
   '/ops/quick-exec/command': 'opsCommandExecute',
   '/ops/quick-exec/script': 'opsScriptExecute',

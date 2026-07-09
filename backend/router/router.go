@@ -205,7 +205,6 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/ops/environment/list", ctl.GetOpsEnvironmentList)
 		authGroup.POST("/ops/environment/save", ctl.SaveOpsEnvironment)
 		authGroup.DELETE("/ops/environment/delete", ctl.DeleteOpsEnvironment)
-		authGroup.GET("/ops/change/list", ctl.GetOpsChangeRecordList)
 		authGroup.GET("/ops/application/list", ctl.GetOpsApplicationList)
 		authGroup.GET("/ops/application/options", ctl.GetOpsApplicationOptions)
 		authGroup.GET("/ops/application/info", ctl.GetOpsApplicationInfo)

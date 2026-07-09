@@ -616,7 +616,6 @@ func (s *Service) ExecuteDatabaseSQL(payload DBMSSQLExecutePayload) (map[string]
 	history.DurationMs = durationMs
 	history.RowsAffected = rowsAffected
 	s.db.Create(&history)
-	s.recordDatabaseSQLChange(item, history, payload.Schema)
 	return map[string]any{
 		"sqlType":      sqlType,
 		"rowsAffected": rowsAffected,
@@ -1372,45 +1371,6 @@ func (s *Service) logDBSQLHistory(asset *model.AssetDatabase, schema, table, sql
 		RollbackSQL:  rollbackSQL,
 	}
 	_ = s.db.Create(&history).Error
-	if status == 1 && !isQuerySQL(sqlType) {
-		s.recordDatabaseSQLChange(asset, history, schema)
-	}
-}
-
-func (s *Service) recordDatabaseSQLChange(asset *model.AssetDatabase, history model.DatabaseSQLHistory, schema string) {
-	if asset == nil || isQuerySQL(history.SQLType) {
-		return
-	}
-	s.CreateChangeRecord(OpsChangeRecordPayload{
-		Title:      "SQL 变更：" + asset.Name,
-		ChangeType: "sql",
-		SourceType: "database_sql",
-		SourceID:   history.ID,
-		SourceName: asset.Name,
-		Env:        asset.Env,
-		RiskLevel:  databaseSQLRiskLevel(history.SQLType),
-		Status:     changeStatusFromInt(history.Status),
-		Summary:    history.SQLType + " / " + firstNonEmpty(schema, history.SchemaName, asset.DBName),
-		Detail:     history.SQLText,
-	})
-}
-
-func databaseSQLRiskLevel(sqlType string) string {
-	switch strings.ToUpper(strings.TrimSpace(sqlType)) {
-	case "DROP", "TRUNCATE", "DELETE":
-		return "high"
-	case "UPDATE", "ALTER", "IMPORT":
-		return "medium"
-	default:
-		return "low"
-	}
-}
-
-func changeStatusFromInt(status int) string {
-	if status == 1 {
-		return "success"
-	}
-	return "failed"
 }
 
 func (s *Service) updateTransferTask(taskID uint, updates map[string]any) {

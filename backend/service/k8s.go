@@ -960,7 +960,7 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		return nil, errors.New("invalid yaml payload")
 	}
 
-	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -987,8 +987,6 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 	if updateErr != nil {
 		return nil, friendlyK8sYAMLError(payload, updateErr)
 	}
-	s.recordK8sChange(cluster, "k8s_yaml_update", payload.ResourceType, payload.Namespace, payload.Name, payload.YAML)
-
 	return map[string]any{
 		"resourceType": payload.ResourceType,
 		"namespace":    payload.Namespace,
@@ -1003,7 +1001,7 @@ func (s *Service) CreateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		return nil, errors.New("invalid yaml payload")
 	}
 
-	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1031,8 +1029,6 @@ func (s *Service) CreateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 	if err := k8sDoJSONAnyPath(client, runtime, http.MethodPost, paths, nil, body, "application/json", nil); err != nil {
 		return nil, friendlyK8sYAMLError(payload, err)
 	}
-	s.recordK8sChange(cluster, "k8s_yaml_create", payload.ResourceType, payload.Namespace, firstNonEmpty(payload.Name, manifest.Metadata.Name), payload.YAML)
-
 	return map[string]any{
 		"resourceType": payload.ResourceType,
 		"namespace":    payload.Namespace,
@@ -1327,7 +1323,7 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 		return nil, errors.New("please select workloads first")
 	}
 
-	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1387,29 +1383,11 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 			"images":       images,
 		})
 	}
-	detailBody, _ := json.Marshal(updated)
-	s.recordK8sChange(cluster, "k8s_image_update", "workload", "", payload.Version, string(detailBody))
-
 	return map[string]any{
 		"version": payload.Version,
 		"count":   len(updated),
 		"items":   updated,
 	}, nil
-}
-
-func (s *Service) recordK8sChange(cluster model.K8sCluster, changeType, resourceType, namespace, name, detail string) {
-	s.CreateChangeRecord(OpsChangeRecordPayload{
-		Title:      "K8s 变更：" + firstNonEmpty(name, resourceType),
-		ChangeType: changeType,
-		SourceType: "k8s",
-		SourceID:   cluster.ID,
-		SourceName: cluster.Name,
-		Env:        cluster.Env,
-		RiskLevel:  "medium",
-		Status:     "success",
-		Summary:    strings.TrimSpace(resourceType + " / " + namespace + " / " + name),
-		Detail:     detail,
-	})
 }
 
 func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceName string) (model.K8sServiceDetail, error) {

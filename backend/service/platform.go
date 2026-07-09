@@ -1,11 +1,9 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"ops-admin/backend/model"
 
@@ -19,25 +17,6 @@ type OpsEnvironmentPayload struct {
 	Sort        int    `json:"sort"`
 	Status      int    `json:"status"`
 	Description string `json:"description"`
-}
-
-type OpsChangeRecordPayload struct {
-	Title      string
-	ChangeType string
-	SourceType string
-	SourceID   uint
-	SourceName string
-	AppID      uint
-	AppName    string
-	AppCode    string
-	Env        string
-	RiskLevel  string
-	Status     string
-	Operator   string
-	Summary    string
-	Detail     string
-	StartedAt  *time.Time
-	FinishedAt *time.Time
 }
 
 type MonitorAlertActionPayload struct {
@@ -138,83 +117,6 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 		}
 	}
 	return s.db.Delete(&model.OpsEnvironment{}, id).Error
-}
-
-func (s *Service) CreateChangeRecord(payload OpsChangeRecordPayload) {
-	if Trimmed(payload.Title) == "" {
-		payload.Title = payload.SourceName
-	}
-	if Trimmed(payload.Title) == "" {
-		payload.Title = "平台变更"
-	}
-	if Trimmed(payload.Status) == "" {
-		payload.Status = "success"
-	}
-	if Trimmed(payload.RiskLevel) == "" {
-		payload.RiskLevel = "medium"
-	}
-	now := time.Now()
-	if payload.StartedAt == nil {
-		payload.StartedAt = &now
-	}
-	if payload.FinishedAt == nil {
-		payload.FinishedAt = &now
-	}
-	record := model.OpsChangeRecord{
-		Title:      Trimmed(payload.Title),
-		ChangeType: Trimmed(payload.ChangeType),
-		SourceType: Trimmed(payload.SourceType),
-		SourceID:   payload.SourceID,
-		SourceName: Trimmed(payload.SourceName),
-		AppID:      payload.AppID,
-		AppName:    Trimmed(payload.AppName),
-		AppCode:    Trimmed(payload.AppCode),
-		Env:        normalizeEnvCode(payload.Env),
-		RiskLevel:  Trimmed(payload.RiskLevel),
-		Status:     Trimmed(payload.Status),
-		Operator:   Trimmed(payload.Operator),
-		Summary:    Trimmed(payload.Summary),
-		Detail:     payload.Detail,
-		StartedAt:  payload.StartedAt,
-		FinishedAt: payload.FinishedAt,
-	}
-	_ = s.db.Create(&record).Error
-}
-
-func (s *Service) ListChangeRecords(pageNum, pageSize int, keyword, env, changeType, status string) (map[string]any, error) {
-	if pageNum < 1 {
-		pageNum = 1
-	}
-	if pageSize < 1 {
-		pageSize = 10
-	}
-	query := s.db.Model(&model.OpsChangeRecord{})
-	if keyword != "" {
-		query = query.Where("title LIKE ? OR source_name LIKE ? OR app_name LIKE ? OR summary LIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
-	}
-	if env != "" {
-		query = query.Where("env = ?", normalizeEnvCode(env))
-	}
-	if changeType != "" {
-		query = query.Where("change_type = ?", changeType)
-	}
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, err
-	}
-	var list []model.OpsChangeRecord
-	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
-		return nil, err
-	}
-	var allTotal, failed, highRisk int64
-	_ = s.db.Model(&model.OpsChangeRecord{}).Count(&allTotal)
-	_ = s.db.Model(&model.OpsChangeRecord{}).Where("status <> ?", "success").Count(&failed)
-	_ = s.db.Model(&model.OpsChangeRecord{}).Where("risk_level IN ?", []string{"high", "critical"}).Count(&highRisk)
-	stats := map[string]any{"total": allTotal, "failed": failed, "highRisk": highRisk}
-	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize, "stats": stats}, nil
 }
 
 func (s *Service) GetApplicationTopology(appID uint, env string) (map[string]any, error) {
@@ -330,19 +232,6 @@ func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (
 	if err := s.db.Create(&action).Error; err != nil {
 		return nil, err
 	}
-	detail, _ := json.Marshal(map[string]any{"alertEventId": event.ID, "actionType": action.ActionType, "targetId": action.TargetID, "targetName": action.TargetName})
-	s.CreateChangeRecord(OpsChangeRecordPayload{
-		Title:      "告警联动处置：" + event.RuleName,
-		ChangeType: "alert_action",
-		SourceType: "monitor_alert",
-		SourceID:   event.ID,
-		SourceName: event.RuleName,
-		RiskLevel:  "medium",
-		Status:     action.Status,
-		Operator:   action.Operator,
-		Summary:    action.Result,
-		Detail:     string(detail),
-	})
 	return map[string]any{"action": action}, nil
 }
 

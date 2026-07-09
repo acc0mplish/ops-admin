@@ -39,7 +39,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.OpsJobHistory{},
 		&model.OpsJobHistoryStep{},
 		&model.OpsEnvironment{},
-		&model.OpsChangeRecord{},
 		&model.OpsApplication{},
 		&model.OpsAppBuildTask{},
 		&model.OpsAppRelease{},
