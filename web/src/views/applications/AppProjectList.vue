@@ -2,18 +2,21 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteOpsApplication, queryOpsApplicationList, saveOpsApplication } from '../../api/ops'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const rows = ref([])
 const total = ref(0)
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
 
 const query = reactive({
   pageNum: 1,
   pageSize: 10,
   keyword: '',
-  serviceType: ''
+  serviceType: '',
+  env: ''
 })
 
 const form = reactive({
@@ -131,9 +134,14 @@ onMounted(loadData)
             <el-option label="中间件" value="中间件" />
           </el-select>
         </el-form-item>
+        <el-form-item label="环境">
+          <el-select v-model="query.env" clearable placeholder="全部环境" @change="loadData">
+            <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">搜索</el-button>
-          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', pageNum: 1 }); loadData()">重置</el-button>
+          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', env: '', pageNum: 1 }); loadData()">重置</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -151,6 +159,9 @@ onMounted(loadData)
         <el-table-column prop="description" label="项目描述" min-width="170" show-overflow-tooltip />
         <el-table-column prop="serviceType" label="服务类别" width="120">
           <template #default="{ row }">{{ row.serviceType || row.env || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="默认环境" width="120">
+          <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.env) }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="repoUrl" label="仓库地址" min-width="300" show-overflow-tooltip>
           <template #default="{ row }">
@@ -205,7 +216,11 @@ onMounted(loadData)
             <el-form-item label="默认分支"><el-input v-model="form.branch" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="默认环境"><el-input v-model="form.env" /></el-form-item>
+            <el-form-item label="默认环境" required>
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+                <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+              </el-select>
+            </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="工作目录"><el-input v-model="form.workspace" placeholder="可选，默认 uploads/apps/项目编码" /></el-form-item>

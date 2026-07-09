@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -243,6 +244,7 @@ type AssetDatabasePayload struct {
 	GatewayID      uint   `json:"gatewayId"`
 	DBName         string `json:"dbName"`
 	Charset        string `json:"charset"`
+	Env            string `json:"env"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
 }
@@ -851,8 +853,75 @@ func (s *Service) CleanLoginLogs() error {
 	return s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.LoginLog{}).Error
 }
 
-func (s *Service) ListOperationLogs(pageNum, pageSize int, username string) (map[string]any, error) {
-	return s.paginateLogs(&model.OperationLog{}, pageNum, pageSize, "username", username)
+func (s *Service) ListOperationLogs(pageNum, pageSize int, username string, keyword string, riskLevel string, success string) (map[string]any, error) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	query := s.operationLogQuery(username, keyword, riskLevel, success)
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	stats, err := s.operationLogStats(username, keyword, riskLevel, success)
+	if err != nil {
+		return nil, err
+	}
+	var list []model.OperationLog
+	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize, "stats": stats}, nil
+}
+
+func (s *Service) operationLogQuery(username string, keyword string, riskLevel string, success string) *gorm.DB {
+	query := s.db.Model(&model.OperationLog{})
+	if username = strings.TrimSpace(username); username != "" {
+		query = query.Where("username LIKE ?", "%"+username+"%")
+	}
+	if keyword = strings.TrimSpace(keyword); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("description LIKE ? OR url LIKE ? OR request_summary LIKE ? OR ip LIKE ?", like, like, like, like)
+	}
+	if riskLevel = strings.TrimSpace(riskLevel); riskLevel != "" {
+		query = query.Where("risk_level = ?", riskLevel)
+	}
+	if success = strings.TrimSpace(success); success != "" {
+		query = query.Where("success = ?", success == "true" || success == "1")
+	}
+	return query
+}
+
+func (s *Service) operationLogStats(username string, keyword string, riskLevel string, success string) (map[string]any, error) {
+	base := s.operationLogQuery(username, keyword, riskLevel, success)
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var highRisk int64
+	if err := base.Session(&gorm.Session{}).Where("risk_level = ?", "high").Count(&highRisk).Error; err != nil {
+		return nil, err
+	}
+	var failed int64
+	if err := base.Session(&gorm.Session{}).Where("success = ?", false).Count(&failed).Error; err != nil {
+		return nil, err
+	}
+	var avgDuration sql.NullFloat64
+	if err := base.Session(&gorm.Session{}).Select("AVG(duration_ms)").Scan(&avgDuration).Error; err != nil {
+		return nil, err
+	}
+	avg := 0
+	if avgDuration.Valid {
+		avg = int(avgDuration.Float64)
+	}
+	return map[string]any{
+		"total":       total,
+		"highRisk":    highRisk,
+		"failed":      failed,
+		"avgDuration": avg,
+	}, nil
 }
 
 func (s *Service) DeleteOperationLog(id uint) error {

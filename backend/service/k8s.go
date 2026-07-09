@@ -25,7 +25,7 @@ import (
 	ksyaml "sigs.k8s.io/yaml"
 )
 
-const k8sClusterConnectError = "集群连接失败，请检查kubeconfig"
+const k8sClusterConnectError = "闆嗙兢杩炴帴澶辫触锛岃妫€鏌ubeconfig"
 
 type kubeConfig struct {
 	APIVersion     string `yaml:"apiVersion"`
@@ -630,6 +630,7 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		Name:           strings.TrimSpace(payload.Name),
 		Description:    strings.TrimSpace(payload.Description),
 		KubeConfig:     strings.TrimSpace(payload.KubeConfig),
+		Env:            normalizeEnvCode(payload.Env),
 		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 	}
@@ -669,6 +670,7 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Name = strings.TrimSpace(payload.Name)
 	cluster.Description = strings.TrimSpace(payload.Description)
 	cluster.KubeConfig = strings.TrimSpace(payload.KubeConfig)
+	cluster.Env = normalizeEnvCode(payload.Env)
 	cluster.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
 	cluster.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
 
@@ -958,7 +960,7 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		return nil, errors.New("invalid yaml payload")
 	}
 
-	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -985,6 +987,7 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 	if updateErr != nil {
 		return nil, friendlyK8sYAMLError(payload, updateErr)
 	}
+	s.recordK8sChange(cluster, "k8s_yaml_update", payload.ResourceType, payload.Namespace, payload.Name, payload.YAML)
 
 	return map[string]any{
 		"resourceType": payload.ResourceType,
@@ -1000,7 +1003,7 @@ func (s *Service) CreateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 		return nil, errors.New("invalid yaml payload")
 	}
 
-	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1028,6 +1031,7 @@ func (s *Service) CreateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 	if err := k8sDoJSONAnyPath(client, runtime, http.MethodPost, paths, nil, body, "application/json", nil); err != nil {
 		return nil, friendlyK8sYAMLError(payload, err)
 	}
+	s.recordK8sChange(cluster, "k8s_yaml_create", payload.ResourceType, payload.Namespace, firstNonEmpty(payload.Name, manifest.Metadata.Name), payload.YAML)
 
 	return map[string]any{
 		"resourceType": payload.ResourceType,
@@ -1323,7 +1327,7 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 		return nil, errors.New("please select workloads first")
 	}
 
-	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	cluster, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1383,12 +1387,29 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 			"images":       images,
 		})
 	}
+	detailBody, _ := json.Marshal(updated)
+	s.recordK8sChange(cluster, "k8s_image_update", "workload", "", payload.Version, string(detailBody))
 
 	return map[string]any{
 		"version": payload.Version,
 		"count":   len(updated),
 		"items":   updated,
 	}, nil
+}
+
+func (s *Service) recordK8sChange(cluster model.K8sCluster, changeType, resourceType, namespace, name, detail string) {
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "K8s 变更：" + firstNonEmpty(name, resourceType),
+		ChangeType: changeType,
+		SourceType: "k8s",
+		SourceID:   cluster.ID,
+		SourceName: cluster.Name,
+		Env:        cluster.Env,
+		RiskLevel:  "medium",
+		Status:     "success",
+		Summary:    strings.TrimSpace(resourceType + " / " + namespace + " / " + name),
+		Detail:     detail,
+	})
 }
 
 func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceName string) (model.K8sServiceDetail, error) {
@@ -3121,6 +3142,7 @@ func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 		APIServer:      cluster.APIServer,
 		Version:        cluster.Version,
 		NodeCount:      cluster.NodeCount,
+		Env:            cluster.Env,
 		ConnectionMode: normalizeConnectionMode(cluster.ConnectionMode),
 		GatewayID:      cluster.GatewayID,
 		GatewayName:    cluster.Gateway.Name,
@@ -3133,10 +3155,10 @@ func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 
 func validateK8sClusterPayload(cluster model.K8sCluster) error {
 	if cluster.Name == "" {
-		return errors.New("集群名称不能为空")
+		return errors.New("闆嗙兢鍚嶇О涓嶈兘涓虹┖")
 	}
 	if cluster.KubeConfig == "" {
-		return errors.New("kubeconfig 不能为空")
+		return errors.New("kubeconfig 涓嶈兘涓虹┖")
 	}
 	if err := validateGatewaySelection(cluster.ConnectionMode, cluster.GatewayID); err != nil {
 		return err
@@ -3737,22 +3759,22 @@ func friendlyK8sYAMLError(payload model.K8sResourceYAMLPayload, err error) error
 	if strings.Contains(lower, "field is immutable") || strings.Contains(lower, "immutable") {
 		switch strings.ToLower(Trimmed(payload.ResourceType)) {
 		case "pod":
-			return errors.New("Pod 存在不可变字段，Kubernetes 不允许直接更新这部分内容。建议修改可变字段，或删除后重新创建 Pod")
+			return errors.New("Pod 瀛樺湪涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ユ洿鏂拌繖閮ㄥ垎鍐呭銆傚缓璁慨鏀瑰彲鍙樺瓧娈碉紝鎴栧垹闄ゅ悗閲嶆柊鍒涘缓 Pod")
 		case "pv", "pvc":
-			return errors.New("当前存储资源包含不可变字段，Kubernetes 不允许直接覆盖保存。请仅修改可变字段，或按存储变更流程处理")
+			return errors.New("褰撳墠瀛樺偍璧勬簮鍖呭惈涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ヨ鐩栦繚瀛樸€傝浠呬慨鏀瑰彲鍙樺瓧娈碉紝鎴栨寜瀛樺偍鍙樻洿娴佺▼澶勭悊")
 		default:
-			return errors.New("当前资源包含不可变字段，Kubernetes 不允许直接覆盖保存。请检查 metadata、selector、volume 等字段是否被修改")
+			return errors.New("褰撳墠璧勬簮鍖呭惈涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ヨ鐩栦繚瀛樸€傝妫€鏌?metadata銆乻elector銆乿olume 绛夊瓧娈垫槸鍚﹁淇敼")
 		}
 	}
 
 	if strings.Contains(lower, "already exists") {
-		return errors.New("YAML 中的资源标识与当前集群现有资源冲突，请检查名称、命名空间或关联对象")
+		return errors.New("YAML 涓殑璧勬簮鏍囪瘑涓庡綋鍓嶉泦缇ょ幇鏈夎祫婧愬啿绐侊紝璇锋鏌ュ悕绉般€佸懡鍚嶇┖闂存垨鍏宠仈瀵硅薄")
 	}
 	if strings.Contains(lower, "not found") {
 		return errors.New("目标资源不存在，可能已被删除或命名空间已变化，请刷新后重试")
 	}
 	if strings.Contains(lower, "invalid") || strings.Contains(lower, "unprocessable entity") {
-		return errors.New("YAML 校验未通过，请检查字段格式、apiVersion、kind 以及 spec 内容是否正确")
+		return errors.New("YAML 鏍￠獙鏈€氳繃锛岃妫€鏌ュ瓧娈垫牸寮忋€乤piVersion銆乲ind 浠ュ強 spec 鍐呭鏄惁姝ｇ‘")
 	}
 	return err
 }
@@ -3930,7 +3952,7 @@ func humanizeAge(timestamp string) string {
 
 	duration := time.Since(createdAt)
 	if duration < time.Minute {
-		return "刚刚"
+		return "鍒氬垰"
 	}
 	if duration < time.Hour {
 		return fmt.Sprintf("%dm", int(duration.Minutes()))

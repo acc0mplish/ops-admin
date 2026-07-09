@@ -155,7 +155,7 @@ func normalizeOpsBuildTimeout(value int) int {
 	return value
 }
 
-func (s *Service) ListOpsApplications(pageNum, pageSize int, keyword, repoType, status, serviceType string) (map[string]any, error) {
+func (s *Service) ListOpsApplications(pageNum, pageSize int, keyword, repoType, status, serviceType, env string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -175,6 +175,9 @@ func (s *Service) ListOpsApplications(pageNum, pageSize int, keyword, repoType, 
 	}
 	if serviceType = strings.TrimSpace(serviceType); serviceType != "" {
 		query = query.Where("service_type = ?", serviceType)
+	}
+	if env = normalizeEnvCode(env); env != "" {
+		query = query.Where("env = ?", env)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -403,6 +406,21 @@ func (s *Service) RunOpsAppBuildTask(payload OpsAppBuildRunPayload) (map[string]
 	if err := s.db.Create(&release).Error; err != nil {
 		return nil, err
 	}
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "应用构建发布：" + app.Name,
+		ChangeType: "release",
+		SourceType: "app_release",
+		SourceID:   release.ID,
+		SourceName: task.Name,
+		AppID:      app.ID,
+		AppName:    app.Name,
+		AppCode:    app.Code,
+		Env:        task.Env,
+		RiskLevel:  "medium",
+		Status:     "running",
+		Summary:    "版本 " + version + " 已开始构建发布",
+		StartedAt:  &now,
+	})
 	_ = s.db.Model(&model.OpsAppBuildTask{}).Where("id = ?", task.ID).Updates(map[string]any{
 		"last_release_id": release.ID, "last_status": "running", "last_run_at": &now,
 	})
@@ -756,6 +774,21 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	if err := s.db.Create(&run).Error; err != nil {
 		return nil, err
 	}
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "CI/CD 流水线：" + pipeline.Name,
+		ChangeType: "pipeline",
+		SourceType: "app_pipeline",
+		SourceID:   run.ID,
+		SourceName: pipeline.Name,
+		AppID:      app.ID,
+		AppName:    app.Name,
+		AppCode:    app.Code,
+		Env:        env,
+		RiskLevel:  "medium",
+		Status:     "running",
+		Summary:    "镜像 Tag " + imageTag + " 已开始执行",
+		StartedAt:  &now,
+	})
 	for _, stage := range stages {
 		_ = s.db.Create(&model.OpsAppPipelineRunStage{
 			RunID: run.ID, StageID: stage.ID, StageName: stage.Name, StageType: stage.Type,
@@ -1142,6 +1175,21 @@ func (s *Service) RunOpsAppRelease(payload OpsAppReleasePayload) (map[string]any
 	if err := s.db.Create(&release).Error; err != nil {
 		return nil, err
 	}
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "应用发布：" + app.Name,
+		ChangeType: "release",
+		SourceType: "app_release",
+		SourceID:   release.ID,
+		SourceName: app.Name,
+		AppID:      app.ID,
+		AppName:    app.Name,
+		AppCode:    app.Code,
+		Env:        app.Env,
+		RiskLevel:  "medium",
+		Status:     "running",
+		Summary:    "版本 " + version + " 已开始发布",
+		StartedAt:  &now,
+	})
 	_ = s.db.Model(&model.OpsApplication{}).Where("id = ?", app.ID).Updates(map[string]any{
 		"last_release_id": release.ID, "last_status": "running",
 	})

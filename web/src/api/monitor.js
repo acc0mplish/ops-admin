@@ -32,6 +32,7 @@ export const deleteMonitorAggregationRule = (id) => http.delete('/api/v1/monitor
 export const queryMonitorAlertEventList = (params) => http.get('/api/v1/monitor/alert/event/list', { params })
 export const claimMonitorAlertEvent = (data) => http.post('/api/v1/monitor/alert/event/claim', data)
 export const resolveMonitorAlertEvent = (data) => http.post('/api/v1/monitor/alert/event/resolve', data)
+export const triggerMonitorAlertAction = (data) => http.post('/api/v1/monitor/alert/event/action', data)
 
 export const queryMonitorDashboardList = (params) => http.get('/api/v1/monitor/dashboard/list', { params })
 export const monitorDashboardInfo = (id) => http.get('/api/v1/monitor/dashboard/info', { params: { id } })

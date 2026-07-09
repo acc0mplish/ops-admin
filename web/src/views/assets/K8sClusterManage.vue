@@ -11,6 +11,7 @@ import {
 } from '../../api/k8s'
 import { queryAssetGatewayOptions } from '../../api/asset'
 import { t } from '../../utils/i18n'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -18,10 +19,17 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const clusterList = ref([])
 const gatewayOptions = ref([])
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
+const selectedEnv = ref('')
+const filteredClusters = computed(() => {
+  if (!selectedEnv.value) return clusterList.value
+  return clusterList.value.filter((item) => item.env === selectedEnv.value)
+})
 
 const form = reactive({
   id: undefined,
   name: '',
+  env: 'test',
   description: '',
   kubeConfig: '',
   connectionMode: 'direct',
@@ -43,6 +51,7 @@ function resetForm() {
   Object.assign(form, {
     id: undefined,
     name: '',
+    env: 'test',
     description: '',
     kubeConfig: '',
     connectionMode: 'direct',
@@ -75,6 +84,7 @@ async function openEdit(row) {
   Object.assign(form, {
     id: data.id,
     name: data.name,
+    env: data.env || 'test',
     description: data.description || '',
     kubeConfig: data.kubeConfig || '',
     connectionMode: data.connectionMode || 'direct',
@@ -147,14 +157,22 @@ onMounted(async () => {
         <p>{{ t('k8sManageDesc') }}</p>
       </div>
       <div class="header-actions">
+        <el-select v-model="selectedEnv" clearable placeholder="全部环境" style="width: 160px">
+          <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+        </el-select>
         <el-button :icon="Refresh" @click="loadClusters">{{ t('k8sRefresh') }}</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('k8sNewCluster') }}</el-button>
       </div>
     </section>
 
     <section v-loading="loading" class="table-panel">
-      <el-table :data="clusterList" class="cluster-table">
+      <el-table :data="filteredClusters" class="cluster-table">
         <el-table-column prop="name" :label="t('k8sClusterName')" min-width="180" />
+        <el-table-column label="环境" width="120">
+          <template #default="{ row }">
+            <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('k8sStatus')" width="120">
           <template #default="{ row }">
             <el-tag :type="tagType(row.status)" effect="light">{{ clusterStatusText(row.status) }}</el-tag>
@@ -180,13 +198,18 @@ onMounted(async () => {
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!loading && !clusterList.length" :description="t('k8sNoClustersRecorded')" />
+      <el-empty v-if="!loading && !filteredClusters.length" :description="t('k8sNoClustersRecorded')" />
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="760px" destroy-on-close>
       <el-form label-width="100px">
         <el-form-item :label="t('k8sClusterName')" required>
           <el-input v-model="form.name" :placeholder="t('k8sClusterNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item label="所属环境" required>
+          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+            <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+          </el-select>
         </el-form-item>
         <el-form-item :label="t('k8sDescription')">
           <el-input

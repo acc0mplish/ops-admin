@@ -19,14 +19,19 @@ func (LoginLog) TableName() string {
 }
 
 type OperationLog struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	AdminID     uint      `json:"adminId"`
-	Username    string    `json:"username" gorm:"size:64"`
-	Method      string    `json:"method" gorm:"size:16"`
-	IP          string    `json:"ip" gorm:"size:64"`
-	URL         string    `json:"url" gorm:"size:255"`
-	Description string    `json:"description" gorm:"size:255"`
-	CreatedAt   time.Time `json:"createTime"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	AdminID        uint      `json:"adminId"`
+	Username       string    `json:"username" gorm:"size:64"`
+	Method         string    `json:"method" gorm:"size:16"`
+	IP             string    `json:"ip" gorm:"size:64"`
+	URL            string    `json:"url" gorm:"size:255"`
+	Description    string    `json:"description" gorm:"size:255"`
+	RiskLevel      string    `json:"riskLevel" gorm:"size:32;default:'normal'"`
+	StatusCode     int       `json:"statusCode" gorm:"default:200"`
+	Success        bool      `json:"success" gorm:"default:true"`
+	DurationMs     int64     `json:"durationMs" gorm:"default:0"`
+	RequestSummary string    `json:"requestSummary" gorm:"type:text"`
+	CreatedAt      time.Time `json:"createTime"`
 }
 
 func (OperationLog) TableName() string {

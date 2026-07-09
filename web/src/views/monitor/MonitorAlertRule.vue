@@ -11,6 +11,7 @@ import {
   saveMonitorAlertRule,
   updateMonitorAlertRuleStatus
 } from '../../api/monitor'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -20,10 +21,12 @@ const rows = ref([])
 const total = ref(0)
 const datasourceOptions = ref([])
 const notifyRuleOptions = ref([])
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '', severity: '' })
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
+const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '', severity: '', env: '' })
 const form = reactive({
   id: undefined,
   name: '',
+  env: 'test',
   datasourceId: undefined,
   promql: '',
   comparator: '>',
@@ -44,6 +47,7 @@ function resetForm() {
   Object.assign(form, {
     id: undefined,
     name: '',
+    env: 'test',
     datasourceId: datasourceOptions.value[0]?.id,
     promql: '',
     comparator: '>',
@@ -161,12 +165,18 @@ onMounted(async () => {
         <el-option label="启用" value="1" />
         <el-option label="禁用" value="2" />
       </el-select>
+      <el-select v-model="query.env" clearable placeholder="全部环境" style="width: 150px" @change="loadData">
+        <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+      </el-select>
       <el-button type="primary" @click="loadData">搜索</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="name" label="规则名称" min-width="180" />
       <el-table-column prop="datasourceName" label="数据源" width="170" />
+      <el-table-column label="环境" width="110">
+        <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.env) }}</el-tag></template>
+      </el-table-column>
       <el-table-column prop="severity" label="等级" width="90" />
       <el-table-column label="条件" min-width="320" show-overflow-tooltip>
         <template #default="{ row }">{{ row.promql }} {{ row.comparator }} {{ row.threshold }}</template>
@@ -202,6 +212,11 @@ onMounted(async () => {
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑告警规则' : '新增告警规则'" width="860px">
       <el-form label-width="120px">
         <el-form-item label="规则名称" required><el-input v-model="form.name" /></el-form-item>
+        <el-form-item label="所属环境" required>
+          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+            <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="数据源" required>
           <el-select v-model="form.datasourceId" filterable style="width: 100%">
             <el-option v-for="item in datasourceOptions" :key="item.id" :label="item.name" :value="item.id" />

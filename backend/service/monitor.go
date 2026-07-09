@@ -32,6 +32,7 @@ type MonitorDatasourcePayload struct {
 	Password    string `json:"password"`
 	Token       string `json:"token"`
 	IsDefault   bool   `json:"isDefault"`
+	Env         string `json:"env"`
 	Status      int    `json:"status"`
 	Description string `json:"description"`
 }
@@ -51,6 +52,7 @@ type MonitorAlertRulePayload struct {
 	NotifyEnabled         bool    `json:"notifyEnabled"`
 	NotifyRuleID          uint    `json:"notifyRuleId"`
 	NotifyRecoveryEnabled bool    `json:"notifyRecoveryEnabled"`
+	Env                   string  `json:"env"`
 	Status                int     `json:"status"`
 	Description           string  `json:"description"`
 }
@@ -370,7 +372,7 @@ func (s *Service) removeMonitorAlertRule(id uint) {
 	}
 }
 
-func (s *Service) ListMonitorDatasources(pageNum, pageSize int, keyword, dsType, status string) (map[string]any, error) {
+func (s *Service) ListMonitorDatasources(pageNum, pageSize int, keyword, dsType, status, env string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -387,6 +389,9 @@ func (s *Service) ListMonitorDatasources(pageNum, pageSize int, keyword, dsType,
 	}
 	if strings.TrimSpace(status) != "" {
 		query = query.Where("status = ?", status)
+	}
+	if strings.TrimSpace(env) != "" {
+		query = query.Where("env = ?", normalizeEnvCode(env))
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -431,6 +436,7 @@ func (s *Service) SaveMonitorDatasource(payload MonitorDatasourcePayload) error 
 		"password":    payload.Password,
 		"token":       strings.TrimSpace(payload.Token),
 		"is_default":  payload.IsDefault,
+		"env":         normalizeEnvCode(payload.Env),
 		"status":      normalizeMonitorStatus(payload.Status),
 		"description": Trimmed(payload.Description),
 	}
@@ -569,7 +575,7 @@ func applyMonitorDatasourceAuth(request *http.Request, ds model.MonitorDatasourc
 	}
 }
 
-func (s *Service) ListMonitorAlertRules(pageNum, pageSize int, keyword, status, severity string) (map[string]any, error) {
+func (s *Service) ListMonitorAlertRules(pageNum, pageSize int, keyword, status, severity, env string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -586,6 +592,9 @@ func (s *Service) ListMonitorAlertRules(pageNum, pageSize int, keyword, status, 
 	}
 	if strings.TrimSpace(severity) != "" {
 		query = query.Where("severity = ?", normalizeSeverity(severity))
+	}
+	if strings.TrimSpace(env) != "" {
+		query = query.Where("env = ?", normalizeEnvCode(env))
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -643,6 +652,7 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		"notify_enabled":          payload.NotifyEnabled,
 		"notify_rule_id":          payload.NotifyRuleID,
 		"notify_recovery_enabled": payload.NotifyRecoveryEnabled,
+		"env":                     normalizeEnvCode(payload.Env),
 		"status":                  normalizeMonitorStatus(payload.Status),
 		"description":             Trimmed(payload.Description),
 	}

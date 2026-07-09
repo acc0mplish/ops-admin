@@ -12,6 +12,7 @@ type MonitorDatasource struct {
 	Password    string    `json:"password" gorm:"size:255"`
 	Token       string    `json:"token" gorm:"type:text"`
 	IsDefault   bool      `json:"isDefault" gorm:"default:false;index"`
+	Env         string    `json:"env" gorm:"size:64;index"`
 	Status      int       `json:"status" gorm:"default:1;index"`
 	Description string    `json:"description" gorm:"size:255"`
 	CreatedAt   time.Time `json:"createTime"`
@@ -38,6 +39,7 @@ type MonitorAlertRule struct {
 	NotifyEnabled         bool       `json:"notifyEnabled" gorm:"default:false;index"`
 	NotifyRuleID          uint       `json:"notifyRuleId" gorm:"index"`
 	NotifyRecoveryEnabled bool       `json:"notifyRecoveryEnabled" gorm:"default:true"`
+	Env                   string     `json:"env" gorm:"size:64;index"`
 	Status                int        `json:"status" gorm:"default:1;index"`
 	LastEvalAt            *time.Time `json:"lastEvalAt"`
 	LastEvalStatus        string     `json:"lastEvalStatus" gorm:"size:32"`
@@ -84,6 +86,25 @@ type MonitorAlertEvent struct {
 
 func (MonitorAlertEvent) TableName() string {
 	return "monitor_alert_event"
+}
+
+type MonitorAlertAction struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	AlertEventID uint      `json:"alertEventId" gorm:"index;not null"`
+	RuleName     string    `json:"ruleName" gorm:"size:128;index"`
+	ActionType   string    `json:"actionType" gorm:"size:32;index"`
+	TargetID     uint      `json:"targetId" gorm:"index"`
+	TargetName   string    `json:"targetName" gorm:"size:128"`
+	Status       string    `json:"status" gorm:"size:32;index"`
+	Operator     string    `json:"operator" gorm:"size:128"`
+	Summary      string    `json:"summary" gorm:"type:text"`
+	Result       string    `json:"result" gorm:"type:longtext"`
+	CreatedAt    time.Time `json:"createTime"`
+	UpdatedAt    time.Time `json:"updateTime"`
+}
+
+func (MonitorAlertAction) TableName() string {
+	return "monitor_alert_action"
 }
 
 type MonitorSilenceRule struct {

@@ -37,10 +37,13 @@ import OpsJobList from '../views/ops/OpsJobList.vue'
 import OpsJobApprovals from '../views/ops/OpsJobApprovals.vue'
 import OpsJobHistory from '../views/ops/OpsJobHistory.vue'
 import OpsJobTemplate from '../views/ops/OpsJobTemplate.vue'
+import OpsEnvironment from '../views/ops/OpsEnvironment.vue'
+import OpsChangeCenter from '../views/ops/OpsChangeCenter.vue'
 import AppProjectList from '../views/applications/AppProjectList.vue'
 import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
 import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
 import AppPipelineCenter from '../views/applications/AppPipelineCenter.vue'
+import AppTopology from '../views/applications/AppTopology.vue'
 import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
@@ -187,6 +190,8 @@ const routes = [
 
       { path: '/ops', redirect: '/ops/quick-exec/command' },
       { path: '/ops/jobs', redirect: '/ops/jobs/list' },
+      { path: '/ops/changes', component: OpsChangeCenter, meta: { title: '变更中心', app: 'ops' } },
+      { path: '/ops/environments', component: OpsEnvironment, meta: { title: '环境模型', app: 'ops' } },
       { path: '/ops/overview', redirect: '/ops/quick-exec/command' },
       { path: '/ops/scripts', redirect: '/ops/scripts/library' },
       { path: '/ops/history', redirect: '/ops/quick-exec/history' },
@@ -238,6 +243,15 @@ const routes = [
           title: '快速执行历史',
           app: 'ops',
           summary: '记录所有快速执行任务、结果和失败主机明细。'
+        }
+      },
+      {
+        path: '/applications/topology',
+        component: AppTopology,
+        meta: {
+          title: '应用拓扑',
+          app: 'applications',
+          summary: '以应用为中心串联主机、K8s、数据库、监控告警和发布记录。'
         }
       },
       {

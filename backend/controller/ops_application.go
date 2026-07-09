@@ -12,7 +12,7 @@ import (
 func (ctl *Controller) GetOpsApplicationList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListOpsApplications(pageNum, pageSize, c.Query("keyword"), c.Query("repoType"), c.Query("status"), c.Query("serviceType"))
+	data, err := ctl.service.ListOpsApplications(pageNum, pageSize, c.Query("keyword"), c.Query("repoType"), c.Query("status"), c.Query("serviceType"), c.Query("env"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

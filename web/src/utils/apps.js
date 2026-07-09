@@ -174,6 +174,20 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '环境模型',
+        titleKey: 'opsEnvironments',
+        path: '/ops/environments',
+        icon: 'SetUp',
+        children: []
+      },
+      {
+        title: '变更中心',
+        titleKey: 'opsChangeCenter',
+        path: '/ops/changes',
+        icon: 'Tickets',
+        children: []
+      },
+      {
         title: '快速执行',
         titleKey: 'opsQuickExecute',
         path: '/ops/quick-exec',
@@ -304,6 +318,13 @@ export const appDefinitions = [
             children: []
           }
         ]
+      },
+      {
+        title: '应用拓扑',
+        titleKey: 'appTopology',
+        path: '/applications/topology',
+        icon: 'Connection',
+        children: []
       },
       {
         title: '构建与部署',

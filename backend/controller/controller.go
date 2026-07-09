@@ -668,7 +668,7 @@ func (ctl *Controller) CleanLoginLog(c *gin.Context) {
 func (ctl *Controller) GetOperationLogList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListOperationLogs(pageNum, pageSize, c.Query("username"))
+	data, err := ctl.service.ListOperationLogs(pageNum, pageSize, c.Query("username"), c.Query("keyword"), c.Query("riskLevel"), c.Query("success"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

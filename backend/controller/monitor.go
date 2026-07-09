@@ -22,7 +22,7 @@ func (ctl *Controller) GetMonitorOverview(c *gin.Context) {
 func (ctl *Controller) GetMonitorDatasourceList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListMonitorDatasources(pageNum, pageSize, c.Query("keyword"), c.Query("type"), c.Query("status"))
+	data, err := ctl.service.ListMonitorDatasources(pageNum, pageSize, c.Query("keyword"), c.Query("type"), c.Query("status"), c.Query("env"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -120,7 +120,7 @@ func (ctl *Controller) GetMonitorQueryHistoryList(c *gin.Context) {
 func (ctl *Controller) GetMonitorAlertRuleList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListMonitorAlertRules(pageNum, pageSize, c.Query("keyword"), c.Query("status"), c.Query("severity"))
+	data, err := ctl.service.ListMonitorAlertRules(pageNum, pageSize, c.Query("keyword"), c.Query("status"), c.Query("severity"), c.Query("env"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

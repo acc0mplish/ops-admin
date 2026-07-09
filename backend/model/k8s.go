@@ -9,6 +9,7 @@ type K8sCluster struct {
 	APIServer      string       `json:"apiServer" gorm:"size:255;not null"`
 	Version        string       `json:"version" gorm:"size:64;not null"`
 	NodeCount      int          `json:"nodeCount" gorm:"default:0"`
+	Env            string       `json:"env" gorm:"size:64;index"`
 	ConnectionMode string       `json:"connectionMode" gorm:"size:32;default:direct;index"`
 	GatewayID      *uint        `json:"gatewayId" gorm:"index"`
 	Gateway        AssetGateway `json:"gateway" gorm:"foreignKey:GatewayID"`
@@ -28,6 +29,7 @@ type K8sClusterPayload struct {
 	Name           string `json:"name"`
 	Description    string `json:"description"`
 	KubeConfig     string `json:"kubeConfig"`
+	Env            string `json:"env"`
 	ConnectionMode string `json:"connectionMode"`
 	GatewayID      uint   `json:"gatewayId"`
 }
@@ -93,6 +95,7 @@ type K8sClusterView struct {
 	APIServer      string     `json:"apiServer"`
 	Version        string     `json:"version"`
 	NodeCount      int        `json:"nodeCount"`
+	Env            string     `json:"env"`
 	ConnectionMode string     `json:"connectionMode"`
 	GatewayID      *uint      `json:"gatewayId"`
 	GatewayName    string     `json:"gatewayName"`

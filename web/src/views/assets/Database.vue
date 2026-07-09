@@ -11,6 +11,7 @@ import {
   testAssetDatabase,
   updateAssetDatabase
 } from '../../api/asset'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const router = useRouter()
 
@@ -21,13 +22,15 @@ const isEdit = ref(false)
 const tableData = ref([])
 const total = ref(0)
 const gatewayOptions = ref([])
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
 
 const query = reactive({
   pageNum: 1,
   pageSize: 10,
   keyword: '',
   dbType: 'mysql',
-  status: ''
+  status: '',
+  env: ''
 })
 
 const form = reactive({
@@ -42,6 +45,7 @@ const form = reactive({
   gatewayId: undefined,
   dbName: '',
   charset: 'utf8mb4',
+  env: 'test',
   status: 1,
   description: ''
 })
@@ -59,6 +63,7 @@ function resetForm() {
     gatewayId: undefined,
     dbName: '',
     charset: 'utf8mb4',
+    env: 'test',
     status: 1,
     description: ''
   })
@@ -173,8 +178,11 @@ onMounted(() => {
           <el-option label="启用" value="1" />
           <el-option label="停用" value="2" />
         </el-select>
+        <el-select v-model="query.env" clearable style="width: 160px" placeholder="全部环境" @change="loadData">
+          <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+        </el-select>
         <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '' }); loadData()">重置</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '', env: '' }); loadData()">重置</el-button>
       </div>
     </div>
 
@@ -185,6 +193,11 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column prop="dbType" label="类型" width="100" />
+      <el-table-column label="环境" width="120">
+        <template #default="{ row }">
+          <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="连接地址" min-width="220">
         <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
       </el-table-column>
@@ -234,6 +247,13 @@ onMounted(() => {
             <el-form-item label="数据库类型">
               <el-select v-model="form.dbType" style="width: 100%">
                 <el-option label="MySQL" value="mysql" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="所属环境" required>
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+                <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
           </el-col>

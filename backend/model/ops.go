@@ -226,6 +226,47 @@ func (OpsJobHistoryStep) TableName() string {
 	return "ops_job_history_step"
 }
 
+type OpsEnvironment struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"size:128;not null;index"`
+	Code        string    `json:"code" gorm:"size:64;not null;uniqueIndex"`
+	Sort        int       `json:"sort" gorm:"default:0;index"`
+	Status      int       `json:"status" gorm:"default:1;index"`
+	Description string    `json:"description" gorm:"size:255"`
+	CreatedAt   time.Time `json:"createTime"`
+	UpdatedAt   time.Time `json:"updateTime"`
+}
+
+func (OpsEnvironment) TableName() string {
+	return "ops_environment"
+}
+
+type OpsChangeRecord struct {
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	Title      string     `json:"title" gorm:"size:255;not null;index"`
+	ChangeType string     `json:"changeType" gorm:"size:64;index"`
+	SourceType string     `json:"sourceType" gorm:"size:64;index"`
+	SourceID   uint       `json:"sourceId" gorm:"index"`
+	SourceName string     `json:"sourceName" gorm:"size:255;index"`
+	AppID      uint       `json:"appId" gorm:"index"`
+	AppName    string     `json:"appName" gorm:"size:128;index"`
+	AppCode    string     `json:"appCode" gorm:"size:128;index"`
+	Env        string     `json:"env" gorm:"size:64;index"`
+	RiskLevel  string     `json:"riskLevel" gorm:"size:32;index"`
+	Status     string     `json:"status" gorm:"size:32;index"`
+	Operator   string     `json:"operator" gorm:"size:128;index"`
+	Summary    string     `json:"summary" gorm:"type:text"`
+	Detail     string     `json:"detail" gorm:"type:longtext"`
+	StartedAt  *time.Time `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
+	CreatedAt  time.Time  `json:"createTime"`
+	UpdatedAt  time.Time  `json:"updateTime"`
+}
+
+func (OpsChangeRecord) TableName() string {
+	return "ops_change_record"
+}
+
 type OpsApplication struct {
 	ID             uint       `json:"id" gorm:"primaryKey"`
 	Name           string     `json:"name" gorm:"size:128;not null;index"`

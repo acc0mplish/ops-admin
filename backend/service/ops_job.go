@@ -346,6 +346,17 @@ func (s *Service) RunOpsJob(id uint) error {
 	if err := s.db.Create(&history).Error; err != nil {
 		return err
 	}
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "作业执行：" + job.Name,
+		ChangeType: "job",
+		SourceType: "ops_job",
+		SourceID:   history.ID,
+		SourceName: job.Name,
+		RiskLevel:  "medium",
+		Status:     "running",
+		Summary:    "作业已触发，等待执行结果",
+		StartedAt:  &startedAt,
+	})
 	go s.runOpsJobDefinition(history.ID, *definition)
 	return nil
 }

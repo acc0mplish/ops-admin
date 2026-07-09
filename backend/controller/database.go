@@ -13,7 +13,7 @@ import (
 func (ctl *Controller) GetAssetDatabaseList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListAssetDatabases(pageNum, pageSize, c.Query("keyword"), c.Query("dbType"), c.Query("status"))
+	data, err := ctl.service.ListAssetDatabases(pageNum, pageSize, c.Query("keyword"), c.Query("dbType"), c.Query("status"), c.Query("env"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

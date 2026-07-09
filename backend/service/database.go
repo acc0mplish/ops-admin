@@ -192,7 +192,7 @@ func (s *Service) openAssetMySQLDatabase(item model.AssetDatabase, schema string
 	return db, cleanup, nil
 }
 
-func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbType string, status string) (map[string]any, error) {
+func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbType string, status string, env string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -208,6 +208,9 @@ func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbTy
 	}
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if env != "" {
+		query = query.Where("env = ?", normalizeEnvCode(env))
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -249,6 +252,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		DBName:         Trimmed(payload.DBName),
 		Charset:        databaseCharset(payload.Charset),
+		Env:            normalizeEnvCode(payload.Env),
 		Status:         payload.Status,
 		Description:    Trimmed(payload.Description),
 	}
@@ -299,6 +303,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		"gateway_id":      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		"db_name":         Trimmed(payload.DBName),
 		"charset":         databaseCharset(payload.Charset),
+		"env":             normalizeEnvCode(payload.Env),
 		"status":          payload.Status,
 		"description":     Trimmed(payload.Description),
 	}
@@ -328,6 +333,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 	probeItem.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
 	probeItem.DBName = Trimmed(payload.DBName)
 	probeItem.Charset = databaseCharset(payload.Charset)
+	probeItem.Env = normalizeEnvCode(payload.Env)
 	version, err := s.inspectAssetMySQLDatabase(probeItem)
 	if err == nil {
 		updates["version"] = version
@@ -357,6 +363,7 @@ func (s *Service) TestAssetDatabaseConnection(payload AssetDatabasePayload) (map
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		DBName:         Trimmed(payload.DBName),
 		Charset:        databaseCharset(payload.Charset),
+		Env:            normalizeEnvCode(payload.Env),
 	}
 	if err := validateGatewaySelection(item.ConnectionMode, item.GatewayID); err != nil {
 		return nil, err
@@ -609,6 +616,7 @@ func (s *Service) ExecuteDatabaseSQL(payload DBMSSQLExecutePayload) (map[string]
 	history.DurationMs = durationMs
 	history.RowsAffected = rowsAffected
 	s.db.Create(&history)
+	s.recordDatabaseSQLChange(item, history, payload.Schema)
 	return map[string]any{
 		"sqlType":      sqlType,
 		"rowsAffected": rowsAffected,
@@ -1350,7 +1358,7 @@ func (s *Service) getTableColumns(db *sql.DB, schema, table string) ([]databaseT
 }
 
 func (s *Service) logDBSQLHistory(asset *model.AssetDatabase, schema, table, sqlType, sqlText string, status int, rowsAffected int64, durationMs int64, errMessage, rollbackSQL string) {
-	_ = s.db.Create(&model.DatabaseSQLHistory{
+	history := model.DatabaseSQLHistory{
 		DatabaseID:   asset.ID,
 		DatabaseName: asset.Name,
 		SchemaName:   schema,
@@ -1362,7 +1370,47 @@ func (s *Service) logDBSQLHistory(asset *model.AssetDatabase, schema, table, sql
 		DurationMs:   durationMs,
 		ErrorMessage: errMessage,
 		RollbackSQL:  rollbackSQL,
-	}).Error
+	}
+	_ = s.db.Create(&history).Error
+	if status == 1 && !isQuerySQL(sqlType) {
+		s.recordDatabaseSQLChange(asset, history, schema)
+	}
+}
+
+func (s *Service) recordDatabaseSQLChange(asset *model.AssetDatabase, history model.DatabaseSQLHistory, schema string) {
+	if asset == nil || isQuerySQL(history.SQLType) {
+		return
+	}
+	s.CreateChangeRecord(OpsChangeRecordPayload{
+		Title:      "SQL 变更：" + asset.Name,
+		ChangeType: "sql",
+		SourceType: "database_sql",
+		SourceID:   history.ID,
+		SourceName: asset.Name,
+		Env:        asset.Env,
+		RiskLevel:  databaseSQLRiskLevel(history.SQLType),
+		Status:     changeStatusFromInt(history.Status),
+		Summary:    history.SQLType + " / " + firstNonEmpty(schema, history.SchemaName, asset.DBName),
+		Detail:     history.SQLText,
+	})
+}
+
+func databaseSQLRiskLevel(sqlType string) string {
+	switch strings.ToUpper(strings.TrimSpace(sqlType)) {
+	case "DROP", "TRUNCATE", "DELETE":
+		return "high"
+	case "UPDATE", "ALTER", "IMPORT":
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func changeStatusFromInt(status int) string {
+	if status == 1 {
+		return "success"
+	}
+	return "failed"
 }
 
 func (s *Service) updateTransferTask(taskID uint, updates map[string]any) {

@@ -8,6 +8,7 @@ import {
   saveMonitorDatasource,
   testMonitorDatasource
 } from '../../api/monitor'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -16,11 +17,13 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const rows = ref([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', type: '', status: '' })
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
+const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', type: '', status: '', env: '' })
 const form = reactive({
   id: undefined,
   name: '',
   type: 'prometheus',
+  env: 'test',
   url: '',
   authType: 'none',
   username: '',
@@ -36,6 +39,7 @@ function resetForm() {
     id: undefined,
     name: '',
     type: 'prometheus',
+    env: 'test',
     url: '',
     authType: 'none',
     username: '',
@@ -127,12 +131,18 @@ onMounted(loadData)
         <el-option label="启用" value="1" />
         <el-option label="禁用" value="2" />
       </el-select>
+      <el-select v-model="query.env" clearable placeholder="全部环境" style="width: 150px" @change="loadData">
+        <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+      </el-select>
       <el-button type="primary" @click="loadData">搜索</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="name" label="名称" min-width="180" />
       <el-table-column prop="type" label="类型" width="150" />
+      <el-table-column label="环境" width="120">
+        <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.env) }}</el-tag></template>
+      </el-table-column>
       <el-table-column prop="url" label="地址" min-width="260" show-overflow-tooltip />
       <el-table-column label="认证" width="120">
         <template #default="{ row }">{{ row.authType || 'none' }}</template>
@@ -169,6 +179,11 @@ onMounted(loadData)
             <el-radio-button label="prometheus">Prometheus</el-radio-button>
             <el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item label="所属环境" required>
+          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+            <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+          </el-select>
         </el-form-item>
         <el-form-item label="地址" required><el-input v-model="form.url" placeholder="http://prometheus:9090" /></el-form-item>
         <el-form-item label="认证方式">
