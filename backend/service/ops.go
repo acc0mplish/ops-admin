@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -14,6 +15,7 @@ import (
 	"ops-admin/backend/model"
 
 	"golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 )
 
 type OpsScriptPayload struct {
@@ -26,6 +28,8 @@ type OpsScriptPayload struct {
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
+	ChangeSummary  string `json:"changeSummary"`
+	Operator       string `json:"-"`
 }
 
 type OpsScriptStatusPayload struct {
@@ -41,6 +45,11 @@ type OpsExecCommandPayload struct {
 	GroupIDs       []uint `json:"groupIds"`
 	Concurrency    int    `json:"concurrency"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
+	RiskConfirmed  bool   `json:"riskConfirmed"`
+	Operator       string `json:"-"`
+	SourceIP       string `json:"-"`
+	Source         string `json:"-"`
+	RetryOfTaskID  uint   `json:"-"`
 }
 
 type OpsExecScriptPayload struct {
@@ -51,6 +60,11 @@ type OpsExecScriptPayload struct {
 	GroupIDs       []uint `json:"groupIds"`
 	Concurrency    int    `json:"concurrency"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
+	RiskConfirmed  bool   `json:"riskConfirmed"`
+	Operator       string `json:"-"`
+	SourceIP       string `json:"-"`
+	Source         string `json:"-"`
+	RetryOfTaskID  uint   `json:"-"`
 }
 
 type OpsFileDispatchPayload struct {
@@ -64,6 +78,16 @@ type OpsFileDispatchPayload struct {
 	Concurrency    int    `json:"concurrency"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	Overwrite      bool   `json:"overwrite"`
+	RiskConfirmed  bool   `json:"riskConfirmed"`
+	Operator       string `json:"-"`
+	SourceIP       string `json:"-"`
+	Source         string `json:"-"`
+}
+
+type OpsExecRetryPayload struct {
+	TaskID   uint   `json:"taskId"`
+	Operator string `json:"-"`
+	SourceIP string `json:"-"`
 }
 
 func normalizeOpsScriptType(v string) string {
@@ -108,6 +132,61 @@ func normalizeOpsTimeout(v int) int {
 		return 3600
 	}
 	return v
+}
+
+func opsRiskLevel(content string) string {
+	value := strings.ToLower(strings.TrimSpace(content))
+	highRisk := []string{"rm -rf", "mkfs", "shutdown", "reboot", "init 0", "init 6", "dd if=", "iptables -f", "systemctl stop", "userdel", "drop database", "truncate table"}
+	for _, keyword := range highRisk {
+		if strings.Contains(value, keyword) {
+			return "high"
+		}
+	}
+	return "normal"
+}
+
+func requireOpsRiskConfirmation(content string, confirmed bool) (string, error) {
+	level := opsRiskLevel(content)
+	if level == "high" && !confirmed {
+		return level, errors.New("检测到高风险操作，请确认目标范围和命令内容后再次执行")
+	}
+	return level, nil
+}
+
+func opsTaskSource(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "quick_exec"
+	}
+	return strings.TrimSpace(value)
+}
+
+func opsTargetSnapshot(hosts []model.AssetHost) string {
+	items := make([]map[string]any, 0, len(hosts))
+	for _, host := range hosts {
+		items = append(items, map[string]any{
+			"id": host.ID, "hostName": host.HostName, "sshIp": host.SSHIP,
+			"environment": host.Environment, "tags": host.Tags,
+		})
+	}
+	data, _ := json.Marshal(items)
+	return string(data)
+}
+
+func opsHasProductionTarget(hosts []model.AssetHost) bool {
+	for _, host := range hosts {
+		environment := strings.ToLower(strings.TrimSpace(host.Environment))
+		if environment == "prod" || environment == "production" || strings.Contains(environment, "生产") {
+			return true
+		}
+	}
+	return false
+}
+
+func requireOpsProductionConfirmation(hosts []model.AssetHost, confirmed bool) error {
+	if opsHasProductionTarget(hosts) && !confirmed {
+		return errors.New("目标包含生产环境主机，请确认目标范围后再次执行")
+	}
+	return nil
 }
 
 func shellQuote(v string) string {
@@ -171,6 +250,7 @@ func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
 		TimeoutSeconds: payload.TimeoutSeconds,
 		Status:         payload.Status,
 		Description:    Trimmed(payload.Description),
+		CurrentVersion: 1,
 	}
 	if item.Name == "" {
 		return errors.New("脚本名称不能为空")
@@ -184,7 +264,16 @@ func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
 	if item.Status == 0 {
 		item.Status = 1
 	}
-	return s.db.Create(&item).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&item).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.OpsScriptVersion{
+			ScriptID: item.ID, Version: 1, Content: item.Content, DefaultParams: item.DefaultParams,
+			Interpreter: item.Interpreter, TimeoutSeconds: item.TimeoutSeconds,
+			ChangeSummary: "创建脚本", Operator: payload.Operator,
+		}).Error
+	})
 }
 
 func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
@@ -214,7 +303,67 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 	if payload.Status == 0 {
 		updates["status"] = existing.Status
 	}
-	return s.db.Model(&model.OpsScript{}).Where("id = ?", payload.ID).Updates(updates).Error
+	nextVersion := existing.CurrentVersion + 1
+	if nextVersion < 2 {
+		nextVersion = 2
+	}
+	updates["current_version"] = nextVersion
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if existing.CurrentVersion <= 0 {
+			if err := tx.Create(&model.OpsScriptVersion{ScriptID: existing.ID, Version: 1, Content: existing.Content, DefaultParams: existing.DefaultParams, Interpreter: existing.Interpreter, TimeoutSeconds: existing.TimeoutSeconds, ChangeSummary: "历史版本归档", Operator: "system"}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Model(&model.OpsScript{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.OpsScriptVersion{
+			ScriptID: payload.ID, Version: nextVersion, Content: updates["content"].(string),
+			DefaultParams: updates["default_params"].(string), Interpreter: updates["interpreter"].(string),
+			TimeoutSeconds: updates["timeout_seconds"].(int), ChangeSummary: Trimmed(payload.ChangeSummary), Operator: payload.Operator,
+		}).Error
+	})
+}
+
+func (s *Service) ListOpsScriptVersions(scriptID uint) ([]model.OpsScriptVersion, error) {
+	var list []model.OpsScriptVersion
+	err := s.db.Where("script_id = ?", scriptID).Order("version DESC").Find(&list).Error
+	if err == nil && len(list) == 0 {
+		script, loadErr := s.GetOpsScript(scriptID)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		version := script.CurrentVersion
+		if version <= 0 {
+			version = 1
+			_ = s.db.Model(&model.OpsScript{}).Where("id = ?", scriptID).Update("current_version", version).Error
+		}
+		row := model.OpsScriptVersion{ScriptID: scriptID, Version: version, Content: script.Content, DefaultParams: script.DefaultParams, Interpreter: script.Interpreter, TimeoutSeconds: script.TimeoutSeconds, ChangeSummary: "现有版本归档", Operator: "system"}
+		if createErr := s.db.Create(&row).Error; createErr != nil {
+			return nil, createErr
+		}
+		list = []model.OpsScriptVersion{row}
+	}
+	return list, err
+}
+
+func (s *Service) RollbackOpsScript(scriptID uint, version int, operator string) error {
+	var target model.OpsScriptVersion
+	if err := s.db.Where("script_id = ? AND version = ?", scriptID, version).First(&target).Error; err != nil {
+		return err
+	}
+	existing, err := s.GetOpsScript(scriptID)
+	if err != nil {
+		return err
+	}
+	nextVersion := existing.CurrentVersion + 1
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{"content": target.Content, "default_params": target.DefaultParams, "interpreter": target.Interpreter, "timeout_seconds": target.TimeoutSeconds, "current_version": nextVersion}
+		if err := tx.Model(&model.OpsScript{}).Where("id = ?", scriptID).Updates(updates).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.OpsScriptVersion{ScriptID: scriptID, Version: nextVersion, Content: target.Content, DefaultParams: target.DefaultParams, Interpreter: target.Interpreter, TimeoutSeconds: target.TimeoutSeconds, ChangeSummary: fmt.Sprintf("回滚至 v%d", version), Operator: operator}).Error
+	})
 }
 
 func (s *Service) DeleteOpsScript(id uint) error {
@@ -233,8 +382,15 @@ func (s *Service) ExecuteOpsCommand(payload OpsExecCommandPayload) (map[string]a
 	if command == "" {
 		return nil, errors.New("执行命令不能为空")
 	}
+	riskLevel, err := requireOpsRiskConfirmation(command, payload.RiskConfirmed)
+	if err != nil {
+		return nil, err
+	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireOpsProductionConfirmation(hosts, payload.RiskConfirmed); err != nil {
 		return nil, err
 	}
 	task := model.OpsExecTask{
@@ -247,6 +403,12 @@ func (s *Service) ExecuteOpsCommand(payload OpsExecCommandPayload) (map[string]a
 		Status:         "running",
 		Summary:        "任务创建成功，正在执行中",
 		HostCount:      len(hosts),
+		Operator:       payload.Operator,
+		SourceIP:       payload.SourceIP,
+		Source:         opsTaskSource(payload.Source),
+		RiskLevel:      riskLevel,
+		TargetSnapshot: opsTargetSnapshot(hosts),
+		RetryOfTaskID:  payload.RetryOfTaskID,
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		finalCommand := command
@@ -268,8 +430,15 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 	if script.Status != 1 {
 		return nil, errors.New("当前脚本已禁用，无法执行")
 	}
+	riskLevel, err := requireOpsRiskConfirmation(script.Content, payload.RiskConfirmed)
+	if err != nil {
+		return nil, err
+	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireOpsProductionConfirmation(hosts, payload.RiskConfirmed); err != nil {
 		return nil, err
 	}
 	task := model.OpsExecTask{
@@ -283,6 +452,13 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 		Status:         "running",
 		Summary:        "任务创建成功，正在执行中",
 		HostCount:      len(hosts),
+		Operator:       payload.Operator,
+		SourceIP:       payload.SourceIP,
+		Source:         opsTaskSource(payload.Source),
+		RiskLevel:      riskLevel,
+		ScriptVersion:  script.CurrentVersion,
+		TargetSnapshot: opsTargetSnapshot(hosts),
+		RetryOfTaskID:  payload.RetryOfTaskID,
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		params := strings.TrimSpace(payload.Parameters)
@@ -298,8 +474,18 @@ func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadN
 	if targetPath == "" {
 		return nil, errors.New("目标路径不能为空")
 	}
+	riskLevel := "normal"
+	if strings.HasPrefix(targetPath, "/etc/") || strings.HasPrefix(targetPath, "/boot/") || strings.HasPrefix(targetPath, "/usr/") {
+		riskLevel = "high"
+		if !payload.RiskConfirmed {
+			return nil, errors.New("目标路径属于系统目录，请确认目标范围后再次执行")
+		}
+	}
 	hosts, err := s.resolveOpsTargetHosts(payload.HostIDs, payload.GroupIDs)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireOpsProductionConfirmation(hosts, payload.RiskConfirmed); err != nil {
 		return nil, err
 	}
 
@@ -347,6 +533,11 @@ func (s *Service) ExecuteOpsFileDispatch(payload OpsFileDispatchPayload, uploadN
 		Status:         "running",
 		Summary:        "任务创建成功，正在执行中",
 		HostCount:      len(hosts),
+		Operator:       payload.Operator,
+		SourceIP:       payload.SourceIP,
+		Source:         opsTaskSource(payload.Source),
+		RiskLevel:      riskLevel,
+		TargetSnapshot: opsTargetSnapshot(hosts),
 	}
 	return s.runOpsTaskAsync(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		return s.dispatchFileToHost(host, fileName, targetPath, content, payload.Overwrite, task.TimeoutSeconds)
@@ -400,6 +591,42 @@ func (s *Service) GetOpsExecTaskDetail(id uint) (map[string]any, error) {
 		"task":    task,
 		"results": results,
 	}, nil
+}
+
+func (s *Service) RetryFailedOpsExecTask(payload OpsExecRetryPayload) (map[string]any, error) {
+	var task model.OpsExecTask
+	if err := s.db.First(&task, payload.TaskID).Error; err != nil {
+		return nil, err
+	}
+	if task.Status == "running" {
+		return nil, errors.New("任务仍在执行中，暂不能重试")
+	}
+	if task.TaskType == "file" {
+		return nil, errors.New("文件内容不会长期保存在平台，请复制原文件分发任务后重新上传")
+	}
+	var failedResults []model.OpsExecTargetResult
+	if err := s.db.Where("task_id = ? AND status <> ?", task.ID, "success").Find(&failedResults).Error; err != nil {
+		return nil, err
+	}
+	if len(failedResults) == 0 {
+		return nil, errors.New("当前任务没有失败或超时主机")
+	}
+	hostIDs := make([]uint, 0, len(failedResults))
+	for _, result := range failedResults {
+		hostIDs = append(hostIDs, result.HostID)
+	}
+	if task.TaskType == "command" {
+		return s.ExecuteOpsCommand(OpsExecCommandPayload{
+			Title: task.Title + "（失败重试）", CommandText: task.CommandText, Parameters: task.Parameters,
+			HostIDs: hostIDs, Concurrency: task.Concurrency, TimeoutSeconds: task.TimeoutSeconds,
+			RiskConfirmed: true, Operator: payload.Operator, SourceIP: payload.SourceIP, Source: "retry", RetryOfTaskID: task.ID,
+		})
+	}
+	return s.ExecuteOpsScript(OpsExecScriptPayload{
+		Title: task.Title + "（失败重试）", ScriptID: task.ScriptID, Parameters: task.Parameters,
+		HostIDs: hostIDs, Concurrency: task.Concurrency, TimeoutSeconds: task.TimeoutSeconds,
+		RiskConfirmed: true, Operator: payload.Operator, SourceIP: payload.SourceIP, Source: "retry", RetryOfTaskID: task.ID,
+	})
 }
 
 func opsTaskTitle(title string, fallback string) string {

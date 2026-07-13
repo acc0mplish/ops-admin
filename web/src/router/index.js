@@ -17,6 +17,7 @@ import HostGroup from '../views/assets/HostGroup.vue'
 import Credential from '../views/assets/Credential.vue'
 import CloudAccount from '../views/assets/CloudAccount.vue'
 import AssetOverview from '../views/assets/AssetOverview.vue'
+import AssetDetail from '../views/assets/AssetDetail.vue'
 import Database from '../views/assets/Database.vue'
 import DatabaseWorkbench from '../views/assets/DatabaseWorkbench.vue'
 import DatabaseWorkbenchEntry from '../views/assets/DatabaseWorkbenchEntry.vue'
@@ -151,6 +152,7 @@ const routes = [
           summary: '集中维护 MySQL 数据库资产，并进入 SQL 工作台进行表结构、数据与执行记录管理。'
         }
       },
+      { path: '/assets/databases/:id/detail', name: 'AssetDatabaseDetail', component: AssetDetail, props: { resourceType: 'database' }, meta: { title: '数据库详情', app: 'assets' } },
       { path: '/assets/databases/workbench', component: DatabaseWorkbenchEntry, meta: { title: 'DBMS 工作台', app: 'assets' } },
       { path: '/assets/databases/import', component: DatabaseImport, meta: { title: '数据导入', app: 'assets' } },
       { path: '/assets/databases/backups', component: DatabaseBackup, meta: { title: '备份管理', app: 'assets' } },
@@ -173,6 +175,7 @@ const routes = [
       },
       { path: '/assets/k8s', redirect: '/assets/k8s/clusters' },
       { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: '集群管理', app: 'assets' } },
+      { path: '/assets/k8s/clusters/:id/detail', name: 'K8sClusterDetail', component: AssetDetail, props: { resourceType: 'k8s' }, meta: { title: '集群详情', app: 'assets' } },
       { path: '/assets/k8s/overview', component: K8s, meta: { title: '集群概览', app: 'assets' } },
       { path: '/assets/k8s/nodes', component: K8s, meta: { title: '节点管理', app: 'assets' } },
       { path: '/assets/k8s/namespaces', component: K8s, meta: { title: '命名空间', app: 'assets' } },
@@ -192,6 +195,7 @@ const routes = [
       { path: '/assets/server/credentials/password', redirect: '/assets/server/credentials' },
       { path: '/assets/server/credentials/key', redirect: '/assets/server/credentials' },
       { path: '/assets/hosts', redirect: '/assets/server/hosts' },
+      { path: '/assets/server/hosts/:id/detail', name: 'AssetHostDetail', component: AssetDetail, props: { resourceType: 'host' }, meta: { title: '主机详情', app: 'assets' } },
       { path: '/assets/tags', redirect: '/assets/server/groups' },
 
       { path: '/ops', redirect: '/ops/quick-exec/command' },

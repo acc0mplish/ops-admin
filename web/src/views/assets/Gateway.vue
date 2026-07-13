@@ -39,6 +39,11 @@ const form = reactive({
   description: ''
 })
 
+function formatDateTime(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-')
+}
+
 function resetForm() {
   Object.assign(form, {
     id: undefined,
@@ -153,6 +158,15 @@ onMounted(() => {
         <template #default="{ row }">{{ row.credential?.name || '-' }}</template>
       </el-table-column>
       <el-table-column prop="networkZone" label="网络区域" min-width="140" />
+      <el-table-column label="引用资产" min-width="210">
+        <template #default="{ row }">
+          <span>主机 {{ row.hostCount || 0 }}</span>
+          <el-divider direction="vertical" />
+          <span>数据库 {{ row.databaseCount || 0 }}</span>
+          <el-divider direction="vertical" />
+          <span>K8s {{ row.clusterCount || 0 }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
@@ -165,7 +179,7 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="lastCheckTime" label="最近检测" min-width="190" />
+      <el-table-column label="最近检测" min-width="190"><template #default="{ row }">{{ formatDateTime(row.lastCheckTime) }}</template></el-table-column>
       <el-table-column label="操作" fixed="right" width="260">
         <template #default="{ row }">
           <el-button link type="primary" @click="handleTest(row)">测试</el-button>

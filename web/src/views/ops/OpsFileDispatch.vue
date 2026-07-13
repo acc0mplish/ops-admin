@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
 import { executeOpsFileDispatch, queryOpsExecHistoryDetail } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
@@ -59,6 +59,22 @@ async function submit() {
     ElMessage.warning('请选择源服务器并填写源文件路径')
     return
   }
+  const highRisk = /^\/(etc|boot|usr)\//.test(form.targetPath.trim())
+  const selectedHosts = hostOptions.value.filter((host) => {
+    if (form.groupId) {
+      return Number(host.groupId) === Number(form.groupId) || (host.hostGroups || []).some((group) => Number(group.id) === Number(form.groupId))
+    }
+    return form.hostIds.map(Number).includes(Number(host.id))
+  })
+  const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('生产'))
+  const confirmationRequired = highRisk || includesProduction
+  if (confirmationRequired) {
+    await ElMessageBox.confirm(
+      includesProduction ? '目标包含生产环境主机，请确认文件、路径和目标范围后继续。' : '目标路径属于系统目录，覆盖文件可能影响服务运行。确认继续分发吗？',
+      includesProduction ? '生产环境操作确认' : '高风险路径确认',
+      { type: 'warning', confirmButtonText: '确认分发' }
+    )
+  }
 
   const payload = new FormData()
   payload.append('title', form.title)
@@ -71,6 +87,7 @@ async function submit() {
   payload.append('concurrency', String(form.concurrency))
   payload.append('timeoutSeconds', String(form.timeoutSeconds))
   payload.append('overwrite', String(form.overwrite))
+  payload.append('riskConfirmed', String(confirmationRequired))
   if (form.file) payload.append('file', form.file)
 
   submitting.value = true

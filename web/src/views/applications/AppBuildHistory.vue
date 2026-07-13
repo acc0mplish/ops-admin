@@ -53,11 +53,22 @@ function releaseTitle(row) {
 
 function stageList(row) {
   const failed = row.status === 'failed'
-  return [
+  const stages = [
     { name: 'Git Clone', status: failed && row.stage === 'checkout' ? 'failed' : row.status === 'running' && row.stage === 'checkout' ? 'running' : 'success', duration: '拉取代码' },
-    { name: '构建', status: failed && row.stage === 'build' ? 'failed' : row.status === 'running' && row.stage === 'build' ? 'running' : row.stage === 'checkout' ? 'waiting' : 'success', duration: '执行构建脚本' },
-    { name: '发布', status: failed && row.stage === 'deploy' ? 'failed' : row.status === 'running' && row.stage === 'deploy' ? 'running' : row.deployLog ? 'success' : 'waiting', duration: row.deployLog ? '执行发布脚本' : '未配置发布脚本' }
+    { name: '应用构建', status: failed && row.stage === 'build' ? 'failed' : row.status === 'running' && row.stage === 'build' ? 'running' : row.stage === 'checkout' ? 'waiting' : 'success', duration: '执行构建脚本' }
   ]
+  if (row.deployLog || row.stage === 'post_build') {
+    stages.push({ name: '构建后操作', status: failed && row.stage === 'post_build' ? 'failed' : row.status === 'running' && row.stage === 'post_build' ? 'running' : 'success', duration: '执行构建后脚本' })
+  }
+  return stages
+}
+
+function buildParamsText(row) {
+  if (!row.paramsJson) return '-'
+  try {
+    const params = JSON.parse(row.paramsJson)
+    return Object.entries(params).map(([key, value]) => `${key}=${value}`).join('，') || '-'
+  } catch { return '-' }
 }
 
 const logFileName = computed(() => `${currentLog.value.title || 'build-log'}.log`.replace(/[\\/:*?"<>|]/g, '_'))
@@ -103,14 +114,14 @@ onMounted(async () => {
     <div class="app-header">
       <div>
         <h1>构建历史</h1>
-        <p>按构建流水线记录每次 Git/SVN 拉取、构建和发布阶段，可查看完整构建日志。</p>
+        <p>记录每次 Git/SVN 拉取、应用构建和构建后操作，可追溯版本、提交与完整执行日志。</p>
       </div>
     </div>
 
     <div class="filter-panel">
       <el-form inline>
-        <el-form-item label="项目">
-          <el-select v-model="query.appId" clearable filterable placeholder="全部项目">
+        <el-form-item label="应用">
+          <el-select v-model="query.appId" clearable filterable placeholder="全部应用">
             <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -156,8 +167,10 @@ onMounted(async () => {
             <span>构建版本：{{ row.version || '-' }}</span>
             <span>构建环境：{{ row.env || '-' }}</span>
             <span>Git Commit：{{ row.commitId || '-' }}</span>
-            <span>所属项目：{{ row.appName || '-' }}</span>
+            <span>所属应用：{{ row.appName || '-' }}</span>
             <span>构建摘要：{{ row.summary || '-' }}</span>
+            <span>执行路径：{{ row.workspace || '-' }}</span>
+            <span class="params-meta">构建参数：{{ buildParamsText(row) }}</span>
           </div>
           <div class="stage-panel">
             <div class="stage-head">
@@ -177,7 +190,6 @@ onMounted(async () => {
           </div>
           <div class="history-actions">
             <el-button type="primary" @click="openLog(row)">查看日志</el-button>
-            <el-button disabled>回滚到此版本</el-button>
           </div>
         </div>
       </div>
@@ -223,6 +235,7 @@ onMounted(async () => {
 .history-title strong { font-size: 18px; color: #071b3d; }
 .branch { color: #62728c; }
 .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px 28px; padding: 18px; border-radius: 10px; background: #fbfdff; color: #6b7c9b; }
+.params-meta { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .stage-panel { margin-top: 16px; border-radius: 10px; background: #fbfdff; padding: 16px; }
 .stage-head { display: flex; justify-content: space-between; margin-bottom: 12px; color: #6b7c9b; }
 .stage-list { display: flex; gap: 14px; flex-wrap: wrap; }

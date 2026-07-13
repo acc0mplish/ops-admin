@@ -38,6 +38,15 @@ func (ctl *Controller) GetOpsApplicationInfo(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetOpsApplicationBindings(c *gin.Context) {
+	data, err := ctl.service.ListOpsApplicationEnvironmentBindings(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) SaveOpsApplication(c *gin.Context) {
 	var payload service.OpsApplicationPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -178,6 +187,15 @@ func (ctl *Controller) GetOpsAppReleaseInfo(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetOpsAppArtifactList(c *gin.Context) {
+	data, err := ctl.service.ListOpsAppArtifacts(uint(mustAtoi(c.Query("appId"))), c.Query("env"), c.Query("status"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetOpsAppPipelineTemplateList(c *gin.Context) {
 	data, err := ctl.service.ListOpsAppPipelineTemplates(c.Query("category"))
 	if err != nil {
@@ -305,6 +323,34 @@ func (ctl *Controller) GetOpsAppPipelineRunInfo(c *gin.Context) {
 	data, err := ctl.service.GetOpsAppPipelineRun(uint(mustAtoi(c.Query("id"))))
 	if err != nil {
 		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) ApproveOpsAppPipelineRun(c *gin.Context) {
+	var payload service.OpsAppPipelineApprovalPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid pipeline approval payload")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	if err := ctl.service.ApproveOpsAppPipelineRun(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) RollbackOpsAppPipelineRun(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid pipeline rollback payload")
+		return
+	}
+	data, err := ctl.service.RollbackOpsAppPipelineRun(payload.ID, c.GetString("username"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
 		return
 	}
 	httpx.Success(c, data)

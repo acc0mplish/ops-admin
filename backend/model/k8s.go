@@ -10,6 +10,7 @@ type K8sCluster struct {
 	Version        string       `json:"version" gorm:"size:64;not null"`
 	NodeCount      int          `json:"nodeCount" gorm:"default:0"`
 	Env            string       `json:"env" gorm:"size:64;index"`
+	Tags           []string     `json:"tags" gorm:"serializer:json;type:text"`
 	ConnectionMode string       `json:"connectionMode" gorm:"size:32;default:direct;index"`
 	GatewayID      *uint        `json:"gatewayId" gorm:"index"`
 	Gateway        AssetGateway `json:"gateway" gorm:"foreignKey:GatewayID"`
@@ -25,13 +26,15 @@ func (K8sCluster) TableName() string {
 }
 
 type K8sClusterPayload struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	KubeConfig     string `json:"kubeConfig"`
-	Env            string `json:"env"`
-	ConnectionMode string `json:"connectionMode"`
-	GatewayID      uint   `json:"gatewayId"`
+	ID             uint     `json:"id"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	KubeConfig     string   `json:"kubeConfig"`
+	Env            string   `json:"env"`
+	ConnectionMode string   `json:"connectionMode"`
+	GatewayID      uint     `json:"gatewayId"`
+	Tags           []string `json:"tags"`
+	Operator       string   `json:"-"`
 }
 
 type K8sWorkloadActionPayload struct {
@@ -96,6 +99,7 @@ type K8sClusterView struct {
 	Version        string     `json:"version"`
 	NodeCount      int        `json:"nodeCount"`
 	Env            string     `json:"env"`
+	Tags           []string   `json:"tags"`
 	ConnectionMode string     `json:"connectionMode"`
 	GatewayID      *uint      `json:"gatewayId"`
 	GatewayName    string     `json:"gatewayName"`

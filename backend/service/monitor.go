@@ -38,30 +38,30 @@ type MonitorDatasourcePayload struct {
 }
 
 type MonitorAlertRulePayload struct {
-	ID                    uint    `json:"id"`
-	Name                  string  `json:"name"`
-	AlertType             string  `json:"alertType"`
-	DatasourceScope       string  `json:"datasourceScope"`
-	DatasourceID          uint    `json:"datasourceId"`
-	PromQL                string  `json:"promql"`
-	Query                 string  `json:"query"`
-	LogIndex              string  `json:"logIndex"`
-	LogTimeRangeSeconds   int     `json:"logTimeRangeSeconds"`
-	Comparator            string  `json:"comparator"`
-	Threshold             float64 `json:"threshold"`
-	ForSeconds            int     `json:"forSeconds"`
-	EvalIntervalSeconds   int     `json:"evalIntervalSeconds"`
-	NotifyRepeatIntervalSeconds int `json:"notifyRepeatIntervalSeconds"`
-	MaxNotifyCount        int     `json:"maxNotifyCount"`
-	Severity              string  `json:"severity"`
-	LabelsJSON            string  `json:"labelsJson"`
-	AnnotationsJSON       string  `json:"annotationsJson"`
-	NotifyEnabled         bool    `json:"notifyEnabled"`
-	NotifyRuleID          uint    `json:"notifyRuleId"`
-	NotifyRecoveryEnabled bool    `json:"notifyRecoveryEnabled"`
-	Env                   string  `json:"env"`
-	Status                int     `json:"status"`
-	Description           string  `json:"description"`
+	ID                          uint    `json:"id"`
+	Name                        string  `json:"name"`
+	AlertType                   string  `json:"alertType"`
+	DatasourceScope             string  `json:"datasourceScope"`
+	DatasourceID                uint    `json:"datasourceId"`
+	PromQL                      string  `json:"promql"`
+	Query                       string  `json:"query"`
+	LogIndex                    string  `json:"logIndex"`
+	LogTimeRangeSeconds         int     `json:"logTimeRangeSeconds"`
+	Comparator                  string  `json:"comparator"`
+	Threshold                   float64 `json:"threshold"`
+	ForSeconds                  int     `json:"forSeconds"`
+	EvalIntervalSeconds         int     `json:"evalIntervalSeconds"`
+	NotifyRepeatIntervalSeconds int     `json:"notifyRepeatIntervalSeconds"`
+	MaxNotifyCount              int     `json:"maxNotifyCount"`
+	Severity                    string  `json:"severity"`
+	LabelsJSON                  string  `json:"labelsJson"`
+	AnnotationsJSON             string  `json:"annotationsJson"`
+	NotifyEnabled               bool    `json:"notifyEnabled"`
+	NotifyRuleID                uint    `json:"notifyRuleId"`
+	NotifyRecoveryEnabled       bool    `json:"notifyRecoveryEnabled"`
+	Env                         string  `json:"env"`
+	Status                      int     `json:"status"`
+	Description                 string  `json:"description"`
 }
 
 type MonitorAlertRuleBatchPayload struct {
@@ -165,6 +165,7 @@ type MonitorScheduler struct {
 	cron    *cron.Cron
 	mu      sync.Mutex
 	entries map[uint]cron.EntryID
+	running map[uint]bool
 }
 
 type PromQueryResult struct {
@@ -413,6 +414,7 @@ func (s *Service) initMonitorScheduler() {
 				cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)),
 			),
 			entries: map[uint]cron.EntryID{},
+			running: map[uint]bool{},
 		}
 		s.monitorScheduler.cron.Start()
 		s.reloadMonitorAlertRules()
@@ -1128,29 +1130,29 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		datasourceID = 0
 	}
 	updates := map[string]any{
-		"name":                    Trimmed(payload.Name),
-		"alert_type":              alertType,
-		"datasource_scope":        datasourceScope,
-		"datasource_id":           datasourceID,
-		"datasource_name":         datasourceName,
-		"prom_ql":                 queryText,
-		"log_index":               firstNonEmpty(strings.TrimSpace(payload.LogIndex), "_all"),
-		"log_time_range_seconds":  normalizeLogTimeRangeSeconds(payload.LogTimeRangeSeconds),
-		"comparator":              normalizeComparator(payload.Comparator),
-		"threshold":               payload.Threshold,
-		"for_seconds":             normalizeForSeconds(payload.ForSeconds),
-		"eval_interval_seconds":   normalizeEvalInterval(payload.EvalIntervalSeconds),
+		"name":                           Trimmed(payload.Name),
+		"alert_type":                     alertType,
+		"datasource_scope":               datasourceScope,
+		"datasource_id":                  datasourceID,
+		"datasource_name":                datasourceName,
+		"prom_ql":                        queryText,
+		"log_index":                      firstNonEmpty(strings.TrimSpace(payload.LogIndex), "_all"),
+		"log_time_range_seconds":         normalizeLogTimeRangeSeconds(payload.LogTimeRangeSeconds),
+		"comparator":                     normalizeComparator(payload.Comparator),
+		"threshold":                      payload.Threshold,
+		"for_seconds":                    normalizeForSeconds(payload.ForSeconds),
+		"eval_interval_seconds":          normalizeEvalInterval(payload.EvalIntervalSeconds),
 		"notify_repeat_interval_seconds": normalizeNotifyRepeatInterval(payload.NotifyRepeatIntervalSeconds),
-		"max_notify_count":        normalizeMaxNotifyCount(payload.MaxNotifyCount),
-		"severity":                normalizeSeverity(payload.Severity),
-		"labels_json":             labelsJSON,
-		"annotations_json":        annotationsJSON,
-		"notify_enabled":          payload.NotifyEnabled,
-		"notify_rule_id":          payload.NotifyRuleID,
-		"notify_recovery_enabled": payload.NotifyRecoveryEnabled,
-		"env":                     normalizeEnvCode(payload.Env),
-		"status":                  normalizeMonitorStatus(payload.Status),
-		"description":             Trimmed(payload.Description),
+		"max_notify_count":               normalizeMaxNotifyCount(payload.MaxNotifyCount),
+		"severity":                       normalizeSeverity(payload.Severity),
+		"labels_json":                    labelsJSON,
+		"annotations_json":               annotationsJSON,
+		"notify_enabled":                 payload.NotifyEnabled,
+		"notify_rule_id":                 payload.NotifyRuleID,
+		"notify_recovery_enabled":        payload.NotifyRecoveryEnabled,
+		"env":                            normalizeEnvCode(payload.Env),
+		"status":                         normalizeMonitorStatus(payload.Status),
+		"description":                    Trimmed(payload.Description),
 	}
 	var current model.MonitorAlertRule
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -1470,6 +1472,11 @@ func (s *Service) RunMonitorAlertRule(id uint) error {
 }
 
 func (s *Service) evaluateMonitorAlertRule(id uint) {
+	if !s.beginMonitorAlertRuleEvaluation(id) {
+		return
+	}
+	defer s.endMonitorAlertRuleEvaluation(id)
+
 	rule, err := s.GetMonitorAlertRule(id)
 	if err != nil || rule.Status != 1 {
 		return
@@ -1527,6 +1534,28 @@ func (s *Service) evaluateMonitorAlertRule(id uint) {
 		return
 	}
 	s.updateMonitorRuleEval(*rule, "success", fmt.Sprintf("命中 %d 条序列，%d 个数据源失败", matched, failed))
+}
+
+func (s *Service) beginMonitorAlertRuleEvaluation(id uint) bool {
+	if s.monitorScheduler == nil {
+		return true
+	}
+	s.monitorScheduler.mu.Lock()
+	defer s.monitorScheduler.mu.Unlock()
+	if s.monitorScheduler.running[id] {
+		return false
+	}
+	s.monitorScheduler.running[id] = true
+	return true
+}
+
+func (s *Service) endMonitorAlertRuleEvaluation(id uint) {
+	if s.monitorScheduler == nil {
+		return
+	}
+	s.monitorScheduler.mu.Lock()
+	delete(s.monitorScheduler.running, id)
+	s.monitorScheduler.mu.Unlock()
 }
 
 func (s *Service) monitorRuleDatasources(rule model.MonitorAlertRule) ([]model.MonitorDatasource, error) {
@@ -1697,7 +1726,8 @@ func (s *Service) shouldNotifyAggregatedEvent(event model.MonitorAlertEvent, agg
 	if aggregation == nil || event.AggregationKey == "" {
 		return true
 	}
-	windowStart := time.Now().Add(-time.Duration(normalizeAggregationWindow(aggregation.WindowSeconds)) * time.Second)
+	lookbackSeconds := aggregationLookbackSeconds(*aggregation)
+	windowStart := time.Now().Add(-time.Duration(lookbackSeconds) * time.Second)
 	var last model.MonitorAlertEvent
 	err := s.db.Where("aggregation_key = ? AND id <> ? AND last_notify_at >= ?", event.AggregationKey, event.ID, windowStart).
 		Order("last_notify_at DESC").First(&last).Error
@@ -1707,8 +1737,17 @@ func (s *Service) shouldNotifyAggregatedEvent(event model.MonitorAlertEvent, agg
 	if err != nil || last.LastNotifyAt == nil {
 		return true
 	}
-	repeatAfter := time.Duration(normalizeAggregationWindow(aggregation.RepeatIntervalSeconds)) * time.Second
+	repeatAfter := time.Duration(lookbackSeconds) * time.Second
 	return time.Since(*last.LastNotifyAt) >= repeatAfter
+}
+
+func aggregationLookbackSeconds(aggregation model.MonitorAggregationRule) int {
+	windowSeconds := normalizeAggregationWindow(aggregation.WindowSeconds)
+	repeatSeconds := normalizeAggregationWindow(aggregation.RepeatIntervalSeconds)
+	if repeatSeconds > windowSeconds {
+		return repeatSeconds
+	}
+	return windowSeconds
 }
 
 // shouldNotifyAlertEvent applies the per-rule reminder interval before any
@@ -1723,15 +1762,39 @@ func (s *Service) shouldNotifyAlertEvent(event model.MonitorAlertEvent, rule mod
 	return s.shouldNotifyAggregatedEvent(event, aggregation)
 }
 
-func (s *Service) markMonitorAlertNotified(event *model.MonitorAlertEvent) {
+func (s *Service) markMonitorAlertNotified(event *model.MonitorAlertEvent) bool {
 	now := time.Now()
 	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
 		"last_notify_at": &now,
-		"notify_count":  gorm.Expr("notify_count + ?", 1),
+		"notify_count":   gorm.Expr("notify_count + ?", 1),
 	}).Error; err == nil {
 		event.LastNotifyAt = &now
 		event.NotifyCount++
+		return true
 	}
+	return false
+}
+
+func (s *Service) notifyMonitorAlertIfAllowed(event *model.MonitorAlertEvent, rule model.MonitorAlertRule, aggregation *model.MonitorAggregationRule, status string) bool {
+	// Keep the aggregation decision and its persisted notification marker in one
+	// critical section so concurrent rule evaluations cannot both notify.
+	s.monitorNotifyMu.Lock()
+	if !s.shouldNotifyAlertEvent(*event, rule, aggregation) || !s.markMonitorAlertNotified(event) {
+		s.monitorNotifyMu.Unlock()
+		return false
+	}
+	s.monitorNotifyMu.Unlock()
+	s.dispatchMonitorNotification(rule, *event, status)
+	return true
+}
+
+func applyMonitorEventAggregation(event *model.MonitorAlertEvent, updates map[string]any, aggregation model.MonitorAggregationRule, key string) {
+	updates["aggregation_key"] = key
+	updates["aggregate_rule_id"] = aggregation.ID
+	updates["aggregate_rule_name"] = aggregation.Name
+	event.AggregationKey = key
+	event.AggregateRuleID = aggregation.ID
+	event.AggregateRuleName = aggregation.Name
 }
 
 func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample PromMetricSample, fp string, value float64) {
@@ -1758,9 +1821,7 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 			updates["status"] = "silenced"
 		}
 		if aggregated && aggregationRule != nil {
-			updates["aggregation_key"] = aggregationKey
-			updates["aggregate_rule_id"] = aggregationRule.ID
-			updates["aggregate_rule_name"] = aggregationRule.Name
+			applyMonitorEventAggregation(&existing, updates, *aggregationRule, aggregationKey)
 		}
 		if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
 			return
@@ -1772,10 +1833,7 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 			existing.Status = "firing"
 			existing.CurrentValue = value
 			existing.Summary = summary
-			if s.shouldNotifyAlertEvent(existing, rule, aggregationRule) {
-				s.markMonitorAlertNotified(&existing)
-				s.dispatchMonitorNotification(rule, existing, "firing")
-			}
+			s.notifyMonitorAlertIfAllowed(&existing, rule, aggregationRule, "firing")
 		}
 		return
 	}
@@ -1803,10 +1861,7 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 		event.AggregateRuleName = aggregationRule.Name
 	}
 	if err := s.db.Create(&event).Error; err == nil && event.Status == "firing" && !event.Silenced && rule.NotifyEnabled && rule.NotifyRuleID > 0 {
-		if s.shouldNotifyAlertEvent(event, rule, aggregationRule) {
-			s.markMonitorAlertNotified(&event)
-			s.dispatchMonitorNotification(rule, event, "firing")
-		}
+		s.notifyMonitorAlertIfAllowed(&event, rule, aggregationRule, "firing")
 	}
 }
 

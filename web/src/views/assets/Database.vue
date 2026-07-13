@@ -30,7 +30,8 @@ const query = reactive({
   keyword: '',
   dbType: 'mysql',
   status: '',
-  env: ''
+  env: '',
+  tag: ''
 })
 
 const form = reactive({
@@ -47,6 +48,7 @@ const form = reactive({
   charset: 'utf8mb4',
   env: 'test',
   accessMode: 'readwrite',
+  tags: [],
   status: 1,
   description: ''
 })
@@ -66,6 +68,7 @@ function resetForm() {
     charset: 'utf8mb4',
     env: 'test',
     accessMode: 'readwrite',
+    tags: [],
     status: 1,
     description: ''
   })
@@ -107,7 +110,7 @@ function openCreate() {
 async function openEdit(row) {
   isEdit.value = true
   const data = await assetDatabaseInfo(row.id)
-  Object.assign(form, data, { password: '' })
+  Object.assign(form, data, { password: '', tags: data.tags || [] })
   dialogVisible.value = true
 }
 
@@ -148,6 +151,15 @@ function openWorkbench(row) {
   router.push({ name: 'DatabaseWorkbench', params: { id: row.id } })
 }
 
+function openDetail(row) {
+  router.push({ name: 'AssetDatabaseDetail', params: { id: row.id } })
+}
+
+function formatDateTime(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-')
+}
+
 onMounted(() => {
   loadGateways()
   loadData()
@@ -183,15 +195,16 @@ onMounted(() => {
         <el-select v-model="query.env" clearable style="width: 160px" placeholder="全部环境" @change="loadData">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
+        <el-input v-model="query.tag" clearable placeholder="标签" style="width: 150px" @keyup.enter="loadData" />
         <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '', env: '' }); loadData()">重置</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '', env: '', tag: '' }); loadData()">重置</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="tableData" border class="data-table">
       <el-table-column label="数据库名称" min-width="180">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openWorkbench(row)">{{ row.name }}</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button>
         </template>
       </el-table-column>
       <el-table-column prop="dbType" label="类型" width="100" />
@@ -205,6 +218,12 @@ onMounted(() => {
       <el-table-column label="环境" width="120">
         <template #default="{ row }">
           <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="标签" min-width="160">
+        <template #default="{ row }">
+          <el-tag v-for="tag in row.tags || []" :key="tag" class="asset-tag" effect="plain">{{ tag }}</el-tag>
+          <span v-if="!row.tags?.length">-</span>
         </template>
       </el-table-column>
       <el-table-column label="连接地址" min-width="220">
@@ -224,7 +243,7 @@ onMounted(() => {
           <el-tag :type="connectionStatusType(row)" effect="light">{{ connectionStatusText(row) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="lastCheckTime" label="最近检测" min-width="170" />
+      <el-table-column label="最近检测" min-width="170"><template #default="{ row }">{{ formatDateTime(row.lastCheckTime) }}</template></el-table-column>
       <el-table-column prop="description" label="备注" min-width="180" />
       <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
@@ -272,6 +291,13 @@ onMounted(() => {
                 <el-radio-button value="readonly">只读</el-radio-button>
                 <el-radio-button value="readwrite">读写</el-radio-button>
               </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="资产标签">
+              <el-select v-model="form.tags" multiple filterable allow-create default-first-option style="width: 100%" placeholder="输入标签后回车，例如：核心、支付">
+                <el-option v-for="tag in form.tags" :key="tag" :label="tag" :value="tag" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -335,6 +361,8 @@ onMounted(() => {
   flex-direction: column;
   gap: 18px;
 }
+
+.asset-tag { margin-right: 6px; }
 
 .page-header {
   display: flex;

@@ -47,6 +47,7 @@ func (ctl *Controller) CreateOpsScript(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid script payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	if err := ctl.service.CreateOpsScript(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
@@ -60,6 +61,7 @@ func (ctl *Controller) UpdateOpsScript(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid script payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	if err := ctl.service.UpdateOpsScript(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
@@ -99,6 +101,8 @@ func (ctl *Controller) ExecuteOpsCommand(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid command execution payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
+	payload.SourceIP = c.ClientIP()
 	data, err := ctl.service.ExecuteOpsCommand(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
@@ -113,6 +117,8 @@ func (ctl *Controller) ExecuteOpsScript(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid script execution payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
+	payload.SourceIP = c.ClientIP()
 	data, err := ctl.service.ExecuteOpsScript(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
@@ -127,9 +133,52 @@ func (ctl *Controller) ExecuteOpsFileDispatch(c *gin.Context) {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
+	payload.Operator = c.GetString("username")
+	payload.SourceIP = c.ClientIP()
 	data, runErr := ctl.service.ExecuteOpsFileDispatch(payload, uploadName, uploadBytes)
 	if runErr != nil {
 		httpx.Failed(c, 400, runErr.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetOpsScriptVersions(c *gin.Context) {
+	data, err := ctl.service.ListOpsScriptVersions(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) RollbackOpsScript(c *gin.Context) {
+	var payload struct {
+		ID      uint `json:"id"`
+		Version int  `json:"version"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid rollback payload")
+		return
+	}
+	if err := ctl.service.RollbackOpsScript(payload.ID, payload.Version, c.GetString("username")); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) RetryOpsExecTask(c *gin.Context) {
+	var payload service.OpsExecRetryPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid retry payload")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	payload.SourceIP = c.ClientIP()
+	data, err := ctl.service.RetryFailedOpsExecTask(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
 		return
 	}
 	httpx.Success(c, data)
@@ -157,14 +206,15 @@ func (ctl *Controller) GetOpsExecTaskDetail(c *gin.Context) {
 
 func parseOpsFileDispatchPayload(c *gin.Context) (service.OpsFileDispatchPayload, string, []byte, error) {
 	payload := service.OpsFileDispatchPayload{
-		Title:        strings.TrimSpace(c.PostForm("title")),
-		SourceType:   strings.TrimSpace(c.PostForm("sourceType")),
-		SourceHostID: uint(mustAtoi(c.PostForm("sourceHostId"))),
-		SourcePath:   strings.TrimSpace(c.PostForm("sourcePath")),
-		TargetPath:   strings.TrimSpace(c.PostForm("targetPath")),
-		Concurrency:  mustAtoi(c.DefaultPostForm("concurrency", "5")),
+		Title:          strings.TrimSpace(c.PostForm("title")),
+		SourceType:     strings.TrimSpace(c.PostForm("sourceType")),
+		SourceHostID:   uint(mustAtoi(c.PostForm("sourceHostId"))),
+		SourcePath:     strings.TrimSpace(c.PostForm("sourcePath")),
+		TargetPath:     strings.TrimSpace(c.PostForm("targetPath")),
+		Concurrency:    mustAtoi(c.DefaultPostForm("concurrency", "5")),
 		TimeoutSeconds: mustAtoi(c.DefaultPostForm("timeoutSeconds", "10")),
-		Overwrite:    strings.EqualFold(c.DefaultPostForm("overwrite", "false"), "true"),
+		Overwrite:      strings.EqualFold(c.DefaultPostForm("overwrite", "false"), "true"),
+		RiskConfirmed:  strings.EqualFold(c.DefaultPostForm("riskConfirmed", "false"), "true"),
 	}
 
 	hostIDs, err := parseUintSliceField(c.PostForm("hostIds"))

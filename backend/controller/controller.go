@@ -713,7 +713,7 @@ func (ctl *Controller) CleanOperationLog(c *gin.Context) {
 func (ctl *Controller) GetAssetHostList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListAssetHosts(pageNum, pageSize, c.Query("keyword"), uint(mustAtoi(c.Query("groupId"))), c.Query("status"))
+	data, err := ctl.service.ListAssetHosts(pageNum, pageSize, c.Query("keyword"), uint(mustAtoi(c.Query("groupId"))), c.Query("status"), c.Query("environment"), c.Query("tag"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -723,6 +723,16 @@ func (ctl *Controller) GetAssetHostList(c *gin.Context) {
 
 func (ctl *Controller) GetAssetOverview(c *gin.Context) {
 	data, err := ctl.service.GetAssetOverview()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetChangeLogs(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	data, err := ctl.service.ListAssetChangeLogs(c.Query("resourceType"), uint(mustAtoi(c.Query("resourceId"))), limit)
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -745,6 +755,7 @@ func (ctl *Controller) CreateAssetHost(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid host payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	if err := ctl.service.CreateAssetHost(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
@@ -758,6 +769,7 @@ func (ctl *Controller) UpdateAssetHost(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid host payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	if err := ctl.service.UpdateAssetHost(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

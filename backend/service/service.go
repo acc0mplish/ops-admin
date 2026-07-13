@@ -28,6 +28,9 @@ type Service struct {
 	monitorSchedulerOnce sync.Once
 	dbBackupScheduler    *DatabaseBackupScheduler
 	dbBackupOnce         sync.Once
+	notifyDispatcherOnce sync.Once
+	notifyConcurrency    chan struct{}
+	monitorNotifyMu      sync.Mutex
 }
 
 type AssetTerminalSession struct {
@@ -44,6 +47,7 @@ func New(db *gorm.DB) *Service {
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
 	svc.initDatabaseBackupScheduler()
+	svc.initNotifyDispatcher()
 	return svc
 }
 
@@ -155,30 +159,32 @@ type SystemConfigPayload struct {
 }
 
 type AssetHostPayload struct {
-	ID             uint   `json:"id"`
-	HostName       string `json:"hostName"`
-	Alias          string `json:"alias"`
-	GroupID        uint   `json:"groupId"`
-	GroupIDs       []uint `json:"groupIds"`
-	CredentialID   uint   `json:"credentialId"`
-	ConnectionMode string `json:"connectionMode"`
-	GatewayID      uint   `json:"gatewayId"`
-	CloudAccountID uint   `json:"cloudAccountId"`
-	PrivateIP      string `json:"privateIp"`
-	PublicIP       string `json:"publicIp"`
-	SSHUser        string `json:"sshUser"`
-	SSHIP          string `json:"sshIp"`
-	SSHPort        int    `json:"sshPort"`
-	OS             string `json:"os"`
-	Arch           string `json:"arch"`
-	CPU            string `json:"cpu"`
-	Memory         string `json:"memory"`
-	Disk           string `json:"disk"`
-	Environment    string `json:"environment"`
-	Provider       string `json:"provider"`
-	Region         string `json:"region"`
-	Status         int    `json:"status"`
-	Description    string `json:"description"`
+	ID             uint     `json:"id"`
+	HostName       string   `json:"hostName"`
+	Alias          string   `json:"alias"`
+	GroupID        uint     `json:"groupId"`
+	GroupIDs       []uint   `json:"groupIds"`
+	CredentialID   uint     `json:"credentialId"`
+	ConnectionMode string   `json:"connectionMode"`
+	GatewayID      uint     `json:"gatewayId"`
+	CloudAccountID uint     `json:"cloudAccountId"`
+	PrivateIP      string   `json:"privateIp"`
+	PublicIP       string   `json:"publicIp"`
+	SSHUser        string   `json:"sshUser"`
+	SSHIP          string   `json:"sshIp"`
+	SSHPort        int      `json:"sshPort"`
+	OS             string   `json:"os"`
+	Arch           string   `json:"arch"`
+	CPU            string   `json:"cpu"`
+	Memory         string   `json:"memory"`
+	Disk           string   `json:"disk"`
+	Environment    string   `json:"environment"`
+	Tags           []string `json:"tags"`
+	Provider       string   `json:"provider"`
+	Region         string   `json:"region"`
+	Status         int      `json:"status"`
+	Description    string   `json:"description"`
+	Operator       string   `json:"-"`
 }
 
 type AssetHostImportRow struct {
@@ -236,21 +242,23 @@ type AssetCloudAccountPayload struct {
 }
 
 type AssetDatabasePayload struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	DBType         string `json:"dbType"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	ConnectionMode string `json:"connectionMode"`
-	GatewayID      uint   `json:"gatewayId"`
-	DBName         string `json:"dbName"`
-	Charset        string `json:"charset"`
-	Env            string `json:"env"`
-	AccessMode     string `json:"accessMode"`
-	Status         int    `json:"status"`
-	Description    string `json:"description"`
+	ID             uint     `json:"id"`
+	Name           string   `json:"name"`
+	DBType         string   `json:"dbType"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	Username       string   `json:"username"`
+	Password       string   `json:"password"`
+	ConnectionMode string   `json:"connectionMode"`
+	GatewayID      uint     `json:"gatewayId"`
+	DBName         string   `json:"dbName"`
+	Charset        string   `json:"charset"`
+	Env            string   `json:"env"`
+	Tags           []string `json:"tags"`
+	AccessMode     string   `json:"accessMode"`
+	Status         int      `json:"status"`
+	Description    string   `json:"description"`
+	Operator       string   `json:"-"`
 }
 
 type AssetHostGroupNode struct {
@@ -940,7 +948,7 @@ func (s *Service) CleanOperationLogs() error {
 	return s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.OperationLog{}).Error
 }
 
-func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID uint, status string) (map[string]any, error) {
+func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID uint, status, environment, tag string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -958,6 +966,12 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 	}
 	if status != "" {
 		query = query.Where("alive_status = ?", status)
+	}
+	if environment != "" {
+		query = query.Where("environment = ?", normalizeEnvCode(environment))
+	}
+	if tag != "" {
+		query = query.Where("tags LIKE ?", "%\""+strings.TrimSpace(tag)+"\"%")
 	}
 	var total int64
 	if err := query.Session(&gorm.Session{}).Distinct("asset_host.id").Count(&total).Error; err != nil {
@@ -982,6 +996,9 @@ func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
 
 func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 	host := assetHostFromPayload(payload)
+	if host.Environment == "" {
+		return errors.New("请选择所属环境")
+	}
 	if err := validateGatewaySelection(host.ConnectionMode, host.GatewayID); err != nil {
 		return err
 	}
@@ -991,25 +1008,36 @@ func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 	if host.Status == 0 {
 		host.Status = 1
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&host).Error; err != nil {
 			return err
 		}
 		return syncAssetHostGroups(tx, host.ID, payload.GroupIDs, host.GroupID)
 	})
+	if err == nil {
+		s.recordAssetChange("host", host.ID, host.HostName, "create", "新增主机资产", payload.Operator)
+	}
+	return err
 }
 
 func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 	updates := assetHostUpdates(payload)
+	if normalizeEnvCode(payload.Environment) == "" {
+		return errors.New("请选择所属环境")
+	}
 	if err := validateGatewaySelection(normalizeConnectionMode(payload.ConnectionMode), optionalGatewayID(payload.ConnectionMode, payload.GatewayID)); err != nil {
 		return err
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.AssetHost{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
 			return err
 		}
 		return syncAssetHostGroups(tx, payload.ID, payload.GroupIDs, payload.GroupID)
 	})
+	if err == nil {
+		s.recordAssetChange("host", payload.ID, payload.HostName, "update", "更新主机基础信息", payload.Operator)
+	}
+	return err
 }
 
 func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
@@ -1059,6 +1087,7 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	if err := s.db.Model(&host).Updates(updates).Error; err != nil {
 		return nil, err
 	}
+	s.recordAssetChange("host", host.ID, host.HostName, "sync", "同步主机配置与连接状态", "system")
 	return s.GetAssetHost(id)
 }
 
@@ -1318,12 +1347,18 @@ func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSess
 }
 
 func (s *Service) DeleteAssetHost(id uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	var host model.AssetHost
+	_ = s.db.First(&host, id).Error
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("host_id = ?", id).Delete(&model.AssetHostGroupRelation{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.AssetHost{}, id).Error
 	})
+	if err == nil {
+		s.recordAssetChange("host", id, host.HostName, "delete", "删除主机资产", "system")
+	}
+	return err
 }
 
 func (s *Service) BatchDeleteAssetHosts(ids []uint) error {
@@ -1844,6 +1879,9 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 		k8sClusterTotal     int64
 		k8sClusterOnline    int64
 		k8sNodeTotal        int64
+		incompleteHosts     int64
+		incompleteDatabases int64
+		incompleteClusters  int64
 	)
 
 	if err := s.db.Model(&model.AssetHost{}).Count(&hostTotal).Error; err != nil {
@@ -1886,6 +1924,15 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 		return nil, err
 	}
 	if err := s.db.Model(&model.K8sCluster{}).Select("COALESCE(SUM(node_count), 0)").Scan(&k8sNodeTotal).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetHost{}).Where("TRIM(COALESCE(environment, '')) = ''").Count(&incompleteHosts).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.AssetDatabase{}).Where("TRIM(COALESCE(env, '')) = ''").Count(&incompleteDatabases).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.K8sCluster{}).Where("TRIM(COALESCE(env, '')) = ''").Count(&incompleteClusters).Error; err != nil {
 		return nil, err
 	}
 
@@ -2026,11 +2073,15 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 			"k8sNodeTotal":        k8sNodeTotal,
 		},
 		"health": map[string]any{
-			"offlineHosts":      hostOffline,
-			"authFailedHosts":   hostAuthFailed,
-			"healthyDatabases":  databaseHealthy,
-			"abnormalDatabases": databaseTotal - databaseHealthy,
-			"abnormalClusters":  k8sClusterTotal - k8sClusterOnline,
+			"offlineHosts":        hostOffline,
+			"authFailedHosts":     hostAuthFailed,
+			"healthyDatabases":    databaseHealthy,
+			"abnormalDatabases":   databaseTotal - databaseHealthy,
+			"abnormalClusters":    k8sClusterTotal - k8sClusterOnline,
+			"incompleteAssets":    incompleteHosts + incompleteDatabases + incompleteClusters,
+			"incompleteHosts":     incompleteHosts,
+			"incompleteDatabases": incompleteDatabases,
+			"incompleteClusters":  incompleteClusters,
 		},
 		"distributions": map[string]any{
 			"providers":    providerRows,
@@ -2147,7 +2198,8 @@ func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
 		CPU:            Trimmed(payload.CPU),
 		Memory:         Trimmed(payload.Memory),
 		Disk:           Trimmed(payload.Disk),
-		Environment:    Trimmed(payload.Environment),
+		Environment:    normalizeEnvCode(payload.Environment),
+		Tags:           normalizeAssetTags(payload.Tags),
 		Provider:       Trimmed(payload.Provider),
 		Region:         Trimmed(payload.Region),
 		Status:         payload.Status,
@@ -2189,6 +2241,7 @@ func assetHostUpdates(payload AssetHostPayload) map[string]any {
 		"memory":           host.Memory,
 		"disk":             host.Disk,
 		"environment":      host.Environment,
+		"tags":             host.Tags,
 		"provider":         host.Provider,
 		"region":           host.Region,
 		"status":           host.Status,

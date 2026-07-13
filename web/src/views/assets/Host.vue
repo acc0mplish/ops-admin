@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 import {
   addAssetHost,
   assetHostInfo,
@@ -24,6 +25,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
 const loading = ref(false)
 const syncingId = ref()
 const dialogVisible = ref(false)
@@ -42,7 +44,7 @@ const credentialOptions = ref([])
 const gatewayOptions = ref([])
 const cloudAccountOptions = ref([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined })
+const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined, environment: '', tag: '' })
 const form = reactive({
   id: undefined,
   hostName: '',
@@ -54,6 +56,8 @@ const form = reactive({
   credentialId: undefined,
   connectionMode: 'direct',
   gatewayId: undefined,
+  environment: '',
+  tags: [],
   status: 1,
   description: ''
 })
@@ -93,6 +97,8 @@ function resetForm() {
     credentialId: undefined,
     connectionMode: 'direct',
     gatewayId: undefined,
+    environment: '',
+    tags: [],
     status: 1,
     description: ''
   })
@@ -145,7 +151,9 @@ async function loadData() {
       pageSize: query.pageSize,
       keyword,
       status: query.status,
-      groupId: query.groupId
+      groupId: query.groupId,
+      environment: query.environment,
+      tag: query.tag
     })
     tableData.value = data.list || []
     total.value = data.total || 0
@@ -159,6 +167,8 @@ function resetQuery() {
   query.ipKeyword = ''
   query.status = ''
   query.groupId = undefined
+  query.environment = ''
+  query.tag = ''
   query.pageNum = 1
   loadData()
 }
@@ -211,6 +221,8 @@ async function openEdit(row) {
     credentialId: data.credentialId,
     connectionMode: data.connectionMode || 'direct',
     gatewayId: data.gatewayId || undefined,
+    environment: data.environment || '',
+    tags: data.tags || [],
     status: data.status || 1,
     description: data.description
   })
@@ -233,6 +245,8 @@ async function openCopy(row) {
     credentialId: data.credentialId,
     connectionMode: data.connectionMode || 'direct',
     gatewayId: data.gatewayId || undefined,
+    environment: data.environment || '',
+    tags: data.tags || [],
     status: data.status || 1,
     description: data.description
   })
@@ -240,7 +254,7 @@ async function openCopy(row) {
 }
 
 async function submit() {
-  if (!form.hostName || !form.groupIds.length || !form.sshUser || !form.sshIp || !form.credentialId) {
+  if (!form.hostName || !form.groupIds.length || !form.environment || !form.sshUser || !form.sshIp || !form.credentialId) {
     ElMessage.warning('请填写主机名称、所属主机组、SSH 连接和认证凭据')
     return
   }
@@ -450,6 +464,10 @@ function goTerminal() {
   router.push('/assets/terminal')
 }
 
+function goDetail(row) {
+  router.push(`/assets/server/hosts/${row.id}/detail`)
+}
+
 function handleCreateCommand(command) {
   if (command === 'create') openCreate()
   if (command === 'excel') openImportDialog()
@@ -498,6 +516,14 @@ watch(
             <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
+        <el-form-item label="环境">
+          <el-select v-model="query.environment" clearable placeholder="全部环境" style="width: 150px">
+            <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input v-model="query.tag" clearable placeholder="输入标签" style="width: 140px" @keyup.enter="loadData" />
+        </el-form-item>
       </el-form>
       <div class="query-actions">
         <el-button type="primary" @click="loadData">搜索</el-button>
@@ -540,7 +566,7 @@ watch(
         <template #default="{ row }">
           <div class="host-name">
             <span class="linux-icon">L</span>
-            <span>{{ row.hostName }}</span>
+            <el-button link type="primary" @click="goDetail(row)">{{ row.hostName }}</el-button>
           </div>
         </template>
       </el-table-column>
@@ -554,13 +580,13 @@ watch(
         </template>
       </el-table-column>
       <el-table-column label="CPU使用" width="110">
-        <template #default>0%</template>
+        <template #default>-</template>
       </el-table-column>
       <el-table-column label="内存使用" width="120">
-        <template #default>0%</template>
+        <template #default>-</template>
       </el-table-column>
       <el-table-column label="磁盘使用" width="120">
-        <template #default>0%</template>
+        <template #default>-</template>
       </el-table-column>
       <el-table-column label="配置信息" min-width="170">
         <template #default="{ row }">
@@ -592,6 +618,12 @@ watch(
       </el-table-column>
       <el-table-column label="主机类型" width="100">
         <template #default="{ row }">{{ row.provider || '自建' }}</template>
+      </el-table-column>
+      <el-table-column label="环境" width="110">
+        <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.environment) }}</el-tag></template>
+      </el-table-column>
+      <el-table-column label="标签" min-width="150">
+        <template #default="{ row }"><el-tag v-for="tag in (row.tags || [])" :key="tag" size="small" effect="plain" class="asset-tag">{{ tag }}</el-tag><span v-if="!(row.tags || []).length">-</span></template>
       </el-table-column>
       <el-table-column label="所属分组" min-width="120">
         <template #default="{ row }">{{ groupName(row) }}</template>
@@ -651,6 +683,18 @@ watch(
                 </el-select>
                 <el-button color="#f59e0b" @click="goCredential">+ 创建凭据</el-button>
               </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="所属环境" required>
+              <el-select v-model="form.environment" :loading="environmentLoading" placeholder="请选择环境" style="width: 100%">
+                <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="资产标签">
+              <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入后回车创建标签" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -847,6 +891,10 @@ watch(
 
 .config-info small {
   color: #8190ad;
+}
+
+.asset-tag + .asset-tag {
+  margin-left: 4px;
 }
 
 .pager {

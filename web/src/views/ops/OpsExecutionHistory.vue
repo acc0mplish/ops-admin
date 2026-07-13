@@ -1,7 +1,8 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { queryOpsExecHistory, queryOpsExecHistoryDetail } from '../../api/ops'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { queryOpsExecHistory, queryOpsExecHistoryDetail, retryOpsExecTask } from '../../api/ops'
 
 const route = useRoute()
 const loading = ref(false)
@@ -80,6 +81,28 @@ function statusTagType(value) {
   return 'danger'
 }
 
+async function retryFailed(row) {
+  await ElMessageBox.confirm(`仅重新执行“${row.title}”中的失败或超时主机，是否继续？`, '重试失败目标', { type: 'warning' })
+  const data = await retryOpsExecTask(row.id)
+  ElMessage.success('重试任务已创建')
+  await loadData()
+  if (data?.task) await openDetail(data.task)
+}
+
+function downloadExecutionResult() {
+  if (!detailTask.value) return
+  const payload = {
+    task: detailTask.value,
+    results: detailResults.value
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `ops-execution-${detailTask.value.id || 'result'}.json`
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
 onMounted(loadData)
 </script>
 
@@ -126,10 +149,14 @@ onMounted(loadData)
         </template>
       </el-table-column>
       <el-table-column prop="summary" label="摘要" min-width="180" />
+      <el-table-column prop="operator" label="发起人" width="120"><template #default="{ row }">{{ row.operator || 'system' }}</template></el-table-column>
+      <el-table-column prop="sourceIp" label="来源 IP" min-width="140" />
+      <el-table-column label="风险" width="90"><template #default="{ row }"><el-tag :type="row.riskLevel === 'high' ? 'danger' : 'info'" effect="plain">{{ row.riskLevel === 'high' ? '高风险' : '普通' }}</el-tag></template></el-table-column>
       <el-table-column prop="createTime" label="创建时间" min-width="180" />
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="190" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          <el-button v-if="row.status !== 'running' && row.failedCount > 0 && row.taskType !== 'file'" link type="warning" @click="retryFailed(row)">重试失败</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -147,6 +174,9 @@ onMounted(loadData)
 
     <el-drawer v-model="detailVisible" size="72%" title="执行详情">
       <div v-loading="detailLoading" class="detail-wrap">
+        <div class="detail-actions">
+          <el-button :disabled="!detailTask" @click="downloadExecutionResult">下载完整结果</el-button>
+        </div>
         <div v-if="detailTask" class="detail-summary">
           <div class="summary-item"><span>任务名称</span><strong>{{ detailTask.title }}</strong></div>
           <div class="summary-item"><span>任务类型</span><strong>{{ taskTypeLabel(detailTask.taskType) }}</strong></div>
@@ -154,6 +184,8 @@ onMounted(loadData)
           <div class="summary-item"><span>执行摘要</span><strong>{{ detailTask.summary || '-' }}</strong></div>
           <div class="summary-item"><span>并发数</span><strong>{{ detailTask.concurrency }}</strong></div>
           <div class="summary-item"><span>创建时间</span><strong>{{ detailTask.createTime }}</strong></div>
+          <div class="summary-item"><span>发起人 / IP</span><strong>{{ detailTask.operator || 'system' }} / {{ detailTask.sourceIp || '-' }}</strong></div>
+          <div class="summary-item"><span>脚本版本</span><strong>{{ detailTask.scriptVersion ? `v${detailTask.scriptVersion}` : '-' }}</strong></div>
         </div>
 
         <el-table :data="detailResults" border>
@@ -180,6 +212,7 @@ onMounted(loadData)
 .toolbar-left { display: flex; flex-wrap: wrap; gap: 12px; }
 .pager { display: flex; justify-content: flex-end; }
 .detail-wrap { display: flex; flex-direction: column; gap: 16px; }
+.detail-actions { display: flex; justify-content: flex-end; }
 .detail-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .summary-item { padding: 14px 16px; border: 1px solid #e8edf5; border-radius: 8px; background: #f8fbff; }
 .summary-item span { display: block; margin-bottom: 6px; color: #7282a0; font-size: 13px; }

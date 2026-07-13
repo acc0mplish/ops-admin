@@ -5,7 +5,9 @@ import {
   addOpsScript,
   deleteOpsScript,
   opsScriptInfo,
+  queryOpsScriptVersions,
   queryOpsScriptList,
+  rollbackOpsScript,
   updateOpsScript,
   updateOpsScriptStatus
 } from '../../api/ops'
@@ -19,6 +21,10 @@ const total = ref(0)
 const scriptEditorRef = ref(null)
 const scriptScrollTop = ref(0)
 const scriptScrollLeft = ref(0)
+const versionVisible = ref(false)
+const versionLoading = ref(false)
+const versionList = ref([])
+const versionScript = ref(null)
 
 const query = reactive({
   pageNum: 1,
@@ -36,7 +42,8 @@ const form = reactive({
   defaultParams: '',
   timeoutSeconds: 300,
   status: 1,
-  description: ''
+  description: '',
+  changeSummary: ''
 })
 
 const scriptLineNumbers = computed(() => {
@@ -56,7 +63,8 @@ function resetForm() {
     defaultParams: '',
     timeoutSeconds: 300,
     status: 1,
-    description: ''
+    description: '',
+    changeSummary: ''
   })
 }
 
@@ -152,7 +160,8 @@ async function openEdit(row) {
     defaultParams: data.defaultParams || '',
     timeoutSeconds: data.timeoutSeconds || 300,
     status: data.status || 1,
-    description: data.description || ''
+    description: data.description || '',
+    changeSummary: ''
   })
   dialogVisible.value = true
 }
@@ -196,6 +205,21 @@ async function handleDelete(row) {
   await loadData()
 }
 
+async function openVersions(row) {
+  versionScript.value = row
+  versionVisible.value = true
+  versionLoading.value = true
+  try { versionList.value = await queryOpsScriptVersions(row.id) } finally { versionLoading.value = false }
+}
+
+async function handleRollback(row) {
+  await ElMessageBox.confirm(`确认将脚本回滚到 v${row.version}？回滚会生成一个新版本。`, '回滚脚本', { type: 'warning' })
+  await rollbackOpsScript({ id: versionScript.value.id, version: row.version })
+  ElMessage.success('脚本已回滚')
+  versionList.value = await queryOpsScriptVersions(versionScript.value.id)
+  await loadData()
+}
+
 onMounted(loadData)
 </script>
 
@@ -227,6 +251,7 @@ onMounted(loadData)
       <el-table-column prop="interpreter" label="解释器" width="120" />
       <el-table-column prop="defaultParams" label="默认参数" min-width="180" show-overflow-tooltip />
       <el-table-column prop="timeoutSeconds" label="超时(秒)" width="120" />
+      <el-table-column label="版本" width="90"><template #default="{ row }">v{{ row.currentVersion || 1 }}</template></el-table-column>
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
@@ -237,6 +262,7 @@ onMounted(loadData)
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="primary" @click="openVersions(row)">版本</el-button>
           <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="handleStatusChange(row)">
             {{ row.status === 1 ? '禁用' : '启用' }}
           </el-button>
@@ -337,6 +363,9 @@ onMounted(loadData)
               <el-input v-model="form.description" type="textarea" :rows="3" />
             </el-form-item>
           </el-col>
+          <el-col v-if="isEdit" :span="24">
+            <el-form-item label="变更说明"><el-input v-model="form.changeSummary" placeholder="简要说明本次脚本调整" /></el-form-item>
+          </el-col>
         </el-row>
       </el-form>
       <template #footer>
@@ -344,6 +373,16 @@ onMounted(loadData)
         <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
       </template>
     </el-dialog>
+    <el-drawer v-model="versionVisible" :title="`${versionScript?.name || ''} - 版本历史`" size="62%">
+      <el-table v-loading="versionLoading" :data="versionList" border>
+        <el-table-column label="版本" width="90"><template #default="{ row }">v{{ row.version }}</template></el-table-column>
+        <el-table-column prop="changeSummary" label="变更说明" min-width="180" />
+        <el-table-column prop="operator" label="操作人" width="130"><template #default="{ row }">{{ row.operator || 'system' }}</template></el-table-column>
+        <el-table-column prop="createTime" label="创建时间" width="190" />
+        <el-table-column prop="content" label="脚本内容" min-width="300" show-overflow-tooltip />
+        <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="handleRollback(row)">回滚</el-button></template></el-table-column>
+      </el-table>
+    </el-drawer>
   </div>
 </template>
 

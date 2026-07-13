@@ -174,12 +174,49 @@ func (ctl *Controller) DeleteNotifyRule(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) TestNotifyRule(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil || payload.ID == 0 {
+		httpx.Failed(c, 400, "invalid notification rule test payload")
+		return
+	}
+	data, err := ctl.service.TestNotifyRule(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetNotifySendLogList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListNotifySendLogs(pageNum, pageSize, c.Query("keyword"), c.Query("status"))
+	data, err := ctl.service.ListNotifySendLogs(
+		pageNum,
+		pageSize,
+		c.Query("keyword"),
+		c.Query("status"),
+		c.Query("channelType"),
+		c.Query("scope"),
+		c.Query("startTime"),
+		c.Query("endTime"),
+	)
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) RetryNotifySendLog(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil || payload.ID == 0 {
+		httpx.Failed(c, 400, "invalid notification retry payload")
+		return
+	}
+	data, err := ctl.service.RetryNotifySendLog(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
 		return
 	}
 	httpx.Success(c, data)

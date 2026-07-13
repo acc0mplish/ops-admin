@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
 import { executeOpsScript, queryOpsExecHistoryDetail, queryOpsScriptOptions } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
@@ -61,6 +61,22 @@ async function submit() {
     ElMessage.warning('请选择目标主机或主机组')
     return
   }
+  const highRisk = /rm\s+-rf|mkfs|shutdown|reboot|init\s+[06]|dd\s+if=|iptables\s+-f|systemctl\s+stop|userdel|drop\s+database|truncate\s+table/i.test(selectedScript.value?.content || '')
+  const selectedHosts = hostOptions.value.filter((host) => {
+    if (form.groupId) {
+      return Number(host.groupId) === Number(form.groupId) || (host.hostGroups || []).some((group) => Number(group.id) === Number(form.groupId))
+    }
+    return form.hostIds.map(Number).includes(Number(host.id))
+  })
+  const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('生产'))
+  const confirmationRequired = highRisk || includesProduction
+  if (confirmationRequired) {
+    await ElMessageBox.confirm(
+      includesProduction ? '目标包含生产环境主机，请确认脚本和目标范围后继续。' : '所选脚本包含高风险操作，请确认目标范围后继续。',
+      includesProduction ? '生产环境操作确认' : '高风险脚本确认',
+      { type: 'warning', confirmButtonText: '确认执行' }
+    )
+  }
 
   submitting.value = true
   resultVisible.value = true
@@ -80,7 +96,8 @@ async function submit() {
       parameters: form.parameters,
       hostIds: form.hostIds,
       groupIds: form.groupId ? [form.groupId] : [],
-      concurrency: form.concurrency
+      concurrency: form.concurrency,
+      riskConfirmed: confirmationRequired
     })
     resultTask.value = data.task || null
     resultRows.value = data.results || []

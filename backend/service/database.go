@@ -263,7 +263,7 @@ func (s *Service) openAssetMySQLDatabase(item model.AssetDatabase, schema string
 	return db, cleanup, nil
 }
 
-func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbType string, status string, env string) (map[string]any, error) {
+func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbType string, status string, env string, tag string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -282,6 +282,9 @@ func (s *Service) ListAssetDatabases(pageNum, pageSize int, keyword string, dbTy
 	}
 	if env != "" {
 		query = query.Where("env = ?", normalizeEnvCode(env))
+	}
+	if tag != "" {
+		query = query.Where("tags LIKE ?", "%\""+strings.TrimSpace(tag)+"\"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -324,6 +327,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 		DBName:         Trimmed(payload.DBName),
 		Charset:        databaseCharset(payload.Charset),
 		Env:            normalizeEnvCode(payload.Env),
+		Tags:           normalizeAssetTags(payload.Tags),
 		AccessMode:     normalizeDatabaseAccessMode(payload.AccessMode),
 		Status:         payload.Status,
 		Description:    Trimmed(payload.Description),
@@ -336,6 +340,9 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 	}
 	if item.Username == "" {
 		return errors.New("数据库用户名不能为空")
+	}
+	if item.Env == "" {
+		return errors.New("请选择所属环境")
 	}
 	if err := validateGatewaySelection(item.ConnectionMode, item.GatewayID); err != nil {
 		return err
@@ -352,7 +359,11 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 	} else {
 		item.ConnectStatus = 2
 	}
-	return s.db.Create(&item).Error
+	if err := s.db.Create(&item).Error; err != nil {
+		return err
+	}
+	s.recordAssetChange("database", item.ID, item.Name, "create", "新增数据库资产", payload.Operator)
+	return nil
 }
 
 func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
@@ -376,6 +387,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		"db_name":         Trimmed(payload.DBName),
 		"charset":         databaseCharset(payload.Charset),
 		"env":             normalizeEnvCode(payload.Env),
+		"tags":            normalizeAssetTags(payload.Tags),
 		"access_mode":     normalizeDatabaseAccessMode(payload.AccessMode),
 		"status":          payload.Status,
 		"description":     Trimmed(payload.Description),
@@ -388,6 +400,9 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 	}
 	if Trimmed(payload.Username) == "" {
 		return errors.New("数据库用户名不能为空")
+	}
+	if normalizeEnvCode(payload.Env) == "" {
+		return errors.New("请选择所属环境")
 	}
 	if err := validateGatewaySelection(normalizeConnectionMode(payload.ConnectionMode), optionalGatewayID(payload.ConnectionMode, payload.GatewayID)); err != nil {
 		return err
@@ -416,11 +431,21 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		updates["version"] = ""
 		updates["connect_status"] = 2
 	}
-	return s.db.Model(&model.AssetDatabase{}).Where("id = ?", payload.ID).Updates(updates).Error
+	if err := s.db.Model(&model.AssetDatabase{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
+		return err
+	}
+	s.recordAssetChange("database", payload.ID, payload.Name, "update", "更新数据库基础信息", payload.Operator)
+	return nil
 }
 
 func (s *Service) DeleteAssetDatabase(id uint) error {
-	return s.db.Delete(&model.AssetDatabase{}, id).Error
+	var item model.AssetDatabase
+	_ = s.db.First(&item, id).Error
+	if err := s.db.Delete(&model.AssetDatabase{}, id).Error; err != nil {
+		return err
+	}
+	s.recordAssetChange("database", id, item.Name, "delete", "删除数据库资产", "system")
+	return nil
 }
 
 func (s *Service) TestAssetDatabaseConnection(payload AssetDatabasePayload) (map[string]any, error) {

@@ -6,11 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,32 +27,52 @@ import (
 )
 
 type OpsApplicationPayload struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name"`
-	Code         string `json:"code"`
-	ServiceType  string `json:"serviceType"`
-	RepoType     string `json:"repoType"`
-	RepoURL      string `json:"repoUrl"`
-	Branch       string `json:"branch"`
-	Workspace    string `json:"workspace"`
-	BuildScript  string `json:"buildScript"`
-	DeployScript string `json:"deployScript"`
-	Env          string `json:"env"`
-	Status       int    `json:"status"`
-	Description  string `json:"description"`
+	ID               uint                                      `json:"id"`
+	Name             string                                    `json:"name"`
+	Code             string                                    `json:"code"`
+	ServiceType      string                                    `json:"serviceType"`
+	RepoType         string                                    `json:"repoType"`
+	RepoURL          string                                    `json:"repoUrl"`
+	RepoCredentialID uint                                      `json:"repoCredentialId"`
+	Branch           string                                    `json:"branch"`
+	Workspace        string                                    `json:"workspace"`
+	BuildScript      string                                    `json:"buildScript"`
+	DeployScript     string                                    `json:"deployScript"`
+	Env              string                                    `json:"env"`
+	Status           int                                       `json:"status"`
+	Description      string                                    `json:"description"`
+	Bindings         []OpsApplicationEnvironmentBindingPayload `json:"bindings"`
+}
+
+type OpsApplicationEnvironmentBindingPayload struct {
+	Env                 string `json:"env"`
+	HostGroupID         uint   `json:"hostGroupId"`
+	K8sClusterID        uint   `json:"k8sClusterId"`
+	Namespace           string `json:"namespace"`
+	WorkloadType        string `json:"workloadType"`
+	WorkloadName        string `json:"workloadName"`
+	DatabaseID          uint   `json:"databaseId"`
+	MonitorDatasourceID uint   `json:"monitorDatasourceId"`
+	GatewayID           uint   `json:"gatewayId"`
 }
 
 type OpsAppBuildTaskPayload struct {
-	ID             uint   `json:"id"`
-	AppID          uint   `json:"appId"`
-	Name           string `json:"name"`
-	Env            string `json:"env"`
-	Branch         string `json:"branch"`
-	BuildScript    string `json:"buildScript"`
-	DeployScript   string `json:"deployScript"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
-	Status         int    `json:"status"`
-	Description    string `json:"description"`
+	ID             uint                             `json:"id"`
+	AppID          uint                             `json:"appId"`
+	Name           string                           `json:"name"`
+	Env            string                           `json:"env"`
+	Branch         string                           `json:"branch"`
+	BuildScript    string                           `json:"buildScript"`
+	DeployScript   string                           `json:"deployScript"`
+	BuildParams    []OpsAppBuildParameterDefinition `json:"buildParams"`
+	RunnerType     string                           `json:"runnerType"`
+	RunnerHostID   uint                             `json:"runnerHostId"`
+	ExecutionPath  string                           `json:"executionPath"`
+	ArtifactType   string                           `json:"artifactType"`
+	ArtifactPath   string                           `json:"artifactPath"`
+	TimeoutSeconds int                              `json:"timeoutSeconds"`
+	Status         int                              `json:"status"`
+	Description    string                           `json:"description"`
 }
 
 type OpsAppBuildTaskStatusPayload struct {
@@ -56,9 +81,20 @@ type OpsAppBuildTaskStatusPayload struct {
 }
 
 type OpsAppBuildRunPayload struct {
-	TaskID  uint   `json:"taskId"`
-	Version string `json:"version"`
-	Branch  string `json:"branch"`
+	TaskID  uint           `json:"taskId"`
+	Version string         `json:"version"`
+	Branch  string         `json:"branch"`
+	Params  map[string]any `json:"params"`
+}
+
+type OpsAppBuildParameterDefinition struct {
+	Name        string   `json:"name"`
+	Label       string   `json:"label"`
+	Type        string   `json:"type"`
+	Default     any      `json:"default"`
+	Options     []string `json:"options"`
+	Required    bool     `json:"required"`
+	Description string   `json:"description"`
 }
 
 type OpsAppReleasePayload struct {
@@ -75,6 +111,7 @@ type OpsAppPipelinePayload struct {
 	Env            string `json:"env"`
 	TechStack      string `json:"techStack"`
 	TemplateID     uint   `json:"templateId"`
+	BuildTaskID    uint   `json:"buildTaskId"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
 	DefinitionJSON string `json:"definitionJson"`
@@ -90,7 +127,15 @@ type OpsAppPipelineRunPayload struct {
 	Branch     string            `json:"branch"`
 	Env        string            `json:"env"`
 	ImageTag   string            `json:"imageTag"`
+	ArtifactID uint              `json:"artifactId"`
 	Params     map[string]string `json:"params"`
+}
+
+type OpsAppPipelineApprovalPayload struct {
+	RunID    uint   `json:"runId"`
+	Decision string `json:"decision"`
+	Note     string `json:"note"`
+	Operator string `json:"operator"`
 }
 
 type OpsAppPipelineStageDefinition struct {
@@ -114,6 +159,12 @@ type opsBuildExecution struct {
 	TimeoutSeconds int
 	Branch         string
 	Workspace      string
+	RunnerType     string
+	RunnerHostID   uint
+	ArtifactType   string
+	ArtifactPath   string
+	Version        string
+	Params         map[string]string
 }
 
 type opsPipelineExecution struct {
@@ -155,6 +206,104 @@ func normalizeOpsBuildTimeout(value int) int {
 	return value
 }
 
+var opsAppBuildParamNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+
+func normalizeOpsAppBuildParameters(input []OpsAppBuildParameterDefinition) ([]OpsAppBuildParameterDefinition, string, error) {
+	result := make([]OpsAppBuildParameterDefinition, 0, len(input))
+	seen := map[string]struct{}{}
+	for _, item := range input {
+		item.Name = strings.ToUpper(strings.TrimSpace(item.Name))
+		item.Label = strings.TrimSpace(item.Label)
+		item.Description = strings.TrimSpace(item.Description)
+		if item.Name == "" {
+			continue
+		}
+		if !opsAppBuildParamNamePattern.MatchString(item.Name) {
+			return nil, "", fmt.Errorf("构建参数 %s 格式不正确，只能使用大写字母、数字和下划线", item.Name)
+		}
+		if _, exists := seen[item.Name]; exists {
+			return nil, "", fmt.Errorf("构建参数 %s 重复", item.Name)
+		}
+		seen[item.Name] = struct{}{}
+		switch item.Type {
+		case "select", "multiSelect", "boolean":
+		default:
+			item.Type = "text"
+		}
+		if item.Label == "" {
+			item.Label = item.Name
+		}
+		options := make([]string, 0, len(item.Options))
+		for _, option := range item.Options {
+			if value := strings.TrimSpace(option); value != "" {
+				options = append(options, value)
+			}
+		}
+		item.Options = options
+		result = append(result, item)
+	}
+	encoded, err := json.Marshal(result)
+	return result, string(encoded), err
+}
+
+func normalizeOpsAppBuildParametersJSON(raw string) ([]OpsAppBuildParameterDefinition, string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return []OpsAppBuildParameterDefinition{}, "[]", nil
+	}
+	var input []OpsAppBuildParameterDefinition
+	if err := json.Unmarshal([]byte(raw), &input); err != nil {
+		return nil, "", errors.New("构建参数配置格式不正确")
+	}
+	return normalizeOpsAppBuildParameters(input)
+}
+
+func resolveOpsAppBuildParams(definitions []OpsAppBuildParameterDefinition, values map[string]any) (map[string]string, error) {
+	result := make(map[string]string, len(definitions))
+	for _, definition := range definitions {
+		value, exists := values[definition.Name]
+		if !exists || value == nil {
+			value = definition.Default
+		}
+		text := opsAppBuildParamValue(value)
+		if definition.Required && strings.TrimSpace(text) == "" {
+			return nil, fmt.Errorf("请填写构建参数 %s", definition.Label)
+		}
+		if definition.Type == "select" && text != "" && len(definition.Options) > 0 && !containsString(definition.Options, text) {
+			return nil, fmt.Errorf("构建参数 %s 的值不在可选范围内", definition.Label)
+		}
+		result[definition.Name] = text
+	}
+	return result, nil
+}
+
+func opsAppBuildParamValue(value any) string {
+	switch typed := value.(type) {
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, item := range typed {
+			parts = append(parts, fmt.Sprint(item))
+		}
+		return strings.Join(parts, ",")
+	case []string:
+		return strings.Join(typed, ",")
+	case bool:
+		return strconv.FormatBool(typed)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) ListOpsApplications(pageNum, pageSize int, keyword, repoType, status, serviceType, env string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
@@ -177,7 +326,8 @@ func (s *Service) ListOpsApplications(pageNum, pageSize int, keyword, repoType, 
 		query = query.Where("service_type = ?", serviceType)
 	}
 	if env = normalizeEnvCode(env); env != "" {
-		query = query.Where("env = ?", env)
+		bindingAppIDs := s.db.Model(&model.OpsApplicationEnvironmentBinding{}).Select("app_id").Where("env = ? AND status = ?", env, 1)
+		query = query.Where("env = ? OR id IN (?)", env, bindingAppIDs)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -199,7 +349,8 @@ func (s *Service) ListOpsApplicationOptions() ([]map[string]any, error) {
 	for _, item := range list {
 		options = append(options, map[string]any{
 			"id": item.ID, "name": item.Name, "code": item.Code, "repoType": item.RepoType,
-			"repoUrl": item.RepoURL, "branch": item.Branch, "env": item.Env, "serviceType": item.ServiceType,
+			"repoUrl": item.RepoURL, "branch": item.Branch, "workspace": item.Workspace, "env": item.Env, "serviceType": item.ServiceType,
+			"repoCredentialId": item.RepoCredentialID,
 		})
 	}
 	return options, nil
@@ -215,18 +366,19 @@ func (s *Service) GetOpsApplication(id uint) (*model.OpsApplication, error) {
 
 func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 	item := model.OpsApplication{
-		Name:         Trimmed(payload.Name),
-		Code:         Trimmed(payload.Code),
-		ServiceType:  Trimmed(payload.ServiceType),
-		RepoType:     normalizeOpsRepoType(payload.RepoType),
-		RepoURL:      Trimmed(payload.RepoURL),
-		Branch:       Trimmed(payload.Branch),
-		Workspace:    Trimmed(payload.Workspace),
-		BuildScript:  strings.TrimSpace(payload.BuildScript),
-		DeployScript: strings.TrimSpace(payload.DeployScript),
-		Env:          Trimmed(payload.Env),
-		Status:       normalizeOpsAppStatus(payload.Status),
-		Description:  Trimmed(payload.Description),
+		Name:             Trimmed(payload.Name),
+		Code:             Trimmed(payload.Code),
+		ServiceType:      Trimmed(payload.ServiceType),
+		RepoType:         normalizeOpsRepoType(payload.RepoType),
+		RepoURL:          Trimmed(payload.RepoURL),
+		RepoCredentialID: payload.RepoCredentialID,
+		Branch:           Trimmed(payload.Branch),
+		Workspace:        Trimmed(payload.Workspace),
+		BuildScript:      strings.TrimSpace(payload.BuildScript),
+		DeployScript:     strings.TrimSpace(payload.DeployScript),
+		Env:              Trimmed(payload.Env),
+		Status:           normalizeOpsAppStatus(payload.Status),
+		Description:      Trimmed(payload.Description),
 	}
 	if item.Name == "" {
 		return errors.New("应用名称不能为空")
@@ -243,14 +395,58 @@ func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 	if item.Branch == "" && item.RepoType == "git" {
 		item.Branch = "master"
 	}
-	if payload.ID == 0 {
-		return s.db.Create(&item).Error
-	}
-	return s.db.Model(&model.OpsApplication{}).Where("id = ?", payload.ID).Updates(map[string]any{
-		"name": item.Name, "code": item.Code, "service_type": item.ServiceType, "repo_type": item.RepoType,
-		"repo_url": item.RepoURL, "branch": item.Branch, "workspace": item.Workspace, "build_script": item.BuildScript,
-		"deploy_script": item.DeployScript, "env": item.Env, "status": item.Status, "description": item.Description,
-	}).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		appID := payload.ID
+		if appID == 0 {
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+			appID = item.ID
+		} else if err := tx.Model(&model.OpsApplication{}).Where("id = ?", appID).Updates(map[string]any{
+			"name": item.Name, "code": item.Code, "service_type": item.ServiceType, "repo_type": item.RepoType,
+			"repo_url": item.RepoURL, "repo_credential_id": item.RepoCredentialID, "branch": item.Branch, "workspace": item.Workspace,
+			"build_script": item.BuildScript, "deploy_script": item.DeployScript, "env": item.Env,
+			"status": item.Status, "description": item.Description,
+		}).Error; err != nil {
+			return err
+		}
+		if payload.Bindings == nil {
+			return nil
+		}
+		if err := tx.Where("app_id = ?", appID).Delete(&model.OpsApplicationEnvironmentBinding{}).Error; err != nil {
+			return err
+		}
+		seen := map[string]struct{}{}
+		for _, binding := range payload.Bindings {
+			env := normalizeEnvCode(binding.Env)
+			if env == "" {
+				continue
+			}
+			if _, ok := seen[env]; ok {
+				return fmt.Errorf("环境 %s 只能绑定一次", env)
+			}
+			seen[env] = struct{}{}
+			row := model.OpsApplicationEnvironmentBinding{
+				AppID: appID, Env: env, HostGroupID: binding.HostGroupID, K8sClusterID: binding.K8sClusterID,
+				Namespace: Trimmed(binding.Namespace), WorkloadType: strings.ToLower(Trimmed(binding.WorkloadType)),
+				WorkloadName: Trimmed(binding.WorkloadName), DatabaseID: binding.DatabaseID,
+				MonitorDatasourceID: binding.MonitorDatasourceID, GatewayID: binding.GatewayID, Status: 1,
+			}
+			if row.WorkloadType == "" {
+				row.WorkloadType = "deployment"
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Service) ListOpsApplicationEnvironmentBindings(appID uint) ([]model.OpsApplicationEnvironmentBinding, error) {
+	var list []model.OpsApplicationEnvironmentBinding
+	err := s.db.Where("app_id = ?", appID).Order("env ASC").Find(&list).Error
+	return list, err
 }
 
 func (s *Service) DeleteOpsApplication(id uint) error {
@@ -267,7 +463,12 @@ func (s *Service) DeleteOpsApplication(id uint) error {
 	if count > 0 {
 		return errors.New("该应用下存在 CI/CD 流水线，请先删除流水线")
 	}
-	return s.db.Delete(&model.OpsApplication{}, id).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("app_id = ?", id).Delete(&model.OpsApplicationEnvironmentBinding{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.OpsApplication{}, id).Error
+	})
 }
 
 func (s *Service) ListOpsAppBuildTasks(pageNum, pageSize int, appID uint, keyword, env, status string) (map[string]any, error) {
@@ -299,6 +500,7 @@ func (s *Service) ListOpsAppBuildTasks(pageNum, pageSize int, appID uint, keywor
 	if err := query.Order("id DESC").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
 		return nil, err
 	}
+	s.hydrateOpsAppBuildTaskExecutionPaths(list)
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
 
@@ -307,7 +509,44 @@ func (s *Service) GetOpsAppBuildTask(id uint) (*model.OpsAppBuildTask, error) {
 	if err := s.db.First(&item, id).Error; err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(item.ExecutionPath) == "" {
+		if app, err := s.GetOpsApplication(item.AppID); err == nil {
+			item.ExecutionPath = s.resolveOpsAppWorkspace(*app)
+		}
+	}
 	return &item, nil
+}
+
+func (s *Service) hydrateOpsAppBuildTaskExecutionPaths(list []model.OpsAppBuildTask) {
+	appIDs := make([]uint, 0)
+	seen := make(map[uint]struct{})
+	for i := range list {
+		if strings.TrimSpace(list[i].ExecutionPath) != "" || list[i].AppID == 0 {
+			continue
+		}
+		if _, exists := seen[list[i].AppID]; !exists {
+			seen[list[i].AppID] = struct{}{}
+			appIDs = append(appIDs, list[i].AppID)
+		}
+	}
+	if len(appIDs) == 0 {
+		return
+	}
+	var apps []model.OpsApplication
+	if err := s.db.Where("id IN ?", appIDs).Find(&apps).Error; err != nil {
+		return
+	}
+	byID := make(map[uint]model.OpsApplication, len(apps))
+	for _, app := range apps {
+		byID[app.ID] = app
+	}
+	for i := range list {
+		if strings.TrimSpace(list[i].ExecutionPath) == "" {
+			if app, exists := byID[list[i].AppID]; exists {
+				list[i].ExecutionPath = s.resolveOpsAppWorkspace(app)
+			}
+		}
+	}
 }
 
 func (s *Service) SaveOpsAppBuildTask(payload OpsAppBuildTaskPayload) error {
@@ -318,18 +557,28 @@ func (s *Service) SaveOpsAppBuildTask(payload OpsAppBuildTaskPayload) error {
 	if err != nil {
 		return err
 	}
+	_, buildParamsJSON, err := normalizeOpsAppBuildParameters(payload.BuildParams)
+	if err != nil {
+		return err
+	}
 	task := model.OpsAppBuildTask{
-		Name:           Trimmed(payload.Name),
-		AppID:          app.ID,
-		AppName:        app.Name,
-		AppCode:        app.Code,
-		Env:            Trimmed(payload.Env),
-		Branch:         Trimmed(payload.Branch),
-		BuildScript:    strings.TrimSpace(payload.BuildScript),
-		DeployScript:   strings.TrimSpace(payload.DeployScript),
-		TimeoutSeconds: normalizeOpsBuildTimeout(payload.TimeoutSeconds),
-		Status:         normalizeOpsAppStatus(payload.Status),
-		Description:    Trimmed(payload.Description),
+		Name:            Trimmed(payload.Name),
+		AppID:           app.ID,
+		AppName:         app.Name,
+		AppCode:         app.Code,
+		Env:             Trimmed(payload.Env),
+		Branch:          Trimmed(payload.Branch),
+		BuildScript:     strings.TrimSpace(payload.BuildScript),
+		DeployScript:    strings.TrimSpace(payload.DeployScript),
+		BuildParamsJSON: buildParamsJSON,
+		RunnerType:      strings.ToLower(Trimmed(payload.RunnerType)),
+		RunnerHostID:    payload.RunnerHostID,
+		ExecutionPath:   Trimmed(payload.ExecutionPath),
+		ArtifactType:    strings.ToLower(Trimmed(payload.ArtifactType)),
+		ArtifactPath:    Trimmed(payload.ArtifactPath),
+		TimeoutSeconds:  normalizeOpsBuildTimeout(payload.TimeoutSeconds),
+		Status:          normalizeOpsAppStatus(payload.Status),
+		Description:     Trimmed(payload.Description),
 	}
 	if task.Name == "" {
 		return errors.New("构建任务名称不能为空")
@@ -349,12 +598,30 @@ func (s *Service) SaveOpsAppBuildTask(payload OpsAppBuildTaskPayload) error {
 	if task.Branch == "" && app.RepoType == "git" {
 		task.Branch = "master"
 	}
+	if task.RunnerType == "" {
+		task.RunnerType = "local"
+	}
+	if task.RunnerType != "local" && task.RunnerType != "host" {
+		return errors.New("构建执行节点类型不支持")
+	}
+	if task.RunnerType == "host" && task.RunnerHostID == 0 {
+		return errors.New("请选择构建主机")
+	}
+	if task.ExecutionPath == "" {
+		task.ExecutionPath = s.resolveOpsAppWorkspace(*app)
+	}
+	if task.ArtifactType == "" {
+		task.ArtifactType = "file"
+	}
 	if payload.ID == 0 {
 		return s.db.Create(&task).Error
 	}
 	return s.db.Model(&model.OpsAppBuildTask{}).Where("id = ?", payload.ID).Updates(map[string]any{
 		"name": task.Name, "app_id": task.AppID, "app_name": task.AppName, "app_code": task.AppCode,
 		"env": task.Env, "branch": task.Branch, "build_script": task.BuildScript, "deploy_script": task.DeployScript,
+		"build_params_json": task.BuildParamsJSON,
+		"runner_type":       task.RunnerType, "runner_host_id": task.RunnerHostID, "execution_path": task.ExecutionPath,
+		"artifact_type": task.ArtifactType, "artifact_path": task.ArtifactPath,
 		"timeout_seconds": task.TimeoutSeconds, "status": task.Status, "description": task.Description,
 	}).Error
 }
@@ -396,12 +663,24 @@ func (s *Service) RunOpsAppBuildTask(payload OpsAppBuildRunPayload) (map[string]
 	if version == "" {
 		version = time.Now().Format("20060102150405")
 	}
+	definitions, _, err := normalizeOpsAppBuildParametersJSON(task.BuildParamsJSON)
+	if err != nil {
+		return nil, err
+	}
+	params, err := resolveOpsAppBuildParams(definitions, payload.Params)
+	if err != nil {
+		return nil, err
+	}
+	paramsJSON, _ := json.Marshal(params)
 	now := time.Now()
-	workspace := s.resolveOpsAppWorkspace(*app)
+	workspace := strings.TrimSpace(task.ExecutionPath)
+	if workspace == "" {
+		workspace = s.resolveOpsAppWorkspace(*app)
+	}
 	release := model.OpsAppRelease{
 		AppID: app.ID, AppName: app.Name, AppCode: app.Code, BuildTaskID: task.ID, BuildTaskName: task.Name,
 		Env: task.Env, Version: version, RepoType: app.RepoType, RepoURL: app.RepoURL, Branch: branch,
-		Workspace: workspace, Status: "running", Stage: "checkout", Summary: "构建任务已创建，正在拉取代码", StartedAt: &now,
+		Workspace: workspace, Status: "running", Stage: "checkout", Summary: "构建任务已创建，正在拉取代码", ParamsJSON: string(paramsJSON), StartedAt: &now,
 	}
 	if err := s.db.Create(&release).Error; err != nil {
 		return nil, err
@@ -415,7 +694,8 @@ func (s *Service) RunOpsAppBuildTask(payload OpsAppBuildRunPayload) (map[string]
 	go s.runOpsAppBuild(opsBuildExecution{
 		ReleaseID: release.ID, App: *app, TaskID: task.ID, TaskName: task.Name, Env: task.Env,
 		BuildScript: task.BuildScript, DeployScript: task.DeployScript, TimeoutSeconds: task.TimeoutSeconds,
-		Branch: branch, Workspace: workspace,
+		Branch: branch, Workspace: workspace, RunnerType: task.RunnerType, RunnerHostID: task.RunnerHostID,
+		ArtifactType: task.ArtifactType, ArtifactPath: task.ArtifactPath, Version: version, Params: params,
 	})
 	return map[string]any{"releaseId": release.ID, "status": release.Status, "summary": release.Summary}, nil
 }
@@ -458,6 +738,22 @@ func (s *Service) GetOpsAppRelease(id uint) (*model.OpsAppRelease, error) {
 		return nil, err
 	}
 	return &item, nil
+}
+
+func (s *Service) ListOpsAppArtifacts(appID uint, env, status string) ([]model.OpsAppArtifact, error) {
+	query := s.db.Model(&model.OpsAppArtifact{})
+	if appID > 0 {
+		query = query.Where("app_id = ?", appID)
+	}
+	if env = normalizeEnvCode(env); env != "" {
+		query = query.Where("env = ?", env)
+	}
+	if status = strings.TrimSpace(status); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	var list []model.OpsAppArtifact
+	err := query.Order("id DESC").Limit(500).Find(&list).Error
+	return list, err
 }
 
 func builtinOpsAppPipelineTemplates() []map[string]any {
@@ -643,6 +939,7 @@ func (s *Service) SaveOpsAppPipeline(payload OpsAppPipelinePayload) error {
 		Env:            Trimmed(payload.Env),
 		TechStack:      Trimmed(payload.TechStack),
 		TemplateID:     payload.TemplateID,
+		BuildTaskID:    payload.BuildTaskID,
 		StageCount:     len(stages),
 		Status:         normalizeOpsAppStatus(payload.Status),
 		Description:    Trimmed(payload.Description),
@@ -672,7 +969,7 @@ func (s *Service) SaveOpsAppPipeline(payload OpsAppPipelinePayload) error {
 	return s.db.Model(&model.OpsAppPipeline{}).Where("id = ?", payload.ID).Updates(map[string]any{
 		"name": item.Name, "app_id": item.AppID, "app_name": item.AppName, "app_code": item.AppCode,
 		"repo_type": item.RepoType, "repo_url": item.RepoURL, "default_branch": item.DefaultBranch,
-		"env": item.Env, "tech_stack": item.TechStack, "template_id": item.TemplateID,
+		"env": item.Env, "tech_stack": item.TechStack, "template_id": item.TemplateID, "build_task_id": item.BuildTaskID,
 		"stage_count": item.StageCount, "status": item.Status, "description": item.Description,
 		"definition_json": item.DefinitionJSON,
 	}).Error
@@ -743,7 +1040,68 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	if env == "" {
 		env = pipeline.Env
 	}
+	var bindingCount int64
+	_ = s.db.Model(&model.OpsApplicationEnvironmentBinding{}).Where("app_id = ?", pipeline.AppID).Count(&bindingCount).Error
+	if bindingCount > 0 {
+		var binding model.OpsApplicationEnvironmentBinding
+		if err := s.db.Where("app_id = ? AND env = ? AND status = ?", pipeline.AppID, normalizeEnvCode(env), 1).First(&binding).Error; err != nil {
+			return nil, errors.New("当前应用未配置所选环境的资源绑定")
+		}
+		for index := range stages {
+			if stages[index].Type != "k8sDeploy" {
+				continue
+			}
+			if stages[index].Config == nil {
+				stages[index].Config = map[string]any{}
+			}
+			if opsPipelineConfigUint(stages[index].Config, "clusterId") == 0 && binding.K8sClusterID > 0 {
+				stages[index].Config["clusterId"] = binding.K8sClusterID
+			}
+			if opsPipelineConfigString(stages[index].Config, "namespace") == "" {
+				stages[index].Config["namespace"] = binding.Namespace
+			}
+			if opsPipelineConfigString(stages[index].Config, "workloadType") == "" {
+				stages[index].Config["workloadType"] = binding.WorkloadType
+			}
+			if opsPipelineConfigString(stages[index].Config, "workload") == "" {
+				stages[index].Config["workload"] = binding.WorkloadName
+			}
+		}
+		definition, _ := json.Marshal(map[string]any{"stages": stages})
+		normalizedDefinition = string(definition)
+	}
+	if strings.EqualFold(env, "prod") || strings.Contains(env, "生产") {
+		hasApproval := false
+		for _, stage := range stages {
+			if stage.Type == "manual" {
+				hasApproval = true
+				break
+			}
+		}
+		if !hasApproval {
+			return nil, errors.New("生产环境流水线必须包含人工确认阶段")
+		}
+	}
+	if pipeline.BuildTaskID > 0 && payload.ArtifactID == 0 {
+		return nil, errors.New("该流水线已绑定构建任务，请选择已成功生成的制品")
+	}
 	imageTag := Trimmed(payload.ImageTag)
+	var artifact model.OpsAppArtifact
+	if payload.ArtifactID > 0 {
+		artifactQuery := s.db.Where("id = ? AND app_id = ? AND status = ?", payload.ArtifactID, pipeline.AppID, "ready")
+		if pipeline.BuildTaskID > 0 {
+			artifactQuery = artifactQuery.Where("build_task_id = ?", pipeline.BuildTaskID)
+		}
+		if normalizedEnv := normalizeEnvCode(env); normalizedEnv != "" {
+			artifactQuery = artifactQuery.Where("env = ?", normalizedEnv)
+		}
+		if err := artifactQuery.First(&artifact).Error; err != nil {
+			return nil, errors.New("所选制品不存在、不可用或不属于当前应用")
+		}
+		if imageTag == "" {
+			imageTag = artifact.Version
+		}
+	}
 	if imageTag == "" {
 		imageTag = time.Now().Format("20060102150405")
 	}
@@ -752,7 +1110,7 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	now := time.Now()
 	run := model.OpsAppPipelineRun{
 		PipelineID: pipeline.ID, PipelineName: pipeline.Name, AppID: pipeline.AppID, AppName: pipeline.AppName,
-		AppCode: pipeline.AppCode, Env: env, Branch: branch, ImageTag: imageTag, TriggerType: "manual",
+		AppCode: pipeline.AppCode, Env: env, Branch: branch, ImageTag: imageTag, ArtifactID: payload.ArtifactID, TriggerType: "manual",
 		TriggerUser: "系统管理员", Status: "running", Summary: "流水线已创建，等待阶段执行",
 		ParamsJSON: string(paramsJSON), DefinitionJSON: normalizedDefinition, StartedAt: &now,
 	}
@@ -825,6 +1183,21 @@ func (s *Service) GetOpsAppPipelineRun(id uint) (map[string]any, error) {
 func (s *Service) runOpsAppPipeline(execInfo opsPipelineExecution) {
 	status, summary := "success", "流水线执行完成"
 	for _, stage := range execInfo.Stages {
+		var persisted model.OpsAppPipelineRunStage
+		_ = s.db.Where("run_id = ? AND stage_id = ?", execInfo.RunID, stage.ID).First(&persisted).Error
+		if persisted.Status == "success" {
+			continue
+		}
+		if stage.Type == "manual" {
+			now := time.Now()
+			_ = s.db.Model(&model.OpsAppPipelineRunStage{}).Where("run_id = ? AND stage_id = ?", execInfo.RunID, stage.ID).Updates(map[string]any{
+				"status": "waiting_approval", "summary": "等待人工审批", "started_at": &now,
+			}).Error
+			_ = s.db.Model(&model.OpsAppPipelineRun{}).Where("id = ?", execInfo.RunID).Updates(map[string]any{
+				"status": "waiting_approval", "summary": "等待人工审批：" + stage.Name, "approval_status": "pending",
+			}).Error
+			return
+		}
 		started := time.Now()
 		_ = s.db.Model(&model.OpsAppPipelineRunStage{}).
 			Where("run_id = ? AND stage_id = ?", execInfo.RunID, stage.ID).
@@ -861,6 +1234,107 @@ func (s *Service) runOpsAppPipeline(execInfo opsPipelineExecution) {
 		"status": status, "summary": summary, "finished_at": &finished, "duration_ms": finished.Sub(execInfo.StartedAt).Milliseconds(),
 	}).Error
 	_ = s.db.Model(&model.OpsAppPipeline{}).Where("id = ?", execInfo.PipelineID).Update("last_status", status).Error
+}
+
+func (s *Service) ApproveOpsAppPipelineRun(payload OpsAppPipelineApprovalPayload) error {
+	if payload.RunID == 0 {
+		return errors.New("流水线执行 ID 不能为空")
+	}
+	var run model.OpsAppPipelineRun
+	if err := s.db.First(&run, payload.RunID).Error; err != nil {
+		return err
+	}
+	if run.Status != "waiting_approval" {
+		return errors.New("当前流水线不处于待审批状态")
+	}
+	var stage model.OpsAppPipelineRunStage
+	if err := s.db.Where("run_id = ? AND status = ?", run.ID, "waiting_approval").Order("id ASC").First(&stage).Error; err != nil {
+		return errors.New("未找到待审批阶段")
+	}
+	decision := strings.ToLower(strings.TrimSpace(payload.Decision))
+	operator := firstNonEmpty(payload.Operator, "系统管理员")
+	now := time.Now()
+	if decision != "approve" {
+		_ = s.db.Model(&model.OpsAppPipelineRunStage{}).Where("id = ?", stage.ID).Updates(map[string]any{"status": "failed", "summary": "审批拒绝：" + payload.Note, "finished_at": &now}).Error
+		return s.db.Model(&model.OpsAppPipelineRun{}).Where("id = ?", run.ID).Updates(map[string]any{
+			"status": "failed", "summary": "人工审批未通过", "approval_status": "rejected", "approver": operator,
+			"approval_note": payload.Note, "finished_at": &now,
+		}).Error
+	}
+	if err := s.db.Model(&model.OpsAppPipelineRunStage{}).Where("id = ?", stage.ID).Updates(map[string]any{
+		"status": "success", "summary": "审批通过：" + payload.Note, "finished_at": &now,
+	}).Error; err != nil {
+		return err
+	}
+	if err := s.db.Model(&model.OpsAppPipelineRun{}).Where("id = ?", run.ID).Updates(map[string]any{
+		"status": "running", "summary": "审批通过，继续执行", "approval_status": "approved", "approver": operator, "approval_note": payload.Note,
+	}).Error; err != nil {
+		return err
+	}
+	var app model.OpsApplication
+	if err := s.db.First(&app, run.AppID).Error; err != nil {
+		return err
+	}
+	stages, _, err := normalizeOpsPipelineStages(run.DefinitionJSON)
+	if err != nil {
+		return err
+	}
+	params := map[string]string{}
+	_ = json.Unmarshal([]byte(run.ParamsJSON), &params)
+	started := time.Now()
+	if run.StartedAt != nil {
+		started = *run.StartedAt
+	}
+	go s.runOpsAppPipeline(opsPipelineExecution{
+		RunID: run.ID, PipelineID: run.PipelineID, App: app, Branch: run.Branch, Env: run.Env,
+		ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), Params: params, Stages: stages, StartedAt: started,
+	})
+	return nil
+}
+
+func (s *Service) RollbackOpsAppPipelineRun(runID uint, operator string) (map[string]any, error) {
+	var current model.OpsAppPipelineRun
+	if err := s.db.First(&current, runID).Error; err != nil {
+		return nil, err
+	}
+	var previous model.OpsAppPipelineRun
+	if err := s.db.Where("pipeline_id = ? AND status = ? AND id < ? AND image_tag <> ''", current.PipelineID, "success", current.ID).Order("id DESC").First(&previous).Error; err != nil {
+		return nil, errors.New("没有找到可回滚的历史成功版本")
+	}
+	definitions, _, err := normalizeOpsPipelineStages(current.DefinitionJSON)
+	if err != nil {
+		return nil, err
+	}
+	stages := make([]OpsAppPipelineStageDefinition, 0)
+	for _, stage := range definitions {
+		if stage.Type == "k8sDeploy" || stage.Type == "notify" {
+			stages = append(stages, stage)
+		}
+	}
+	if len(stages) == 0 {
+		return nil, errors.New("当前流水线没有 K8s 发布阶段，无法自动回滚")
+	}
+	normalized, _ := json.Marshal(map[string]any{"stages": stages})
+	now := time.Now()
+	run := model.OpsAppPipelineRun{
+		PipelineID: current.PipelineID, PipelineName: current.PipelineName, AppID: current.AppID, AppName: current.AppName,
+		AppCode: current.AppCode, Env: current.Env, Branch: previous.Branch, ImageTag: previous.ImageTag,
+		ArtifactID: previous.ArtifactID, TriggerType: "rollback", TriggerUser: firstNonEmpty(operator, "系统管理员"),
+		Status: "running", Summary: fmt.Sprintf("正在回滚到执行 #%d / %s", previous.ID, previous.ImageTag),
+		DefinitionJSON: string(normalized), StartedAt: &now,
+	}
+	if err := s.db.Create(&run).Error; err != nil {
+		return nil, err
+	}
+	for _, stage := range stages {
+		_ = s.db.Create(&model.OpsAppPipelineRunStage{RunID: run.ID, StageID: stage.ID, StageName: stage.Name, StageType: stage.Type, Status: "waiting", Summary: "等待执行"}).Error
+	}
+	var app model.OpsApplication
+	if err := s.db.First(&app, run.AppID).Error; err != nil {
+		return nil, err
+	}
+	go s.runOpsAppPipeline(opsPipelineExecution{RunID: run.ID, PipelineID: run.PipelineID, App: app, Branch: run.Branch, Env: run.Env, ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), Stages: stages, StartedAt: now})
+	return map[string]any{"runId": run.ID, "rollbackFromRunId": current.ID, "rollbackToRunId": previous.ID, "imageTag": previous.ImageTag}, nil
 }
 
 func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stage OpsAppPipelineStageDefinition) (string, error) {
@@ -939,7 +1413,16 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 			return header + sectionLog("kubectl set image", appendOpsAppCommandError(output, err)), err
 		}
 		rollout, rolloutErr := runOpsAppCommand(".", timeout, "kubectl", "--kubeconfig", kubeconfigPath, "-n", namespace, "rollout", "status", target, "--timeout="+fmt.Sprintf("%ds", stage.TimeoutSeconds))
-		return header + sectionLog("kubectl set image", output) + sectionLog("kubectl rollout status", appendOpsAppCommandError(rollout, rolloutErr)), rolloutErr
+		logText := header + sectionLog("kubectl set image", output) + sectionLog("kubectl rollout status", appendOpsAppCommandError(rollout, rolloutErr))
+		if rolloutErr != nil {
+			return logText, rolloutErr
+		}
+		healthURL := opsPipelineConfigString(stage.Config, "healthUrl")
+		if healthURL == "" {
+			return logText, nil
+		}
+		healthOutput, healthErr := runOpsAppHealthCheck(healthURL, timeout)
+		return logText + sectionLog("发布后健康检查: "+healthURL, appendOpsAppCommandError(healthOutput, healthErr)), healthErr
 	case "manual":
 		return header + "当前版本的流水线人工确认阶段以记录方式通过，后续可接入审批中心。\n", nil
 	case "notify":
@@ -1165,55 +1648,97 @@ func (s *Service) resolveOpsAppWorkspace(app model.OpsApplication) string {
 func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 	started := time.Now()
 	workspace := execInfo.Workspace
-	buildLog, deployLog := "", ""
-	status, stage, summary := "success", "done", "构建发布完成"
+	buildLog := ""
+	postBuildLog := ""
+	status, stage, summary := "success", "done", "构建及构建后操作已完成"
 	commitID := ""
 	timeout := time.Duration(normalizeOpsBuildTimeout(execInfo.TimeoutSeconds)) * time.Second
 
-	if err := os.MkdirAll(filepath.Dir(workspace), 0o755); err != nil {
+	if strings.EqualFold(execInfo.RunnerType, "host") {
+		remoteWorkspace := filepath.ToSlash(workspace)
+		var host model.AssetHost
+		if err := s.db.Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, execInfo.RunnerHostID).Error; err != nil {
+			status, stage, summary = "failed", "prepare", "构建主机不存在或不可用"
+		} else {
+			checkoutCommand := s.remoteOpsAppCheckoutCommand(execInfo.App, remoteWorkspace, execInfo.Branch)
+			checkoutResult := s.execCommandOnHost(host, checkoutCommand, normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
+			buildLog += sectionLog("Remote Checkout", s.sanitizeOpsAppLog(execInfo.App, strings.TrimSpace(checkoutResult.Stdout+"\n"+checkoutResult.Stderr)))
+			if checkoutResult.Status != "success" {
+				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "远程代码拉取失败")
+			} else {
+				commitResult := s.execCommandOnHost(host, "cd "+shellQuote(remoteWorkspace)+" && (git rev-parse --short HEAD 2>/dev/null || svn info --show-item revision 2>/dev/null || true)", 30)
+				commitID = strings.TrimSpace(commitResult.Stdout)
+				variables := s.opsAppBuildEnvironment(execInfo, commitID, remoteWorkspace)
+				stage = "build"
+				buildResult := s.execCommandOnHost(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.BuildScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
+				buildLog += sectionLog("Remote Build", strings.TrimSpace(buildResult.Stdout+"\n"+buildResult.Stderr))
+				if buildResult.Status != "success" {
+					status, summary = "failed", firstNonEmpty(buildResult.ErrorText, "远程构建失败")
+				} else if strings.TrimSpace(execInfo.DeployScript) != "" {
+					stage = "post_build"
+					postResult := s.execCommandOnHost(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.DeployScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
+					postBuildLog = sectionLog("Remote Post Build", strings.TrimSpace(postResult.Stdout+"\n"+postResult.Stderr))
+					if postResult.Status != "success" {
+						status, summary = "failed", firstNonEmpty(postResult.ErrorText, "远程构建后操作失败")
+					}
+				}
+			}
+		}
+	} else if err := os.MkdirAll(filepath.Dir(workspace), 0o755); err != nil {
 		status, stage, summary = "failed", "prepare", err.Error()
 	} else {
 		stage = "checkout"
 		_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "正在拉取代码"})
 		checkoutLog, err := s.checkoutOpsAppCode(execInfo.App, workspace, execInfo.Branch)
-		buildLog += sectionLog("Git Clone", checkoutLog)
+		buildLog += sectionLog("Git Clone", s.sanitizeOpsAppLog(execInfo.App, checkoutLog))
 		if err != nil {
 			status, summary = "failed", err.Error()
 		} else {
 			commitID = s.detectOpsAppCommit(execInfo.App.RepoType, workspace)
+			variables := s.opsAppBuildEnvironment(execInfo, commitID, workspace)
 			stage = "build"
 			_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
 				"stage": stage, "summary": "正在执行构建脚本", "build_log": buildLog, "commit_id": commitID,
 			})
-			buildOutput, buildErr := runOpsAppShell(execInfo.BuildScript, workspace, timeout)
+			buildOutput, buildErr := runOpsAppShellWithEnv(execInfo.BuildScript, workspace, timeout, variables)
 			buildLog += sectionLog("Build", buildOutput)
 			if buildErr != nil {
 				status, summary = "failed", buildErr.Error()
 			} else if strings.TrimSpace(execInfo.DeployScript) != "" {
-				stage = "deploy"
+				stage = "post_build"
 				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-					"stage": stage, "summary": "正在执行发布脚本", "build_log": buildLog,
+					"stage": stage, "summary": "正在执行构建后操作", "build_log": buildLog, "commit_id": commitID,
 				})
-				var deployErr error
-				deployLog, deployErr = runOpsAppShell(execInfo.DeployScript, workspace, timeout)
-				deployLog = sectionLog("Deploy", deployLog)
-				if deployErr != nil {
-					status, summary = "failed", deployErr.Error()
+				postOutput, postErr := runOpsAppShellWithEnv(execInfo.DeployScript, workspace, timeout, variables)
+				postBuildLog = sectionLog("Post Build", postOutput)
+				if postErr != nil {
+					status, summary = "failed", postErr.Error()
 				}
 			}
 		}
 	}
 	finished := time.Now()
 	if status != "success" && summary == "" {
-		summary = "构建发布失败"
+		summary = "构建失败"
 	}
 	_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-		"status": status, "stage": stage, "summary": summary, "build_log": buildLog, "deploy_log": deployLog,
+		"status": status, "stage": stage, "summary": summary, "build_log": buildLog, "deploy_log": postBuildLog,
 		"commit_id": commitID, "finished_at": &finished, "duration_ms": finished.Sub(started).Milliseconds(),
 	})
 	updates := map[string]any{"last_status": status}
 	if status == "success" {
-		updates["last_released_at"] = &finished
+		artifactURI := strings.TrimSpace(execInfo.ArtifactPath)
+		if artifactURI == "" {
+			artifactURI = workspace
+			if strings.EqualFold(execInfo.RunnerType, "host") {
+				artifactURI = filepath.ToSlash(workspace)
+			}
+		}
+		_ = s.db.Create(&model.OpsAppArtifact{
+			AppID: execInfo.App.ID, AppName: execInfo.App.Name, BuildTaskID: execInfo.TaskID,
+			ReleaseID: execInfo.ReleaseID, Env: execInfo.Env, Version: execInfo.Version, CommitID: commitID,
+			Type: firstNonEmpty(execInfo.ArtifactType, "file"), URI: artifactURI, Status: "ready",
+		}).Error
 	}
 	_ = s.db.Model(&model.OpsApplication{}).Where("id = ?", execInfo.App.ID).Updates(updates)
 	if execInfo.TaskID > 0 {
@@ -1227,6 +1752,57 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 	}
 }
 
+func (s *Service) remoteOpsAppCheckoutCommand(app model.OpsApplication, workspace, branch string) string {
+	target := filepath.ToSlash(workspace)
+	parent := pathpkg.Dir(target)
+	repoURL := s.opsAppAuthenticatedRepoURL(app)
+	if app.RepoType == "svn" {
+		return fmt.Sprintf("mkdir -p %s && if [ -d %s/.svn ]; then cd %s && svn update; else svn checkout %s %s; fi", shellQuote(parent), shellQuote(target), shellQuote(target), shellQuote(repoURL), shellQuote(target))
+	}
+	branchArg := ""
+	if strings.TrimSpace(branch) != "" {
+		branchArg = " -b " + shellQuote(branch)
+	}
+	checkoutCommand := "git pull --ff-only"
+	if strings.TrimSpace(branch) != "" {
+		checkoutCommand = "git checkout " + shellQuote(branch) + " && git pull --ff-only"
+	}
+	return fmt.Sprintf("mkdir -p %s && if [ -d %s/.git ]; then cd %s && git fetch --all && %s; else git clone%s %s %s; fi", shellQuote(parent), shellQuote(target), shellQuote(target), checkoutCommand, branchArg, shellQuote(repoURL), shellQuote(target))
+}
+
+func (s *Service) opsAppBuildEnvironment(execInfo opsBuildExecution, commitID, buildPath string) map[string]string {
+	variables := make(map[string]string, len(execInfo.Params)+12)
+	for key, value := range execInfo.Params {
+		variables[key] = value
+	}
+	variables["BUILD_NUMBER"] = strconv.FormatUint(uint64(execInfo.ReleaseID), 10)
+	variables["VERSION"] = execInfo.Version
+	variables["COMMIT_ID"] = commitID
+	variables["BRANCH"] = execInfo.Branch
+	variables["PROJECT_NAME"] = execInfo.App.Name
+	variables["PROJECT_ID"] = strconv.FormatUint(uint64(execInfo.App.ID), 10)
+	variables["PROJECT_REPO"] = execInfo.App.RepoURL
+	variables["TASK_NAME"] = execInfo.TaskName
+	variables["TASK_ID"] = strconv.FormatUint(uint64(execInfo.TaskID), 10)
+	variables["ENVIRONMENT"] = execInfo.Env
+	variables["ENVIRONMENT_TYPE"] = execInfo.Env
+	variables["BUILD_PATH"] = buildPath
+	return variables
+}
+
+func remoteOpsAppScriptCommand(workspace, script string, variables map[string]string) string {
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	exports := make([]string, 0, len(keys))
+	for _, key := range keys {
+		exports = append(exports, "export "+key+"="+shellQuote(variables[key]))
+	}
+	return "cd " + shellQuote(workspace) + " && " + strings.Join(exports, " && ") + " && sh -c " + shellQuote(script)
+}
+
 func sectionLog(name string, output string) string {
 	if strings.TrimSpace(output) == "" {
 		return fmt.Sprintf("\n===== %s =====\n", name)
@@ -1235,11 +1811,12 @@ func sectionLog(name string, output string) string {
 }
 
 func (s *Service) checkoutOpsAppCode(app model.OpsApplication, workspace string, branch string) (string, error) {
+	repoURL := s.opsAppAuthenticatedRepoURL(app)
 	if app.RepoType == "svn" {
 		if _, err := os.Stat(filepath.Join(workspace, ".svn")); err == nil {
 			return runOpsAppCommand(workspace, 15*time.Minute, "svn", "update")
 		}
-		return runOpsAppCommand(".", 15*time.Minute, "svn", "checkout", app.RepoURL, workspace)
+		return runOpsAppCommand(".", 15*time.Minute, "svn", "checkout", repoURL, workspace)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, ".git")); err == nil {
 		output, checkoutErr := runOpsAppCommand(workspace, 15*time.Minute, "git", "checkout", branch)
@@ -1253,8 +1830,44 @@ func (s *Service) checkoutOpsAppCode(app model.OpsApplication, workspace string,
 	if branch != "" {
 		args = append(args, "-b", branch)
 	}
-	args = append(args, app.RepoURL, workspace)
+	args = append(args, repoURL, workspace)
 	return runOpsAppCommand(".", 20*time.Minute, "git", args...)
+}
+
+func (s *Service) opsAppAuthenticatedRepoURL(app model.OpsApplication) string {
+	if app.RepoCredentialID == 0 {
+		return app.RepoURL
+	}
+	var credential model.AssetCredential
+	if err := s.db.First(&credential, app.RepoCredentialID).Error; err != nil {
+		return app.RepoURL
+	}
+	parsed, err := url.Parse(app.RepoURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return app.RepoURL
+	}
+	username := credential.Username
+	if username == "" {
+		username = "token"
+	}
+	parsed.User = url.UserPassword(username, credential.Password)
+	return parsed.String()
+}
+
+func (s *Service) sanitizeOpsAppLog(app model.OpsApplication, value string) string {
+	if app.RepoCredentialID == 0 {
+		return value
+	}
+	var credential model.AssetCredential
+	if err := s.db.First(&credential, app.RepoCredentialID).Error; err != nil {
+		return value
+	}
+	for _, secret := range []string{credential.Password, credential.Passphrase, credential.PrivateKey} {
+		if strings.TrimSpace(secret) != "" {
+			value = strings.ReplaceAll(value, secret, "******")
+		}
+	}
+	return value
 }
 
 func (s *Service) detectOpsAppCommit(repoType string, workspace string) string {
@@ -1287,7 +1900,31 @@ func runOpsAppCommand(dir string, timeout time.Duration, name string, args ...st
 	return output.String(), err
 }
 
+func runOpsAppHealthCheck(rawURL string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	result := fmt.Sprintf("HTTP %d\n%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return result, fmt.Errorf("健康检查返回 HTTP %d", resp.StatusCode)
+	}
+	return result, nil
+}
+
 func runOpsAppShell(script string, dir string, timeout time.Duration) (string, error) {
+	return runOpsAppShellWithEnv(script, dir, timeout, nil)
+}
+
+func runOpsAppShellWithEnv(script string, dir string, timeout time.Duration, variables map[string]string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var cmd *exec.Cmd
@@ -1297,6 +1934,10 @@ func runOpsAppShell(script string, dir string, timeout time.Duration) (string, e
 		cmd = exec.CommandContext(ctx, "sh", "-c", script)
 	}
 	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	for key, value := range variables {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output

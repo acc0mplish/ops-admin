@@ -41,6 +41,7 @@ func (ctl *Controller) CreateK8sCluster(c *gin.Context) {
 		httpx.Failed(c, http.StatusBadRequest, "invalid k8s cluster payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	data, err := ctl.service.CreateK8sCluster(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
@@ -55,6 +56,7 @@ func (ctl *Controller) UpdateK8sCluster(c *gin.Context) {
 		httpx.Failed(c, http.StatusBadRequest, "invalid k8s cluster payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
 	data, err := ctl.service.UpdateK8sCluster(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())

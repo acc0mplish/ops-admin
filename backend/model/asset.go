@@ -78,6 +78,9 @@ type AssetGateway struct {
 	LastCheckTime *time.Time      `json:"lastCheckTime"`
 	CreatedAt     time.Time       `json:"createTime"`
 	UpdatedAt     time.Time       `json:"updateTime"`
+	HostCount     int64           `json:"hostCount" gorm:"-"`
+	DatabaseCount int64           `json:"databaseCount" gorm:"-"`
+	ClusterCount  int64           `json:"clusterCount" gorm:"-"`
 }
 
 func (AssetGateway) TableName() string {
@@ -109,6 +112,7 @@ type AssetHost struct {
 	Memory         string            `json:"memory" gorm:"size:64"`
 	Disk           string            `json:"disk" gorm:"size:64"`
 	Environment    string            `json:"environment" gorm:"size:64;index"`
+	Tags           []string          `json:"tags" gorm:"serializer:json;type:text"`
 	Provider       string            `json:"provider" gorm:"size:64"`
 	Region         string            `json:"region" gorm:"size:128"`
 	InstanceID     string            `json:"instanceId" gorm:"size:128;index"`
@@ -140,6 +144,7 @@ type AssetDatabase struct {
 	Charset        string       `json:"charset" gorm:"size:64"`
 	Version        string       `json:"version" gorm:"size:128"`
 	Env            string       `json:"env" gorm:"size:64;index"`
+	Tags           []string     `json:"tags" gorm:"serializer:json;type:text"`
 	AccessMode     string       `json:"accessMode" gorm:"size:32;default:readwrite;index"`
 	Status         int          `json:"status" gorm:"default:1;not null"`
 	ConnectStatus  int          `json:"connectStatus" gorm:"default:0;not null"`
@@ -151,4 +156,19 @@ type AssetDatabase struct {
 
 func (AssetDatabase) TableName() string {
 	return "asset_database"
+}
+
+type AssetChangeLog struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	ResourceType string    `json:"resourceType" gorm:"size:32;not null;index"`
+	ResourceID   uint      `json:"resourceId" gorm:"not null;index"`
+	ResourceName string    `json:"resourceName" gorm:"size:128;index"`
+	Action       string    `json:"action" gorm:"size:32;not null;index"`
+	Summary      string    `json:"summary" gorm:"size:512"`
+	Operator     string    `json:"operator" gorm:"size:128;index"`
+	CreatedAt    time.Time `json:"createTime" gorm:"index"`
+}
+
+func (AssetChangeLog) TableName() string {
+	return "asset_change_log"
 }

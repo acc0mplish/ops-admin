@@ -619,6 +619,11 @@ func (s *Service) executeOpsJobScriptNode(stepName string, config map[string]any
 		Status:         "running",
 		Summary:        "作业步骤执行中",
 		HostCount:      len(hosts),
+		Operator:       "job-engine",
+		Source:         "job",
+		RiskLevel:      opsRiskLevel(script.Content),
+		ScriptVersion:  script.CurrentVersion,
+		TargetSnapshot: opsTargetSnapshot(hosts),
 	}
 	result, err := s.runOpsTaskLegacy(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		finalParams := params
@@ -673,6 +678,10 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 		Status:         "running",
 		Summary:        "作业步骤执行中",
 		HostCount:      len(hosts),
+		Operator:       "job-engine",
+		Source:         "job",
+		RiskLevel:      "normal",
+		TargetSnapshot: opsTargetSnapshot(hosts),
 	}
 	overwrite := boolConfig(config, "overwrite")
 	result, err := s.runOpsTaskLegacy(task, hosts, func(host model.AssetHost) model.OpsExecTargetResult {

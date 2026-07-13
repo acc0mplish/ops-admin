@@ -619,7 +619,7 @@ func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
 
 func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 	var cluster model.K8sCluster
-	if err := s.db.First(&cluster, id).Error; err != nil {
+	if err := s.db.Preload("Gateway").First(&cluster, id).Error; err != nil {
 		return cluster, err
 	}
 	return cluster, nil
@@ -631,6 +631,7 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		Description:    strings.TrimSpace(payload.Description),
 		KubeConfig:     strings.TrimSpace(payload.KubeConfig),
 		Env:            normalizeEnvCode(payload.Env),
+		Tags:           normalizeAssetTags(payload.Tags),
 		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 	}
@@ -658,7 +659,11 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Status = probe.Status
 	cluster.LastSyncAt = &now
 
-	return cluster, s.db.Create(&cluster).Error
+	if err := s.db.Create(&cluster).Error; err != nil {
+		return cluster, err
+	}
+	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "create", "新增 K8s 集群", payload.Operator)
+	return cluster, nil
 }
 
 func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
@@ -671,6 +676,7 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Description = strings.TrimSpace(payload.Description)
 	cluster.KubeConfig = strings.TrimSpace(payload.KubeConfig)
 	cluster.Env = normalizeEnvCode(payload.Env)
+	cluster.Tags = normalizeAssetTags(payload.Tags)
 	cluster.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
 	cluster.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
 
@@ -698,11 +704,20 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Status = probe.Status
 	cluster.LastSyncAt = &now
 
-	return cluster, s.db.Save(&cluster).Error
+	if err := s.db.Save(&cluster).Error; err != nil {
+		return cluster, err
+	}
+	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "update", "更新 K8s 集群配置并校验连接", payload.Operator)
+	return cluster, nil
 }
 
 func (s *Service) DeleteK8sCluster(id uint) error {
-	return s.db.Delete(&model.K8sCluster{}, id).Error
+	cluster, _ := s.GetK8sCluster(id)
+	if err := s.db.Delete(&model.K8sCluster{}, id).Error; err != nil {
+		return err
+	}
+	s.recordAssetChange("k8s", id, cluster.Name, "delete", "删除 K8s 集群", "system")
+	return nil
 }
 
 func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
@@ -3121,6 +3136,7 @@ func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 		Version:        cluster.Version,
 		NodeCount:      cluster.NodeCount,
 		Env:            cluster.Env,
+		Tags:           cluster.Tags,
 		ConnectionMode: normalizeConnectionMode(cluster.ConnectionMode),
 		GatewayID:      cluster.GatewayID,
 		GatewayName:    cluster.Gateway.Name,
@@ -3137,6 +3153,9 @@ func validateK8sClusterPayload(cluster model.K8sCluster) error {
 	}
 	if cluster.KubeConfig == "" {
 		return errors.New("kubeconfig 涓嶈兘涓虹┖")
+	}
+	if cluster.Env == "" {
+		return errors.New("请选择所属环境")
 	}
 	if err := validateGatewaySelection(cluster.ConnectionMode, cluster.GatewayID); err != nil {
 		return err

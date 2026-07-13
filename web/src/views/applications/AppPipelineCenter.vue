@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  approveOpsAppPipelineRun,
   copyOpsAppPipeline,
   deleteOpsAppPipeline,
   opsAppPipelineInfo,
@@ -9,8 +10,11 @@ import {
   queryOpsAppPipelineList,
   queryOpsAppPipelineRunList,
   queryOpsAppPipelineTemplates,
+  queryOpsAppArtifactList,
+  queryOpsAppBuildTaskList,
   queryOpsApplicationOptions,
   runOpsAppPipeline,
+  rollbackOpsAppPipelineRun,
   saveOpsAppPipeline,
   updateOpsAppPipelineStatus
 } from '../../api/ops'
@@ -23,6 +27,8 @@ const total = ref(0)
 const stats = ref({ total: 0, enabled: 0, failed: 0 })
 const appOptions = ref([])
 const k8sClusterOptions = ref([])
+const buildTaskOptions = ref([])
+const artifactOptions = ref([])
 const templates = ref([])
 const templateVisible = ref(false)
 const editorVisible = ref(false)
@@ -66,6 +72,7 @@ const form = reactive({
   env: 'test',
   techStack: 'custom',
   templateId: 0,
+  buildTaskId: undefined,
   status: 1,
   description: '',
   stages: []
@@ -77,6 +84,7 @@ const runForm = reactive({
   branch: '',
   env: 'test',
   imageTag: '',
+  artifactId: undefined,
   paramsText: ''
 })
 
@@ -98,6 +106,7 @@ function resetForm() {
     env: 'test',
     techStack: 'custom',
     templateId: 0,
+    buildTaskId: undefined,
     status: 1,
     description: '',
     stages: []
@@ -173,6 +182,7 @@ function normalizeStageConfig(stage) {
     if (!stage.config.workload) stage.config.workload = ''
     if (!stage.config.container) stage.config.container = ''
     if (!stage.config.repository) stage.config.repository = ''
+    if (!stage.config.healthUrl) stage.config.healthUrl = ''
   }
 }
 
@@ -186,6 +196,11 @@ async function loadTemplates() {
 
 async function loadK8sClusters() {
   k8sClusterOptions.value = await queryK8sClusterList()
+}
+
+async function loadBuildTasks() {
+  const data = await queryOpsAppBuildTaskList({ pageNum: 1, pageSize: 1000 })
+  buildTaskOptions.value = data.list || []
 }
 
 async function loadData() {
@@ -254,6 +269,7 @@ async function openEdit(row) {
     env: item.env || 'test',
     techStack: item.techStack || 'custom',
     templateId: item.templateId || 0,
+    buildTaskId: item.buildTaskId || undefined,
     status: item.status || 1,
     description: item.description || '',
     stages: detail.stages || parseStages(item.definitionJson)
@@ -290,6 +306,7 @@ async function submitPipeline() {
       env: form.env,
       techStack: form.techStack,
       templateId: form.templateId,
+      buildTaskId: form.buildTaskId,
       status: form.status,
       description: form.description,
       definitionJson: stringifyDefinition()
@@ -302,16 +319,26 @@ async function submitPipeline() {
   }
 }
 
-function openRun(row) {
+async function openRun(row) {
+  artifactOptions.value = await queryOpsAppArtifactList({ appId: row.appId, env: row.env || '', status: 'ready' })
   Object.assign(runForm, {
     pipelineId: row.id,
     pipelineName: row.name,
     branch: row.defaultBranch || 'master',
     env: row.env || 'test',
     imageTag: '',
+    artifactId: undefined,
     paramsText: ''
   })
   runVisible.value = true
+}
+
+async function refreshRunArtifacts() {
+  if (!runForm.pipelineId) return
+  const pipeline = tableData.value.find((item) => item.id === runForm.pipelineId)
+  if (!pipeline) return
+  artifactOptions.value = await queryOpsAppArtifactList({ appId: pipeline.appId, env: runForm.env || '', status: 'ready' })
+  if (runForm.artifactId && !artifactOptions.value.some((item) => item.id === runForm.artifactId)) runForm.artifactId = undefined
 }
 
 async function submitRun() {
@@ -329,11 +356,27 @@ async function submitRun() {
     branch: runForm.branch,
     env: runForm.env,
     imageTag: runForm.imageTag,
+    artifactId: runForm.artifactId,
     params
   })
   ElMessage.success(`流水线已开始执行：#${data.runId}`)
   runVisible.value = false
   await loadData()
+  await openRunDetail(data.runId)
+}
+
+async function approveCurrentRun(decision) {
+  const action = decision === 'approve' ? '通过' : '拒绝'
+  const { value } = await ElMessageBox.prompt(`请输入审批说明，确认${action}当前发布。`, `人工审批${action}`, { inputType: 'textarea', confirmButtonText: action })
+  await approveOpsAppPipelineRun({ runId: currentRun.value.run.id, decision, note: value || '' })
+  ElMessage.success(`已${action}`)
+  await openRunDetail(currentRun.value.run.id)
+}
+
+async function rollbackCurrentRun() {
+  await ElMessageBox.confirm('将使用上一次成功执行的镜像版本重新执行 K8s 发布阶段，是否继续？', '回滚确认', { type: 'warning' })
+  const data = await rollbackOpsAppPipelineRun(currentRun.value.run.id)
+  ElMessage.success(`回滚任务已创建：#${data.runId}`)
   await openRunDetail(data.runId)
 }
 
@@ -390,13 +433,13 @@ async function removePipeline(row) {
 
 function statusType(status) {
   if (status === 'success' || Number(status) === 1) return 'success'
-  if (status === 'running') return 'warning'
+  if (status === 'running' || status === 'waiting_approval') return 'warning'
   if (status === 'failed') return 'danger'
   return 'info'
 }
 
 function statusText(status) {
-  return { success: '成功', running: '执行中', failed: '失败', waiting: '等待中', 1: '启用', 2: '禁用' }[status] || status || '-'
+  return { success: '成功', running: '执行中', failed: '失败', waiting: '等待中', waiting_approval: '待人工审批', 1: '启用', 2: '禁用' }[status] || status || '-'
 }
 
 function durationText(ms) {
@@ -442,7 +485,7 @@ watch(runDetailVisible, (visible) => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadApps(), loadTemplates(), loadK8sClusters()])
+  await Promise.all([loadApps(), loadTemplates(), loadK8sClusters(), loadBuildTasks()])
   await loadData()
 })
 
@@ -642,6 +685,11 @@ onBeforeUnmount(stopRunRefresh)
             </el-select>
           </el-form-item>
           <el-form-item label="默认分支"><el-input v-model="form.defaultBranch" placeholder="默认使用应用分支" /></el-form-item>
+          <el-form-item label="构建任务">
+            <el-select v-model="form.buildTaskId" clearable filterable placeholder="可选，绑定后运行时必须选择成功制品">
+              <el-option v-for="item in buildTaskOptions.filter((task) => !form.appId || Number(task.appId) === Number(form.appId))" :key="item.id" :label="`${item.name} / ${item.env}`" :value="item.id" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="默认环境">
             <el-select v-model="form.env">
               <el-option label="dev" value="dev" />
@@ -737,6 +785,7 @@ onBeforeUnmount(stopRunRefresh)
             <el-input v-model="stage.config.workload" placeholder="工作负载名称，默认应用编码" />
             <el-input v-model="stage.config.container" placeholder="容器名称" />
             <el-input v-model="stage.config.repository" placeholder="镜像名，例如 registry.example.com/app/{{appCode}}" />
+            <el-input v-model="stage.config.healthUrl" placeholder="发布后健康检查 URL（可选），例如 https://service/health" />
           </div>
           <el-alert
             v-else-if="stage.type === 'checkout'"
@@ -765,7 +814,7 @@ onBeforeUnmount(stopRunRefresh)
       <el-form label-width="100px">
         <el-form-item label="流水线"><el-input v-model="runForm.pipelineName" disabled /></el-form-item>
         <el-form-item label="执行环境">
-          <el-select v-model="runForm.env">
+          <el-select v-model="runForm.env" @change="refreshRunArtifacts">
             <el-option label="dev" value="dev" />
             <el-option label="test" value="test" />
             <el-option label="staging" value="staging" />
@@ -774,6 +823,11 @@ onBeforeUnmount(stopRunRefresh)
         </el-form-item>
         <el-form-item label="分支/Tag"><el-input v-model="runForm.branch" /></el-form-item>
         <el-form-item label="镜像 Tag"><el-input v-model="runForm.imageTag" placeholder="默认自动生成时间戳" /></el-form-item>
+        <el-form-item label="发布制品">
+          <el-select v-model="runForm.artifactId" clearable filterable placeholder="选择构建任务生成的成功制品">
+            <el-option v-for="item in artifactOptions" :key="item.id" :label="`${item.version} / ${item.type} / ${item.commitId || '-'}`" :value="item.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="自定义参数"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" placeholder='例如：{"version":"1.0.0"}' /></el-form-item>
       </el-form>
       <template #footer>
@@ -792,6 +846,9 @@ onBeforeUnmount(stopRunRefresh)
       <div class="run-detail-actions">
         <el-button type="primary" link @click="currentRun.run?.id && openRunDetail(currentRun.run.id)">刷新</el-button>
         <el-button type="primary" link @click="downloadRunLog">下载日志</el-button>
+        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="success" @click="approveCurrentRun('approve')">审批通过</el-button>
+        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="danger" @click="approveCurrentRun('reject')">审批拒绝</el-button>
+        <el-button v-if="currentRun.run.status === 'success'" type="warning" @click="rollbackCurrentRun">回滚上一版本</el-button>
       </div>
       <div class="run-detail-grid">
         <div class="run-stages">

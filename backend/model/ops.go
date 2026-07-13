@@ -12,9 +12,25 @@ type OpsScript struct {
 	TimeoutSeconds int       `json:"timeoutSeconds" gorm:"default:300"`
 	Status         int       `json:"status" gorm:"default:1;not null;index"`
 	Description    string    `json:"description" gorm:"size:255"`
+	CurrentVersion int       `json:"currentVersion" gorm:"default:1"`
 	CreatedAt      time.Time `json:"createTime"`
 	UpdatedAt      time.Time `json:"updateTime"`
 }
+
+type OpsScriptVersion struct {
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	ScriptID       uint      `json:"scriptId" gorm:"index;not null;uniqueIndex:idx_ops_script_version"`
+	Version        int       `json:"version" gorm:"not null;index;uniqueIndex:idx_ops_script_version"`
+	Content        string    `json:"content" gorm:"type:longtext"`
+	DefaultParams  string    `json:"defaultParams" gorm:"type:text"`
+	Interpreter    string    `json:"interpreter" gorm:"size:32"`
+	TimeoutSeconds int       `json:"timeoutSeconds"`
+	ChangeSummary  string    `json:"changeSummary" gorm:"size:255"`
+	Operator       string    `json:"operator" gorm:"size:128;index"`
+	CreatedAt      time.Time `json:"createTime"`
+}
+
+func (OpsScriptVersion) TableName() string { return "ops_script_version" }
 
 func (OpsScript) TableName() string {
 	return "ops_script"
@@ -41,6 +57,13 @@ type OpsExecTask struct {
 	FailedCount    int        `json:"failedCount" gorm:"default:0"`
 	Status         string     `json:"status" gorm:"size:32;not null;index"`
 	Summary        string     `json:"summary" gorm:"type:text"`
+	Operator       string     `json:"operator" gorm:"size:128;index"`
+	SourceIP       string     `json:"sourceIp" gorm:"size:64"`
+	Source         string     `json:"source" gorm:"size:32;index"`
+	RiskLevel      string     `json:"riskLevel" gorm:"size:32;index"`
+	ScriptVersion  int        `json:"scriptVersion" gorm:"default:0"`
+	TargetSnapshot string     `json:"targetSnapshot" gorm:"type:longtext"`
+	RetryOfTaskID  uint       `json:"retryOfTaskId" gorm:"index"`
 	StartedAt      *time.Time `json:"startedAt"`
 	FinishedAt     *time.Time `json:"finishedAt"`
 	CreatedAt      time.Time  `json:"createTime"`
@@ -242,50 +265,76 @@ func (OpsEnvironment) TableName() string {
 }
 
 type OpsApplication struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
-	Name           string     `json:"name" gorm:"size:128;not null;index"`
-	Code           string     `json:"code" gorm:"size:128;not null;uniqueIndex"`
-	ServiceType    string     `json:"serviceType" gorm:"size:64;index"`
-	RepoType       string     `json:"repoType" gorm:"size:16;not null;index"`
-	RepoURL        string     `json:"repoUrl" gorm:"size:1024;not null"`
-	Branch         string     `json:"branch" gorm:"size:128"`
-	Workspace      string     `json:"workspace" gorm:"size:512"`
-	BuildScript    string     `json:"buildScript" gorm:"type:longtext"`
-	DeployScript   string     `json:"deployScript" gorm:"type:longtext"`
-	Env            string     `json:"env" gorm:"size:64;index"`
-	Status         int        `json:"status" gorm:"default:1;index"`
-	Description    string     `json:"description" gorm:"size:255"`
-	LastReleaseID  uint       `json:"lastReleaseId" gorm:"index"`
-	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
-	LastReleasedAt *time.Time `json:"lastReleasedAt"`
-	CreatedAt      time.Time  `json:"createTime"`
-	UpdatedAt      time.Time  `json:"updateTime"`
+	ID               uint       `json:"id" gorm:"primaryKey"`
+	Name             string     `json:"name" gorm:"size:128;not null;index"`
+	Code             string     `json:"code" gorm:"size:128;not null;uniqueIndex"`
+	ServiceType      string     `json:"serviceType" gorm:"size:64;index"`
+	RepoType         string     `json:"repoType" gorm:"size:16;not null;index"`
+	RepoURL          string     `json:"repoUrl" gorm:"size:1024;not null"`
+	RepoCredentialID uint       `json:"repoCredentialId" gorm:"index"`
+	Branch           string     `json:"branch" gorm:"size:128"`
+	Workspace        string     `json:"workspace" gorm:"size:512"`
+	BuildScript      string     `json:"buildScript" gorm:"type:longtext"`
+	DeployScript     string     `json:"deployScript" gorm:"type:longtext"`
+	Env              string     `json:"env" gorm:"size:64;index"`
+	Status           int        `json:"status" gorm:"default:1;index"`
+	Description      string     `json:"description" gorm:"size:255"`
+	LastReleaseID    uint       `json:"lastReleaseId" gorm:"index"`
+	LastStatus       string     `json:"lastStatus" gorm:"size:32"`
+	LastReleasedAt   *time.Time `json:"lastReleasedAt"`
+	CreatedAt        time.Time  `json:"createTime"`
+	UpdatedAt        time.Time  `json:"updateTime"`
 }
 
 func (OpsApplication) TableName() string {
 	return "ops_application"
 }
 
+type OpsApplicationEnvironmentBinding struct {
+	ID                  uint      `json:"id" gorm:"primaryKey"`
+	AppID               uint      `json:"appId" gorm:"index;not null;uniqueIndex:idx_ops_app_env_binding"`
+	Env                 string    `json:"env" gorm:"size:64;not null;index;uniqueIndex:idx_ops_app_env_binding"`
+	HostGroupID         uint      `json:"hostGroupId" gorm:"index"`
+	K8sClusterID        uint      `json:"k8sClusterId" gorm:"index"`
+	Namespace           string    `json:"namespace" gorm:"size:128"`
+	WorkloadType        string    `json:"workloadType" gorm:"size:32"`
+	WorkloadName        string    `json:"workloadName" gorm:"size:128"`
+	DatabaseID          uint      `json:"databaseId" gorm:"index"`
+	MonitorDatasourceID uint      `json:"monitorDatasourceId" gorm:"index"`
+	GatewayID           uint      `json:"gatewayId" gorm:"index"`
+	Status              int       `json:"status" gorm:"default:1;index"`
+	CreatedAt           time.Time `json:"createTime"`
+	UpdatedAt           time.Time `json:"updateTime"`
+}
+
+func (OpsApplicationEnvironmentBinding) TableName() string { return "ops_application_env_binding" }
+
 type OpsAppBuildTask struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
-	Name           string     `json:"name" gorm:"size:128;not null;index"`
-	AppID          uint       `json:"appId" gorm:"index;not null"`
-	AppName        string     `json:"appName" gorm:"size:128;index"`
-	AppCode        string     `json:"appCode" gorm:"size:128;index"`
-	Env            string     `json:"env" gorm:"size:64;index"`
-	Branch         string     `json:"branch" gorm:"size:128"`
-	BuildScript    string     `json:"buildScript" gorm:"type:longtext"`
-	DeployScript   string     `json:"deployScript" gorm:"type:longtext"`
-	TimeoutSeconds int        `json:"timeoutSeconds" gorm:"default:1800"`
-	Status         int        `json:"status" gorm:"default:1;index"`
-	Description    string     `json:"description" gorm:"size:255"`
-	LastReleaseID  uint       `json:"lastReleaseId" gorm:"index"`
-	LastStatus     string     `json:"lastStatus" gorm:"size:32"`
-	LastRunAt      *time.Time `json:"lastRunAt"`
-	SuccessCount   int        `json:"successCount" gorm:"default:0"`
-	FailedCount    int        `json:"failedCount" gorm:"default:0"`
-	CreatedAt      time.Time  `json:"createTime"`
-	UpdatedAt      time.Time  `json:"updateTime"`
+	ID              uint       `json:"id" gorm:"primaryKey"`
+	Name            string     `json:"name" gorm:"size:128;not null;index"`
+	AppID           uint       `json:"appId" gorm:"index;not null"`
+	AppName         string     `json:"appName" gorm:"size:128;index"`
+	AppCode         string     `json:"appCode" gorm:"size:128;index"`
+	Env             string     `json:"env" gorm:"size:64;index"`
+	Branch          string     `json:"branch" gorm:"size:128"`
+	BuildScript     string     `json:"buildScript" gorm:"type:longtext"`
+	DeployScript    string     `json:"deployScript" gorm:"type:longtext"`
+	BuildParamsJSON string     `json:"buildParamsJson" gorm:"type:longtext"`
+	RunnerType      string     `json:"runnerType" gorm:"size:32;default:local;index"`
+	RunnerHostID    uint       `json:"runnerHostId" gorm:"index"`
+	ExecutionPath   string     `json:"executionPath" gorm:"size:1024"`
+	ArtifactType    string     `json:"artifactType" gorm:"size:32;default:file;index"`
+	ArtifactPath    string     `json:"artifactPath" gorm:"size:1024"`
+	TimeoutSeconds  int        `json:"timeoutSeconds" gorm:"default:1800"`
+	Status          int        `json:"status" gorm:"default:1;index"`
+	Description     string     `json:"description" gorm:"size:255"`
+	LastReleaseID   uint       `json:"lastReleaseId" gorm:"index"`
+	LastStatus      string     `json:"lastStatus" gorm:"size:32"`
+	LastRunAt       *time.Time `json:"lastRunAt"`
+	SuccessCount    int        `json:"successCount" gorm:"default:0"`
+	FailedCount     int        `json:"failedCount" gorm:"default:0"`
+	CreatedAt       time.Time  `json:"createTime"`
+	UpdatedAt       time.Time  `json:"updateTime"`
 }
 
 func (OpsAppBuildTask) TableName() string {
@@ -311,6 +360,7 @@ type OpsAppRelease struct {
 	Summary       string     `json:"summary" gorm:"type:text"`
 	BuildLog      string     `json:"buildLog" gorm:"type:longtext"`
 	DeployLog     string     `json:"deployLog" gorm:"type:longtext"`
+	ParamsJSON    string     `json:"paramsJson" gorm:"type:longtext"`
 	StartedAt     *time.Time `json:"startedAt"`
 	FinishedAt    *time.Time `json:"finishedAt"`
 	DurationMs    int64      `json:"durationMs" gorm:"default:0"`
@@ -321,6 +371,24 @@ type OpsAppRelease struct {
 func (OpsAppRelease) TableName() string {
 	return "ops_app_release"
 }
+
+type OpsAppArtifact struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	AppID       uint      `json:"appId" gorm:"index;not null"`
+	AppName     string    `json:"appName" gorm:"size:128;index"`
+	BuildTaskID uint      `json:"buildTaskId" gorm:"index"`
+	ReleaseID   uint      `json:"releaseId" gorm:"index"`
+	Env         string    `json:"env" gorm:"size:64;index"`
+	Version     string    `json:"version" gorm:"size:128;index"`
+	CommitID    string    `json:"commitId" gorm:"size:128"`
+	Type        string    `json:"type" gorm:"size:32;index"`
+	URI         string    `json:"uri" gorm:"size:1024"`
+	Digest      string    `json:"digest" gorm:"size:255"`
+	Status      string    `json:"status" gorm:"size:32;index"`
+	CreatedAt   time.Time `json:"createTime"`
+}
+
+func (OpsAppArtifact) TableName() string { return "ops_app_artifact" }
 
 type OpsAppPipeline struct {
 	ID             uint       `json:"id" gorm:"primaryKey"`
@@ -334,6 +402,7 @@ type OpsAppPipeline struct {
 	Env            string     `json:"env" gorm:"size:64;index"`
 	TechStack      string     `json:"techStack" gorm:"size:64;index"`
 	TemplateID     uint       `json:"templateId" gorm:"index"`
+	BuildTaskID    uint       `json:"buildTaskId" gorm:"index"`
 	StageCount     int        `json:"stageCount" gorm:"default:0"`
 	Status         int        `json:"status" gorm:"default:1;index"`
 	Description    string     `json:"description" gorm:"size:255"`
@@ -359,6 +428,10 @@ type OpsAppPipelineRun struct {
 	Env            string     `json:"env" gorm:"size:64;index"`
 	Branch         string     `json:"branch" gorm:"size:128"`
 	ImageTag       string     `json:"imageTag" gorm:"size:128;index"`
+	ArtifactID     uint       `json:"artifactId" gorm:"index"`
+	ApprovalStatus string     `json:"approvalStatus" gorm:"size:32;default:not_required;index"`
+	Approver       string     `json:"approver" gorm:"size:128"`
+	ApprovalNote   string     `json:"approvalNote" gorm:"type:text"`
 	TriggerType    string     `json:"triggerType" gorm:"size:32;index"`
 	TriggerUser    string     `json:"triggerUser" gorm:"size:128"`
 	Status         string     `json:"status" gorm:"size:32;not null;index"`
@@ -446,21 +519,32 @@ func (NotifyRule) TableName() string {
 }
 
 type NotifySendLog struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	RuleID      uint      `json:"ruleId" gorm:"index"`
-	RuleName    string    `json:"ruleName" gorm:"size:128"`
-	ChannelID   uint      `json:"channelId" gorm:"index"`
-	ChannelName string    `json:"channelName" gorm:"size:128"`
-	ChannelType string    `json:"channelType" gorm:"size:32;index"`
-	Event       string    `json:"event" gorm:"size:64;index"`
-	Scope       string    `json:"scope" gorm:"size:32;index"`
-	TargetID    uint      `json:"targetId" gorm:"index"`
-	TargetName  string    `json:"targetName" gorm:"size:128"`
-	Status      string    `json:"status" gorm:"size:32;index"`
-	RequestBody string    `json:"requestBody" gorm:"type:longtext"`
-	Response    string    `json:"response" gorm:"type:longtext"`
-	ErrorText   string    `json:"errorText" gorm:"type:text"`
-	CreatedAt   time.Time `json:"createTime"`
+	ID            uint       `json:"id" gorm:"primaryKey"`
+	DeliveryID    string     `json:"deliveryId" gorm:"size:64;index"`
+	RuleID        uint       `json:"ruleId" gorm:"index"`
+	RuleName      string     `json:"ruleName" gorm:"size:128"`
+	ChannelID     uint       `json:"channelId" gorm:"index"`
+	ChannelName   string     `json:"channelName" gorm:"size:128"`
+	ChannelType   string     `json:"channelType" gorm:"size:32;index"`
+	Event         string     `json:"event" gorm:"size:64;index"`
+	Scope         string     `json:"scope" gorm:"size:32;index"`
+	TargetID      uint       `json:"targetId" gorm:"index"`
+	TargetName    string     `json:"targetName" gorm:"size:128"`
+	Summary       string     `json:"summary" gorm:"size:512"`
+	Status        string     `json:"status" gorm:"size:32;index"`
+	AttemptCount  int        `json:"attemptCount" gorm:"default:0"`
+	MaxAttempts   int        `json:"maxAttempts" gorm:"default:3"`
+	NextRetryAt   *time.Time `json:"nextRetryAt" gorm:"index"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt"`
+	DurationMs    int64      `json:"durationMs" gorm:"default:0"`
+	HTTPStatus    int        `json:"httpStatus" gorm:"default:0"`
+	BusinessCode  string     `json:"businessCode" gorm:"size:64"`
+	RetryOfID     uint       `json:"retryOfId" gorm:"index"`
+	RequestBody   string     `json:"requestBody" gorm:"type:longtext"`
+	Response      string     `json:"response" gorm:"type:longtext"`
+	ErrorText     string     `json:"errorText" gorm:"type:text"`
+	CreatedAt     time.Time  `json:"createTime"`
+	UpdatedAt     time.Time  `json:"updateTime"`
 }
 
 func (NotifySendLog) TableName() string {

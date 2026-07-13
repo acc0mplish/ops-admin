@@ -787,6 +787,11 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 		Status:         "running",
 		Summary:        "定时任务执行中",
 		HostCount:      len(hosts),
+		Operator:       "scheduler",
+		Source:         "schedule",
+		RiskLevel:      opsRiskLevel(script.Content),
+		ScriptVersion:  script.CurrentVersion,
+		TargetSnapshot: opsTargetSnapshot(hosts),
 	}
 	data, err := s.runOpsTaskLegacy(execTask, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
 		params := strings.TrimSpace(task.Parameters)

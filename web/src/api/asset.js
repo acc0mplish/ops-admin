@@ -1,6 +1,7 @@
 import http from './http'
 
 export const queryAssetOverview = () => http.get('/api/v1/asset/overview')
+export const queryAssetChangeLogs = (params) => http.get('/api/v1/asset/change-log/list', { params })
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })
 export const assetHostInfo = (id) => http.get('/api/v1/asset/host/info', { params: { id } })
 export const downloadAssetHostTemplate = () => http.get('/api/v1/asset/host/template', { responseType: 'blob' })

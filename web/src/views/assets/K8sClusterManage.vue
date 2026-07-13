@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import {
@@ -14,6 +15,7 @@ import { t } from '../../utils/i18n'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
+const router = useRouter()
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -21,9 +23,13 @@ const clusterList = ref([])
 const gatewayOptions = ref([])
 const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
 const selectedEnv = ref('')
+const tagFilter = ref('')
 const filteredClusters = computed(() => {
-  if (!selectedEnv.value) return clusterList.value
-  return clusterList.value.filter((item) => item.env === selectedEnv.value)
+  return clusterList.value.filter((item) => {
+    if (selectedEnv.value && item.env !== selectedEnv.value) return false
+    if (tagFilter.value && !(item.tags || []).some((tag) => tag.toLowerCase().includes(tagFilter.value.toLowerCase()))) return false
+    return true
+  })
 })
 
 const form = reactive({
@@ -33,7 +39,8 @@ const form = reactive({
   description: '',
   kubeConfig: '',
   connectionMode: 'direct',
-  gatewayId: undefined
+  gatewayId: undefined,
+  tags: []
 })
 
 const dialogTitle = computed(() => (isEdit.value ? t('k8sEditCluster') : t('k8sCreateCluster')))
@@ -55,7 +62,8 @@ function resetForm() {
     description: '',
     kubeConfig: '',
     connectionMode: 'direct',
-    gatewayId: undefined
+    gatewayId: undefined,
+    tags: []
   })
 }
 
@@ -88,7 +96,8 @@ async function openEdit(row) {
     description: data.description || '',
     kubeConfig: data.kubeConfig || '',
     connectionMode: data.connectionMode || 'direct',
-    gatewayId: data.gatewayId || undefined
+    gatewayId: data.gatewayId || undefined,
+    tags: data.tags || []
   })
   dialogVisible.value = true
 }
@@ -143,6 +152,10 @@ function tagType(status) {
   }
 }
 
+function openDetail(row) {
+  router.push({ name: 'K8sClusterDetail', params: { id: row.id } })
+}
+
 onMounted(async () => {
   await loadGateways()
   await loadClusters()
@@ -160,6 +173,7 @@ onMounted(async () => {
         <el-select v-model="selectedEnv" clearable placeholder="全部环境" style="width: 160px">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
+        <el-input v-model="tagFilter" clearable placeholder="筛选标签" style="width: 150px" />
         <el-button :icon="Refresh" @click="loadClusters">{{ t('k8sRefresh') }}</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('k8sNewCluster') }}</el-button>
       </div>
@@ -167,11 +181,14 @@ onMounted(async () => {
 
     <section v-loading="loading" class="table-panel">
       <el-table :data="filteredClusters" class="cluster-table">
-        <el-table-column prop="name" :label="t('k8sClusterName')" min-width="180" />
+        <el-table-column :label="t('k8sClusterName')" min-width="180"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button></template></el-table-column>
         <el-table-column label="环境" width="120">
           <template #default="{ row }">
             <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
           </template>
+        </el-table-column>
+        <el-table-column label="标签" min-width="160">
+          <template #default="{ row }"><el-tag v-for="tag in row.tags || []" :key="tag" class="asset-tag" effect="plain">{{ tag }}</el-tag><span v-if="!row.tags?.length">-</span></template>
         </el-table-column>
         <el-table-column :label="t('k8sStatus')" width="120">
           <template #default="{ row }">
@@ -209,6 +226,11 @@ onMounted(async () => {
         <el-form-item label="所属环境" required>
           <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="资产标签">
+          <el-select v-model="form.tags" multiple filterable allow-create default-first-option style="width: 100%" placeholder="输入标签后回车">
+            <el-option v-for="tag in form.tags" :key="tag" :label="tag" :value="tag" />
           </el-select>
         </el-form-item>
         <el-form-item :label="t('k8sDescription')">

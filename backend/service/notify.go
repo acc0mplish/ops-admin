@@ -3,20 +3,32 @@ package service
 import (
 	"bytes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"ops-admin/backend/model"
 
 	"gorm.io/gorm"
+)
+
+const (
+	notifyStatusPending  = "pending"
+	notifyStatusSending  = "sending"
+	notifyStatusRetrying = "retrying"
+	notifyStatusSuccess  = "success"
+	notifyStatusFailed   = "failed"
+	defaultNotifyRetries = 3
 )
 
 type NotifyTemplatePayload struct {
@@ -116,6 +128,36 @@ func decodeStringList(raw string) []string {
 	}
 	_ = json.Unmarshal([]byte(raw), &list)
 	return list
+}
+
+func normalizeNotifyEvents(events []string, scope string) []string {
+	seen := make(map[string]struct{}, len(events))
+	result := make([]string, 0, len(events))
+	for _, item := range events {
+		value := strings.ToLower(strings.TrimSpace(item))
+		if value == "" {
+			continue
+		}
+		if value == "all" {
+			return []string{"all"}
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	if len(result) > 0 {
+		return result
+	}
+	switch normalizeNotifyScope(scope) {
+	case "monitor":
+		return []string{"firing", "recovered"}
+	case "job":
+		return []string{"failed", "waiting_approval", "rejected"}
+	default:
+		return []string{"success", "failed"}
+	}
 }
 
 func normalizeNotifyHeaders(raw string) (string, error) {
@@ -341,6 +383,17 @@ func (s *Service) SaveNotifyChannel(payload NotifyChannelPayload) error {
 }
 
 func (s *Service) DeleteNotifyChannel(id uint) error {
+	var rules []model.NotifyRule
+	if err := s.db.Select("id", "name", "channel_ids_json").Find(&rules).Error; err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		for _, channelID := range decodeUintList(rule.ChannelIDsJSON) {
+			if channelID == id {
+				return fmt.Errorf("通知媒介正在被规则「%s」使用，请先调整规则", rule.Name)
+			}
+		}
+	}
 	return s.db.Delete(&model.NotifyChannel{}, id).Error
 }
 
@@ -411,10 +464,24 @@ func (s *Service) SaveNotifyRule(payload NotifyRulePayload) error {
 	if len(payload.ChannelIDs) == 0 {
 		return errors.New("notification channel is required")
 	}
-	events := payload.Events
-	if len(events) == 0 {
-		events = []string{"success", "failed"}
+	var tmpl model.NotifyTemplate
+	if err := s.db.First(&tmpl, payload.TemplateID).Error; err != nil {
+		return errors.New("所选消息模板不存在")
 	}
+	var channels []model.NotifyChannel
+	if err := s.db.Where("id IN ?", payload.ChannelIDs).Find(&channels).Error; err != nil {
+		return err
+	}
+	if len(channels) != len(payload.ChannelIDs) {
+		return errors.New("部分通知媒介不存在，请重新选择")
+	}
+	templateType := normalizeNotifyChannelType(tmpl.ChannelType)
+	for _, channel := range channels {
+		if normalizeNotifyChannelType(channel.ChannelType) != templateType {
+			return fmt.Errorf("消息模板类型为 %s，不能发送到媒介「%s」(%s)", templateType, channel.Name, channel.ChannelType)
+		}
+	}
+	events := normalizeNotifyEvents(payload.Events, payload.Scope)
 	updates := map[string]any{
 		"name":             Trimmed(payload.Name),
 		"scope":            normalizeNotifyScope(payload.Scope),
@@ -435,37 +502,103 @@ func (s *Service) DeleteNotifyRule(id uint) error {
 }
 
 func (s *Service) DispatchNotifyRule(ruleID uint, event NotifyEvent) {
+	_, _ = s.enqueueNotifyRule(ruleID, event, false)
+}
+
+func (s *Service) TestNotifyRule(ruleID uint) (map[string]any, error) {
+	now := time.Now()
+	count, err := s.enqueueNotifyRule(ruleID, NotifyEvent{
+		Scope:      "all",
+		Event:      "notify",
+		TargetID:   ruleID,
+		TargetName: "通知规则测试",
+		Status:     "firing",
+		Summary:    "这是一条由 Ops Admin 发起的通知规则测试消息",
+		Detail:     "如果你收到此消息，说明模板、通知媒介和持久化投递链路工作正常。",
+		StartedAt:  &now,
+		Extra:      map[string]string{"operator": "系统管理员"},
+	}, true)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"queued": count}, nil
+}
+
+func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisabledRule bool) (int, error) {
 	if ruleID == 0 {
-		return
+		return 0, errors.New("通知规则不能为空")
 	}
 	var rule model.NotifyRule
-	if err := s.db.First(&rule, ruleID).Error; err != nil || rule.Status != 1 {
-		return
+	if err := s.db.First(&rule, ruleID).Error; err != nil {
+		return 0, err
 	}
-	if rule.Scope != "all" && rule.Scope != normalizeNotifyScope(event.Scope) {
-		return
+	if !allowDisabledRule && rule.Status != 1 {
+		return 0, nil
 	}
-	if event.Event != "notify" && !notifyEventMatch(decodeStringList(rule.EventsJSON), event.Event, event.Status) {
-		return
+	if event.Event != "notify" {
+		if rule.Scope != "all" && rule.Scope != normalizeNotifyScope(event.Scope) {
+			return 0, nil
+		}
+		if !notifyEventMatch(decodeStringList(rule.EventsJSON), event.Event, event.Status) {
+			return 0, nil
+		}
 	}
 
 	var tmpl model.NotifyTemplate
-	if err := s.db.First(&tmpl, rule.TemplateID).Error; err != nil || tmpl.Status != 1 {
-		return
+	if err := s.db.First(&tmpl, rule.TemplateID).Error; err != nil {
+		return 0, fmt.Errorf("读取消息模板失败: %w", err)
+	}
+	if tmpl.Status != 1 {
+		return 0, errors.New("消息模板已禁用")
 	}
 
-	var channels []model.NotifyChannel
 	ids := decodeUintList(rule.ChannelIDsJSON)
 	if len(ids) == 0 {
-		return
+		return 0, errors.New("通知规则未配置通知媒介")
 	}
-	if err := s.db.Where("id IN ? AND status = ?", ids, 1).Find(&channels).Error; err != nil {
-		return
+	var channels []model.NotifyChannel
+	if err := s.db.Where("id IN ?", ids).Find(&channels).Error; err != nil {
+		return 0, err
 	}
+	if len(channels) == 0 {
+		return 0, errors.New("通知规则关联的媒介不存在")
+	}
+
+	now := time.Now()
+	queued := 0
 	for _, channel := range channels {
-		channel := channel
-		go s.sendNotifyMessage(rule, tmpl, channel, event)
+		title := renderNotifyTemplate(firstNonEmpty(tmpl.Title, event.TargetName), event)
+		content := renderNotifyTemplate(tmpl.Content, event)
+		body, buildErr := buildNotifyBody(channel.ChannelType, title, content, event)
+		status := notifyStatusPending
+		errorText := ""
+		if channel.Status != 1 {
+			status = notifyStatusFailed
+			errorText = "通知媒介已禁用"
+		} else if normalizeNotifyChannelType(channel.ChannelType) != normalizeNotifyChannelType(tmpl.ChannelType) {
+			status = notifyStatusFailed
+			errorText = "消息模板与通知媒介类型不兼容"
+		} else if buildErr != nil {
+			status = notifyStatusFailed
+			errorText = buildErr.Error()
+		}
+		item := model.NotifySendLog{
+			DeliveryID: newNotifyDeliveryID(),
+			RuleID:     rule.ID, RuleName: rule.Name,
+			ChannelID: channel.ID, ChannelName: channel.Name, ChannelType: channel.ChannelType,
+			Event: event.Event, Scope: firstNonEmpty(event.Scope, rule.Scope),
+			TargetID: event.TargetID, TargetName: event.TargetName, Summary: event.Summary,
+			Status: status, MaxAttempts: defaultNotifyRetries,
+			NextRetryAt: &now, RequestBody: string(body), ErrorText: errorText,
+		}
+		if err := s.db.Create(&item).Error; err != nil {
+			return queued, err
+		}
+		if status == notifyStatusPending {
+			queued++
+		}
 	}
+	return queued, nil
 }
 
 func notifyEventMatch(events []string, event, status string) bool {
@@ -481,27 +614,120 @@ func notifyEventMatch(events []string, event, status string) bool {
 	return false
 }
 
-func (s *Service) sendNotifyMessage(rule model.NotifyRule, tmpl model.NotifyTemplate, channel model.NotifyChannel, event NotifyEvent) {
-	title := renderNotifyTemplate(firstNonEmpty(tmpl.Title, event.TargetName), event)
-	content := renderNotifyTemplate(tmpl.Content, event)
-	body, err := buildNotifyBody(channel.ChannelType, title, content, event)
-	requestBody := string(body)
-	status := "success"
-	responseText := ""
-	errorText := ""
-	if err == nil {
-		responseText, err = postNotifyWebhook(channel, body)
+func newNotifyDeliveryID() string {
+	random := make([]byte, 6)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Sprintf("NTF-%d", time.Now().UnixNano())
 	}
-	if err != nil {
-		status = "failed"
-		errorText = err.Error()
+	return fmt.Sprintf("NTF-%d-%s", time.Now().UnixMilli(), strings.ToUpper(hex.EncodeToString(random)))
+}
+
+func (s *Service) initNotifyDispatcher() {
+	s.notifyDispatcherOnce.Do(func() {
+		s.notifyConcurrency = make(chan struct{}, 5)
+		var legacyIDs []uint
+		if err := s.db.Model(&model.NotifySendLog{}).Where("delivery_id = '' OR delivery_id IS NULL").Pluck("id", &legacyIDs).Error; err == nil {
+			for _, id := range legacyIDs {
+				_ = s.db.Model(&model.NotifySendLog{}).Where("id = ?", id).Update("delivery_id", fmt.Sprintf("NTF-LEGACY-%d", id)).Error
+			}
+		}
+		now := time.Now()
+		_ = s.db.Model(&model.NotifySendLog{}).
+			Where("status = ? AND updated_at < ?", notifyStatusSending, now.Add(-2*time.Minute)).
+			Updates(map[string]any{"status": notifyStatusRetrying, "next_retry_at": now, "error_text": "服务重启后恢复未完成投递"}).Error
+		go func() {
+			s.dispatchPendingNotifications()
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				s.dispatchPendingNotifications()
+			}
+		}()
+	})
+}
+
+func (s *Service) dispatchPendingNotifications() {
+	now := time.Now()
+	var list []model.NotifySendLog
+	if err := s.db.Where("status IN ? AND (next_retry_at IS NULL OR next_retry_at <= ?)", []string{notifyStatusPending, notifyStatusRetrying}, now).
+		Order("id ASC").Limit(20).Find(&list).Error; err != nil {
+		return
 	}
-	_ = s.db.Create(&model.NotifySendLog{
-		RuleID: rule.ID, RuleName: rule.Name,
-		ChannelID: channel.ID, ChannelName: channel.Name, ChannelType: channel.ChannelType,
-		Event: event.Event, Scope: event.Scope, TargetID: event.TargetID, TargetName: event.TargetName,
-		Status: status, RequestBody: requestBody, Response: responseText, ErrorText: errorText,
-	}).Error
+	for _, item := range list {
+		claimed := s.db.Model(&model.NotifySendLog{}).
+			Where("id = ? AND status IN ?", item.ID, []string{notifyStatusPending, notifyStatusRetrying}).
+			Updates(map[string]any{"status": notifyStatusSending, "next_retry_at": nil})
+		if claimed.Error != nil || claimed.RowsAffected == 0 {
+			continue
+		}
+		s.notifyConcurrency <- struct{}{}
+		go func(id uint) {
+			defer func() { <-s.notifyConcurrency }()
+			s.processNotifySendLog(id)
+		}(item.ID)
+	}
+}
+
+func (s *Service) processNotifySendLog(id uint) {
+	var item model.NotifySendLog
+	if err := s.db.First(&item, id).Error; err != nil {
+		return
+	}
+	startedAt := time.Now()
+	attempt := item.AttemptCount + 1
+	result := notifyWebhookResult{}
+	var sendErr error
+	var channel model.NotifyChannel
+	if err := s.db.First(&channel, item.ChannelID).Error; err != nil {
+		sendErr = fmt.Errorf("通知媒介不存在: %w", err)
+	} else if channel.Status != 1 {
+		sendErr = errors.New("通知媒介已禁用")
+	} else {
+		result, sendErr = postNotifyWebhook(channel, []byte(item.RequestBody))
+	}
+
+	updates := map[string]any{
+		"attempt_count":   attempt,
+		"last_attempt_at": startedAt,
+		"duration_ms":     time.Since(startedAt).Milliseconds(),
+		"http_status":     result.HTTPStatus,
+		"business_code":   result.BusinessCode,
+		"response":        result.Body,
+	}
+	if sendErr == nil {
+		updates["status"] = notifyStatusSuccess
+		updates["error_text"] = ""
+		updates["next_retry_at"] = nil
+	} else {
+		updates["error_text"] = sendErr.Error()
+		if attempt < maxInt(item.MaxAttempts, defaultNotifyRetries) {
+			nextRetryAt := time.Now().Add(notifyRetryDelay(attempt))
+			updates["status"] = notifyStatusRetrying
+			updates["next_retry_at"] = nextRetryAt
+		} else {
+			updates["status"] = notifyStatusFailed
+			updates["next_retry_at"] = nil
+		}
+	}
+	_ = s.db.Model(&model.NotifySendLog{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func notifyRetryDelay(attempt int) time.Duration {
+	switch attempt {
+	case 1:
+		return 10 * time.Second
+	case 2:
+		return 30 * time.Second
+	default:
+		return 2 * time.Minute
+	}
+}
+
+func maxInt(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }
 
 func renderNotifyTemplate(template string, event NotifyEvent) string {
@@ -588,21 +814,28 @@ func buildNotifyBody(channelType, title, content string, event NotifyEvent) ([]b
 	}
 }
 
-func postNotifyWebhook(channel model.NotifyChannel, body []byte) (string, error) {
+type notifyWebhookResult struct {
+	Body         string
+	HTTPStatus   int
+	BusinessCode string
+}
+
+func postNotifyWebhook(channel model.NotifyChannel, body []byte) (notifyWebhookResult, error) {
+	result := notifyWebhookResult{}
 	webhookURL := strings.TrimSpace(channel.WebhookURL)
 	if webhookURL == "" {
-		return "", errors.New("webhook url is empty")
+		return result, errors.New("webhook 地址为空")
 	}
 	if channel.Secret != "" && normalizeNotifyChannelType(channel.ChannelType) == "dingtalk" {
 		signedURL, err := signDingTalkURL(webhookURL, channel.Secret)
 		if err != nil {
-			return "", err
+			return result, err
 		}
 		webhookURL = signedURL
 	}
 	request, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return result, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	for key, value := range parseHeaderMap(channel.HeadersJSON) {
@@ -611,14 +844,69 @@ func postNotifyWebhook(channel model.NotifyChannel, body []byte) (string, error)
 	client := &http.Client{Timeout: 10 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {
-		return "", err
+		return result, err
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 32768))
+	result.Body = string(responseBody)
+	result.HTTPStatus = response.StatusCode
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return string(responseBody), fmt.Errorf("webhook returned status %d", response.StatusCode)
+		return result, fmt.Errorf("Webhook 返回 HTTP %d", response.StatusCode)
 	}
-	return string(responseBody), nil
+	code, message, exists := parseNotifyBusinessResponse(channel.ChannelType, responseBody)
+	result.BusinessCode = code
+	if exists && code != "0" {
+		return result, fmt.Errorf("平台返回业务错误码 %s: %s", code, firstNonEmpty(message, "未知错误"))
+	}
+	return result, nil
+}
+
+func parseNotifyBusinessResponse(channelType string, body []byte) (string, string, bool) {
+	var payload map[string]any
+	if len(bytes.TrimSpace(body)) == 0 || json.Unmarshal(body, &payload) != nil {
+		return "", "", false
+	}
+	var codeKey string
+	switch normalizeNotifyChannelType(channelType) {
+	case "dingtalk", "wecom":
+		codeKey = "errcode"
+	case "feishu":
+		codeKey = "code"
+	default:
+		return "", "", false
+	}
+	value, exists := payload[codeKey]
+	if !exists {
+		return "", "", false
+	}
+	code := notifyBusinessCode(value)
+	message := notifyResponseMessage(payload, "errmsg", "msg", "message")
+	return code, message, true
+}
+
+func notifyResponseMessage(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, exists := payload[key]; exists && value != nil {
+			text := strings.TrimSpace(fmt.Sprint(value))
+			if text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func notifyBusinessCode(value any) string {
+	switch code := value.(type) {
+	case float64:
+		return strconv.FormatInt(int64(code), 10)
+	case json.Number:
+		return code.String()
+	case string:
+		return strings.TrimSpace(code)
+	default:
+		return strings.TrimSpace(fmt.Sprint(code))
+	}
 }
 
 func signDingTalkURL(rawURL, secret string) (string, error) {
@@ -634,7 +922,7 @@ func signDingTalkURL(rawURL, secret string) (string, error) {
 	return fmt.Sprintf("%s%stimestamp=%d&sign=%s", rawURL, sep, timestamp, sign), nil
 }
 
-func (s *Service) ListNotifySendLogs(pageNum, pageSize int, keyword, status string) (map[string]any, error) {
+func (s *Service) ListNotifySendLogs(pageNum, pageSize int, keyword, status, channelType, scope, startTime, endTime string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -649,6 +937,18 @@ func (s *Service) ListNotifySendLogs(pageNum, pageSize int, keyword, status stri
 	if strings.TrimSpace(status) != "" {
 		query = query.Where("status = ?", status)
 	}
+	if strings.TrimSpace(channelType) != "" {
+		query = query.Where("channel_type = ?", normalizeNotifyChannelType(channelType))
+	}
+	if strings.TrimSpace(scope) != "" {
+		query = query.Where("scope = ?", normalizeNotifyScope(scope))
+	}
+	if value, ok := parseNotifyQueryTime(startTime); ok {
+		query = query.Where("created_at >= ?", value)
+	}
+	if value, ok := parseNotifyQueryTime(endTime); ok {
+		query = query.Where("created_at <= ?", value)
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, err
@@ -658,4 +958,41 @@ func (s *Service) ListNotifySendLogs(pageNum, pageSize int, keyword, status stri
 		return nil, err
 	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+func parseNotifyQueryTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func (s *Service) RetryNotifySendLog(id uint) (map[string]any, error) {
+	var original model.NotifySendLog
+	if err := s.db.First(&original, id).Error; err != nil {
+		return nil, err
+	}
+	if original.Status != notifyStatusFailed {
+		return nil, errors.New("仅失败的投递记录可以重新发送")
+	}
+	now := time.Now()
+	retry := model.NotifySendLog{
+		DeliveryID: newNotifyDeliveryID(),
+		RuleID:     original.RuleID, RuleName: original.RuleName,
+		ChannelID: original.ChannelID, ChannelName: original.ChannelName, ChannelType: original.ChannelType,
+		Event: original.Event, Scope: original.Scope,
+		TargetID: original.TargetID, TargetName: original.TargetName, Summary: original.Summary,
+		Status: notifyStatusPending, MaxAttempts: defaultNotifyRetries, NextRetryAt: &now,
+		RetryOfID: original.ID, RequestBody: original.RequestBody,
+	}
+	if err := s.db.Create(&retry).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": retry.ID, "deliveryId": retry.DeliveryID}, nil
 }

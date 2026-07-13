@@ -7,6 +7,8 @@ export const addOpsScript = (data) => http.post('/api/v1/ops/script/add', data)
 export const updateOpsScript = (data) => http.put('/api/v1/ops/script/update', data)
 export const updateOpsScriptStatus = (data) => http.put('/api/v1/ops/script/status', data)
 export const deleteOpsScript = (id) => http.delete('/api/v1/ops/script/delete', { data: { id } })
+export const queryOpsScriptVersions = (id) => http.get('/api/v1/ops/script/versions', { params: { id } })
+export const rollbackOpsScript = (data) => http.post('/api/v1/ops/script/rollback', data)
 
 export const executeOpsCommand = (data) => http.post('/api/v1/ops/exec/command', data)
 export const executeOpsScript = (data) => http.post('/api/v1/ops/exec/script', data)
@@ -18,6 +20,7 @@ export const executeOpsFileDispatch = (data) =>
 
 export const queryOpsExecHistory = (params) => http.get('/api/v1/ops/exec/history', { params })
 export const queryOpsExecHistoryDetail = (id) => http.get('/api/v1/ops/exec/history/detail', { params: { id } })
+export const retryOpsExecTask = (taskId) => http.post('/api/v1/ops/exec/retry', { taskId })
 
 export const queryOpsScheduleTaskList = (params) => http.get('/api/v1/ops/schedule/task/list', { params })
 export const opsScheduleTaskInfo = (id) => http.get('/api/v1/ops/schedule/task/info', { params: { id } })
@@ -59,6 +62,7 @@ export const deleteOpsJobTemplate = (id) => http.delete('/api/v1/ops/job/templat
 export const queryOpsApplicationList = (params) => http.get('/api/v1/ops/application/list', { params })
 export const queryOpsApplicationOptions = () => http.get('/api/v1/ops/application/options')
 export const opsApplicationInfo = (id) => http.get('/api/v1/ops/application/info', { params: { id } })
+export const queryOpsApplicationBindings = (id) => http.get('/api/v1/ops/application/bindings', { params: { id } })
 export const saveOpsApplication = (data) => http.post('/api/v1/ops/application/save', data)
 export const deleteOpsApplication = (id) => http.delete('/api/v1/ops/application/delete', { data: { id } })
 export const queryOpsAppBuildTaskList = (params) => http.get('/api/v1/ops/application/build-task/list', { params })
@@ -70,6 +74,7 @@ export const runOpsAppBuildTask = (data) => http.post('/api/v1/ops/application/b
 export const runOpsAppRelease = (data) => http.post('/api/v1/ops/application/release/run', data)
 export const queryOpsAppReleaseList = (params) => http.get('/api/v1/ops/application/release/list', { params })
 export const opsAppReleaseInfo = (id) => http.get('/api/v1/ops/application/release/info', { params: { id } })
+export const queryOpsAppArtifactList = (params) => http.get('/api/v1/ops/application/artifact/list', { params })
 export const queryOpsAppPipelineTemplates = (params) => http.get('/api/v1/ops/application/pipeline/template/list', { params })
 export const queryOpsAppPipelineList = (params) => http.get('/api/v1/ops/application/pipeline/list', { params })
 export const opsAppPipelineInfo = (id) => http.get('/api/v1/ops/application/pipeline/info', { params: { id } })
@@ -80,6 +85,8 @@ export const copyOpsAppPipeline = (id) => http.post('/api/v1/ops/application/pip
 export const runOpsAppPipeline = (data) => http.post('/api/v1/ops/application/pipeline/run', data)
 export const queryOpsAppPipelineRunList = (params) => http.get('/api/v1/ops/application/pipeline/run/list', { params })
 export const opsAppPipelineRunInfo = (id) => http.get('/api/v1/ops/application/pipeline/run/info', { params: { id } })
+export const approveOpsAppPipelineRun = (data) => http.post('/api/v1/ops/application/pipeline/run/approve', data)
+export const rollbackOpsAppPipelineRun = (id) => http.post('/api/v1/ops/application/pipeline/run/rollback', { id })
 export const queryOpsApplicationTopology = (params) => http.get('/api/v1/ops/application/topology', { params })
 
 export const queryOpsEnvironmentList = (params) => http.get('/api/v1/ops/environment/list', { params })
@@ -102,6 +109,8 @@ export const queryNotifyRuleList = (params) => http.get('/api/v1/notify/rule/lis
 export const queryNotifyRuleOptions = (params) => http.get('/api/v1/notify/rule/options', { params })
 export const notifyRuleInfo = (id) => http.get('/api/v1/notify/rule/info', { params: { id } })
 export const saveNotifyRule = (data) => http.post('/api/v1/notify/rule/save', data)
+export const testNotifyRule = (id) => http.post('/api/v1/notify/rule/test', { id })
 export const deleteNotifyRule = (id) => http.delete('/api/v1/notify/rule/delete', { data: { id } })
 
 export const queryNotifySendLogList = (params) => http.get('/api/v1/notify/send-log/list', { params })
+export const retryNotifySendLog = (id) => http.post('/api/v1/notify/send-log/retry', { id })

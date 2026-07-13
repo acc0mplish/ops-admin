@@ -104,6 +104,9 @@ func (s *Service) ListAssetGateways(pageNum, pageSize int, keyword string, statu
 		list[i].Credential.Password = ""
 		list[i].Credential.PrivateKey = ""
 		list[i].Credential.Passphrase = ""
+		_ = s.db.Model(&model.AssetHost{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].HostCount).Error
+		_ = s.db.Model(&model.AssetDatabase{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].DatabaseCount).Error
+		_ = s.db.Model(&model.K8sCluster{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].ClusterCount).Error
 	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }

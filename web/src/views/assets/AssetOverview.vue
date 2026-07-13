@@ -172,11 +172,15 @@ function openGroupHosts(group) {
 }
 
 function openDatabase(item) {
-  router.push(`/assets/databases/${item.id}/workbench`)
+  router.push(`/assets/databases/${item.id}/detail`)
 }
 
 function openCluster(item) {
-  router.push('/assets/k8s/overview')
+  router.push(`/assets/k8s/clusters/${item.id}/detail`)
+}
+
+function openHost(item) {
+  router.push(`/assets/server/hosts/${item.id}/detail`)
 }
 
 async function loadOverview() {
@@ -213,6 +217,10 @@ onMounted(loadOverview)
         <article class="hero-side-card">
           <span>K8s 节点</span>
           <strong>{{ overview.summary?.k8sNodeTotal || 0 }}</strong>
+        </article>
+        <article class="hero-side-card" :class="{ attention: overview.health?.incompleteAssets }">
+          <span>资料待完善</span>
+          <strong>{{ overview.health?.incompleteAssets || 0 }}</strong>
         </article>
       </div>
     </section>
@@ -386,7 +394,7 @@ onMounted(loadOverview)
           <el-table-column label="主机" min-width="180">
             <template #default="{ row }">
               <div class="entity-cell">
-                <strong>{{ row.hostName }}</strong>
+                <button class="link-button" @click="openHost(row)">{{ row.hostName }}</button>
                 <small>{{ row.sshIp || row.privateIp || row.publicIp || '-' }}</small>
               </div>
             </template>
@@ -462,8 +470,8 @@ onMounted(loadOverview)
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  padding: 28px 32px;
-  border-radius: 24px;
+  padding: 20px 24px;
+  border-radius: 8px;
   color: #fff;
   background:
     radial-gradient(circle at top right, rgba(125, 211, 252, 0.24), transparent 24%),
@@ -473,7 +481,7 @@ onMounted(loadOverview)
 
 .hero-copy h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: 26px;
 }
 
 .hero-kicker {
@@ -486,19 +494,20 @@ onMounted(loadOverview)
 .hero-text {
   max-width: 700px;
   margin: 14px 0 0;
-  line-height: 1.75;
+  line-height: 1.55;
   color: rgba(255, 255, 255, 0.84);
 }
 
 .hero-side {
   display: grid;
   gap: 12px;
-  min-width: 220px;
+  min-width: 520px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .hero-side-card {
-  padding: 18px 20px;
-  border-radius: 18px;
+  padding: 12px 16px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.14);
 }
 
@@ -510,8 +519,10 @@ onMounted(loadOverview)
 .hero-side-card strong {
   display: block;
   margin-top: 8px;
-  font-size: 28px;
+  font-size: 22px;
 }
+
+.hero-side-card.attention { background: rgba(245, 158, 11, 0.28); }
 
 .summary-grid {
   display: grid;
@@ -520,9 +531,9 @@ onMounted(loadOverview)
 }
 
 .summary-card {
-  padding: 20px;
+  padding: 16px;
   border: 1px solid #e6ecf7;
-  border-radius: 20px;
+  border-radius: 8px;
   background: #fff;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
   cursor: pointer;
@@ -587,7 +598,7 @@ onMounted(loadOverview)
 .panel-card,
 .detail-card {
   padding: 22px;
-  border-radius: 20px;
+  border-radius: 8px;
   background: #fff;
   border: 1px solid #e7edf8;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
