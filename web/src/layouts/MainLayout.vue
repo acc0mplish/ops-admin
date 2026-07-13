@@ -145,7 +145,7 @@ function findMenuTitle(menuList, path) {
 }
 
 function displayTitle(item) {
-  return translateRoute(item.path, item.titleKey ? t(item.titleKey) : item.title)
+  return item.titleKey ? t(item.titleKey) : translateRoute(item.path, item.title)
 }
 
 function buildBreadcrumbs(menuList, path, fallbackTitle) {

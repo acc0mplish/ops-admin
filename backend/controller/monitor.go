@@ -106,6 +106,64 @@ func (ctl *Controller) QueryMonitorPrometheus(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) QueryMonitorLogs(c *gin.Context) {
+	var payload service.MonitorLogQueryPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid log query payload")
+		return
+	}
+	data, err := ctl.service.QueryMonitorLogs(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorElasticsearchIndices(c *gin.Context) {
+	data, err := ctl.service.ListMonitorElasticsearchIndices(uint(mustAtoi(c.Query("datasourceId"))))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorLogShortcuts(c *gin.Context) {
+	data, err := ctl.service.ListMonitorLogShortcuts(c.GetString("username"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SaveMonitorLogShortcut(c *gin.Context) {
+	var payload service.MonitorLogShortcutPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid log shortcut payload")
+		return
+	}
+	if err := ctl.service.SaveMonitorLogShortcut(c.GetString("username"), payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteMonitorLogShortcut(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid log shortcut payload")
+		return
+	}
+	if err := ctl.service.DeleteMonitorLogShortcut(c.GetString("username"), payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) GetMonitorQueryHistoryList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -120,7 +178,7 @@ func (ctl *Controller) GetMonitorQueryHistoryList(c *gin.Context) {
 func (ctl *Controller) GetMonitorAlertRuleList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListMonitorAlertRules(pageNum, pageSize, c.Query("keyword"), c.Query("status"), c.Query("severity"), c.Query("env"))
+	data, err := ctl.service.ListMonitorAlertRules(pageNum, pageSize, c.Query("keyword"), c.Query("status"), c.Query("severity"), c.Query("env"), c.Query("alertType"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -173,6 +231,19 @@ func (ctl *Controller) UpdateMonitorAlertRuleStatus(c *gin.Context) {
 		return
 	}
 	if err := ctl.service.UpdateMonitorAlertRuleStatus(payload.ID, payload.Status); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) BatchUpdateMonitorAlertRules(c *gin.Context) {
+	var payload service.MonitorAlertRuleBatchPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid batch alert rule payload")
+		return
+	}
+	if err := ctl.service.BatchUpdateMonitorAlertRules(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
@@ -238,6 +309,19 @@ func (ctl *Controller) DeleteMonitorSilenceRule(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) BatchUpdateMonitorSilenceRules(c *gin.Context) {
+	var payload service.MonitorRuleBatchPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid silence rule batch payload")
+		return
+	}
+	if err := ctl.service.BatchUpdateMonitorSilenceRules(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) GetMonitorAggregationRuleList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -284,6 +368,19 @@ func (ctl *Controller) DeleteMonitorAggregationRule(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) BatchUpdateMonitorAggregationRules(c *gin.Context) {
+	var payload service.MonitorRuleBatchPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid aggregation rule batch payload")
+		return
+	}
+	if err := ctl.service.BatchUpdateMonitorAggregationRules(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) GetMonitorAlertEventList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -315,6 +412,19 @@ func (ctl *Controller) ResolveMonitorAlertEvent(c *gin.Context) {
 		return
 	}
 	if err := ctl.service.ResolveMonitorAlertEvent(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) BatchUpdateMonitorAlertEvents(c *gin.Context) {
+	var payload service.MonitorAlertEventBatchPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid alert event batch payload")
+		return
+	}
+	if err := ctl.service.BatchUpdateMonitorAlertEvents(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}

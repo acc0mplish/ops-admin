@@ -46,6 +46,7 @@ const form = reactive({
   dbName: '',
   charset: 'utf8mb4',
   env: 'test',
+  accessMode: 'readwrite',
   status: 1,
   description: ''
 })
@@ -64,6 +65,7 @@ function resetForm() {
     dbName: '',
     charset: 'utf8mb4',
     env: 'test',
+    accessMode: 'readwrite',
     status: 1,
     description: ''
   })
@@ -193,6 +195,13 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column prop="dbType" label="类型" width="100" />
+      <el-table-column label="访问模式" width="110">
+        <template #default="{ row }">
+          <el-tag :type="row.accessMode === 'readonly' ? 'warning' : 'success'" effect="plain">
+            {{ row.accessMode === 'readonly' ? '只读' : '读写' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="环境" width="120">
         <template #default="{ row }">
           <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
@@ -255,6 +264,14 @@ onMounted(() => {
               <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="访问模式" required>
+              <el-radio-group v-model="form.accessMode">
+                <el-radio-button value="readonly">只读</el-radio-button>
+                <el-radio-button value="readwrite">读写</el-radio-button>
+              </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="12">

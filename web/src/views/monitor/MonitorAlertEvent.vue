@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { claimMonitorAlertEvent, queryMonitorAlertEventList, resolveMonitorAlertEvent, triggerMonitorAlertAction } from '../../api/monitor'
+import { batchUpdateMonitorAlertEvents, claimMonitorAlertEvent, queryMonitorAlertEventList, resolveMonitorAlertEvent, triggerMonitorAlertAction } from '../../api/monitor'
 import { queryOpsJobList, queryOpsScriptList } from '../../api/ops'
 
 const loading = ref(false)
@@ -11,10 +11,12 @@ const jobs = ref([])
 const scripts = ref([])
 const actionVisible = ref(false)
 const current = ref({})
+const selectedEventIds = ref([])
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '', severity: '' })
 const actionForm = reactive({ actionType: 'job', targetId: undefined, operator: '系统管理员', summary: '' })
 
 function statusType(status) {
+  if (status === 'pending') return 'warning'
   if (status === 'firing') return 'danger'
   if (status === 'claimed') return 'warning'
   if (status === 'silenced') return 'info'
@@ -23,7 +25,7 @@ function statusType(status) {
 }
 
 function statusText(status) {
-  return ({ firing: '触发中', claimed: '已认领', silenced: '已屏蔽', recovered: '已恢复', resolved: '已关闭' }[status] || status)
+  return ({ pending: '等待持续', firing: '触发中', claimed: '已认领', silenced: '已屏蔽', recovered: '已恢复', resolved: '已关闭' }[status] || status)
 }
 
 async function loadData() {
@@ -57,6 +59,35 @@ async function handleResolve(row) {
   const { value } = await ElMessageBox.prompt('请输入处理说明', '关闭告警', { inputPlaceholder: '例如：服务已恢复' })
   await resolveMonitorAlertEvent({ id: row.id, handleNote: value })
   ElMessage.success('已关闭')
+  await loadData()
+}
+
+function handleSelectionChange(selection) {
+  selectedEventIds.value = selection.map((item) => item.id)
+}
+
+async function handleBatchAction(action) {
+  if (!selectedEventIds.value.length) return
+  if (action === 'delete') {
+    await ElMessageBox.confirm(`确认删除已选中的 ${selectedEventIds.value.length} 条告警事件记录吗？该操作不会删除告警规则。`, '批量删除确认', { type: 'warning' })
+    await batchUpdateMonitorAlertEvents({ ids: selectedEventIds.value, action: 'delete' })
+    ElMessage.success('已批量删除告警事件')
+    selectedEventIds.value = []
+    await loadData()
+    return
+  }
+  const isClaim = action === 'claim'
+  const { value } = await ElMessageBox.prompt(isClaim ? '请输入认领人或处理说明' : '请输入统一处理说明', isClaim ? '批量认领告警' : '批量关闭告警', {
+    inputPlaceholder: isClaim ? '例如：张三 排查中' : '例如：问题已处理，服务恢复'
+  })
+  await batchUpdateMonitorAlertEvents({
+    ids: selectedEventIds.value,
+    action,
+    claimedBy: isClaim ? value : '',
+    handleNote: value
+  })
+  ElMessage.success(isClaim ? '已批量认领可认领告警' : '已批量关闭未结束告警')
+  selectedEventIds.value = []
   await loadData()
 }
 
@@ -99,6 +130,7 @@ onMounted(loadData)
     <div class="toolbar">
       <el-input v-model="query.keyword" clearable placeholder="搜索规则 / 指标 / 摘要" style="width: 280px" @keyup.enter="loadData" />
       <el-select v-model="query.status" clearable placeholder="状态" style="width: 140px">
+        <el-option label="等待持续" value="pending" />
         <el-option label="触发中" value="firing" />
         <el-option label="已认领" value="claimed" />
         <el-option label="已屏蔽" value="silenced" />
@@ -111,11 +143,34 @@ onMounted(loadData)
       <el-button type="primary" @click="loadData">搜索</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" border>
+    <div v-if="selectedEventIds.length" class="batch-toolbar">
+      <span>已选择 <b>{{ selectedEventIds.length }}</b> 条告警事件</span>
+      <el-button size="small" type="primary" @click="handleBatchAction('claim')">批量认领</el-button>
+      <el-button size="small" type="warning" @click="handleBatchAction('resolve')">批量关闭</el-button>
+      <el-button size="small" type="danger" plain @click="handleBatchAction('delete')">批量删除</el-button>
+    </div>
+
+    <el-table v-loading="loading" :data="rows" border @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="52" fixed="left" />
       <el-table-column prop="ruleName" label="规则" min-width="170" />
       <el-table-column prop="severity" label="等级" width="90" />
       <el-table-column label="状态" width="110">
         <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
+      </el-table-column>
+      <el-table-column label="认领信息" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">
+          <div v-if="row.claimedBy" class="claim-info">
+            <strong>{{ row.claimedBy }}</strong>
+            <span>认领：{{ row.handleNote || '未填写认领说明' }}</span>
+            <span v-if="row.status === 'resolved'">关闭：{{ row.resolveNote || '未填写关闭说明' }}</span>
+            <small>{{ row.updateTime || '-' }}</small>
+          </div>
+          <div v-else-if="row.status === 'resolved'" class="claim-info claim-none">
+            <strong>未认领 / 已关闭</strong>
+            <span>关闭：{{ row.resolveNote || '未填写关闭说明' }}</span>
+          </div>
+          <span v-else class="claim-empty">未认领</span>
+        </template>
       </el-table-column>
       <el-table-column prop="metric" label="指标" min-width="170" show-overflow-tooltip />
       <el-table-column label="降噪命中" min-width="180" show-overflow-tooltip>
@@ -210,6 +265,13 @@ onMounted(loadData)
   flex-wrap: wrap;
   gap: 12px;
 }
+.batch-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #d9e5fb; border-radius: 8px; background: #f5f8ff; color: #52637f; }
+.batch-toolbar b { color: #4265d5; }
+.claim-info { display: flex; flex-direction: column; gap: 3px; line-height: 1.35; }
+.claim-info strong { color: #314b78; font-size: 13px; }
+.claim-info span { overflow: hidden; color: #64748b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.claim-info small { color: #98a4b7; font-size: 11px; }
+.claim-none strong, .claim-empty { color: #98a4b7; font-size: 12px; font-weight: 400; }
 .pager {
   display: flex;
   justify-content: flex-end;

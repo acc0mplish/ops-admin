@@ -505,6 +505,7 @@ func (s *Service) sendNotifyMessage(rule model.NotifyRule, tmpl model.NotifyTemp
 }
 
 func renderNotifyTemplate(template string, event NotifyEvent) string {
+	statusColor, statusTone := notifyStatusStyle(event.Status)
 	replacer := strings.NewReplacer(
 		"{{scope}}", event.Scope,
 		"{{event}}", event.Event,
@@ -515,12 +516,36 @@ func renderNotifyTemplate(template string, event NotifyEvent) string {
 		"{{detail}}", event.Detail,
 		"{{startedAt}}", formatNotifyTime(event.StartedAt),
 		"{{finishedAt}}", formatNotifyTime(event.FinishedAt),
+		"{{statusColor}}", statusColor,
+		"{{statusTone}}", statusTone,
 	)
 	output := replacer.Replace(template)
 	for key, value := range event.Extra {
 		output = strings.ReplaceAll(output, "{{"+key+"}}", value)
 	}
 	return output
+}
+
+func notifyStatusStyle(status string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "recovered", "resolved", "success", "completed":
+		return "#00B42A", "info"
+	case "firing", "failed", "error":
+		return "#F53F3F", "warning"
+	default:
+		return "#FF7D00", "comment"
+	}
+}
+
+func feishuHeaderTemplate(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "recovered", "resolved", "success", "completed":
+		return "green"
+	case "firing", "failed", "error":
+		return "red"
+	default:
+		return "orange"
+	}
 }
 
 func formatNotifyTime(value *time.Time) string {
@@ -546,7 +571,10 @@ func buildNotifyBody(channelType, title, content string, event NotifyEvent) ([]b
 		return json.Marshal(map[string]any{
 			"msg_type": "interactive",
 			"card": map[string]any{
-				"header":   map[string]any{"title": map[string]string{"tag": "plain_text", "content": title}},
+				"header": map[string]any{
+					"template": feishuHeaderTemplate(event.Status),
+					"title":    map[string]string{"tag": "plain_text", "content": title},
+				},
 				"elements": []map[string]any{{"tag": "markdown", "content": content}},
 			},
 		})

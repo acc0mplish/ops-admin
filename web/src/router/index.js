@@ -19,6 +19,9 @@ import CloudAccount from '../views/assets/CloudAccount.vue'
 import AssetOverview from '../views/assets/AssetOverview.vue'
 import Database from '../views/assets/Database.vue'
 import DatabaseWorkbench from '../views/assets/DatabaseWorkbench.vue'
+import DatabaseWorkbenchEntry from '../views/assets/DatabaseWorkbenchEntry.vue'
+import DatabaseImport from '../views/assets/DatabaseImport.vue'
+import DatabaseBackup from '../views/assets/DatabaseBackup.vue'
 import Gateway from '../views/assets/Gateway.vue'
 import TerminalLogin from '../views/assets/Terminal.vue'
 import K8s from '../views/assets/K8s.vue'
@@ -50,6 +53,7 @@ import NotifySendLog from '../views/notify/NotifySendLog.vue'
 import MonitorOverview from '../views/monitor/MonitorOverview.vue'
 import MonitorDatasource from '../views/monitor/MonitorDatasource.vue'
 import MonitorQuery from '../views/monitor/MonitorQuery.vue'
+import MonitorLogQuery from '../views/monitor/MonitorLogQuery.vue'
 import MonitorAlertRule from '../views/monitor/MonitorAlertRule.vue'
 import MonitorAlertEvent from '../views/monitor/MonitorAlertEvent.vue'
 import MonitorSilenceRule from '../views/monitor/MonitorSilenceRule.vue'
@@ -147,11 +151,14 @@ const routes = [
           summary: '集中维护 MySQL 数据库资产，并进入 SQL 工作台进行表结构、数据与执行记录管理。'
         }
       },
+      { path: '/assets/databases/workbench', component: DatabaseWorkbenchEntry, meta: { title: 'DBMS 工作台', app: 'assets' } },
+      { path: '/assets/databases/import', component: DatabaseImport, meta: { title: '数据导入', app: 'assets' } },
+      { path: '/assets/databases/backups', component: DatabaseBackup, meta: { title: '备份管理', app: 'assets' } },
       {
         path: '/assets/databases/:id/workbench',
         name: 'DatabaseWorkbench',
         component: DatabaseWorkbench,
-        meta: { title: '数据库工作台', app: 'assets' }
+        meta: { title: 'DBMS 工作台', app: 'assets' }
       },
       { path: '/assets/server/databases', redirect: '/assets/databases' },
       { path: '/assets/server/databases/:id/workbench', redirect: (to) => `/assets/databases/${to.params.id}/workbench` },
@@ -394,6 +401,15 @@ const routes = [
           title: '即时查询',
           app: 'monitor',
           summary: '输入 PromQL 即时查询指标结果。'
+        }
+      },
+      {
+        path: '/monitor/logs',
+        component: MonitorLogQuery,
+        meta: {
+          title: '日志查询',
+          app: 'monitor',
+          summary: '通过 Elasticsearch 检索应用与 Kubernetes 日志，并按字段、时间范围查看上下文。'
         }
       },
       {

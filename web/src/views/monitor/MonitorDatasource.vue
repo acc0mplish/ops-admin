@@ -116,7 +116,7 @@ onMounted(loadData)
     <div class="page-header">
       <div>
         <h2>数据源管理</h2>
-        <p>接入 Prometheus 或 VictoriaMetrics，供指标查询和告警规则复用。</p>
+        <p>接入 Prometheus、VictoriaMetrics 或 Elasticsearch，统一管理指标与日志查询入口。</p>
       </div>
       <el-button type="primary" @click="openCreate">新增数据源</el-button>
     </div>
@@ -126,6 +126,7 @@ onMounted(loadData)
       <el-select v-model="query.type" clearable placeholder="类型" style="width: 170px">
         <el-option label="Prometheus" value="prometheus" />
         <el-option label="VictoriaMetrics" value="victoriametrics" />
+        <el-option label="Elasticsearch" value="elasticsearch" />
       </el-select>
       <el-select v-model="query.status" clearable placeholder="状态" style="width: 130px">
         <el-option label="启用" value="1" />
@@ -178,6 +179,7 @@ onMounted(loadData)
           <el-radio-group v-model="form.type">
             <el-radio-button label="prometheus">Prometheus</el-radio-button>
             <el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button>
+            <el-radio-button label="elasticsearch">Elasticsearch</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="所属环境" required>
@@ -185,19 +187,21 @@ onMounted(loadData)
             <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
           </el-select>
         </el-form-item>
-        <el-form-item label="地址" required><el-input v-model="form.url" placeholder="http://prometheus:9090" /></el-form-item>
+        <el-form-item label="地址" required><el-input v-model="form.url" :placeholder="form.type === 'elasticsearch' ? 'http://elasticsearch:9200' : 'http://prometheus:9090'" /></el-form-item>
+        <el-alert v-if="form.type === 'elasticsearch'" title="Elasticsearch 数据源用于日志查询与日志告警；PromQL 即时查询、监控大屏和巡检大屏仍需选择 Prometheus 或 VictoriaMetrics。" type="info" :closable="false" style="margin-bottom: 18px" />
         <el-form-item label="认证方式">
           <el-select v-model="form.authType" style="width: 100%">
             <el-option label="无认证" value="none" />
             <el-option label="Basic" value="basic" />
             <el-option label="Bearer Token" value="bearer" />
+            <el-option label="Elasticsearch API Key" value="apikey" />
           </el-select>
         </el-form-item>
         <template v-if="form.authType === 'basic'">
           <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
           <el-form-item label="密码"><el-input v-model="form.password" type="password" show-password /></el-form-item>
         </template>
-        <el-form-item v-if="form.authType === 'bearer'" label="Token">
+        <el-form-item v-if="form.authType === 'bearer' || form.authType === 'apikey'" :label="form.authType === 'apikey' ? 'API Key' : 'Token'">
           <el-input v-model="form.token" type="textarea" :rows="3" />
         </el-form-item>
         <el-form-item label="默认数据源"><el-switch v-model="form.isDefault" /></el-form-item>

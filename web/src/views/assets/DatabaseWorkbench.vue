@@ -3,13 +3,16 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryAssetDatabaseList } from '../../api/asset'
+import DatabaseConnectionTree from './database/DatabaseConnectionTree.vue'
 import {
+  analyzeDBMSSQL,
   createDBMSExportTask,
   createDBMSImportTask,
   deleteDBMSTableRow,
   downloadDBMSTaskFile,
   executeDBMSSQL,
   insertDBMSTableRow,
+  precheckDBMSImportTask,
   queryDBMSSchemaTree,
   queryDBMSSQLHistory,
   queryDBMSTableData,
@@ -32,6 +35,7 @@ const taskLoading = ref(false)
 const rowDialogVisible = ref(false)
 const rollbackDialogVisible = ref(false)
 const importDialogVisible = ref(false)
+const sqlConfirmVisible = ref(false)
 const activeTab = ref('data')
 const rowDialogMode = ref('insert')
 
@@ -50,6 +54,11 @@ const taskTotal = ref(0)
 const importDatabaseOptions = ref([])
 const importSchemaTree = ref([])
 const rollbackSQL = ref('')
+const rollbackConfidence = ref('')
+const pendingSQL = ref('')
+const sqlAnalysis = ref(null)
+const importPrecheck = ref(null)
+const importPrechecking = ref(false)
 
 const selectedSchema = ref('')
 const selectedTable = ref('')
@@ -132,6 +141,8 @@ const sqlSnippets = [
 ]
 
 const sourceSchemas = computed(() => importSchemaTree.value || [])
+const isReadOnly = computed(() => connection.value?.accessMode === 'readonly')
+const canEditRows = computed(() => !isReadOnly.value && selectedPrimaryKeys.value.length > 0)
 const sourceTables = computed(() => {
   const schema = sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)
   return schema?.tables || []
@@ -241,6 +252,10 @@ function isEditingCell(row, column, index) {
 }
 
 function startCellEdit(row, column, index) {
+  if (!canEditRows.value) {
+    ElMessage.warning(isReadOnly.value ? '当前数据库为只读模式' : '当前表没有主键，不能直接编辑')
+    return
+  }
   editingCell.rowKey = rowKeyFor(row, index)
   editingCell.column = column
   pendingCellValue.value = row[column] == null ? '' : String(row[column])
@@ -351,6 +366,33 @@ async function initialize() {
   }
 }
 
+function switchDatabase(database) {
+  if (!database?.id || Number(database.id) === databaseId.value) return
+  if (database.connectStatus !== 1) {
+    ElMessage.warning('该数据库当前未连接，请先检查连接配置')
+    return
+  }
+  router.replace({ name: 'DatabaseWorkbench', params: { id: database.id } })
+}
+
+function resetWorkbenchState() {
+  selectedSchema.value = ''
+  selectedTable.value = ''
+  treeKeyword.value = ''
+  schemaTree.value = []
+  resultColumns.value = []
+  resultRows.value = []
+  selectedColumns.value = []
+  selectedRows.value = []
+  selectedTotal.value = 0
+  selectedPrimaryKeys.value = []
+  historyList.value = []
+  taskList.value = []
+  execMeta.sqlType = ''
+  execMeta.rowsAffected = 0
+  execMeta.durationMs = 0
+}
+
 function setupTaskPolling() {
   const hasRunningTask = taskList.value.some((item) => ['pending', 'running'].includes(item.status))
   if (hasRunningTask && !taskTimer.value) {
@@ -379,6 +421,26 @@ function selectedSQLText() {
   return selected || sqlText.value.trim()
 }
 
+async function executeAnalyzedSQL(statement, confirmed = false) {
+  const data = await executeDBMSSQL({
+    databaseId: databaseId.value,
+    schema: selectedSchema.value || connection.value?.dbName || '',
+    sqlText: statement,
+    confirmed
+  })
+  resultColumns.value = data.columns || []
+  resultRows.value = data.rows || []
+  execMeta.sqlType = data.sqlType || ''
+  execMeta.rowsAffected = Number(data.rowsAffected || 0)
+  execMeta.durationMs = Number(data.durationMs || 0)
+  activeTab.value = 'result'
+  ElMessage.success('SQL 执行完成')
+  await Promise.all([loadHistory(), loadTasks()])
+  if (selectedTable.value) {
+    await loadTableData()
+  }
+}
+
 async function runSQL() {
   const statement = selectedSQLText()
   if (!statement) {
@@ -388,25 +450,37 @@ async function runSQL() {
   sqlRunning.value = true
   resetExecMeta()
   try {
-    const data = await executeDBMSSQL({
+    const analysis = await analyzeDBMSSQL({
       databaseId: databaseId.value,
       schema: selectedSchema.value || connection.value?.dbName || '',
       sqlText: statement
     })
-    resultColumns.value = data.columns || []
-    resultRows.value = data.rows || []
-    execMeta.sqlType = data.sqlType || ''
-    execMeta.rowsAffected = Number(data.rowsAffected || 0)
-    execMeta.durationMs = Number(data.durationMs || 0)
-    activeTab.value = 'result'
-    ElMessage.success('SQL 执行完成')
-    await Promise.all([loadHistory(), loadTasks()])
-    if (selectedTable.value) {
-      await loadTableData()
+    if (analysis.writeOperation) {
+      pendingSQL.value = statement
+      sqlAnalysis.value = analysis
+      sqlConfirmVisible.value = true
+      return
     }
+    await executeAnalyzedSQL(statement)
   } finally {
     sqlRunning.value = false
   }
+}
+
+async function confirmSQLExecution() {
+  sqlRunning.value = true
+  try {
+    await executeAnalyzedSQL(pendingSQL.value, true)
+    sqlConfirmVisible.value = false
+  } finally {
+    sqlRunning.value = false
+  }
+}
+
+function riskTagType(level) {
+  if (level === 'high') return 'danger'
+  if (level === 'medium') return 'warning'
+  return 'success'
 }
 
 function insertSnippet(text) {
@@ -475,6 +549,7 @@ function onEditorKeydown(event) {
 
 function openRollback(row) {
   rollbackSQL.value = row.rollbackSql || ''
+  rollbackConfidence.value = row.rollbackConfidence || ''
   rollbackDialogVisible.value = true
 }
 
@@ -557,6 +632,7 @@ async function createExportTask() {
 async function openImportDialog() {
   const list = await queryAssetDatabaseList({ pageNum: 1, pageSize: 200, keyword: '', dbType: 'mysql', status: '1' })
   importDatabaseOptions.value = list.list || []
+  importPrecheck.value = null
   importDialogVisible.value = true
 }
 
@@ -575,7 +651,19 @@ async function submitImportTask() {
     ElMessage.warning('请先选择当前工作台目标表')
     return
   }
-  await createDBMSImportTask({
+  if (!importPrecheck.value?.ready) {
+    ElMessage.warning('请先完成导入预检查')
+    return
+  }
+  await createDBMSImportTask(importPayload())
+  importDialogVisible.value = false
+  ElMessage.success('导入任务已创建')
+  activeTab.value = 'tasks'
+  await loadTasks()
+}
+
+function importPayload() {
+  return {
     sourceDatabaseId: importForm.sourceDatabaseId,
     sourceSchema: importForm.sourceSchema,
     sourceTable: importForm.sourceTable,
@@ -584,11 +672,20 @@ async function submitImportTask() {
     targetTable: selectedTable.value,
     createIfMissing: importForm.createIfMissing,
     truncateTarget: importForm.truncateTarget
-  })
-  importDialogVisible.value = false
-  ElMessage.success('导入任务已创建')
-  activeTab.value = 'tasks'
-  await loadTasks()
+  }
+}
+
+async function runImportPrecheck() {
+  if (!importForm.sourceDatabaseId || !importForm.sourceSchema || !importForm.sourceTable || !selectedSchema.value || !selectedTable.value) {
+    ElMessage.warning('请完整选择源库、源表和目标表')
+    return
+  }
+  importPrechecking.value = true
+  try {
+    importPrecheck.value = await precheckDBMSImportTask(importPayload())
+  } finally {
+    importPrechecking.value = false
+  }
 }
 
 async function downloadTask(task) {
@@ -620,6 +717,20 @@ watch(treeKeyword, (value) => {
 })
 
 watch(() => importForm.sourceDatabaseId, loadImportSchemas)
+watch(
+  () => [
+    importForm.sourceDatabaseId,
+    importForm.sourceSchema,
+    importForm.sourceTable,
+    importForm.createIfMissing,
+    importForm.truncateTarget,
+    selectedSchema.value,
+    selectedTable.value
+  ],
+  () => {
+    importPrecheck.value = null
+  }
+)
 
 watch([() => tableFilter.key, () => tableFilter.text], () => {
   tableQuery.pageNum = 1
@@ -630,6 +741,12 @@ watch([() => tableFilter.key, () => tableFilter.text], () => {
 
 onMounted(initialize)
 
+watch(databaseId, async (next, previous) => {
+  if (!previous || next === previous) return
+  resetWorkbenchState()
+  await initialize()
+})
+
 onBeforeUnmount(() => {
   if (taskTimer.value) {
     window.clearInterval(taskTimer.value)
@@ -639,47 +756,44 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-loading="loading" class="dbms-page">
-    <div class="dbms-header page-card">
-      <div class="dbms-header-main">
-        <div class="dbms-breadcrumb">
-          <el-button link type="primary" @click="router.push('/assets/databases')">数据库管理</el-button>
-          <span>/</span>
-          <span>{{ connection?.name || '数据库工作台' }}</span>
-        </div>
-        <h2 class="page-title">{{ connection?.name || '数据库工作台' }}</h2>
-        <p class="page-desc">面向 MySQL 的 SQL 编辑、库表浏览、结果筛选、任务化导入导出和执行记录管理台。</p>
-      </div>
-      <div class="connection-metas">
-        <span>{{ connection?.host }}:{{ connection?.port }}</span>
-        <span>{{ connection?.dbName || '-' }}</span>
-        <span>{{ connection?.version || '-' }}</span>
-      </div>
-    </div>
-
     <div class="dbms-layout">
       <aside class="dbms-sidebar page-card">
-        <div class="sidebar-top">
-          <el-input v-model="treeKeyword" clearable placeholder="搜索库 / 表" />
-          <el-button @click="loadTree">刷新</el-button>
-        </div>
-        <el-tree
-          ref="treeRef"
-          v-loading="treeLoading"
-          node-key="id"
-          class="schema-tree"
-          :data="schemaTree"
-          :props="{ label: 'label', children: 'children' }"
-          :filter-node-method="treeFilterMethod"
-          default-expand-all
-          @node-click="onTreeNodeClick"
-        >
-          <template #default="{ data }">
-            <div class="tree-node">
-              <span>{{ data.label }}</span>
-              <small v-if="data.isTable && Number.isFinite(data.rows)">{{ data.rows }}</small>
-            </div>
-          </template>
-        </el-tree>
+        <section class="sidebar-section connection-section">
+          <div class="sidebar-section-title">
+            <strong>数据库连接</strong>
+            <span>点击连接即可切换</span>
+          </div>
+          <DatabaseConnectionTree :active-id="databaseId" @select="switchDatabase" />
+        </section>
+
+        <section class="sidebar-section schema-section">
+          <div class="sidebar-section-title">
+            <strong>库表结构</strong>
+            <span>{{ connection?.dbName || '全部数据库' }}</span>
+          </div>
+          <div class="sidebar-top">
+            <el-input v-model="treeKeyword" clearable placeholder="搜索数据库或数据表" />
+            <el-button @click="loadTree">刷新</el-button>
+          </div>
+          <el-tree
+            ref="treeRef"
+            v-loading="treeLoading"
+            node-key="id"
+            class="schema-tree"
+            :data="schemaTree"
+            :props="{ label: 'label', children: 'children' }"
+            :filter-node-method="treeFilterMethod"
+            default-expand-all
+            @node-click="onTreeNodeClick"
+          >
+            <template #default="{ data }">
+              <div class="tree-node">
+                <span>{{ data.label }}</span>
+                <small v-if="data.isTable && Number.isFinite(data.rows)">{{ data.rows }}</small>
+              </div>
+            </template>
+          </el-tree>
+        </section>
       </aside>
 
       <section class="dbms-main">
@@ -692,7 +806,7 @@ onBeforeUnmount(() => {
             <div class="panel-actions">
               <el-button :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
               <el-button :disabled="!selectedTable" @click="createExportTask">导出任务</el-button>
-              <el-button @click="openImportDialog">导入任务</el-button>
+              <el-button :disabled="isReadOnly" @click="openImportDialog">导入任务</el-button>
             </div>
           </div>
 
@@ -754,7 +868,7 @@ onBeforeUnmount(() => {
               <p v-else>先从左侧选中一张表，或直接执行 SQL 查看结果。</p>
             </div>
             <div v-if="selectedTable" class="panel-actions">
-              <el-button type="primary" plain @click="openInsertRow">新增数据</el-button>
+              <el-button type="primary" plain :disabled="!canEditRows" @click="openInsertRow">新增数据</el-button>
               <el-button @click="loadTableData">刷新数据</el-button>
             </div>
           </div>
@@ -777,15 +891,15 @@ onBeforeUnmount(() => {
                       @keyup.enter="commitCellEdit(row, col.name)"
                       @blur="commitCellEdit(row, col.name)"
                     />
-                    <button v-else type="button" class="cell-button" @click="startCellEdit(row, col.name, $index)">
+                    <button v-else type="button" class="cell-button" :class="{ disabled: !canEditRows }" @click="startCellEdit(row, col.name, $index)">
                       {{ row[col.name] ?? '-' }}
                     </button>
                   </template>
                 </el-table-column>
                 <el-table-column label="操作" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button link type="primary" @click="openEditRow(row)">编辑</el-button>
-                    <el-button link type="danger" @click="handleDeleteRow(row)">删除</el-button>
+                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">编辑</el-button>
+                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -815,7 +929,9 @@ onBeforeUnmount(() => {
 
             <el-tab-pane label="执行记录" name="history">
               <el-table v-loading="historyLoading" :data="historyList" border height="380">
+                <el-table-column prop="executionId" label="执行编号" min-width="190" show-overflow-tooltip />
                 <el-table-column prop="sqlType" label="类型" width="100" />
+                <el-table-column prop="environment" label="环境" width="90" />
                 <el-table-column prop="schemaName" label="库" width="120" />
                 <el-table-column prop="tableName" label="表" width="140" />
                 <el-table-column prop="sqlText" label="SQL" min-width="320" show-overflow-tooltip />
@@ -828,9 +944,14 @@ onBeforeUnmount(() => {
                 </el-table-column>
                 <el-table-column prop="rowsAffected" label="影响行数" width="110" />
                 <el-table-column prop="durationMs" label="耗时(ms)" width="100" />
+                <el-table-column prop="operator" label="执行人" width="110" />
+                <el-table-column prop="clientIp" label="客户端 IP" width="140" />
                 <el-table-column prop="createTime" label="执行时间" min-width="160" />
                 <el-table-column label="回滚 SQL" width="150">
                   <template #default="{ row }">
+                    <el-tag v-if="row.rollbackSql" :type="row.rollbackConfidence === 'high' ? 'success' : 'warning'" size="small" effect="plain">
+                      {{ row.rollbackConfidence === 'high' ? '高可信' : '需复核' }}
+                    </el-tag>
                     <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">查看</el-button>
                     <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">复制</el-button>
                   </template>
@@ -907,6 +1028,46 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
+    <el-dialog v-model="sqlConfirmVisible" title="确认执行写操作 SQL" width="780px">
+      <div v-if="sqlAnalysis" class="sql-risk-panel">
+        <div class="sql-risk-summary">
+          <el-tag :type="riskTagType(sqlAnalysis.riskLevel)" effect="dark">
+            {{ sqlAnalysis.riskLevel === 'high' ? '高风险' : sqlAnalysis.riskLevel === 'medium' ? '中风险' : '低风险' }}
+          </el-tag>
+          <strong>{{ sqlAnalysis.databaseName }} / {{ sqlAnalysis.schema }}</strong>
+          <span>{{ sqlAnalysis.environment || '未分配环境' }}</span>
+        </div>
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="SQL 类型">{{ sqlAnalysis.sqlType }}</el-descriptions-item>
+          <el-descriptions-item label="语句数量">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
+          <el-descriptions-item label="访问模式">{{ sqlAnalysis.accessMode === 'readonly' ? '只读' : '读写' }}</el-descriptions-item>
+        </el-descriptions>
+        <ul class="risk-reasons">
+          <li v-for="item in sqlAnalysis.reasons" :key="item">{{ item }}</li>
+        </ul>
+        <pre class="confirm-sql">{{ pendingSQL }}</pre>
+        <el-alert
+          v-if="sqlAnalysis.accessMode === 'readonly'"
+          title="当前数据库为只读模式，后端将拒绝执行该 SQL"
+          type="error"
+          :closable="false"
+          show-icon
+        />
+        <el-alert v-else title="请确认目标环境、数据库和 SQL 内容无误。写操作可能无法自动恢复。" type="warning" :closable="false" show-icon />
+      </div>
+      <template #footer>
+        <el-button @click="sqlConfirmVisible = false">取消</el-button>
+        <el-button
+          type="danger"
+          :loading="sqlRunning"
+          :disabled="sqlAnalysis?.accessMode === 'readonly'"
+          @click="confirmSQLExecution"
+        >
+          确认执行
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? '新增数据行' : '编辑数据行'" width="720px">
       <el-form label-width="140px">
         <el-form-item v-for="col in selectedColumns" :key="col.name" :label="`${col.name} (${col.columnType})`">
@@ -920,6 +1081,13 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <el-dialog v-model="rollbackDialogVisible" title="回滚 SQL" width="860px">
+      <el-alert
+        :title="rollbackConfidence === 'high' ? '高可信度：基于主键和操作前数据生成，执行前仍需复核。' : '该回滚 SQL 可信度有限，请人工核对后使用。'"
+        :type="rollbackConfidence === 'high' ? 'success' : 'warning'"
+        :closable="false"
+        show-icon
+        class="rollback-alert"
+      />
       <pre class="rollback-box">{{ rollbackSQL || '当前记录没有回滚 SQL' }}</pre>
     </el-dialog>
 
@@ -954,10 +1122,24 @@ onBeforeUnmount(() => {
         <el-form-item label="清空目标表">
           <el-switch v-model="importForm.truncateTarget" />
         </el-form-item>
+        <el-form-item label="预检查">
+          <el-button :loading="importPrechecking" @click="runImportPrecheck">检查字段与影响范围</el-button>
+        </el-form-item>
+        <div v-if="importPrecheck" class="import-precheck" :class="{ danger: !importPrecheck.ready }">
+          <div class="precheck-head">
+            <strong>{{ importPrecheck.ready ? '预检查通过' : '预检查未通过' }}</strong>
+            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ importPrecheck.estimatedRows }} 行</el-tag>
+          </div>
+          <p>字段映射：{{ importPrecheck.commonColumns?.length || 0 }} 个，缺失字段：{{ importPrecheck.missingColumns?.length || 0 }} 个</p>
+          <p v-if="importPrecheck.missingColumns?.length">缺失：{{ importPrecheck.missingColumns.join(', ') }}</p>
+          <ul v-if="importPrecheck.warnings?.length">
+            <li v-for="item in importPrecheck.warnings" :key="item">{{ item }}</li>
+          </ul>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitImportTask">开始导入</el-button>
+        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">开始导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1012,7 +1194,7 @@ onBeforeUnmount(() => {
 
 .dbms-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 16px;
   min-height: 760px;
 }
@@ -1020,7 +1202,49 @@ onBeforeUnmount(() => {
 .dbms-sidebar {
   display: flex;
   flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sidebar-section {
+  min-height: 0;
+  padding: 16px;
+}
+
+.connection-section {
+  flex: 0 0 auto;
+  max-height: 340px;
+  overflow: auto;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.schema-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   gap: 12px;
+}
+
+.sidebar-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sidebar-section-title strong {
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+}
+
+.sidebar-section-title span {
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-top {
@@ -1238,6 +1462,47 @@ onBeforeUnmount(() => {
   color: var(--el-color-primary);
 }
 
+.cell-button.disabled {
+  color: var(--el-text-color-secondary);
+  cursor: not-allowed;
+}
+
+.sql-risk-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sql-risk-summary,
+.precheck-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sql-risk-summary span {
+  color: var(--el-text-color-secondary);
+}
+
+.risk-reasons {
+  margin: 0;
+  padding-left: 20px;
+  color: #a16207;
+}
+
+.confirm-sql {
+  max-height: 260px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: Consolas, 'Courier New', monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .pager {
   margin-top: 14px;
   display: flex;
@@ -1257,6 +1522,34 @@ onBeforeUnmount(() => {
   line-height: 1.7;
   font-family: Consolas, 'Courier New', monospace;
   white-space: pre-wrap;
+}
+
+.rollback-alert {
+  margin-bottom: 12px;
+}
+
+.import-precheck {
+  margin: 0 0 12px 120px;
+  padding: 14px;
+  border: 1px solid #b7e4ca;
+  border-radius: 8px;
+  background: #f0f9f4;
+  color: #315947;
+}
+
+.import-precheck.danger {
+  border-color: #f2b8b5;
+  background: #fff5f5;
+  color: #8f3232;
+}
+
+.import-precheck p {
+  margin: 8px 0 0;
+}
+
+.import-precheck ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
 }
 
 @media (max-width: 1320px) {

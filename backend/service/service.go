@@ -26,6 +26,8 @@ type Service struct {
 	opsSchedulerOnce     sync.Once
 	monitorScheduler     *MonitorScheduler
 	monitorSchedulerOnce sync.Once
+	dbBackupScheduler    *DatabaseBackupScheduler
+	dbBackupOnce         sync.Once
 }
 
 type AssetTerminalSession struct {
@@ -41,6 +43,7 @@ func New(db *gorm.DB) *Service {
 	svc := &Service{db: db}
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
+	svc.initDatabaseBackupScheduler()
 	return svc
 }
 
@@ -245,6 +248,7 @@ type AssetDatabasePayload struct {
 	DBName         string `json:"dbName"`
 	Charset        string `json:"charset"`
 	Env            string `json:"env"`
+	AccessMode     string `json:"accessMode"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
 }

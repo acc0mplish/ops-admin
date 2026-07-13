@@ -23,16 +23,38 @@ func (MonitorDatasource) TableName() string {
 	return "monitor_datasource"
 }
 
+type MonitorLogShortcut struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Owner     string    `json:"owner" gorm:"size:128;not null;index"`
+	Name      string    `json:"name" gorm:"size:128;not null"`
+	Query     string    `json:"query" gorm:"type:text"`
+	IndexName string    `json:"indexName" gorm:"size:255"`
+	TimeRange string    `json:"timeRange" gorm:"size:32;default:24h"`
+	Sort      int       `json:"sort" gorm:"default:0;index"`
+	CreatedAt time.Time `json:"createTime"`
+	UpdatedAt time.Time `json:"updateTime"`
+}
+
+func (MonitorLogShortcut) TableName() string {
+	return "monitor_log_shortcut"
+}
+
 type MonitorAlertRule struct {
 	ID                    uint       `json:"id" gorm:"primaryKey"`
 	Name                  string     `json:"name" gorm:"size:128;not null;index"`
+	AlertType             string     `json:"alertType" gorm:"size:32;default:metric;index"`
+	DatasourceScope       string     `json:"datasourceScope" gorm:"size:32;default:specific;index"`
 	DatasourceID          uint       `json:"datasourceId" gorm:"index;not null"`
 	DatasourceName        string     `json:"datasourceName" gorm:"size:128"`
 	PromQL                string     `json:"promql" gorm:"type:longtext;not null"`
+	LogIndex              string     `json:"logIndex" gorm:"size:255"`
+	LogTimeRangeSeconds   int        `json:"logTimeRangeSeconds" gorm:"default:300"`
 	Comparator            string     `json:"comparator" gorm:"size:16;not null"`
 	Threshold             float64    `json:"threshold"`
 	ForSeconds            int        `json:"forSeconds" gorm:"default:60"`
 	EvalIntervalSeconds   int        `json:"evalIntervalSeconds" gorm:"default:60"`
+	NotifyRepeatIntervalSeconds int  `json:"notifyRepeatIntervalSeconds" gorm:"default:1800"`
+	MaxNotifyCount        int        `json:"maxNotifyCount" gorm:"default:0"`
 	Severity              string     `json:"severity" gorm:"size:16;default:P2;index"`
 	LabelsJSON            string     `json:"labelsJson" gorm:"type:text"`
 	AnnotationsJSON       string     `json:"annotationsJson" gorm:"type:text"`
@@ -75,11 +97,13 @@ type MonitorAlertEvent struct {
 	AggregateRuleID   uint       `json:"aggregateRuleId" gorm:"index"`
 	AggregateRuleName string     `json:"aggregateRuleName" gorm:"size:128"`
 	LastNotifyAt      *time.Time `json:"lastNotifyAt"`
+	NotifyCount       int        `json:"notifyCount" gorm:"default:0"`
 	FirstTriggerAt    time.Time  `json:"firstTriggerAt"`
 	LastTriggerAt     time.Time  `json:"lastTriggerAt"`
 	RecoveredAt       *time.Time `json:"recoveredAt"`
 	ClaimedBy         string     `json:"claimedBy" gorm:"size:128"`
 	HandleNote        string     `json:"handleNote" gorm:"type:text"`
+	ResolveNote       string     `json:"resolveNote" gorm:"type:text"`
 	CreatedAt         time.Time  `json:"createTime"`
 	UpdatedAt         time.Time  `json:"updateTime"`
 }

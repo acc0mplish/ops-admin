@@ -96,6 +96,10 @@ const messages = {
     keyAuth: '密钥认证',
     cloudAccountManagement: '云账号管理',
     databaseManagement: '数据库管理',
+    databaseList: '数据库列表',
+    databaseWorkbench: 'DBMS 工作台',
+    databaseImport: '数据导入',
+    databaseBackup: '备份管理',
     gatewayManagement: '网关管理',
     assetsHosts: '主机管理',
     assetsTags: '标签分组',
@@ -137,6 +141,7 @@ const messages = {
     monitorMetrics: '指标看板',
     monitorDatasources: '数据源管理',
     monitorQuery: '即时查询',
+    monitorLogs: '日志查询',
     monitorAlertRules: '告警规则',
     monitorAlertEvents: '告警事件',
     monitorSilences: '告警屏蔽',
@@ -279,6 +284,10 @@ const messages = {
     keyAuth: 'Key Auth',
     cloudAccountManagement: 'Cloud Account Management',
     databaseManagement: 'Database Management',
+    databaseList: 'Database List',
+    databaseWorkbench: 'DBMS Workbench',
+    databaseImport: 'Data Import',
+    databaseBackup: 'Backup Management',
     gatewayManagement: 'Gateway Management',
     assetsHosts: 'Host Management',
     assetsTags: 'Tags',
@@ -847,6 +856,7 @@ Object.assign(messages['zh-CN'], {
   monitorOverview: '监控概览',
   monitorDatasources: '数据源管理',
   monitorQuery: '即时查询',
+  monitorLogs: '日志查询',
   monitorAlertRules: '告警规则',
   monitorAlertEvents: '告警事件',
   monitorSilences: '告警屏蔽',
@@ -861,6 +871,7 @@ Object.assign(messages['en-US'], {
   monitorOverview: 'Monitoring Overview',
   monitorDatasources: 'Datasources',
   monitorQuery: 'Instant Query',
+  monitorLogs: 'Log Explorer',
   monitorAlertRules: 'Alert Rules',
   monitorAlertEvents: 'Alert Events',
   monitorSilences: 'Silences',
@@ -913,7 +924,10 @@ const routeTitleMap = {
   '/assets/server/credentials/key': 'keyAuth',
   '/assets/server/cloud-accounts': 'cloudAccountManagement',
   '/assets/server/databases': 'databaseManagement',
-  '/assets/databases': 'databaseManagement',
+  '/assets/databases': 'databaseList',
+  '/assets/databases/workbench': 'databaseWorkbench',
+  '/assets/databases/import': 'databaseImport',
+  '/assets/databases/backups': 'databaseBackup',
   '/assets/gateways': 'gatewayManagement',
   '/assets/k8s': 'k8sManagement',
   '/assets/k8s/clusters': 'k8sClusters',
@@ -965,6 +979,7 @@ const routeTitleMap = {
   '/monitor/overview': 'monitorOverview',
   '/monitor/datasources': 'monitorDatasources',
   '/monitor/query': 'monitorQuery',
+  '/monitor/logs': 'monitorLogs',
   '/monitor/alert-rules': 'monitorAlertRules',
   '/monitor/alert-events': 'monitorAlertEvents',
   '/monitor/silences': 'monitorSilences',
@@ -978,8 +993,8 @@ const routeTitleMap = {
 export function translateRoute(path, fallback = '') {
   const normalizedPath = path.startsWith('/assets/k8s/pod-terminal/')
     ? '/assets/k8s/pod-terminal'
-    : path.startsWith('/assets/databases/') && path.endsWith('/workbench')
-      ? '/assets/databases'
+    : /^\/assets\/databases\/\d+\/workbench$/.test(path)
+      ? '/assets/databases/workbench'
       : path
   const key = routeTitleMap[normalizedPath]
   return key ? t(key) : fallback

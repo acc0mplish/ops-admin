@@ -10,6 +10,11 @@ export const deleteMonitorDatasource = (id) => http.delete('/api/v1/monitor/data
 export const testMonitorDatasource = (data) => http.post('/api/v1/monitor/datasource/test', data, { params: { id: data.id || 0 } })
 
 export const queryMonitorPrometheus = (data) => http.post('/api/v1/monitor/query/instant', data)
+export const queryMonitorLogs = (data) => http.post('/api/v1/monitor/logs/query', data)
+export const queryMonitorElasticsearchIndices = (params) => http.get('/api/v1/monitor/logs/indices', { params })
+export const queryMonitorLogShortcuts = () => http.get('/api/v1/monitor/logs/shortcuts')
+export const saveMonitorLogShortcut = (data) => http.post('/api/v1/monitor/logs/shortcuts/save', data)
+export const deleteMonitorLogShortcut = (id) => http.delete('/api/v1/monitor/logs/shortcuts/delete', { data: { id } })
 export const queryMonitorQueryHistoryList = (params) => http.get('/api/v1/monitor/query/history', { params })
 
 export const queryMonitorAlertRuleList = (params) => http.get('/api/v1/monitor/alert/rule/list', { params })
@@ -17,21 +22,25 @@ export const monitorAlertRuleInfo = (id) => http.get('/api/v1/monitor/alert/rule
 export const saveMonitorAlertRule = (data) => http.post('/api/v1/monitor/alert/rule/save', data)
 export const deleteMonitorAlertRule = (id) => http.delete('/api/v1/monitor/alert/rule/delete', { data: { id } })
 export const updateMonitorAlertRuleStatus = (data) => http.put('/api/v1/monitor/alert/rule/status', data)
+export const batchUpdateMonitorAlertRules = (data) => http.post('/api/v1/monitor/alert/rule/batch', data)
 export const runMonitorAlertRule = (id) => http.post('/api/v1/monitor/alert/rule/run', { id })
 
 export const queryMonitorSilenceRuleList = (params) => http.get('/api/v1/monitor/silence/rule/list', { params })
 export const monitorSilenceRuleInfo = (id) => http.get('/api/v1/monitor/silence/rule/info', { params: { id } })
 export const saveMonitorSilenceRule = (data) => http.post('/api/v1/monitor/silence/rule/save', data)
 export const deleteMonitorSilenceRule = (id) => http.delete('/api/v1/monitor/silence/rule/delete', { data: { id } })
+export const batchUpdateMonitorSilenceRules = (data) => http.post('/api/v1/monitor/silence/rule/batch', data)
 
 export const queryMonitorAggregationRuleList = (params) => http.get('/api/v1/monitor/aggregation/rule/list', { params })
 export const monitorAggregationRuleInfo = (id) => http.get('/api/v1/monitor/aggregation/rule/info', { params: { id } })
 export const saveMonitorAggregationRule = (data) => http.post('/api/v1/monitor/aggregation/rule/save', data)
 export const deleteMonitorAggregationRule = (id) => http.delete('/api/v1/monitor/aggregation/rule/delete', { data: { id } })
+export const batchUpdateMonitorAggregationRules = (data) => http.post('/api/v1/monitor/aggregation/rule/batch', data)
 
 export const queryMonitorAlertEventList = (params) => http.get('/api/v1/monitor/alert/event/list', { params })
 export const claimMonitorAlertEvent = (data) => http.post('/api/v1/monitor/alert/event/claim', data)
 export const resolveMonitorAlertEvent = (data) => http.post('/api/v1/monitor/alert/event/resolve', data)
+export const batchUpdateMonitorAlertEvents = (data) => http.post('/api/v1/monitor/alert/event/batch', data)
 export const triggerMonitorAlertAction = (data) => http.post('/api/v1/monitor/alert/event/action', data)
 
 export const queryMonitorDashboardList = (params) => http.get('/api/v1/monitor/dashboard/list', { params })

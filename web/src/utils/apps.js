@@ -70,7 +70,36 @@ export const appDefinitions = [
         titleKey: 'databaseManagement',
         path: '/assets/databases',
         icon: 'Coin',
-        children: []
+        children: [
+          {
+            title: '数据库列表',
+            titleKey: 'databaseList',
+            path: '/assets/databases',
+            icon: 'List',
+            children: []
+          },
+          {
+            title: 'DBMS 工作台',
+            titleKey: 'databaseWorkbench',
+            path: '/assets/databases/workbench',
+            icon: 'EditPen',
+            children: []
+          },
+          {
+            title: '数据导入',
+            titleKey: 'databaseImport',
+            path: '/assets/databases/import',
+            icon: 'Upload',
+            children: []
+          },
+          {
+            title: '备份管理',
+            titleKey: 'databaseBackup',
+            path: '/assets/databases/backups',
+            icon: 'FolderOpened',
+            children: []
+          }
+        ]
       },
       {
         title: '网关管理',
@@ -413,6 +442,13 @@ export const appDefinitions = [
         titleKey: 'monitorQuery',
         path: '/monitor/query',
         icon: 'Search',
+        children: []
+      },
+      {
+        title: '日志查询',
+        titleKey: 'monitorLogs',
+        path: '/monitor/logs',
+        icon: 'Document',
         children: []
       },
       {

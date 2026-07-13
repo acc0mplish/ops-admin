@@ -140,6 +140,7 @@ type AssetDatabase struct {
 	Charset        string       `json:"charset" gorm:"size:64"`
 	Version        string       `json:"version" gorm:"size:128"`
 	Env            string       `json:"env" gorm:"size:64;index"`
+	AccessMode     string       `json:"accessMode" gorm:"size:32;default:readwrite;index"`
 	Status         int          `json:"status" gorm:"default:1;not null"`
 	ConnectStatus  int          `json:"connectStatus" gorm:"default:0;not null"`
 	Description    string       `json:"description" gorm:"size:255"`

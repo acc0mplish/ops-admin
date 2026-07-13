@@ -126,7 +126,23 @@ func (ctl *Controller) ExecuteDatabaseSQL(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid sql payload")
 		return
 	}
+	payload.Operator = c.GetString("username")
+	payload.ClientIP = c.ClientIP()
 	data, err := ctl.service.ExecuteDatabaseSQL(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) AnalyzeDatabaseSQL(c *gin.Context) {
+	var payload service.DBMSSQLExecutePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid sql payload")
+		return
+	}
+	data, err := ctl.service.AnalyzeDatabaseSQL(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
@@ -208,6 +224,36 @@ func (ctl *Controller) CreateImportTask(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.CreateImportTask(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) PrecheckImportTask(c *gin.Context) {
+	var payload service.DBMSImportPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid import payload")
+		return
+	}
+	data, err := ctl.service.PrecheckImportTask(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) CreateBatchSQLTask(c *gin.Context) {
+	var payload service.DBMSBatchSQLPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid batch sql payload")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	payload.ClientIP = c.ClientIP()
+	data, err := ctl.service.CreateBatchSQLTask(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

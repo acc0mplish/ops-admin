@@ -382,8 +382,8 @@ async function loadBase() {
     queryMonitorDatasourceOptions()
   ])
   dashboards.value = dashboardData.list || []
-  datasourceOptions.value = datasources || []
-  if (!selectedDatasourceId.value && datasourceOptions.value.length) {
+  datasourceOptions.value = (datasources || []).filter((item) => ['prometheus', 'victoriametrics'].includes(item.type))
+  if (!datasourceOptions.value.some((item) => item.id === selectedDatasourceId.value)) {
     selectedDatasourceId.value = datasourceOptions.value.find((item) => item.isDefault)?.id || datasourceOptions.value[0].id
   }
   if (!visibleDashboards.value.some((item) => item.id === activeDashboardId.value)) {
@@ -510,6 +510,10 @@ async function handleDeletePanel(row) {
 }
 
 async function refreshPanel(row) {
+  if (!selectedDatasourceId.value) {
+    ElMessage.warning('请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源')
+    return
+  }
   panelLoading.value = true
   try {
     panelResults[row.id] = await queryMonitorDashboardPanel({ id: row.id, datasourceId: selectedDatasourceId.value })
@@ -521,6 +525,11 @@ async function refreshPanel(row) {
 }
 
 async function refreshAllPanels() {
+  if (!selectedDatasourceId.value) {
+    const message = '请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源'
+    for (const panel of panels.value.filter((item) => item.status === 1)) panelResults[panel.id] = { error: message }
+    return
+  }
   const enabledPanels = panels.value.filter((item) => item.status === 1)
   await Promise.all(enabledPanels.map((item) => queryMonitorDashboardPanel({ id: item.id, datasourceId: selectedDatasourceId.value })
     .then((data) => { panelResults[item.id] = data })
