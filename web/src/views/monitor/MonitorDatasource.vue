@@ -96,9 +96,23 @@ async function handleTest(payload = form) {
   try {
     await testMonitorDatasource(payload)
     ElMessage.success('数据源连接成功')
+    if (payload.id) await loadData()
   } finally {
     testing.value = false
   }
+}
+
+function healthType(status) {
+  return ({ healthy: 'success', unhealthy: 'danger', unknown: 'info' }[status] || 'info')
+}
+
+function healthText(status) {
+  return ({ healthy: '健康', unhealthy: '异常', unknown: '待检测' }[status] || '待检测')
+}
+
+function formatTime(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
 async function handleDelete(row) {
@@ -154,6 +168,12 @@ onMounted(loadData)
           <span v-else>-</span>
         </template>
       </el-table-column>
+      <el-table-column label="健康状态" width="120">
+        <template #default="{ row }"><el-tag :type="healthType(row.healthStatus)" effect="light">{{ healthText(row.healthStatus) }}</el-tag></template>
+      </el-table-column>
+      <el-table-column label="查询延迟" width="110"><template #default="{ row }">{{ row.lastCheckAt ? `${row.latencyMs || 0} ms` : '-' }}</template></el-table-column>
+      <el-table-column label="最近检测" width="180"><template #default="{ row }">{{ formatTime(row.lastCheckAt) }}</template></el-table-column>
+      <el-table-column prop="lastError" label="最近错误" min-width="180" show-overflow-tooltip />
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>

@@ -263,6 +263,20 @@ func (ctl *Controller) RunMonitorAlertRule(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) PreviewMonitorAlertRule(c *gin.Context) {
+	var payload service.MonitorAlertRulePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid alert rule preview payload")
+		return
+	}
+	data, err := ctl.service.PreviewMonitorAlertRule(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetMonitorSilenceRuleList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -392,6 +406,15 @@ func (ctl *Controller) GetMonitorAlertEventList(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetMonitorAlertEventDetail(c *gin.Context) {
+	data, err := ctl.service.GetMonitorAlertEventDetail(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) ClaimMonitorAlertEvent(c *gin.Context) {
 	var payload service.MonitorAlertEventActionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -510,7 +533,7 @@ func (ctl *Controller) QueryMonitorDashboardPanel(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid query payload")
 		return
 	}
-	data, err := ctl.service.QueryMonitorDashboardPanel(payload.ID, payload.DatasourceID)
+	data, err := ctl.service.QueryMonitorDashboardPanel(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

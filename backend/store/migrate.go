@@ -59,6 +59,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MonitorLogShortcut{},
 		&model.MonitorAlertRule{},
 		&model.MonitorAlertEvent{},
+		&model.MonitorAlertEventTimeline{},
 		&model.MonitorAlertAction{},
 		&model.MonitorSilenceRule{},
 		&model.MonitorAggregationRule{},

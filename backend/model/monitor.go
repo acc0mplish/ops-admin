@@ -3,20 +3,26 @@ package model
 import "time"
 
 type MonitorDatasource struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	Name        string    `json:"name" gorm:"size:128;not null;index"`
-	Type        string    `json:"type" gorm:"size:32;not null;index"`
-	URL         string    `json:"url" gorm:"size:1024;not null"`
-	AuthType    string    `json:"authType" gorm:"size:32;default:none"`
-	Username    string    `json:"username" gorm:"size:128"`
-	Password    string    `json:"password" gorm:"size:255"`
-	Token       string    `json:"token" gorm:"type:text"`
-	IsDefault   bool      `json:"isDefault" gorm:"default:false;index"`
-	Env         string    `json:"env" gorm:"size:64;index"`
-	Status      int       `json:"status" gorm:"default:1;index"`
-	Description string    `json:"description" gorm:"size:255"`
-	CreatedAt   time.Time `json:"createTime"`
-	UpdatedAt   time.Time `json:"updateTime"`
+	ID                  uint       `json:"id" gorm:"primaryKey"`
+	Name                string     `json:"name" gorm:"size:128;not null;index"`
+	Type                string     `json:"type" gorm:"size:32;not null;index"`
+	URL                 string     `json:"url" gorm:"size:1024;not null"`
+	AuthType            string     `json:"authType" gorm:"size:32;default:none"`
+	Username            string     `json:"username" gorm:"size:128"`
+	Password            string     `json:"password" gorm:"size:255"`
+	Token               string     `json:"token" gorm:"type:text"`
+	IsDefault           bool       `json:"isDefault" gorm:"default:false;index"`
+	Env                 string     `json:"env" gorm:"size:64;index"`
+	Status              int        `json:"status" gorm:"default:1;index"`
+	HealthStatus        string     `json:"healthStatus" gorm:"size:32;default:unknown;index"`
+	LastCheckAt         *time.Time `json:"lastCheckAt"`
+	LastSuccessAt       *time.Time `json:"lastSuccessAt"`
+	LatencyMs           int64      `json:"latencyMs" gorm:"default:0"`
+	ConsecutiveFailures int        `json:"consecutiveFailures" gorm:"default:0"`
+	LastError           string     `json:"lastError" gorm:"type:text"`
+	Description         string     `json:"description" gorm:"size:255"`
+	CreatedAt           time.Time  `json:"createTime"`
+	UpdatedAt           time.Time  `json:"updateTime"`
 }
 
 func (MonitorDatasource) TableName() string {
@@ -40,35 +46,35 @@ func (MonitorLogShortcut) TableName() string {
 }
 
 type MonitorAlertRule struct {
-	ID                    uint       `json:"id" gorm:"primaryKey"`
-	Name                  string     `json:"name" gorm:"size:128;not null;index"`
-	AlertType             string     `json:"alertType" gorm:"size:32;default:metric;index"`
-	DatasourceScope       string     `json:"datasourceScope" gorm:"size:32;default:specific;index"`
-	DatasourceID          uint       `json:"datasourceId" gorm:"index;not null"`
-	DatasourceName        string     `json:"datasourceName" gorm:"size:128"`
-	PromQL                string     `json:"promql" gorm:"type:longtext;not null"`
-	LogIndex              string     `json:"logIndex" gorm:"size:255"`
-	LogTimeRangeSeconds   int        `json:"logTimeRangeSeconds" gorm:"default:300"`
-	Comparator            string     `json:"comparator" gorm:"size:16;not null"`
-	Threshold             float64    `json:"threshold"`
-	ForSeconds            int        `json:"forSeconds" gorm:"default:60"`
-	EvalIntervalSeconds   int        `json:"evalIntervalSeconds" gorm:"default:60"`
-	NotifyRepeatIntervalSeconds int  `json:"notifyRepeatIntervalSeconds" gorm:"default:1800"`
-	MaxNotifyCount        int        `json:"maxNotifyCount" gorm:"default:0"`
-	Severity              string     `json:"severity" gorm:"size:16;default:P2;index"`
-	LabelsJSON            string     `json:"labelsJson" gorm:"type:text"`
-	AnnotationsJSON       string     `json:"annotationsJson" gorm:"type:text"`
-	NotifyEnabled         bool       `json:"notifyEnabled" gorm:"default:false;index"`
-	NotifyRuleID          uint       `json:"notifyRuleId" gorm:"index"`
-	NotifyRecoveryEnabled bool       `json:"notifyRecoveryEnabled" gorm:"default:true"`
-	Env                   string     `json:"env" gorm:"size:64;index"`
-	Status                int        `json:"status" gorm:"default:1;index"`
-	LastEvalAt            *time.Time `json:"lastEvalAt"`
-	LastEvalStatus        string     `json:"lastEvalStatus" gorm:"size:32"`
-	LastEvalMessage       string     `json:"lastEvalMessage" gorm:"type:text"`
-	Description           string     `json:"description" gorm:"size:255"`
-	CreatedAt             time.Time  `json:"createTime"`
-	UpdatedAt             time.Time  `json:"updateTime"`
+	ID                          uint       `json:"id" gorm:"primaryKey"`
+	Name                        string     `json:"name" gorm:"size:128;not null;index"`
+	AlertType                   string     `json:"alertType" gorm:"size:32;default:metric;index"`
+	DatasourceScope             string     `json:"datasourceScope" gorm:"size:32;default:specific;index"`
+	DatasourceID                uint       `json:"datasourceId" gorm:"index;not null"`
+	DatasourceName              string     `json:"datasourceName" gorm:"size:128"`
+	PromQL                      string     `json:"promql" gorm:"type:longtext;not null"`
+	LogIndex                    string     `json:"logIndex" gorm:"size:255"`
+	LogTimeRangeSeconds         int        `json:"logTimeRangeSeconds" gorm:"default:300"`
+	Comparator                  string     `json:"comparator" gorm:"size:16;not null"`
+	Threshold                   float64    `json:"threshold"`
+	ForSeconds                  int        `json:"forSeconds" gorm:"default:60"`
+	EvalIntervalSeconds         int        `json:"evalIntervalSeconds" gorm:"default:60"`
+	NotifyRepeatIntervalSeconds int        `json:"notifyRepeatIntervalSeconds" gorm:"default:1800"`
+	MaxNotifyCount              int        `json:"maxNotifyCount" gorm:"default:0"`
+	Severity                    string     `json:"severity" gorm:"size:16;default:P2;index"`
+	LabelsJSON                  string     `json:"labelsJson" gorm:"type:text"`
+	AnnotationsJSON             string     `json:"annotationsJson" gorm:"type:text"`
+	NotifyEnabled               bool       `json:"notifyEnabled" gorm:"default:false;index"`
+	NotifyRuleID                uint       `json:"notifyRuleId" gorm:"index"`
+	NotifyRecoveryEnabled       bool       `json:"notifyRecoveryEnabled" gorm:"default:true"`
+	Env                         string     `json:"env" gorm:"size:64;index"`
+	Status                      int        `json:"status" gorm:"default:1;index"`
+	LastEvalAt                  *time.Time `json:"lastEvalAt"`
+	LastEvalStatus              string     `json:"lastEvalStatus" gorm:"size:32"`
+	LastEvalMessage             string     `json:"lastEvalMessage" gorm:"type:text"`
+	Description                 string     `json:"description" gorm:"size:255"`
+	CreatedAt                   time.Time  `json:"createTime"`
+	UpdatedAt                   time.Time  `json:"updateTime"`
 }
 
 func (MonitorAlertRule) TableName() string {
@@ -102,14 +108,31 @@ type MonitorAlertEvent struct {
 	LastTriggerAt     time.Time  `json:"lastTriggerAt"`
 	RecoveredAt       *time.Time `json:"recoveredAt"`
 	ClaimedBy         string     `json:"claimedBy" gorm:"size:128"`
+	ClaimedAt         *time.Time `json:"claimedAt"`
 	HandleNote        string     `json:"handleNote" gorm:"type:text"`
 	ResolveNote       string     `json:"resolveNote" gorm:"type:text"`
+	ResolvedAt        *time.Time `json:"resolvedAt"`
 	CreatedAt         time.Time  `json:"createTime"`
 	UpdatedAt         time.Time  `json:"updateTime"`
 }
 
 func (MonitorAlertEvent) TableName() string {
 	return "monitor_alert_event"
+}
+
+type MonitorAlertEventTimeline struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	AlertEventID uint      `json:"alertEventId" gorm:"index;not null"`
+	EventType    string    `json:"eventType" gorm:"size:32;not null;index"`
+	Title        string    `json:"title" gorm:"size:128;not null"`
+	Detail       string    `json:"detail" gorm:"type:text"`
+	Operator     string    `json:"operator" gorm:"size:128"`
+	MetadataJSON string    `json:"metadataJson" gorm:"type:text"`
+	CreatedAt    time.Time `json:"createTime"`
+}
+
+func (MonitorAlertEventTimeline) TableName() string {
+	return "monitor_alert_event_timeline"
 }
 
 type MonitorAlertAction struct {

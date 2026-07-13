@@ -139,8 +139,11 @@ type MonitorDashboardPanelPayload struct {
 }
 
 type MonitorDashboardPanelQueryPayload struct {
-	ID           uint `json:"id"`
-	DatasourceID uint `json:"datasourceId"`
+	ID           uint  `json:"id"`
+	DatasourceID uint  `json:"datasourceId"`
+	StartAt      int64 `json:"startAt"`
+	EndAt        int64 `json:"endAt"`
+	StepSeconds  int   `json:"stepSeconds"`
 }
 
 type MonitorLogQueryPayload struct {
@@ -162,10 +165,11 @@ type MonitorLogShortcutPayload struct {
 }
 
 type MonitorScheduler struct {
-	cron    *cron.Cron
-	mu      sync.Mutex
-	entries map[uint]cron.EntryID
-	running map[uint]bool
+	cron        *cron.Cron
+	mu          sync.Mutex
+	entries     map[uint]cron.EntryID
+	running     map[uint]bool
+	healthEntry cron.EntryID
 }
 
 type PromQueryResult struct {
@@ -418,6 +422,11 @@ func (s *Service) initMonitorScheduler() {
 		}
 		s.monitorScheduler.cron.Start()
 		s.reloadMonitorAlertRules()
+		entryID, err := s.monitorScheduler.cron.AddFunc("@every 60s", s.checkAllMonitorDatasources)
+		if err == nil {
+			s.monitorScheduler.healthEntry = entryID
+		}
+		go s.checkAllMonitorDatasources()
 	})
 }
 
@@ -556,6 +565,12 @@ func (s *Service) DeleteMonitorDatasource(id uint) error {
 	if count > 0 {
 		return errors.New("数据源已被告警规则引用，不能删除")
 	}
+	if err := s.db.Model(&model.MonitorDashboardPanel{}).Where("datasource_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("数据源已被监控大屏引用，不能删除")
+	}
 	return s.db.Delete(&model.MonitorDatasource{}, id).Error
 }
 
@@ -573,11 +588,48 @@ func (s *Service) TestMonitorDatasource(id uint, payload MonitorDatasourcePayloa
 			AuthType: normalizeMonitorAuthType(payload.AuthType), Username: payload.Username, Password: payload.Password, Token: payload.Token,
 		}
 	}
+	startedAt := time.Now()
+	err := s.checkMonitorDatasourceHealth(ds)
+	if id > 0 {
+		s.persistMonitorDatasourceHealth(id, err, time.Since(startedAt).Milliseconds())
+	}
+	return err
+}
+
+func (s *Service) checkMonitorDatasourceHealth(ds model.MonitorDatasource) error {
 	if normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
 		return s.elasticsearchHealth(ds)
 	}
 	_, err := s.prometheusQuery(ds, "up", time.Now())
 	return err
+}
+
+func (s *Service) persistMonitorDatasourceHealth(id uint, healthErr error, latencyMs int64) {
+	now := time.Now()
+	updates := map[string]any{"last_check_at": &now, "latency_ms": latencyMs}
+	if healthErr == nil {
+		updates["health_status"] = "healthy"
+		updates["last_success_at"] = &now
+		updates["last_error"] = ""
+		updates["consecutive_failures"] = 0
+	} else {
+		updates["health_status"] = "unhealthy"
+		updates["last_error"] = healthErr.Error()
+		updates["consecutive_failures"] = gorm.Expr("consecutive_failures + ?", 1)
+	}
+	_ = s.db.Model(&model.MonitorDatasource{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (s *Service) checkAllMonitorDatasources() {
+	var datasources []model.MonitorDatasource
+	if err := s.db.Where("status = ?", 1).Find(&datasources).Error; err != nil {
+		return
+	}
+	for _, ds := range datasources {
+		startedAt := time.Now()
+		err := s.checkMonitorDatasourceHealth(ds)
+		s.persistMonitorDatasourceHealth(ds.ID, err, time.Since(startedAt).Milliseconds())
+	}
 }
 
 func (s *Service) PrometheusInstantQuery(datasourceID uint, query string, ts time.Time) (map[string]any, error) {
@@ -673,6 +725,46 @@ func (s *Service) prometheusQuery(ds model.MonitorDatasource, query string, ts t
 	}
 	if result.Status != "success" {
 		return nil, errors.New(firstNonEmpty(result.Error, "Prometheus query failed"))
+	}
+	return &result, nil
+}
+
+func (s *Service) prometheusRangeQuery(ds model.MonitorDatasource, query string, startAt, endAt time.Time, stepSeconds int) (*PromQueryResult, error) {
+	if endAt.Before(startAt) || endAt.Equal(startAt) {
+		return nil, errors.New("查询结束时间必须晚于开始时间")
+	}
+	if stepSeconds < 15 {
+		stepSeconds = 15
+	}
+	if stepSeconds > 3600 {
+		stepSeconds = 3600
+	}
+	endpoint := strings.TrimRight(ds.URL, "/") + "/api/v1/query_range"
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("start", strconv.FormatInt(startAt.Unix(), 10))
+	params.Set("end", strconv.FormatInt(endAt.Unix(), 10))
+	params.Set("step", strconv.Itoa(stepSeconds))
+	request, err := http.NewRequest(http.MethodGet, endpoint+"?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("Prometheus API 返回状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var result PromQueryResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	if result.Status != "success" {
+		return nil, errors.New(firstNonEmpty(result.Error, "Prometheus range query failed"))
 	}
 	return &result, nil
 }
@@ -1044,10 +1136,19 @@ func (s *Service) ListMonitorAlertRules(pageNum, pageSize int, keyword, status, 
 		query = query.Where("name LIKE ? OR prom_ql LIKE ? OR description LIKE ?", like, like, like)
 	}
 	if strings.TrimSpace(status) != "" {
-		query = query.Where("status = ?", status)
+		switch strings.TrimSpace(status) {
+		case "unclaimed":
+			query = query.Where("status IN ? AND (claimed_by = '' OR claimed_by IS NULL)", []string{"pending", "firing"})
+		default:
+			query = query.Where("status = ?", status)
+		}
 	}
 	if strings.TrimSpace(severity) != "" {
-		query = query.Where("severity = ?", normalizeSeverity(severity))
+		if strings.EqualFold(strings.TrimSpace(severity), "critical") {
+			query = query.Where("severity IN ?", []string{"P0", "P1"})
+		} else {
+			query = query.Where("severity = ?", normalizeSeverity(severity))
+		}
 	}
 	if strings.TrimSpace(env) != "" {
 		query = query.Where("env = ?", normalizeEnvCode(env))
@@ -1471,6 +1572,81 @@ func (s *Service) RunMonitorAlertRule(id uint) error {
 	return nil
 }
 
+func (s *Service) PreviewMonitorAlertRule(payload MonitorAlertRulePayload) (map[string]any, error) {
+	queryText := firstNonEmpty(strings.TrimSpace(payload.Query), strings.TrimSpace(payload.PromQL))
+	if queryText == "" {
+		return nil, errors.New("查询语句不能为空")
+	}
+	rule := model.MonitorAlertRule{
+		ID: payload.ID, Name: firstNonEmpty(strings.TrimSpace(payload.Name), "规则预览"),
+		AlertType: normalizeAlertType(payload.AlertType), DatasourceScope: normalizeDatasourceScope(payload.DatasourceScope),
+		DatasourceID: payload.DatasourceID, PromQL: queryText, LogIndex: firstNonEmpty(strings.TrimSpace(payload.LogIndex), "_all"),
+		LogTimeRangeSeconds: normalizeLogTimeRangeSeconds(payload.LogTimeRangeSeconds), Comparator: normalizeComparator(payload.Comparator),
+		Threshold: payload.Threshold, Severity: normalizeSeverity(payload.Severity),
+	}
+	datasources, err := s.monitorRuleDatasources(rule)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]map[string]any, 0, len(datasources))
+	totalSeries := 0
+	totalMatched := 0
+	failedDatasources := 0
+	for _, ds := range datasources {
+		item := map[string]any{"datasourceId": ds.ID, "datasourceName": ds.Name, "status": "success", "samples": []map[string]any{}}
+		samples := make([]map[string]any, 0)
+		if rule.AlertType == "log" {
+			value, sample, queryErr := s.monitorLogAlertValue(rule, ds)
+			if queryErr != nil {
+				item["status"] = "failed"
+				item["error"] = queryErr.Error()
+				failedDatasources++
+			} else {
+				matched := compareFloat(value, rule.Comparator, rule.Threshold)
+				totalSeries++
+				if matched {
+					totalMatched++
+				}
+				samples = append(samples, map[string]any{"labels": sample.Metric, "value": value, "matched": matched})
+			}
+		} else {
+			result, queryErr := s.prometheusQuery(ds, rule.PromQL, time.Now())
+			if queryErr != nil {
+				item["status"] = "failed"
+				item["error"] = queryErr.Error()
+				failedDatasources++
+			} else {
+				item["resultType"] = result.Data.ResultType
+				totalSeries += len(result.Data.Result)
+				for _, sample := range result.Data.Result {
+					value, ok := promSampleValue(sample)
+					if !ok {
+						continue
+					}
+					matched := compareFloat(value, rule.Comparator, rule.Threshold)
+					if matched {
+						totalMatched++
+					}
+					if len(samples) < 50 {
+						samples = append(samples, map[string]any{"labels": sample.Metric, "value": value, "matched": matched})
+					}
+				}
+			}
+		}
+		item["samples"] = samples
+		item["seriesCount"] = len(samples)
+		results = append(results, item)
+	}
+	explanation := fmt.Sprintf("共查询 %d 个数据源，返回 %d 条序列，其中 %d 条满足 %s %.4f", len(datasources), totalSeries, totalMatched, rule.Comparator, rule.Threshold)
+	if failedDatasources > 0 {
+		explanation += fmt.Sprintf("，%d 个数据源查询失败", failedDatasources)
+	}
+	return map[string]any{
+		"datasourceCount": len(datasources), "failedDatasourceCount": failedDatasources,
+		"totalSeries": totalSeries, "totalMatched": totalMatched, "explanation": explanation, "results": results,
+	}, nil
+}
+
 func (s *Service) evaluateMonitorAlertRule(id uint) {
 	if !s.beginMonitorAlertRuleEvaluation(id) {
 		return
@@ -1785,7 +1961,30 @@ func (s *Service) notifyMonitorAlertIfAllowed(event *model.MonitorAlertEvent, ru
 	}
 	s.monitorNotifyMu.Unlock()
 	s.dispatchMonitorNotification(rule, *event, status)
+	s.appendMonitorAlertTimeline(event.ID, "notification", "已提交消息通知", fmt.Sprintf("状态：%s，第 %d 次发送", status, event.NotifyCount), "系统", map[string]any{
+		"notifyRuleId": rule.NotifyRuleID, "notifyCount": event.NotifyCount, "status": status,
+	})
 	return true
+}
+
+func (s *Service) appendMonitorAlertTimeline(eventID uint, eventType, title, detail, operator string, metadata map[string]any) {
+	if eventID == 0 {
+		return
+	}
+	metadataJSON := "{}"
+	if len(metadata) > 0 {
+		if data, err := json.Marshal(metadata); err == nil {
+			metadataJSON = string(data)
+		}
+	}
+	_ = s.db.Create(&model.MonitorAlertEventTimeline{
+		AlertEventID: eventID,
+		EventType:    strings.TrimSpace(eventType),
+		Title:        strings.TrimSpace(title),
+		Detail:       strings.TrimSpace(detail),
+		Operator:     strings.TrimSpace(operator),
+		MetadataJSON: metadataJSON,
+	}).Error
 }
 
 func applyMonitorEventAggregation(event *model.MonitorAlertEvent, updates map[string]any, aggregation model.MonitorAggregationRule, key string) {
@@ -1806,6 +2005,7 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 	var existing model.MonitorAlertEvent
 	err := s.db.Where("rule_id = ? AND fingerprint = ? AND status IN ?", rule.ID, fp, []string{"pending", "firing", "claimed", "silenced"}).First(&existing).Error
 	if err == nil {
+		previousAggregateRuleID := existing.AggregateRuleID
 		updates := map[string]any{
 			"current_value": value, "last_trigger_at": now, "summary": summary,
 		}
@@ -1823,8 +2023,20 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 		if aggregated && aggregationRule != nil {
 			applyMonitorEventAggregation(&existing, updates, *aggregationRule, aggregationKey)
 		}
+		previousStatus := existing.Status
 		if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
 			return
+		}
+		if nextStatus, ok := updates["status"].(string); ok && nextStatus != previousStatus {
+			switch nextStatus {
+			case "firing":
+				s.appendMonitorAlertTimeline(existing.ID, "firing", "告警正式触发", summary, "系统", nil)
+			case "silenced":
+				s.appendMonitorAlertTimeline(existing.ID, "silenced", "命中告警屏蔽", firstNonEmpty(existing.SilenceRuleName, silenceRule.Name), "系统", nil)
+			}
+		}
+		if aggregated && aggregationRule != nil && previousAggregateRuleID != aggregationRule.ID {
+			s.appendMonitorAlertTimeline(existing.ID, "aggregated", "命中聚合收敛规则", aggregationRule.Name, "系统", map[string]any{"aggregationKey": aggregationKey})
 		}
 		if existing.Status == "firing" && !silenced {
 			shouldNotify = true
@@ -1860,8 +2072,20 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 		event.AggregateRuleID = aggregationRule.ID
 		event.AggregateRuleName = aggregationRule.Name
 	}
-	if err := s.db.Create(&event).Error; err == nil && event.Status == "firing" && !event.Silenced && rule.NotifyEnabled && rule.NotifyRuleID > 0 {
-		s.notifyMonitorAlertIfAllowed(&event, rule, aggregationRule, "firing")
+	if err := s.db.Create(&event).Error; err == nil {
+		title := "告警事件已创建"
+		if event.Status == "pending" {
+			title = "等待持续时间"
+		} else if event.Status == "silenced" {
+			title = "告警已被屏蔽"
+		}
+		s.appendMonitorAlertTimeline(event.ID, event.Status, title, summary, "系统", map[string]any{"fingerprint": event.Fingerprint})
+		if aggregated && aggregationRule != nil {
+			s.appendMonitorAlertTimeline(event.ID, "aggregated", "命中聚合收敛规则", aggregationRule.Name, "系统", map[string]any{"aggregationKey": aggregationKey})
+		}
+		if event.Status == "firing" && !event.Silenced && rule.NotifyEnabled && rule.NotifyRuleID > 0 {
+			s.notifyMonitorAlertIfAllowed(&event, rule, aggregationRule, "firing")
+		}
 	}
 }
 
@@ -1878,6 +2102,7 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
 			"status": "recovered", "recovered_at": &now,
 		}).Error
+		s.appendMonitorAlertTimeline(event.ID, "recovered", "告警已自动恢复", "指标已不再满足告警条件", "系统", nil)
 		event.Status = "recovered"
 		event.RecoveredAt = &now
 		if rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled {
@@ -1933,13 +2158,92 @@ func (s *Service) ListMonitorAlertEvents(pageNum, pageSize int, keyword, status,
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
 
+func (s *Service) GetMonitorAlertEventDetail(id uint) (map[string]any, error) {
+	var event model.MonitorAlertEvent
+	if err := s.db.First(&event, id).Error; err != nil {
+		return nil, err
+	}
+	var timelines []model.MonitorAlertEventTimeline
+	if err := s.db.Where("alert_event_id = ?", id).Order("created_at ASC, id ASC").Find(&timelines).Error; err != nil {
+		return nil, err
+	}
+	if len(timelines) == 0 {
+		timelines = append(timelines, model.MonitorAlertEventTimeline{
+			AlertEventID: id, EventType: "firing", Title: "告警事件已创建", Detail: event.Summary, Operator: "系统", CreatedAt: event.FirstTriggerAt,
+		})
+		if event.ClaimedBy != "" {
+			claimedAt := event.UpdatedAt
+			if event.ClaimedAt != nil {
+				claimedAt = *event.ClaimedAt
+			}
+			timelines = append(timelines, model.MonitorAlertEventTimeline{
+				AlertEventID: id, EventType: "claimed", Title: "告警已认领", Detail: event.HandleNote, Operator: event.ClaimedBy, CreatedAt: claimedAt,
+			})
+		}
+		if event.RecoveredAt != nil {
+			title := "告警已自动恢复"
+			if event.Status == "resolved" {
+				title = "告警已人工关闭"
+			}
+			timelines = append(timelines, model.MonitorAlertEventTimeline{
+				AlertEventID: id, EventType: event.Status, Title: title, Detail: event.ResolveNote, Operator: "系统", CreatedAt: *event.RecoveredAt,
+			})
+		}
+	}
+	var actions []model.MonitorAlertAction
+	if err := s.db.Where("alert_event_id = ?", id).Order("id DESC").Find(&actions).Error; err != nil {
+		return nil, err
+	}
+	var notifyLogs []model.NotifySendLog
+	if err := s.db.Where("scope = ? AND target_id = ?", "monitor", id).Order("id DESC").Limit(20).Find(&notifyLogs).Error; err != nil {
+		return nil, err
+	}
+
+	var rule model.MonitorAlertRule
+	_ = s.db.First(&rule, event.RuleID).Error
+	notificationState := map[string]any{
+		"allowed": true, "reason": "当前允许发送", "notifyCount": event.NotifyCount,
+		"maxNotifyCount": rule.MaxNotifyCount, "lastNotifyAt": event.LastNotifyAt,
+	}
+	if event.Status == "recovered" || event.Status == "resolved" {
+		notificationState["allowed"] = false
+		notificationState["reason"] = "告警已结束，无需继续通知"
+	} else if event.Silenced {
+		notificationState["allowed"] = false
+		notificationState["reason"] = "命中屏蔽规则：" + firstNonEmpty(event.SilenceRuleName, "未命名规则")
+	} else if rule.MaxNotifyCount > 0 && event.NotifyCount >= rule.MaxNotifyCount {
+		notificationState["allowed"] = false
+		notificationState["reason"] = "已达到最大发送次数"
+	} else if event.LastNotifyAt != nil {
+		nextNotifyAt := event.LastNotifyAt.Add(time.Duration(normalizeNotifyRepeatInterval(rule.NotifyRepeatIntervalSeconds)) * time.Second)
+		notificationState["nextNotifyAt"] = nextNotifyAt
+		if time.Now().Before(nextNotifyAt) {
+			notificationState["allowed"] = false
+			notificationState["reason"] = "等待重复通知间隔"
+		}
+	}
+	if event.AggregateRuleID > 0 {
+		notificationState["aggregationRule"] = event.AggregateRuleName
+		notificationState["aggregationKey"] = event.AggregationKey
+	}
+	return map[string]any{
+		"event": event, "timelines": timelines, "actions": actions,
+		"notifyLogs": notifyLogs, "notificationState": notificationState,
+	}, nil
+}
+
 func (s *Service) ClaimMonitorAlertEvent(payload MonitorAlertEventActionPayload) error {
 	if payload.ID == 0 {
 		return errors.New("告警事件 ID 不能为空")
 	}
-	return s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", payload.ID).Updates(map[string]any{
-		"status": "claimed", "claimed_by": strings.TrimSpace(payload.ClaimedBy), "handle_note": strings.TrimSpace(payload.HandleNote),
-	}).Error
+	now := time.Now()
+	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", payload.ID).Updates(map[string]any{
+		"status": "claimed", "claimed_by": strings.TrimSpace(payload.ClaimedBy), "claimed_at": &now, "handle_note": strings.TrimSpace(payload.HandleNote),
+	}).Error; err != nil {
+		return err
+	}
+	s.appendMonitorAlertTimeline(payload.ID, "claimed", "告警已认领", payload.HandleNote, payload.ClaimedBy, nil)
+	return nil
 }
 
 func (s *Service) ResolveMonitorAlertEvent(payload MonitorAlertEventActionPayload) error {
@@ -1947,9 +2251,13 @@ func (s *Service) ResolveMonitorAlertEvent(payload MonitorAlertEventActionPayloa
 		return errors.New("告警事件 ID 不能为空")
 	}
 	now := time.Now()
-	return s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", payload.ID).Updates(map[string]any{
-		"status": "resolved", "resolve_note": strings.TrimSpace(payload.HandleNote), "recovered_at": &now,
-	}).Error
+	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", payload.ID).Updates(map[string]any{
+		"status": "resolved", "resolve_note": strings.TrimSpace(payload.HandleNote), "recovered_at": &now, "resolved_at": &now,
+	}).Error; err != nil {
+		return err
+	}
+	s.appendMonitorAlertTimeline(payload.ID, "resolved", "告警已人工关闭", payload.HandleNote, "操作人", nil)
+	return nil
 }
 
 func (s *Service) BatchUpdateMonitorAlertEvents(payload MonitorAlertEventBatchPayload) error {
@@ -1962,8 +2270,10 @@ func (s *Service) BatchUpdateMonitorAlertEvents(payload MonitorAlertEventBatchPa
 	query := s.db.Model(&model.MonitorAlertEvent{}).Where("id IN ?", ids)
 	switch action {
 	case "claim":
+		now := time.Now()
 		updates["status"] = "claimed"
 		updates["claimed_by"] = strings.TrimSpace(payload.ClaimedBy)
+		updates["claimed_at"] = &now
 		updates["handle_note"] = strings.TrimSpace(payload.HandleNote)
 		query = query.Where("status IN ?", []string{"pending", "firing"})
 	case "resolve":
@@ -1971,6 +2281,7 @@ func (s *Service) BatchUpdateMonitorAlertEvents(payload MonitorAlertEventBatchPa
 		updates["status"] = "resolved"
 		updates["resolve_note"] = strings.TrimSpace(payload.HandleNote)
 		updates["recovered_at"] = &now
+		updates["resolved_at"] = &now
 		query = query.Where("status IN ?", []string{"pending", "firing", "claimed", "silenced"})
 	case "delete":
 		return s.db.Where("id IN ?", ids).Delete(&model.MonitorAlertEvent{}).Error
@@ -1987,15 +2298,32 @@ func (s *Service) BatchUpdateMonitorAlertEvents(payload MonitorAlertEventBatchPa
 		}
 		return errors.New("所选事件没有可关闭的未结束告警")
 	}
+	for _, id := range ids {
+		if action == "claim" {
+			s.appendMonitorAlertTimeline(id, "claimed", "告警已批量认领", payload.HandleNote, payload.ClaimedBy, nil)
+		} else if action == "resolve" {
+			s.appendMonitorAlertTimeline(id, "resolved", "告警已批量关闭", payload.HandleNote, payload.ClaimedBy, nil)
+		}
+	}
 	return nil
 }
 
 func (s *Service) GetMonitorOverview() (map[string]any, error) {
-	var datasourceCount, ruleCount, firingCount, recoveredCount int64
+	var datasourceCount, ruleCount, firingCount, recoveredCount, todayRecoveredCount int64
+	var unclaimedCount, criticalCount, unhealthyDatasourceCount, evalFailedRuleCount, notificationFailedCount, todayTriggeredCount int64
 	_ = s.db.Model(&model.MonitorDatasource{}).Count(&datasourceCount).Error
 	_ = s.db.Model(&model.MonitorAlertRule{}).Count(&ruleCount).Error
 	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ?", []string{"firing", "claimed"}).Count(&firingCount).Error
 	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status = ?", "recovered").Count(&recoveredCount).Error
+	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND (claimed_by = '' OR claimed_by IS NULL)", []string{"pending", "firing"}).Count(&unclaimedCount).Error
+	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND severity IN ?", []string{"pending", "firing", "claimed"}, []string{"P0", "P1"}).Count(&criticalCount).Error
+	_ = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND health_status = ?", 1, "unhealthy").Count(&unhealthyDatasourceCount).Error
+	_ = s.db.Model(&model.MonitorAlertRule{}).Where("status = ? AND last_eval_status = ?", 1, "failed").Count(&evalFailedRuleCount).Error
+	_ = s.db.Model(&model.NotifySendLog{}).Where("scope = ? AND status = ? AND created_at >= ?", "monitor", "failed", time.Now().Add(-24*time.Hour)).Count(&notificationFailedCount).Error
+	now := time.Now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("created_at >= ?", dayStart).Count(&todayTriggeredCount).Error
+	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND recovered_at >= ?", []string{"recovered", "resolved"}, dayStart).Count(&todayRecoveredCount).Error
 	severityRows := []map[string]any{}
 	for _, severity := range []string{"P0", "P1", "P2", "P3"} {
 		var count int64
@@ -2003,10 +2331,34 @@ func (s *Service) GetMonitorOverview() (map[string]any, error) {
 		severityRows = append(severityRows, map[string]any{"severity": severity, "count": count})
 	}
 	var recent []model.MonitorAlertEvent
-	_ = s.db.Order("last_trigger_at DESC, id DESC").Limit(8).Find(&recent).Error
+	_ = s.db.Where("status IN ?", []string{"pending", "firing", "claimed"}).Order("last_trigger_at DESC, id DESC").Limit(8).Find(&recent).Error
+	var recentHandled []model.MonitorAlertEvent
+	_ = s.db.Where("created_at >= ? AND (claimed_at IS NOT NULL OR recovered_at IS NOT NULL)", time.Now().Add(-30*24*time.Hour)).Find(&recentHandled).Error
+	var totalAckSeconds, totalRecoverSeconds int64
+	var ackSamples, recoverSamples int64
+	for _, event := range recentHandled {
+		if event.ClaimedAt != nil && event.ClaimedAt.After(event.FirstTriggerAt) {
+			totalAckSeconds += int64(event.ClaimedAt.Sub(event.FirstTriggerAt).Seconds())
+			ackSamples++
+		}
+		if event.RecoveredAt != nil && event.RecoveredAt.After(event.FirstTriggerAt) {
+			totalRecoverSeconds += int64(event.RecoveredAt.Sub(event.FirstTriggerAt).Seconds())
+			recoverSamples++
+		}
+	}
+	average := func(total, count int64) int64 {
+		if count == 0 {
+			return 0
+		}
+		return total / count
+	}
 	return map[string]any{
 		"datasourceCount": datasourceCount, "ruleCount": ruleCount, "firingCount": firingCount,
-		"recoveredCount": recoveredCount, "severity": severityRows, "recentEvents": recent,
+		"recoveredCount": recoveredCount, "todayRecoveredCount": todayRecoveredCount, "severity": severityRows, "recentEvents": recent,
+		"unclaimedCount": unclaimedCount, "criticalCount": criticalCount,
+		"unhealthyDatasourceCount": unhealthyDatasourceCount, "evalFailedRuleCount": evalFailedRuleCount,
+		"notificationFailedCount": notificationFailedCount, "todayTriggeredCount": todayTriggeredCount,
+		"mttaSeconds": average(totalAckSeconds, ackSamples), "mttrSeconds": average(totalRecoverSeconds, recoverSamples),
 	}, nil
 }
 
@@ -2172,14 +2524,14 @@ func (s *Service) DeleteMonitorDashboardPanel(id uint) error {
 	return s.db.Delete(&model.MonitorDashboardPanel{}, id).Error
 }
 
-func (s *Service) QueryMonitorDashboardPanel(id uint, datasourceID uint) (map[string]any, error) {
+func (s *Service) QueryMonitorDashboardPanel(payload MonitorDashboardPanelQueryPayload) (map[string]any, error) {
 	var panel model.MonitorDashboardPanel
-	if err := s.db.First(&panel, id).Error; err != nil {
+	if err := s.db.First(&panel, payload.ID).Error; err != nil {
 		return nil, err
 	}
 	queryDatasourceID := panel.DatasourceID
-	if datasourceID > 0 {
-		queryDatasourceID = datasourceID
+	if payload.DatasourceID > 0 {
+		queryDatasourceID = payload.DatasourceID
 	}
 	ds, err := s.GetMonitorDatasource(queryDatasourceID)
 	if err != nil {
@@ -2192,7 +2544,12 @@ func (s *Service) QueryMonitorDashboardPanel(id uint, datasourceID uint) (map[st
 		}
 		ds = &fallback
 	}
-	result, err := s.prometheusQuery(*ds, panel.PromQL, time.Now())
+	var result *PromQueryResult
+	if payload.StartAt > 0 && payload.EndAt > payload.StartAt {
+		result, err = s.prometheusRangeQuery(*ds, panel.PromQL, time.Unix(payload.StartAt, 0), time.Unix(payload.EndAt, 0), payload.StepSeconds)
+	} else {
+		result, err = s.prometheusQuery(*ds, panel.PromQL, time.Now())
+	}
 	if err != nil {
 		return nil, err
 	}

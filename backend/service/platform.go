@@ -223,6 +223,7 @@ func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (
 			action.Status = "failed"
 			action.Result = err.Error()
 			_ = s.db.Create(&action).Error
+			s.appendMonitorAlertTimeline(event.ID, "action_failed", "联动处置触发失败", err.Error(), action.Operator, map[string]any{"actionType": actionType, "targetId": payload.TargetID})
 			return nil, err
 		}
 		action.Result = "已触发作业执行"
@@ -232,6 +233,9 @@ func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (
 	if err := s.db.Create(&action).Error; err != nil {
 		return nil, err
 	}
+	s.appendMonitorAlertTimeline(event.ID, "action", "已触发联动处置", firstNonEmpty(action.Summary, action.Result), action.Operator, map[string]any{
+		"actionType": action.ActionType, "targetId": action.TargetID, "targetName": action.TargetName,
+	})
 	return map[string]any{"action": action}, nil
 }
 

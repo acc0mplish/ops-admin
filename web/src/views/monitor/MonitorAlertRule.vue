@@ -6,6 +6,7 @@ import {
   batchUpdateMonitorAlertRules,
   deleteMonitorAlertRule,
   monitorAlertRuleInfo,
+  previewMonitorAlertRule,
   queryMonitorAlertRuleList,
   queryMonitorDatasourceOptions,
   runMonitorAlertRule,
@@ -16,6 +17,9 @@ import {
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewResult = ref({ results: [] })
 const isEdit = ref(false)
 const copyMode = ref(false)
 const templateDialogVisible = ref(false)
@@ -256,6 +260,33 @@ async function submit() {
   }
 }
 
+function buildRulePayload() {
+  return {
+    ...form,
+    query: form.queryText,
+    notifyRepeatIntervalSeconds: form.notifyRepeatIntervalMinutes * 60
+  }
+}
+
+async function handlePreview() {
+  if (!form.queryText.trim() || (form.datasourceScope === 'specific' && !form.datasourceId)) {
+    ElMessage.warning(`请先填写${form.datasourceScope === 'specific' ? '数据源和' : ''}${form.alertType === 'log' ? ' Elasticsearch 查询语句' : ' PromQL'}`)
+    return
+  }
+  previewVisible.value = true
+  previewLoading.value = true
+  try {
+    previewResult.value = await previewMonitorAlertRule(buildRulePayload())
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function sampleLabel(labels) {
+  if (!labels || !Object.keys(labels).length) return '-'
+  return Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(', ')
+}
+
 async function handleStatus(row) {
   await updateMonitorAlertRuleStatus({ id: row.id, status: row.status === 1 ? 2 : 1 })
   ElMessage.success('状态已更新')
@@ -447,7 +478,32 @@ onMounted(async () => {
         <el-form-item label="状态"><el-radio-group v-model="form.status"><el-radio :value="1">启用</el-radio><el-radio :value="2">禁用</el-radio></el-radio-group></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="补充影响范围、处置建议或值班说明" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submit">保存</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button :loading="previewLoading" @click="handlePreview">测试规则</el-button><el-button type="primary" :loading="saving" @click="submit">保存</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="previewVisible" title="规则执行预览" width="920px" append-to-body>
+      <div v-loading="previewLoading" class="preview-body">
+        <el-alert :title="previewResult.explanation || '正在执行规则预览'" :type="previewResult.failedDatasourceCount ? 'warning' : 'success'" :closable="false" show-icon />
+        <div class="preview-metrics">
+          <div><span>数据源</span><strong>{{ previewResult.datasourceCount || 0 }}</strong></div>
+          <div><span>返回序列</span><strong>{{ previewResult.totalSeries || 0 }}</strong></div>
+          <div><span>预计告警</span><strong class="matched">{{ previewResult.totalMatched || 0 }}</strong></div>
+          <div><span>查询失败</span><strong>{{ previewResult.failedDatasourceCount || 0 }}</strong></div>
+        </div>
+        <div v-for="item in previewResult.results || []" :key="item.datasourceId" class="preview-source">
+          <div class="preview-source-head">
+            <strong>{{ item.datasourceName }}</strong>
+            <el-tag :type="item.status === 'success' ? 'success' : 'danger'">{{ item.status === 'success' ? '查询成功' : '查询失败' }}</el-tag>
+          </div>
+          <el-alert v-if="item.error" :title="item.error" type="error" :closable="false" />
+          <el-table v-else :data="item.samples || []" border max-height="300" empty-text="查询成功，但没有返回时间序列">
+            <el-table-column label="是否触发" width="100"><template #default="{ row }"><el-tag :type="row.matched ? 'danger' : 'success'">{{ row.matched ? '满足条件' : '未触发' }}</el-tag></template></el-table-column>
+            <el-table-column label="当前值" width="140"><template #default="{ row }">{{ Number(row.value || 0).toFixed(4) }}</template></el-table-column>
+            <el-table-column label="标签" min-width="480" show-overflow-tooltip><template #default="{ row }">{{ sampleLabel(row.labels) }}</template></el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer><el-button type="primary" @click="previewVisible = false">关闭</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="templateDialogVisible" title="导入常用告警规则" width="900px" top="10vh">
@@ -490,6 +546,16 @@ onMounted(async () => {
 .batch-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #d9e5fb; border-radius: 8px; background: #f5f8ff; color: #52637f; }
 .batch-toolbar b { color: #4265d5; }
 .batch-dialog-tip { margin: 0 0 18px; color: #7282a0; line-height: 1.65; }
+.preview-body { display: flex; flex-direction: column; gap: 14px; min-height: 220px; }
+.preview-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #e1e8f3; border-radius: 8px; background: #f7f9fd; }
+.preview-metrics > div { padding: 13px 16px; border-right: 1px solid #e1e8f3; }
+.preview-metrics > div:last-child { border-right: 0; }
+.preview-metrics span, .preview-metrics strong { display: block; }
+.preview-metrics span { margin-bottom: 4px; color: #8491a8; font-size: 12px; }
+.preview-metrics strong { color: #20395f; font-size: 20px; }
+.preview-metrics strong.matched { color: #dc3f48; }
+.preview-source { padding: 14px; border: 1px solid #e1e8f3; border-radius: 8px; }
+.preview-source-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: #20395f; }
 .pager { display: flex; justify-content: flex-end; }
 .datasource-scope { display: flex; align-items: center; gap: 14px; width: 100%; }
 .form-tip { margin-top: 6px; color: #8491a9; font-size: 12px; line-height: 1.6; }

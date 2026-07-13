@@ -29,6 +29,7 @@ const editingDashboard = ref(false)
 const editingPanel = ref(false)
 const activeTemplate = ref('blank')
 const autoRefreshSeconds = ref(30)
+const timeRangeSeconds = ref(3600)
 const isFullscreen = ref(false)
 let refreshTimer = null
 
@@ -183,7 +184,8 @@ function metricName(metric) {
 }
 
 function numberValue(row) {
-  const value = Number(row?.value?.[1])
+	const raw = row?.value?.[1] ?? row?.values?.[row.values.length - 1]?.[1]
+	const value = Number(raw)
   return Number.isFinite(value) ? value : 0
 }
 
@@ -211,14 +213,16 @@ function panelRows(panel) {
 }
 
 function panelValue(panel) {
-  const value = Number(panelRows(panel)[0]?.value?.[1])
+	const value = numberValue(panelRows(panel)[0])
   if (!Number.isFinite(value)) return '-'
   const formatted = formatByUnit(value, panel.unit)
   return panel.unit && formatted.endsWith(panel.unit) ? formatted.slice(0, -panel.unit.length).trim() : formatted
 }
 
 function panelTrend(panel) {
-  return panelRows(panel).slice(0, 12).map((item) => numberValue(item))
+	const firstSeries = panelRows(panel)[0]
+	if (firstSeries?.values?.length) return firstSeries.values.map((item) => Number(item?.[1])).filter(Number.isFinite)
+	return panelRows(panel).slice(0, 24).map((item) => numberValue(item))
 }
 
 function sparklinePoints(panel) {
@@ -244,7 +248,7 @@ function barRows(panel) {
 }
 
 function gaugePercent(panel) {
-  const value = Number(panelRows(panel)[0]?.value?.[1])
+	const value = numberValue(panelRows(panel)[0])
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(100, value))
 }
@@ -276,7 +280,7 @@ function panelResultCount(panel) {
 }
 
 function panelDisplayValue(panel) {
-  const value = Number(panelRows(panel)[0]?.value?.[1])
+	const value = numberValue(panelRows(panel)[0])
   if (!Number.isFinite(value)) return '-'
   return formatByUnit(value, panel.unit)
 }
@@ -516,12 +520,24 @@ async function refreshPanel(row) {
   }
   panelLoading.value = true
   try {
-    panelResults[row.id] = await queryMonitorDashboardPanel({ id: row.id, datasourceId: selectedDatasourceId.value })
+		panelResults[row.id] = await queryMonitorDashboardPanel(panelQueryPayload(row.id))
   } catch (error) {
     panelResults[row.id] = { error: error.message || 'query failed' }
   } finally {
     panelLoading.value = false
   }
+}
+
+function panelQueryPayload(id) {
+	const endAt = Math.floor(Date.now() / 1000)
+	const startAt = endAt - timeRangeSeconds.value
+	return {
+		id,
+		datasourceId: selectedDatasourceId.value,
+		startAt,
+		endAt,
+		stepSeconds: Math.max(15, Math.ceil(timeRangeSeconds.value / 120))
+	}
 }
 
 async function refreshAllPanels() {
@@ -531,7 +547,7 @@ async function refreshAllPanels() {
     return
   }
   const enabledPanels = panels.value.filter((item) => item.status === 1)
-  await Promise.all(enabledPanels.map((item) => queryMonitorDashboardPanel({ id: item.id, datasourceId: selectedDatasourceId.value })
+	await Promise.all(enabledPanels.map((item) => queryMonitorDashboardPanel(panelQueryPayload(item.id))
     .then((data) => { panelResults[item.id] = data })
     .catch((error) => { panelResults[item.id] = { error: error.message || 'query failed' } })))
 }
@@ -627,10 +643,16 @@ onBeforeUnmount(() => {
             {{ isListLayout ? '当前布局：列表巡检，适合日常排障和逐项核查。' : '当前布局：网格大屏，适合投屏展示和整体观测。' }}
           </div>
         </div>
-        <div class="hero-actions">
+		<div class="hero-actions">
           <el-select v-model="selectedDatasourceId" placeholder="选择数据源" style="width: 180px" @change="handleDatasourceChange">
             <el-option v-for="item in datasourceOptions" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
+		  </el-select>
+		  <el-select v-model="timeRangeSeconds" style="width: 130px" @change="refreshAllPanels">
+			<el-option label="最近 15 分钟" :value="900" />
+			<el-option label="最近 1 小时" :value="3600" />
+			<el-option label="最近 6 小时" :value="21600" />
+			<el-option label="最近 24 小时" :value="86400" />
+		  </el-select>
           <el-select v-model="autoRefreshSeconds" style="width: 130px" @change="restartAutoRefresh">
             <el-option label="关闭刷新" :value="0" />
             <el-option label="10 秒刷新" :value="10" />
