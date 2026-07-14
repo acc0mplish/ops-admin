@@ -5,6 +5,7 @@ import {
   batchUpdateMonitorSilenceRules,
   deleteMonitorSilenceRule,
   monitorSilenceRuleInfo,
+  previewMonitorSilenceRule,
   queryMonitorAlertRuleList,
   queryMonitorSilenceRuleList,
   saveMonitorSilenceRule
@@ -15,6 +16,9 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const templateDialogVisible = ref(false)
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewData = ref({ matchedRuleCount: 0, matchedRules: [], matchedActiveEventCount: 0, matchedActiveEvents: [] })
 const templateType = ref('metric')
 const selectedRuleIds = ref([])
 const rows = ref([])
@@ -29,11 +33,14 @@ const silenceTemplates = [
   { id: 'metric-k8s', type: 'metric', name: '监控告警 - Kubernetes 发布窗口', matchMode: 'regex', ruleNamePattern: '^(Kubernetes|Pod|Deployment|PVC).*', severity: '', matchersJson: '{}', description: '发布窗口内屏蔽 Kubernetes 工作负载告警。' },
   { id: 'metric-instance', type: 'metric', name: '监控告警 - 指定主机维护', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"instance":"10.0.0.1"}', description: '替换 instance 后屏蔽指定主机的监控告警。' },
   { id: 'metric-low-priority', type: 'metric', name: '监控告警 - 低优先级静默', matchMode: 'select', ruleIds: [], severity: 'P3', matchersJson: '{}', description: '临时静默 P3 低优先级监控告警。' },
-  { id: 'log-maintenance', type: 'log', name: '日志告警 - 维护窗口', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"alert_type":"log"}', description: '维护期间屏蔽所有日志告警。' },
-  { id: 'log-error', type: 'log', name: '日志告警 - ERROR 发布噪声', matchMode: 'regex', ruleNamePattern: '.*(ERROR|异常|失败).*', severity: '', matchersJson: '{"alert_type":"log"}', description: '发布期间屏蔽 ERROR 与异常类日志告警。' },
-  { id: 'log-namespace', type: 'log', name: '日志告警 - 指定命名空间', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"namespace":"default","alert_type":"log"}', description: '替换 namespace 后屏蔽指定命名空间日志告警。' },
-  { id: 'log-service', type: 'log', name: '日志告警 - 指定服务', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"service":"game","alert_type":"log"}', description: '替换 service 后屏蔽指定服务日志告警。' },
-  { id: 'log-low-priority', type: 'log', name: '日志告警 - 低优先级静默', matchMode: 'select', ruleIds: [], severity: 'P3', matchersJson: '{"alert_type":"log"}', description: '临时静默 P3 低优先级日志告警。' }
+  { id: 'es-maintenance', type: 'elasticsearch', name: 'Elasticsearch 日志告警 - 维护窗口', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"alert_type":"log"}', description: '维护期间屏蔽全部 Elasticsearch 日志告警。' },
+  { id: 'es-error', type: 'elasticsearch', name: 'Elasticsearch 日志告警 - ERROR 发布噪声', matchMode: 'regex', ruleNamePattern: '.*(ERROR|异常|失败).*', severity: '', matchersJson: '{"alert_type":"log"}', description: '发布期间屏蔽 ERROR 与异常类 Elasticsearch 日志告警。' },
+  { id: 'es-datasource', type: 'elasticsearch', name: 'Elasticsearch 日志告警 - 指定数据源', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"alert_type":"log","datasource":"日志数据源名称"}', description: '替换 datasource 后屏蔽指定 Elasticsearch 日志数据源。' },
+  { id: 'es-low-priority', type: 'elasticsearch', name: 'Elasticsearch 日志告警 - 低优先级静默', matchMode: 'select', ruleIds: [], severity: 'P3', matchersJson: '{"alert_type":"log"}', description: '临时静默 P3 低优先级 Elasticsearch 日志告警。' },
+  { id: 'vl-maintenance', type: 'victorialogs', name: 'VictoriaLogs 日志告警 - 维护窗口', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"alert_type":"victorialogs"}', description: '维护期间屏蔽全部 VictoriaLogs 日志告警。' },
+  { id: 'vl-error', type: 'victorialogs', name: 'VictoriaLogs 日志告警 - ERROR 发布噪声', matchMode: 'regex', ruleNamePattern: '.*(ERROR|异常|失败).*', severity: '', matchersJson: '{"alert_type":"victorialogs"}', description: '发布期间屏蔽 ERROR 与异常类 VictoriaLogs 日志告警。' },
+  { id: 'vl-datasource', type: 'victorialogs', name: 'VictoriaLogs 日志告警 - 指定数据源', matchMode: 'select', ruleIds: [], severity: '', matchersJson: '{"alert_type":"victorialogs","datasource":"日志数据源名称"}', description: '替换 datasource 后屏蔽指定 VictoriaLogs 日志数据源。' },
+  { id: 'vl-low-priority', type: 'victorialogs', name: 'VictoriaLogs 日志告警 - 低优先级静默', matchMode: 'select', ruleIds: [], severity: 'P3', matchersJson: '{"alert_type":"victorialogs"}', description: '临时静默 P3 低优先级 VictoriaLogs 日志告警。' }
 ]
 
 const visibleSilenceTemplates = computed(() => silenceTemplates.filter((item) => item.type === templateType.value))
@@ -48,6 +55,7 @@ const form = reactive({
   matchersJson: '{}',
   startsAt: 0,
   endsAt: 0,
+  priority: 100,
   status: 1,
   description: ''
 })
@@ -63,6 +71,7 @@ function resetForm() {
     matchersJson: '{}',
     startsAt: 0,
     endsAt: 0,
+    priority: 100,
     status: 1,
     description: ''
   })
@@ -82,6 +91,16 @@ function normalizePayload() {
     startsAt: toUnixSeconds(start),
     endsAt: toUnixSeconds(end)
   }
+}
+
+function silenceSchedule(row) {
+  if (row.status !== 1) return { text: '已禁用', type: 'info' }
+  const now = Date.now()
+  const start = row.startsAt ? new Date(row.startsAt).getTime() : 0
+  const end = row.endsAt ? new Date(row.endsAt).getTime() : 0
+  if (start && start > now) return { text: '待生效', type: 'warning' }
+  if (end && end < now) return { text: '已过期', type: 'info' }
+  return { text: '生效中', type: 'success' }
 }
 
 function selectedRuleNames(ids = []) {
@@ -169,6 +188,11 @@ async function submit() {
     ElMessage.warning('请输入规则名正则')
     return
   }
+  const [start, end] = timeRange.value || []
+  if (start && end && new Date(end).getTime() <= new Date(start).getTime()) {
+    ElMessage.warning('结束时间必须晚于开始时间')
+    return
+  }
   saving.value = true
   try {
     await saveMonitorSilenceRule(normalizePayload())
@@ -177,6 +201,24 @@ async function submit() {
     await loadData()
   } finally {
     saving.value = false
+  }
+}
+
+async function openPreview() {
+  if (!form.name.trim()) {
+    ElMessage.warning('请先输入屏蔽规则名称')
+    return
+  }
+  if (form.matchMode === 'regex' && !form.ruleNamePattern.trim()) {
+    ElMessage.warning('请输入规则名正则')
+    return
+  }
+  previewLoading.value = true
+  try {
+    previewData.value = await previewMonitorSilenceRule(normalizePayload())
+    previewVisible.value = true
+  } finally {
+    previewLoading.value = false
   }
 }
 
@@ -234,6 +276,7 @@ onMounted(async () => {
       <el-table-column prop="matchersJson" label="Label 匹配" min-width="220" show-overflow-tooltip />
       <el-table-column prop="startsAt" label="开始时间" width="180" />
       <el-table-column prop="endsAt" label="结束时间" width="180" />
+      <el-table-column label="生效情况" width="100"><template #default="{ row }"><el-tag :type="silenceSchedule(row).type">{{ silenceSchedule(row).text }}</el-tag></template></el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
@@ -279,6 +322,7 @@ onMounted(async () => {
         <el-form-item label="屏蔽时间">
           <el-date-picker v-model="timeRange" type="datetimerange" start-placeholder="开始时间" end-placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" />
         </el-form-item>
+        <el-form-item label="优先级"><el-input-number v-model="form.priority" :min="1" :max="1000" /><span class="form-tip">数值越大越优先；多个规则命中时只使用优先级最高的一条。</span></el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">启用</el-radio>
@@ -289,15 +333,26 @@ onMounted(async () => {
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button :loading="previewLoading" @click="openPreview">匹配预览</el-button>
         <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
       </template>
     </el-dialog>
 
+    <el-dialog v-model="previewVisible" title="屏蔽匹配预览" width="760px">
+      <div class="preview-summary"><el-tag type="primary">命中 {{ previewData.matchedRuleCount || 0 }} 条告警规则</el-tag><el-tag type="warning">当前影响 {{ previewData.matchedActiveEventCount || 0 }} 条活跃事件</el-tag></div>
+      <el-alert type="info" :closable="false" title="预览基于当前规则和活跃事件；实际生效仍受屏蔽时间、等级及 Label 条件共同约束。" />
+      <h4>匹配的告警规则</h4>
+      <el-table :data="previewData.matchedRules || []" max-height="220" size="small"><el-table-column prop="name" label="规则名称" /><el-table-column prop="alertType" label="类型" width="130" /><el-table-column prop="severity" label="等级" width="90" /></el-table>
+      <h4>当前受影响事件</h4>
+      <el-table :data="previewData.matchedActiveEvents || []" max-height="220" size="small"><el-table-column prop="ruleName" label="规则" /><el-table-column prop="status" label="状态" width="100" /><el-table-column prop="summary" label="摘要" show-overflow-tooltip /></el-table>
+      <template #footer><el-button type="primary" @click="previewVisible = false">知道了</el-button></template>
+    </el-dialog>
+
     <el-dialog v-model="templateDialogVisible" title="导入常用屏蔽模板" width="780px">
-      <div class="template-head"><span>模板会带入规则匹配、等级和 Label 匹配条件，请按实际环境修改。</span><el-radio-group v-model="templateType"><el-radio-button label="metric">监控告警模板</el-radio-button><el-radio-button label="log">日志告警模板</el-radio-button></el-radio-group></div>
+      <div class="template-head"><span>模板会带入规则匹配、等级和 Label 匹配条件，请按实际环境修改。</span><el-radio-group v-model="templateType"><el-radio-button label="metric">监控告警</el-radio-button><el-radio-button label="elasticsearch">Elasticsearch</el-radio-button><el-radio-button label="victorialogs">VictoriaLogs</el-radio-button></el-radio-group></div>
       <div class="template-grid">
         <button v-for="item in visibleSilenceTemplates" :key="item.id" type="button" class="template-card" @click="applySilenceTemplate(item)">
-          <el-tag :type="item.type === 'log' ? 'warning' : 'primary'" size="small">{{ item.type === 'log' ? '日志告警' : '监控告警' }}</el-tag>
+           <el-tag :type="item.type === 'metric' ? 'primary' : item.type === 'elasticsearch' ? 'warning' : 'success'" size="small">{{ item.type === 'metric' ? '监控告警' : item.type === 'elasticsearch' ? 'Elasticsearch' : 'VictoriaLogs' }}</el-tag>
           <strong>{{ item.name }}</strong><p>{{ item.description }}</p><code>{{ item.matchMode === 'regex' ? item.ruleNamePattern : item.matchersJson }}</code>
         </button>
       </div>
@@ -323,4 +378,8 @@ onMounted(async () => {
 .template-card strong { display: block; margin-top: 10px; color: #1d3154; }
 .template-card p { min-height: 35px; margin: 6px 0; color: #7282a0; font-size: 13px; line-height: 1.4; }
 .template-card code { display: block; overflow: hidden; color: #4567c7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.form-tip { margin-left: 10px; color: #8090ac; font-size: 12px; }
+.preview-summary { display: flex; gap: 10px; margin-bottom: 14px; }
+.preview-summary + .el-alert { margin-bottom: 14px; }
+.el-dialog h4 { margin: 16px 0 8px; color: #20345b; }
 </style>

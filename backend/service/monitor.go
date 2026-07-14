@@ -98,8 +98,19 @@ type MonitorSilenceRulePayload struct {
 	MatchersJSON    string `json:"matchersJson"`
 	StartsAt        int64  `json:"startsAt"`
 	EndsAt          int64  `json:"endsAt"`
+	Priority        int    `json:"priority"`
 	Status          int    `json:"status"`
 	Description     string `json:"description"`
+}
+
+func normalizeSilencePriority(value int) int {
+	if value <= 0 {
+		return 100
+	}
+	if value > 1000 {
+		return 1000
+	}
+	return value
 }
 
 type MonitorAggregationRulePayload struct {
@@ -208,11 +219,24 @@ func isMonitorLogDatasource(value string) bool {
 	return datasourceType == "elasticsearch" || datasourceType == "victorialogs"
 }
 
+func isMonitorMetricDatasource(value string) bool {
+	datasourceType := normalizeMonitorDatasourceType(value)
+	return datasourceType == "prometheus" || datasourceType == "victoriametrics"
+}
+
 func normalizeAlertType(value string) string {
-	if strings.EqualFold(strings.TrimSpace(value), "log") {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "victorialogs", "victoria-logs", "vl":
+		return "victorialogs"
+	case "log", "elasticsearch", "es":
 		return "log"
+	default:
+		return "metric"
 	}
-	return "metric"
+}
+
+func isMonitorLogAlertType(alertType string) bool {
+	return normalizeAlertType(alertType) == "log" || normalizeAlertType(alertType) == "victorialogs"
 }
 
 func normalizeDatasourceScope(value string) string {
@@ -1198,6 +1222,285 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 	return items, nil
 }
 
+func (s *Service) ListMonitorLogFields(datasourceID uint, index, query string, startAt, endAt int64) ([]map[string]any, error) {
+	if datasourceID == 0 {
+		return nil, errors.New("请选择日志数据源")
+	}
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	switch normalizeMonitorDatasourceType(ds.Type) {
+	case "elasticsearch":
+		return s.elasticsearchLogFields(*ds, index)
+	case "victorialogs":
+		return s.victoriaLogsFields(*ds, query, startAt, endAt)
+	default:
+		return nil, errors.New("日志字段仅支持 Elasticsearch 或 VictoriaLogs 数据源")
+	}
+}
+
+func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+	if datasourceID == 0 {
+		return nil, errors.New("请选择日志数据源")
+	}
+	field = strings.TrimSpace(field)
+	if !isCommonMonitorLogField(field) {
+		return nil, errors.New("不支持的日志筛选字段")
+	}
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	switch normalizeMonitorDatasourceType(ds.Type) {
+	case "elasticsearch":
+		return s.elasticsearchLogFieldValues(*ds, index, field, query, startAt, endAt)
+	case "victorialogs":
+		return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+	default:
+		return nil, errors.New("日志字段仅支持 Elasticsearch 或 VictoriaLogs 数据源")
+	}
+}
+
+func isCommonMonitorLogField(field string) bool {
+	for _, item := range []string{
+		"kubernetes.pod_namespace", "kubernetes.pod_name", "kubernetes.container_name", "kafka_topic", "level",
+	} {
+		if field == item {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+	index = firstNonEmpty(strings.TrimSpace(index), "_all")
+	if strings.Contains(index, "/") || strings.Contains(index, "\\") {
+		return nil, errors.New("索引不能包含路径分隔符")
+	}
+	endAt = firstNonEmptyInt64(endAt, time.Now().UnixMilli())
+	if startAt <= 0 || startAt >= endAt {
+		startAt = time.UnixMilli(endAt).Add(-time.Hour).UnixMilli()
+	}
+	must := []any{map[string]any{"match_all": map[string]any{}}}
+	if strings.TrimSpace(query) != "" {
+		must = []any{map[string]any{"query_string": map[string]any{"query": strings.TrimSpace(query), "analyze_wildcard": true}}}
+	}
+	search := func(aggregationField string) ([]map[string]any, error) {
+		body := map[string]any{
+			"size": 0,
+			"query": map[string]any{
+				"bool": map[string]any{
+					"must": must,
+					"filter": []any{map[string]any{
+						"range": map[string]any{
+							"@timestamp": map[string]any{"gte": startAt, "lte": endAt, "format": "epoch_millis"},
+						},
+					}},
+				},
+			},
+			"aggs": map[string]any{
+				"values": map[string]any{
+					"terms": map[string]any{"field": aggregationField, "size": 100, "order": map[string]any{"_count": "desc"}},
+				},
+			},
+		}
+		response, err := s.elasticsearchSearch(ds, index, body)
+		if err != nil {
+			return nil, err
+		}
+		aggs, _ := response["aggregations"].(map[string]any)
+		values, _ := aggs["values"].(map[string]any)
+		buckets, _ := values["buckets"].([]any)
+		items := make([]map[string]any, 0, len(buckets))
+		for _, raw := range buckets {
+			bucket, _ := raw.(map[string]any)
+			value := monitorSourceString(bucket["key"])
+			if value != "" {
+				items = append(items, map[string]any{"value": value, "hits": bucket["doc_count"], "field": field})
+			}
+		}
+		return items, nil
+	}
+	var lastErr error
+	for _, aggregationField := range []string{field, field + ".keyword"} {
+		items, err := search(aggregationField)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(items) > 0 {
+			return items, nil
+		}
+	}
+
+	// Some log indices keep these fields in _source without a terms-aggregatable
+	// mapping. Fall back to the current matching documents so the selector stays
+	// consistent with the log rows displayed in the workbench.
+	body := map[string]any{
+		"size":    1000,
+		"_source": []string{field},
+		"query": map[string]any{
+			"bool": map[string]any{
+				"must": must,
+				"filter": []any{map[string]any{
+					"range": map[string]any{
+						"@timestamp": map[string]any{"gte": startAt, "lte": endAt, "format": "epoch_millis"},
+					},
+				}},
+			},
+		},
+	}
+	response, err := s.elasticsearchSearch(ds, index, body)
+	if err != nil {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, err
+	}
+	hits, _ := response["hits"].(map[string]any)
+	rawItems, _ := hits["hits"].([]any)
+	counts := make(map[string]int64)
+	for _, rawItem := range rawItems {
+		hit, _ := rawItem.(map[string]any)
+		source, _ := hit["_source"].(map[string]any)
+		if value := monitorLogFieldValue(source, field); value != "" {
+			counts[value]++
+		}
+	}
+	items := make([]map[string]any, 0, len(counts))
+	for value, hits := range counts {
+		items = append(items, map[string]any{"value": value, "hits": hits, "field": field})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left, _ := items[i]["hits"].(int64)
+		right, _ := items[j]["hits"].(int64)
+		if left == right {
+			return monitorSourceString(items[i]["value"]) < monitorSourceString(items[j]["value"])
+		}
+		return left > right
+	})
+	return items, nil
+}
+
+func firstNonEmptyInt64(value, fallback int64) int64 {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func (s *Service) elasticsearchLogFields(ds model.MonitorDatasource, index string) ([]map[string]any, error) {
+	index = firstNonEmpty(strings.TrimSpace(index), "_all")
+	endpoint := strings.TrimRight(ds.URL, "/") + "/_mapping"
+	if index != "_all" && index != "*" {
+		endpoint = strings.TrimRight(ds.URL, "/") + "/" + url.PathEscape(index) + "/_mapping"
+	}
+	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 20 * time.Second}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("获取 Elasticsearch 字段失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var mappings map[string]struct {
+		Mappings struct {
+			Properties map[string]any `json:"properties"`
+		} `json:"mappings"`
+	}
+	if err := json.Unmarshal(body, &mappings); err != nil {
+		return nil, err
+	}
+	fieldTypes := map[string]string{}
+	for _, mapping := range mappings {
+		collectElasticsearchFields("", mapping.Mappings.Properties, fieldTypes)
+	}
+	return monitorLogFields(fieldTypes), nil
+}
+
+func collectElasticsearchFields(prefix string, properties map[string]any, fieldTypes map[string]string) {
+	for name, raw := range properties {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		config, _ := raw.(map[string]any)
+		fieldType := monitorSourceString(config["type"])
+		if fieldType == "" {
+			fieldType = "object"
+		}
+		fieldTypes[path] = fieldType
+		if children, ok := config["properties"].(map[string]any); ok {
+			collectElasticsearchFields(path, children, fieldTypes)
+		}
+	}
+}
+
+func (s *Service) victoriaLogsFields(ds model.MonitorDatasource, query string, startAt, endAt int64) ([]map[string]any, error) {
+	end := time.UnixMilli(endAt)
+	if endAt <= 0 {
+		end = time.Now()
+	}
+	start := time.UnixMilli(startAt)
+	if startAt <= 0 || startAt >= end.UnixMilli() {
+		start = end.Add(-time.Hour)
+	}
+	form := url.Values{}
+	form.Set("query", firstNonEmpty(strings.TrimSpace(query), "*"))
+	form.Set("start", start.UTC().Format(time.RFC3339Nano))
+	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/field_names", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 20 * time.Second}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("获取 VictoriaLogs 字段失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var raw struct {
+		Fields []string `json:"fields"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	fieldTypes := map[string]string{}
+	for _, field := range raw.Fields {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			fieldTypes[field] = "field"
+		}
+	}
+	return monitorLogFields(fieldTypes), nil
+}
+
+func monitorLogFields(fieldTypes map[string]string) []map[string]any {
+	items := make([]map[string]any, 0, len(fieldTypes))
+	for name, fieldType := range fieldTypes {
+		items = append(items, map[string]any{"name": name, "type": fieldType})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return monitorSourceString(items[i]["name"]) < monitorSourceString(items[j]["name"])
+	})
+	if len(items) > 500 {
+		items = items[:500]
+	}
+	return items
+}
+
 func (s *Service) ListMonitorElasticsearchIndices(datasourceID uint) ([]map[string]any, error) {
 	if datasourceID == 0 {
 		return nil, errors.New("请选择 Elasticsearch 数据源")
@@ -1552,7 +1855,7 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 	datasourceScope := normalizeDatasourceScope(payload.DatasourceScope)
 	queryText := firstNonEmpty(strings.TrimSpace(payload.Query), strings.TrimSpace(payload.PromQL))
 	if queryText == "" {
-		if alertType == "log" {
+		if isMonitorLogAlertType(alertType) {
 			return errors.New("Elasticsearch 查询语句不能为空")
 		}
 		return errors.New("PromQL 不能为空")
@@ -1578,7 +1881,10 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		if alertType == "log" && normalizeMonitorDatasourceType(ds.Type) != "elasticsearch" {
 			return errors.New("日志告警只能选择 Elasticsearch 数据源")
 		}
-		if alertType == "metric" && normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
+		if alertType == "victorialogs" && normalizeMonitorDatasourceType(ds.Type) != "victorialogs" {
+			return errors.New("日志告警只能选择 VictoriaLogs 数据源")
+		}
+		if alertType == "metric" && !isMonitorMetricDatasource(ds.Type) {
 			return errors.New("监控告警只能选择 Prometheus 或 VictoriaMetrics 数据源")
 		}
 		datasourceName = ds.Name
@@ -1587,6 +1893,9 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		if alertType == "log" {
 			err = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND type = ?", 1, "elasticsearch").Count(&count).Error
 			datasourceName = "全部日志数据源"
+		} else if alertType == "victorialogs" {
+			err = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND type = ?", 1, "victorialogs").Count(&count).Error
+			datasourceName = "全部 VictoriaLogs 数据源"
 		} else {
 			err = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"}).Count(&count).Error
 			datasourceName = "全部监控数据源"
@@ -1681,7 +1990,7 @@ func (s *Service) ListMonitorSilenceRules(pageNum, pageSize int, keyword, status
 			"id": item.ID, "name": item.Name, "matchMode": firstNonEmpty(item.MatchMode, "regex"),
 			"ruleIds": decodeUintList(item.RuleIDsJSON), "ruleIdsJson": item.RuleIDsJSON,
 			"ruleNamePattern": item.RuleNamePattern, "severity": item.Severity, "matchersJson": item.MatchersJSON,
-			"startsAt": item.StartsAt, "endsAt": item.EndsAt, "status": item.Status, "description": item.Description,
+			"startsAt": item.StartsAt, "endsAt": item.EndsAt, "priority": item.Priority, "status": item.Status, "description": item.Description,
 			"createTime": item.CreatedAt, "updateTime": item.UpdatedAt,
 		})
 	}
@@ -1697,7 +2006,7 @@ func (s *Service) GetMonitorSilenceRule(id uint) (map[string]any, error) {
 		"id": item.ID, "name": item.Name, "matchMode": firstNonEmpty(item.MatchMode, "regex"),
 		"ruleIds": decodeUintList(item.RuleIDsJSON), "ruleIdsJson": item.RuleIDsJSON,
 		"ruleNamePattern": item.RuleNamePattern, "severity": item.Severity, "matchersJson": item.MatchersJSON,
-		"startsAt": item.StartsAt, "endsAt": item.EndsAt, "status": item.Status, "description": item.Description,
+		"startsAt": item.StartsAt, "endsAt": item.EndsAt, "priority": item.Priority, "status": item.Status, "description": item.Description,
 		"createTime": item.CreatedAt, "updateTime": item.UpdatedAt,
 	}, nil
 }
@@ -1705,6 +2014,12 @@ func (s *Service) GetMonitorSilenceRule(id uint) (map[string]any, error) {
 func (s *Service) SaveMonitorSilenceRule(payload MonitorSilenceRulePayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("silence rule name is required")
+	}
+	if payload.StartsAt > 0 && payload.EndsAt > 0 && payload.EndsAt <= payload.StartsAt {
+		return errors.New("结束时间必须晚于开始时间")
+	}
+	if normalizeRuleMatchMode(payload.MatchMode) == "regex" && strings.TrimSpace(payload.RuleNamePattern) == "" {
+		return errors.New("规则名正则不能为空")
 	}
 	matchersJSON, err := normalizeMatcherJSON(payload.MatchersJSON)
 	if err != nil {
@@ -1719,6 +2034,7 @@ func (s *Service) SaveMonitorSilenceRule(payload MonitorSilenceRulePayload) erro
 		"matchers_json":     matchersJSON,
 		"starts_at":         unixPtr(payload.StartsAt),
 		"ends_at":           unixPtr(payload.EndsAt),
+		"priority":          normalizeSilencePriority(payload.Priority),
 		"status":            normalizeMonitorStatus(payload.Status),
 		"description":       Trimmed(payload.Description),
 	}
@@ -1726,6 +2042,63 @@ func (s *Service) SaveMonitorSilenceRule(payload MonitorSilenceRulePayload) erro
 		return s.db.Model(&model.MonitorSilenceRule{}).Where("id = ?", payload.ID).Updates(updates).Error
 	}
 	return s.db.Model(&model.MonitorSilenceRule{}).Create(updates).Error
+}
+
+func (s *Service) PreviewMonitorSilenceRule(payload MonitorSilenceRulePayload) (map[string]any, error) {
+	if strings.TrimSpace(payload.Name) == "" {
+		return nil, errors.New("屏蔽规则名称不能为空")
+	}
+	matchersJSON, err := normalizeMatcherJSON(payload.MatchersJSON)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeRuleMatchMode(payload.MatchMode) == "regex" && strings.TrimSpace(payload.RuleNamePattern) == "" {
+		return nil, errors.New("规则名正则不能为空")
+	}
+	preview := model.MonitorSilenceRule{
+		MatchMode: normalizeRuleMatchMode(payload.MatchMode), RuleIDsJSON: encodeUintList(payload.RuleIDs),
+		RuleNamePattern: strings.TrimSpace(payload.RuleNamePattern), Severity: strings.TrimSpace(payload.Severity), MatchersJSON: matchersJSON,
+	}
+	var rules []model.MonitorAlertRule
+	if err := s.db.Order("id DESC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	matchedRules := make([]map[string]any, 0)
+	matchedRuleIDs := map[uint]bool{}
+	for _, rule := range rules {
+		if !monitorSilenceRuleCriteriaMatch(preview, rule, nil) {
+			continue
+		}
+		matchedRuleIDs[rule.ID] = true
+		if len(matchedRules) < 20 {
+			matchedRules = append(matchedRules, map[string]any{"id": rule.ID, "name": rule.Name, "severity": rule.Severity, "alertType": rule.AlertType})
+		}
+	}
+	var events []model.MonitorAlertEvent
+	if err := s.db.Where("status IN ?", []string{"pending", "firing", "claimed", "silenced"}).Order("last_trigger_at DESC").Find(&events).Error; err != nil {
+		return nil, err
+	}
+	matchedEvents := make([]map[string]any, 0)
+	for _, event := range events {
+		if !matchedRuleIDs[event.RuleID] {
+			continue
+		}
+		var rule model.MonitorAlertRule
+		if err := s.db.First(&rule, event.RuleID).Error; err != nil {
+			continue
+		}
+		labels := decodeLabelMap(event.LabelsJSON)
+		if !monitorSilenceRuleCriteriaMatch(preview, rule, labels) {
+			continue
+		}
+		if len(matchedEvents) < 20 {
+			matchedEvents = append(matchedEvents, map[string]any{"id": event.ID, "ruleName": event.RuleName, "severity": event.Severity, "status": event.Status, "summary": event.Summary})
+		}
+	}
+	return map[string]any{
+		"matchedRuleCount": len(matchedRuleIDs), "matchedRules": matchedRules,
+		"matchedActiveEventCount": len(matchedEvents), "matchedActiveEvents": matchedEvents,
+	}, nil
 }
 
 func (s *Service) DeleteMonitorSilenceRule(id uint) error {
@@ -1964,7 +2337,7 @@ func (s *Service) PreviewMonitorAlertRule(payload MonitorAlertRulePayload) (map[
 	for _, ds := range datasources {
 		item := map[string]any{"datasourceId": ds.ID, "datasourceName": ds.Name, "status": "success", "samples": []map[string]any{}}
 		samples := make([]map[string]any, 0)
-		if rule.AlertType == "log" {
+		if isMonitorLogAlertType(rule.AlertType) {
 			value, sample, queryErr := s.monitorLogAlertValue(rule, ds)
 			if queryErr != nil {
 				item["status"] = "failed"
@@ -2038,7 +2411,7 @@ func (s *Service) evaluateMonitorAlertRule(id uint) {
 		scopedRule := *rule
 		scopedRule.DatasourceID = ds.ID
 		scopedRule.DatasourceName = ds.Name
-		if normalizeAlertType(rule.AlertType) == "log" {
+		if isMonitorLogAlertType(rule.AlertType) {
 			value, sample, err := s.monitorLogAlertValue(scopedRule, ds)
 			if err != nil {
 				failed++
@@ -2114,6 +2487,8 @@ func (s *Service) monitorRuleDatasources(rule model.MonitorAlertRule) ([]model.M
 	query := s.db.Where("status = ?", 1)
 	if normalizeAlertType(rule.AlertType) == "log" {
 		query = query.Where("type = ?", "elasticsearch")
+	} else if normalizeAlertType(rule.AlertType) == "victorialogs" {
+		query = query.Where("type = ?", "victorialogs")
 	} else {
 		query = query.Where("type IN ?", []string{"prometheus", "victoriametrics"})
 	}
@@ -2128,6 +2503,9 @@ func (s *Service) monitorRuleDatasources(rule model.MonitorAlertRule) ([]model.M
 }
 
 func (s *Service) monitorLogAlertValue(rule model.MonitorAlertRule, ds model.MonitorDatasource) (float64, PromMetricSample, error) {
+	if normalizeMonitorDatasourceType(ds.Type) == "victorialogs" {
+		return s.victoriaLogsAlertValue(rule, ds)
+	}
 	end := time.Now()
 	start := end.Add(-time.Duration(normalizeLogTimeRangeSeconds(rule.LogTimeRangeSeconds)) * time.Second)
 	must := []any{map[string]any{"match_all": map[string]any{}}}
@@ -2152,6 +2530,50 @@ func (s *Service) monitorLogAlertValue(rule model.MonitorAlertRule, ds model.Mon
 	value := elasticsearchHitTotal(hits["total"])
 	return value, PromMetricSample{Metric: map[string]string{
 		"__name__": "elasticsearch_log_count", "datasource": ds.Name, "index": firstNonEmpty(strings.TrimSpace(rule.LogIndex), "_all"), "alert_type": "log",
+	}}, nil
+}
+
+func (s *Service) victoriaLogsAlertValue(rule model.MonitorAlertRule, ds model.MonitorDatasource) (float64, PromMetricSample, error) {
+	end := time.Now()
+	start := end.Add(-time.Duration(normalizeLogTimeRangeSeconds(rule.LogTimeRangeSeconds)) * time.Second)
+	query := strings.TrimSpace(rule.PromQL)
+	if query == "" {
+		query = "*"
+	}
+	form := url.Values{}
+	form.Set("query", query)
+	form.Set("start", start.UTC().Format(time.RFC3339Nano))
+	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	form.Set("step", "1m")
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/hits", strings.NewReader(form.Encode()))
+	if err != nil {
+		return 0, PromMetricSample{}, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 20 * time.Second}).Do(request)
+	if err != nil {
+		return 0, PromMetricSample{}, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return 0, PromMetricSample{}, fmt.Errorf("VictoriaLogs 日志告警查询失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var result struct {
+		Hits []struct {
+			Total int64 `json:"total"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, PromMetricSample{}, fmt.Errorf("VictoriaLogs 日志告警结果解析失败: %w", err)
+	}
+	var value int64
+	for _, group := range result.Hits {
+		value += group.Total
+	}
+	return float64(value), PromMetricSample{Metric: map[string]string{
+		"__name__": "victorialogs_log_count", "datasource": ds.Name, "alert_type": "victorialogs",
 	}}, nil
 }
 
@@ -2218,10 +2640,17 @@ func monitorFingerprint(ruleID uint, metric map[string]string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func monitorSilenceRuleCriteriaMatch(item model.MonitorSilenceRule, rule model.MonitorAlertRule, labels map[string]string) bool {
+	if !monitorRuleMatch(item.MatchMode, item.RuleIDsJSON, item.RuleNamePattern, rule) || !monitorSeverityMatch(item.Severity, rule.Severity) {
+		return false
+	}
+	return labels == nil || monitorMatchersMatch(item.MatchersJSON, labels)
+}
+
 func (s *Service) matchMonitorSilenceRule(rule model.MonitorAlertRule, labels map[string]string) (*model.MonitorSilenceRule, bool) {
 	now := time.Now()
 	var rules []model.MonitorSilenceRule
-	if err := s.db.Where("status = ?", 1).Order("id DESC").Find(&rules).Error; err != nil {
+	if err := s.db.Where("status = ?", 1).Order("priority DESC, id DESC").Find(&rules).Error; err != nil {
 		return nil, false
 	}
 	for _, item := range rules {
@@ -2231,10 +2660,7 @@ func (s *Service) matchMonitorSilenceRule(rule model.MonitorAlertRule, labels ma
 		if item.EndsAt != nil && now.After(*item.EndsAt) {
 			continue
 		}
-		if !monitorRuleMatch(item.MatchMode, item.RuleIDsJSON, item.RuleNamePattern, rule) || !monitorSeverityMatch(item.Severity, rule.Severity) {
-			continue
-		}
-		if !monitorMatchersMatch(item.MatchersJSON, labels) {
+		if !monitorSilenceRuleCriteriaMatch(item, rule, labels) {
 			continue
 		}
 		return &item, true
@@ -2388,6 +2814,12 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 			updates["silence_rule_id"] = silenceRule.ID
 			updates["silence_rule_name"] = silenceRule.Name
 			updates["status"] = "silenced"
+		} else if existing.Status == "silenced" {
+			updates["silenced"] = false
+			updates["silence_rule_id"] = 0
+			updates["silence_rule_name"] = ""
+			updates["status"] = "firing"
+			shouldNotify = true
 		}
 		if aggregated && aggregationRule != nil {
 			applyMonitorEventAggregation(&existing, updates, *aggregationRule, aggregationKey)
@@ -2399,7 +2831,11 @@ func (s *Service) upsertMonitorAlertEvent(rule model.MonitorAlertRule, sample Pr
 		if nextStatus, ok := updates["status"].(string); ok && nextStatus != previousStatus {
 			switch nextStatus {
 			case "firing":
-				s.appendMonitorAlertTimeline(existing.ID, "firing", "告警正式触发", summary, "系统", nil)
+				if previousStatus == "silenced" {
+					s.appendMonitorAlertTimeline(existing.ID, "firing", "屏蔽已结束，告警仍在触发", summary, "系统", nil)
+				} else {
+					s.appendMonitorAlertTimeline(existing.ID, "firing", "告警正式触发", summary, "系统", nil)
+				}
 			case "silenced":
 				s.appendMonitorAlertTimeline(existing.ID, "silenced", "命中告警屏蔽", firstNonEmpty(existing.SilenceRuleName, silenceRule.Name), "系统", nil)
 			}

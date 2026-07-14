@@ -13,6 +13,8 @@ export const queryMonitorPrometheus = (data) => http.post('/api/v1/monitor/query
 export const queryMonitorLogs = (data) => http.post('/api/v1/monitor/logs/query', data)
 export const queryMonitorElasticsearchIndices = (params) => http.get('/api/v1/monitor/logs/indices', { params })
 export const queryMonitorVictoriaLogsStreams = (params) => http.get('/api/v1/monitor/logs/streams', { params })
+export const queryMonitorLogFields = (params) => http.get('/api/v1/monitor/logs/fields', { params })
+export const queryMonitorLogFieldValues = (params) => http.get('/api/v1/monitor/logs/field-values', { params })
 export const queryMonitorLogShortcuts = (params) => http.get('/api/v1/monitor/logs/shortcuts', { params })
 export const saveMonitorLogShortcut = (data) => http.post('/api/v1/monitor/logs/shortcuts/save', data)
 export const deleteMonitorLogShortcut = (id) => http.delete('/api/v1/monitor/logs/shortcuts/delete', { data: { id } })
@@ -30,6 +32,7 @@ export const previewMonitorAlertRule = (data) => http.post('/api/v1/monitor/aler
 export const queryMonitorSilenceRuleList = (params) => http.get('/api/v1/monitor/silence/rule/list', { params })
 export const monitorSilenceRuleInfo = (id) => http.get('/api/v1/monitor/silence/rule/info', { params: { id } })
 export const saveMonitorSilenceRule = (data) => http.post('/api/v1/monitor/silence/rule/save', data)
+export const previewMonitorSilenceRule = (data) => http.post('/api/v1/monitor/silence/rule/preview', data)
 export const deleteMonitorSilenceRule = (id) => http.delete('/api/v1/monitor/silence/rule/delete', { data: { id } })
 export const batchUpdateMonitorSilenceRules = (data) => http.post('/api/v1/monitor/silence/rule/batch', data)
 

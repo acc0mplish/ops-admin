@@ -33,7 +33,8 @@ const metricTemplates = [
   { id: 'k8s-namespaces', category: 'Kubernetes', name: '命名空间', query: 'kube_namespace_created', description: '展示所有命名空间及创建时间序列。' },
   { id: 'k8s-workloads', category: 'Kubernetes', name: 'Deployment 工作负载', query: 'kube_deployment_created', description: '展示 Deployment 工作负载及其标签。' },
   { id: 'k8s-pod-distribution', category: 'Kubernetes', name: '命名空间 Pod 分布', query: 'sum by (namespace) (kube_pod_info)', description: '按命名空间统计 Pod 分布。' },
-  { id: 'k8s-restarts', category: 'Kubernetes', name: 'Pod 重启次数 Top 10', query: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[1h])))', description: '统计最近一小时重启次数最多的 Pod。' }
+  { id: 'k8s-restarts-total', category: 'Kubernetes', name: 'Pod 累计重启次数 Top 10', query: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))', description: '展示自 Pod 启动以来累计重启次数最多的 Pod，适合快速定位历史重启较多的工作负载。' },
+  { id: 'k8s-restarts-hour', category: 'Kubernetes', name: 'Pod 最近 1 小时新增重启 Top 10', query: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))', description: '仅统计最近 1 小时新增的重启次数；没有新重启时结果为 0，属于正常现象。' }
 ]
 
 const selectedMetricTemplate = computed(() => metricTemplates.find((item) => item.id === metricTemplateId.value))

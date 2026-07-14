@@ -141,6 +141,30 @@ func (ctl *Controller) GetMonitorVictoriaLogsStreams(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetMonitorLogFields(c *gin.Context) {
+	data, err := ctl.service.ListMonitorLogFields(
+		uint(mustAtoi(c.Query("datasourceId"))), c.Query("index"), c.Query("query"),
+		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")),
+	)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorLogFieldValues(c *gin.Context) {
+	data, err := ctl.service.ListMonitorLogFieldValues(
+		uint(mustAtoi(c.Query("datasourceId"))), c.Query("index"), c.Query("field"), c.Query("query"),
+		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")),
+	)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func monitorQueryInt64(value string) int64 {
 	parsed, _ := strconv.ParseInt(value, 10, 64)
 	return parsed
@@ -325,6 +349,20 @@ func (ctl *Controller) SaveMonitorSilenceRule(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, true)
+}
+
+func (ctl *Controller) PreviewMonitorSilenceRule(c *gin.Context) {
+	var payload service.MonitorSilenceRulePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid silence rule preview payload")
+		return
+	}
+	data, err := ctl.service.PreviewMonitorSilenceRule(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
 }
 
 func (ctl *Controller) DeleteMonitorSilenceRule(c *gin.Context) {

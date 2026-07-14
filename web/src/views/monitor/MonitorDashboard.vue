@@ -15,7 +15,6 @@ import {
 
 const loading = ref(false)
 const route = useRoute()
-const panelLoading = ref(false)
 const dashboards = ref([])
 const datasourceOptions = ref([])
 const selectedDatasourceId = ref()
@@ -23,6 +22,7 @@ const activeDashboardId = ref()
 const activeDashboard = ref(null)
 const panels = ref([])
 const panelResults = reactive({})
+const panelPending = reactive({})
 const dashboardDialogVisible = ref(false)
 const panelDialogVisible = ref(false)
 const editingDashboard = ref(false)
@@ -32,6 +32,10 @@ const autoRefreshSeconds = ref(30)
 const timeRangeSeconds = ref(3600)
 const isFullscreen = ref(false)
 let refreshTimer = null
+let panelRefreshVersion = 0
+const panelResultCache = new Map()
+const PANEL_QUERY_CONCURRENCY = 4
+const PANEL_CACHE_TTL = 15 * 1000
 
 const pageMode = computed(() => route.path.includes('/monitor/inspections') ? 'inspection' : 'dashboard')
 const pageLayout = computed(() => pageMode.value === 'inspection' ? 'list' : 'grid')
@@ -118,7 +122,8 @@ const dashboardTemplates = [
       { title: '节点 Pod 分布', chartType: 'bar', unit: '个', span: 12, promql: 'sum by (node) (kube_pod_info)' },
       { title: '工作负载副本可用率', chartType: 'bar', unit: '%', span: 12, promql: 'sum by (deployment) (kube_deployment_status_replicas_available) / sum by (deployment) (kube_deployment_spec_replicas) * 100' },
       { title: '异常原因 Top', chartType: 'bar', unit: '个', span: 12, promql: 'sum by (reason) (kube_pod_container_status_waiting_reason)' },
-      { title: 'Pod 重启次数 Top', chartType: 'bar', unit: '次', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[1h])))' },
+      { title: 'Pod 累计重启次数 Top', chartType: 'bar', unit: '次', span: 12, promql: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))' },
+      { title: 'Pod 最近 1 小时新增重启 Top', chartType: 'bar', unit: '次', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))' },
       { title: '容器 CPU 使用趋势', chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
       { title: '容器内存使用趋势', chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
       { title: 'Pod 网络接收速率', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_receive_bytes_total[5m]))' },
@@ -407,7 +412,11 @@ async function loadDashboard(id = activeDashboardId.value) {
     activeDashboard.value = data.dashboard
     panels.value = data.panels || []
     activeDashboardId.value = id
-    await refreshAllPanels()
+    // Render the dashboard shell immediately. Panels fill in progressively so a
+    // large K8s dashboard does not block the first paint on dozens of queries.
+    Object.keys(panelResults).forEach((key) => delete panelResults[key])
+    Object.keys(panelPending).forEach((key) => delete panelPending[key])
+    void refreshAllPanels({ progressive: true, force: false })
   } finally {
     loading.value = false
   }
@@ -518,14 +527,7 @@ async function refreshPanel(row) {
     ElMessage.warning('请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源')
     return
   }
-  panelLoading.value = true
-  try {
-		panelResults[row.id] = await queryMonitorDashboardPanel(panelQueryPayload(row.id))
-  } catch (error) {
-    panelResults[row.id] = { error: error.message || 'query failed' }
-  } finally {
-    panelLoading.value = false
-  }
+  await loadPanel(row, { force: true })
 }
 
 function panelQueryPayload(id) {
@@ -540,16 +542,67 @@ function panelQueryPayload(id) {
 	}
 }
 
-async function refreshAllPanels() {
+function panelCacheKey(panel) {
+  return `${selectedDatasourceId.value}:${timeRangeSeconds.value}:${panel.id}`
+}
+
+async function loadPanel(panel, { force = true, version = panelRefreshVersion } = {}) {
+  const key = panelCacheKey(panel)
+  const cached = panelResultCache.get(key)
+  if (!force && cached && cached.expiresAt > Date.now()) {
+    panelResults[panel.id] = cached.data
+    return
+  }
+
+  panelPending[panel.id] = true
+  try {
+    const data = await queryMonitorDashboardPanel(panelQueryPayload(panel.id))
+    if (version !== panelRefreshVersion) return
+    panelResults[panel.id] = data
+    panelResultCache.set(key, { data, expiresAt: Date.now() + PANEL_CACHE_TTL })
+  } catch (error) {
+    if (version === panelRefreshVersion) {
+      panelResults[panel.id] = { error: error.message || 'query failed' }
+    }
+  } finally {
+    if (version === panelRefreshVersion) delete panelPending[panel.id]
+  }
+}
+
+async function runPanelQueue(items, version, force) {
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < items.length && version === panelRefreshVersion) {
+      const panel = items[cursor]
+      cursor += 1
+      await loadPanel(panel, { force, version })
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PANEL_QUERY_CONCURRENCY, items.length) }, worker))
+}
+
+async function refreshAllPanels({ progressive = false, force = true } = {}) {
   if (!selectedDatasourceId.value) {
     const message = '请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源'
     for (const panel of panels.value.filter((item) => item.status === 1)) panelResults[panel.id] = { error: message }
     return
   }
   const enabledPanels = panels.value.filter((item) => item.status === 1)
-	await Promise.all(enabledPanels.map((item) => queryMonitorDashboardPanel(panelQueryPayload(item.id))
-    .then((data) => { panelResults[item.id] = data })
-    .catch((error) => { panelResults[item.id] = { error: error.message || 'query failed' } })))
+  const version = ++panelRefreshVersion
+  const firstScreenPanels = enabledPanels.slice(0, 6)
+  const remainingPanels = enabledPanels.slice(6)
+  const loadRemaining = () => runPanelQueue(remainingPanels, version, force)
+
+  if (progressive) {
+    await runPanelQueue(firstScreenPanels, version, force)
+    if (version === panelRefreshVersion && remainingPanels.length) {
+      window.setTimeout(() => { void loadRemaining() }, 0)
+    }
+    return
+  }
+
+  await runPanelQueue(firstScreenPanels, version, force)
+  if (version === panelRefreshVersion) await loadRemaining()
 }
 
 async function handleDatasourceChange() {
@@ -633,7 +686,7 @@ onBeforeUnmount(() => {
       <el-button class="create-screen-btn" type="primary" @click="openCreateDashboard">创建{{ pageTitle }}</el-button>
     </section>
 
-    <main class="dashboard-main" :class="{ 'k8s-dashboard-main': isK8sDashboard }" v-loading="loading">
+    <main class="dashboard-main" v-loading="loading">
       <section class="dashboard-hero">
         <div>
           <div class="eyebrow">Monitoring Dashboard</div>
@@ -690,7 +743,7 @@ onBeforeUnmount(() => {
       <el-empty v-if="!activeDashboard" description="还没有监控大屏，请先创建一个" />
       <el-empty v-else-if="!panels.length" description="当前大屏还没有面板，可以新增面板或使用模板创建" />
 
-      <section v-else-if="isListLayout" class="inspection-list" v-loading="panelLoading">
+      <section v-else-if="isListLayout" class="inspection-list">
         <div class="inspection-head">
           <div>
             <h3>巡检面板</h3>
@@ -743,13 +796,15 @@ onBeforeUnmount(() => {
         </el-table>
       </section>
 
-      <section v-else class="panel-grid" :class="{ 'k8s-panel-grid': isK8sDashboard }" v-loading="panelLoading">
+      <section v-else class="panel-grid" :class="{ 'k8s-panel-grid': isK8sDashboard }">
         <div
           v-for="panel in panels"
           :key="panel.id"
           class="metric-panel"
-          :class="[`panel-${panel.chartType}`, { disabled: panel.status !== 1, 'k8s-metric-panel': isK8sDashboard }]"
-          :style="{ gridColumn: `span ${panelSpan(panel)}` }"
+           :class="[`panel-${panel.chartType}`, { disabled: panel.status !== 1 }]"
+           :style="{ gridColumn: `span ${panelSpan(panel)}` }"
+           v-loading="panelPending[panel.id]"
+           element-loading-background="rgba(255, 255, 255, 0.72)"
         >
           <div class="panel-glow"></div>
           <div class="panel-head">

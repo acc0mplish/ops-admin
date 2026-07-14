@@ -165,6 +165,7 @@ type MonitorSilenceRule struct {
 	MatchersJSON    string     `json:"matchersJson" gorm:"type:text"`
 	StartsAt        *time.Time `json:"startsAt"`
 	EndsAt          *time.Time `json:"endsAt"`
+	Priority        int        `json:"priority" gorm:"default:100;index"`
 	Status          int        `json:"status" gorm:"default:1;index"`
 	Description     string     `json:"description" gorm:"size:255"`
 	CreatedAt       time.Time  `json:"createTime"`

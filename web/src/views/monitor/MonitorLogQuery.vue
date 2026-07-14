@@ -5,6 +5,7 @@ import {
   deleteMonitorLogShortcut,
   queryMonitorDatasourceOptions,
   queryMonitorElasticsearchIndices,
+  queryMonitorLogFieldValues,
   queryMonitorLogShortcuts,
   queryMonitorLogs,
   queryMonitorVictoriaLogsStreams,
@@ -18,6 +19,13 @@ const indexOptions = ref([])
 const indexLoading = ref(false)
 const index = ref('_all')
 const keyword = ref('')
+const fieldKeyword = ref('')
+const fieldsCollapsed = ref(false)
+const fieldValueVisible = ref(false)
+const fieldValueLoading = ref(false)
+const selectedField = ref('')
+const fieldValues = ref([])
+const fieldValueKeyword = ref('')
 const timeRange = ref('1h')
 const customDateRange = ref([])
 const streamOptions = ref([])
@@ -36,11 +44,15 @@ const shortcutSaving = ref(false)
 const shortcutForm = reactive({ id: undefined, name: '', query: '', indexName: '_all', timeRange: '1h', sort: 0 })
 let refreshTimer
 
-const elasticsearchFields = ['@timestamp', 'level', 'message', 'kubernetes.pod_namespace', 'kubernetes.pod_name', 'kafka_topic', 'host.name']
-const victoriaLogsFields = ['_time', '_msg', 'level', 'kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'host.name']
+const elasticsearchFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'level']
+const victoriaLogsFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'level']
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
 const isVictoriaLogs = computed(() => activeDatasource.value?.type === 'victorialogs')
-const fields = computed(() => isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields)
+const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '常用' })))
+const fields = computed(() => {
+  const phrase = fieldKeyword.value.trim().toLowerCase()
+  return phrase ? fallbackFields.value.filter((item) => item.name.toLowerCase().includes(phrase)) : fallbackFields.value
+})
 const maxBucketCount = computed(() => Math.max(1, ...histogram.value.map((item) => Number(item.doc_count || 0))))
 
 function rangeTimestamps() {
@@ -152,6 +164,33 @@ function insertField(field) {
   keyword.value = keyword.value ? `${keyword.value} AND ${field}:` : `${field}:`
 }
 
+async function openFieldValues(field) {
+  if (!datasourceId.value) return ElMessage.warning('请先选择日志数据源')
+  selectedField.value = field
+  fieldValueKeyword.value = ''
+  fieldValues.value = []
+  fieldValueVisible.value = true
+  fieldValueLoading.value = true
+  try {
+    fieldValues.value = await queryMonitorLogFieldValues({
+      datasourceId: datasourceId.value,
+      index: isVictoriaLogs.value ? '_all' : index.value,
+      field,
+      query: effectiveQuery(),
+      ...rangeTimestamps()
+    })
+  } finally {
+    fieldValueLoading.value = false
+  }
+}
+
+function applyFieldValue(value) {
+  const expression = `${selectedField.value}:${escapeLogsQLValue(value)}`
+  keyword.value = keyword.value ? `(${keyword.value}) AND ${expression}` : expression
+  fieldValueVisible.value = false
+  search()
+}
+
 function applyShortcut(item) {
   keyword.value = item.query || ''
   index.value = item.indexName || '_all'
@@ -195,7 +234,9 @@ function updateAutoRefresh(enabled) {
 watch(autoRefresh, updateAutoRefresh)
 watch(timeRange, async (value) => {
   if (value !== 'custom') customDateRange.value = []
-  if (isVictoriaLogs.value) await loadStreams()
+  if (isVictoriaLogs.value) {
+    await loadStreams()
+  }
 })
 watch(selectedTopics, () => search())
 watch(datasourceId, async () => {
@@ -274,10 +315,20 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
       </div>
     </section>
 
-    <section class="log-workspace">
+    <section class="log-workspace" :class="{ 'fields-collapsed': fieldsCollapsed }">
       <aside class="field-panel">
-        <div class="panel-title"><strong>字段列表</strong><span>{{ fields.length }}</span></div>
-        <button v-for="field in fields" :key="field" class="field-item" @click="insertField(field)"><span>{{ field }}</span><span>+</span></button>
+        <div class="panel-title">
+          <strong v-if="!fieldsCollapsed">字段列表</strong><span v-if="!fieldsCollapsed">{{ fields.length }}</span>
+          <el-button link class="collapse-button" :title="fieldsCollapsed ? '展开字段列表' : '收起字段列表'" @click="fieldsCollapsed = !fieldsCollapsed">{{ fieldsCollapsed ? '»' : '«' }}</el-button>
+        </div>
+        <template v-if="!fieldsCollapsed">
+          <el-input v-model="fieldKeyword" size="small" clearable placeholder="搜索字段" />
+          <div class="field-list">
+            <button v-for="field in fields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field.name)">
+              <span>{{ field.name }}</span><b>›</b>
+            </button>
+          </div>
+        </template>
       </aside>
       <main class="log-main">
         <div class="result-summary"><strong>原始日志</strong><span>命中 {{ total }} 条</span><span>耗时 {{ took }} ms</span></div>
@@ -305,6 +356,18 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
       </template>
     </el-drawer>
 
+    <el-dialog v-model="fieldValueVisible" :title="`筛选字段：${selectedField}`" width="min(640px, 92vw)" destroy-on-close>
+      <p class="field-value-tip">展示当前时间范围、数据源和查询条件下可用的字段值。点击任意值即可追加筛选条件。</p>
+      <el-input v-model="fieldValueKeyword" clearable placeholder="搜索字段值" />
+      <div v-loading="fieldValueLoading" class="field-value-list">
+        <el-empty v-if="!fieldValueLoading && !fieldValues.length" description="当前条件下没有可选值" :image-size="72" />
+        <button v-for="item in fieldValues.filter((value) => !fieldValueKeyword || String(value.value).toLowerCase().includes(fieldValueKeyword.toLowerCase()))" :key="item.value" class="field-value-item" @click="applyFieldValue(item.value)">
+          <span :title="item.value">{{ item.value }}</span>
+          <small>{{ item.hits }} 条</small>
+        </button>
+      </div>
+    </el-dialog>
+
     <el-dialog v-model="shortcutDialogVisible" :title="shortcutForm.id ? '编辑快捷语句' : '新增快捷语句'" width="min(620px, 92vw)">
       <el-form label-width="105px">
         <el-form-item label="名称" required><el-input v-model="shortcutForm.name" placeholder="例如：错误日志" /></el-form-item>
@@ -319,4 +382,5 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
 
 <style scoped>
 .log-page{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 115px);padding:24px;background:#f6f8fc;color:#24364e}.log-header,.log-search-panel,.log-workspace{border:1px solid #e0e8f4;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(49,78,125,.06)}.log-header{display:flex;justify-content:space-between;gap:24px;padding:22px 24px}.eyebrow{color:#4a70d8;font-size:12px;font-weight:700;letter-spacing:1px}.log-header h2{margin:7px 0;color:#10213f;font-size:27px}.log-header p{margin:0;color:#7282a0}.log-header-actions,.source-line,.query-line,.shortcut-line{display:flex;align-items:center;gap:12px}.log-header-actions{flex-shrink:0}.log-search-panel{padding:16px}.query-line,.shortcut-line{margin-top:12px}.source-line label,.shortcut-line>span{color:#51627f;font-weight:600;white-space:nowrap}.source-status{overflow:hidden;color:#8491a7;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.query-input{flex:1}.shortcut-line{flex-wrap:wrap}.shortcut-button{border-color:#d9e3f3;color:#4f6384;background:#f7f9fd}.index-option,.stream-option{display:flex;justify-content:space-between;gap:16px}.index-option small,.stream-option small{color:#8491a7}.stream-option{width:100%;min-width:0}.stream-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.log-workspace{display:grid;grid-template-columns:230px minmax(0,1fr);overflow:hidden}.field-panel{display:flex;flex-direction:column;gap:8px;padding:14px;border-right:1px solid #e5ebf4;background:#fbfcff}.panel-title{display:flex;justify-content:space-between;color:#263a59}.panel-title span{color:#8291aa}.field-item{display:flex;justify-content:space-between;width:100%;padding:9px 8px;border:0;border-radius:5px;color:#536784;background:transparent;text-align:left;cursor:pointer}.field-item:hover{color:#3567d6;background:#eef4ff}.log-main{min-width:0}.result-summary{display:flex;align-items:center;gap:18px;padding:13px 16px;border-bottom:1px solid #e5ebf4;color:#71809b;font-size:13px}.result-summary strong{color:#203759;font-size:15px}.histogram-panel{height:150px;padding:12px 16px;border-bottom:1px solid #e5ebf4}.histogram{display:flex;align-items:flex-end;gap:4px;height:100%}.histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-bar{width:100%;min-height:2px;border-radius:2px 2px 0 0;background:#5a6df1;opacity:.88}.log-message{font-family:Consolas,Monaco,monospace;color:#3b4e6b}.detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:#73849a;font-size:13px}.detail-meta span{padding:4px 8px;border-radius:4px;background:#f2f5f9}.message-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.message-fields>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e5ebf3;border-radius:6px}.message-fields small{color:#8491a7}.message-fields strong{overflow:hidden;color:#24364e;text-overflow:ellipsis;white-space:nowrap}.detail-message,.detail-json{overflow:auto;padding:14px;border-radius:6px;color:#dce6f5;background:#111827;font:12px/1.65 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.raw-log-line{margin:14px 0;color:#60748d}.raw-log-line summary{cursor:pointer}.raw-log-line pre{overflow:auto;max-height:180px;padding:12px;border-radius:6px;color:#c9d4e3;background:#202936;font:12px/1.6 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.level{display:inline-flex;min-width:48px;justify-content:center;padding:3px 5px;border-radius:3px;font-size:11px;font-weight:700}.level-error{color:#d94c5b;background:#fff0f1}.level-warn{color:#bd7c11;background:#fff7e8}.level-info{color:#3978c6;background:#eef6ff}.level-debug{color:#6c7788;background:#f1f4f7}:deep(.el-table){--el-table-header-bg-color:#f6f8fc;--el-table-header-text-color:#71809b;--el-table-row-hover-bg-color:#f4f7fc;--el-table-border-color:#e7edf6}@media(max-width:1000px){.log-workspace{grid-template-columns:1fr}.field-panel{display:none}.source-line,.query-line{align-items:stretch;flex-wrap:wrap}.query-input{flex-basis:100%}.log-header{flex-direction:column}.message-fields{grid-template-columns:1fr}}
+.log-workspace.fields-collapsed{grid-template-columns:44px minmax(0,1fr)}.field-panel{min-width:0}.panel-title{align-items:center;gap:4px}.collapse-button{margin-left:auto;font-size:18px}.field-list{display:flex;min-height:80px;flex-direction:column;gap:3px}.field-item{gap:6px;min-width:0}.field-item span{overflow:hidden;flex:1;text-overflow:ellipsis;white-space:nowrap}.field-item small{flex:0 0 auto;color:#8b98aa;font-size:10px}.field-item b{flex:0 0 auto;color:#5c75a1;font-weight:500}.fields-collapsed .field-panel{padding:14px 8px}.fields-collapsed .collapse-button{margin:auto}.field-value-tip{margin:0 0 12px;color:#7282a0;font-size:13px}.field-value-list{display:flex;flex-direction:column;gap:4px;min-height:100px;max-height:420px;margin-top:12px;overflow:auto}.field-value-item{display:flex;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:1px solid #e3e9f4;border-radius:6px;background:#fff;color:#354864;text-align:left;cursor:pointer}.field-value-item:hover{border-color:#9db8f4;background:#f3f7ff;color:#3567d6}.field-value-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.field-value-item small{flex:0 0 auto;color:#8291aa}
 </style>

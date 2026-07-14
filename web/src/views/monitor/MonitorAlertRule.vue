@@ -60,8 +60,38 @@ const form = reactive({
 
 const metricDatasourceOptions = computed(() => datasourceOptions.value.filter((item) => ['prometheus', 'victoriametrics'].includes(item.type)))
 const logDatasourceOptions = computed(() => datasourceOptions.value.filter((item) => item.type === 'elasticsearch'))
-const availableDatasourceOptions = computed(() => (form.alertType === 'log' ? logDatasourceOptions.value : metricDatasourceOptions.value))
-const alertTypeLabel = computed(() => (form.alertType === 'log' ? '日志告警' : '监控告警'))
+const victoriaLogsDatasourceOptions = computed(() => datasourceOptions.value.filter((item) => item.type === 'victorialogs'))
+const availableDatasourceOptions = computed(() => {
+  if (form.alertType === 'log') return logDatasourceOptions.value
+  if (form.alertType === 'victorialogs') return victoriaLogsDatasourceOptions.value
+  return metricDatasourceOptions.value
+})
+const alertTypeLabel = computed(() => alertTypeName(form.alertType))
+const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertType))
+const queryLabel = computed(() => {
+  if (form.alertType === 'log') return 'ES 查询语句'
+  if (form.alertType === 'victorialogs') return 'LogsQL 查询语句'
+  return 'PromQL'
+})
+const queryPlaceholder = computed(() => {
+  if (form.alertType === 'log') return '例如：level:ERROR AND kubernetes.pod_namespace:"default"'
+  if (form.alertType === 'victorialogs') return '例如：kubernetes.pod_namespace:"default" AND _msg:~"(?i)error"'
+  return '例如：sum(kube_pod_status_phase{phase=~"Failed|Unknown"})'
+})
+const queryHint = computed(() => {
+  if (form.alertType === 'log') return '使用 Elasticsearch query_string（Lucene）语法，告警值为查询窗口内命中的日志条数。'
+  if (form.alertType === 'victorialogs') return '使用 VictoriaLogs LogsQL 语法，告警值为查询窗口内命中的日志条数。'
+  return 'PromQL 返回的每条时间序列都会独立与阈值比较，标签会保留在告警事件中。'
+})
+
+function alertTypeName(type) {
+  return ({ metric: '监控告警', log: 'ES 日志告警', victorialogs: 'VictoriaLogs 日志告警' }[type] || '监控告警')
+}
+
+function alertTypeTag(type) {
+  if (type === 'victorialogs') return 'success'
+  return type === 'log' ? 'warning' : 'primary'
+}
 const dialogTitle = computed(() => (copyMode.value ? '复制告警规则' : (isEdit.value ? '编辑告警规则' : '新增告警规则')))
 
 const commonRuleTemplates = [
@@ -87,7 +117,14 @@ const commonRuleTemplates = [
   { id: 'log-payment-failed', type: 'log', name: '业务交易失败日志', queryText: 'message:(payment failed OR order failed OR transaction failed)', logIndex: 'logs-*', comparator: '>', threshold: 5, logTimeRangeSeconds: 300, evalIntervalSeconds: 60, severity: 'P1', description: '近 5 分钟关键业务交易失败超过阈值。' }
 ]
 
-const visibleRuleTemplates = computed(() => commonRuleTemplates.filter((item) => item.type === templateType.value))
+const victoriaLogsRuleTemplates = [
+  { id: 'vl-error', type: 'victorialogs', name: 'VictoriaLogs ERROR 日志激增', queryText: '_msg:~"(?i)error"', comparator: '>', threshold: 20, logTimeRangeSeconds: 300, evalIntervalSeconds: 60, severity: 'P2', description: '最近 5 分钟 ERROR 日志超过 20 条。' },
+  { id: 'vl-fatal', type: 'victorialogs', name: 'VictoriaLogs FATAL 日志', queryText: '_msg:~"(?i)fatal"', comparator: '>', threshold: 0, logTimeRangeSeconds: 300, evalIntervalSeconds: 60, severity: 'P0', description: '发现任意 FATAL 日志立即告警。' },
+  { id: 'vl-exception', type: 'victorialogs', name: 'VictoriaLogs 异常堆栈', queryText: '_msg:~"(Exception|Throwable|Error)"', comparator: '>', threshold: 10, logTimeRangeSeconds: 300, evalIntervalSeconds: 60, severity: 'P2', description: '最近 5 分钟异常堆栈日志超过阈值。' },
+  { id: 'vl-timeout', type: 'victorialogs', name: 'VictoriaLogs 超时日志激增', queryText: '_msg:~"(?i)(timeout|timed out|TimeoutException)"', comparator: '>', threshold: 20, logTimeRangeSeconds: 300, evalIntervalSeconds: 60, severity: 'P2', description: '最近 5 分钟超时日志异常增加。' },
+  { id: 'vl-k8s-restart', type: 'victorialogs', name: 'VictoriaLogs 容器重启异常', queryText: '_msg:~"(CrashLoopBackOff|Back-off restarting failed container)"', comparator: '>', threshold: 0, logTimeRangeSeconds: 600, evalIntervalSeconds: 60, severity: 'P1', description: '发现容器重启相关日志。' }
+]
+const visibleRuleTemplates = computed(() => [...commonRuleTemplates, ...victoriaLogsRuleTemplates].filter((item) => item.type === templateType.value))
 
 function formatNotifyInterval(seconds) {
   const value = Number(seconds) || 1800
@@ -127,6 +164,7 @@ function resetForm() {
 function applyDatasourceType() {
   form.datasourceId = form.datasourceScope === 'specific' ? availableDatasourceOptions.value[0]?.id : undefined
   if (form.alertType === 'log' && !form.queryText.trim()) form.queryText = 'level:ERROR OR level:FATAL'
+  if (form.alertType === 'victorialogs' && !form.queryText.trim()) form.queryText = '_msg:~"(?i)(error|fatal)"'
 }
 
 function applyDatasourceScope() {
@@ -354,7 +392,7 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h2>告警规则</h2>
-        <p>统一管理 PromQL 监控告警与 Elasticsearch 日志告警，支持按全部同类数据源或指定数据源进行评估。</p>
+        <p>统一管理 PromQL 监控告警、Elasticsearch 日志告警与 VictoriaLogs 日志告警，支持按全部同类数据源或指定数据源进行评估。</p>
       </div>
       <div class="header-actions">
         <el-button @click="openTemplateDialog">导入常用规则</el-button>
@@ -389,7 +427,7 @@ onMounted(async () => {
       <el-table-column type="selection" width="52" fixed="left" />
       <el-table-column prop="name" label="规则名称" min-width="180" />
       <el-table-column label="类型" width="110">
-        <template #default="{ row }"><el-tag :type="row.alertType === 'log' ? 'warning' : 'primary'" effect="light">{{ row.alertType === 'log' ? '日志告警' : '监控告警' }}</el-tag></template>
+        <template #default="{ row }"><el-tag :type="alertTypeTag(row.alertType)" effect="light">{{ alertTypeName(row.alertType) }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="datasourceName" label="数据源范围" width="180" />
       <el-table-column label="查询条件" min-width="340" show-overflow-tooltip>
@@ -422,6 +460,7 @@ onMounted(async () => {
           <el-radio-group v-model="form.alertType" @change="applyDatasourceType">
             <el-radio-button label="metric">监控告警 / PromQL</el-radio-button>
             <el-radio-button label="log">日志告警 / Elasticsearch</el-radio-button>
+            <el-radio-button label="victorialogs">日志告警 / VictoriaLogs</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="数据源范围" required>
@@ -437,9 +476,9 @@ onMounted(async () => {
           </div>
         </el-form-item>
         <el-form-item v-if="form.alertType === 'log'" label="日志索引" required><el-input v-model="form.logIndex" placeholder="例如：logs-*、.ds-app-log-*；使用 _all 搜索全部索引" /></el-form-item>
-        <el-form-item :label="form.alertType === 'log' ? 'ES 查询语句' : 'PromQL'" required>
-          <el-input v-model="form.queryText" type="textarea" :rows="4" :placeholder="form.alertType === 'log' ? '例如：level:ERROR AND kubernetes.pod_namespace:&quot;default&quot;' : '例如：sum(kube_pod_status_phase{phase=~&quot;Failed|Unknown&quot;})'" />
-          <div class="form-tip">{{ form.alertType === 'log' ? '使用 Elasticsearch query_string（Lucene）语法，告警值为查询窗口内命中的日志条数。' : 'PromQL 返回的每条时间序列都会独立与阈值比较，标签会保留在告警事件中。' }}</div>
+        <el-form-item :label="queryLabel" required>
+          <el-input v-model="form.queryText" type="textarea" :rows="4" :placeholder="queryPlaceholder" />
+          <div class="form-tip">{{ queryHint }}</div>
         </el-form-item>
         <section class="rule-parameters">
           <div class="parameter-card">
@@ -448,14 +487,14 @@ onMounted(async () => {
             <small>与阈值进行比较</small>
           </div>
           <div class="parameter-card">
-            <span>{{ form.alertType === 'log' ? '命中阈值' : '阈值' }}</span>
-            <el-input-number v-model="form.threshold" :precision="4" :step="form.alertType === 'log' ? 1 : 0.1" controls-position="right" />
-            <small>{{ form.alertType === 'log' ? '窗口内匹配日志条数' : '单条时间序列当前值' }}</small>
+            <span>{{ isLogAlert ? '命中阈值' : '阈值' }}</span>
+            <el-input-number v-model="form.threshold" :precision="4" :step="isLogAlert ? 1 : 0.1" controls-position="right" />
+            <small>{{ isLogAlert ? '窗口内匹配日志条数' : '单条时间序列当前值' }}</small>
           </div>
           <div class="parameter-card">
-            <span>{{ form.alertType === 'log' ? '查询窗口' : '持续时间' }}</span>
-            <div class="parameter-number"><el-input-number v-if="form.alertType === 'log'" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>秒</b></div>
-            <small>{{ form.alertType === 'log' ? '统计最近日志范围' : '连续命中后触发' }}</small>
+            <span>{{ isLogAlert ? '查询窗口' : '持续时间' }}</span>
+            <div class="parameter-number"><el-input-number v-if="isLogAlert" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>秒</b></div>
+            <small>{{ isLogAlert ? '统计最近日志范围' : '连续命中后触发' }}</small>
           </div>
           <div class="parameter-card">
             <span>评估间隔</span>
@@ -509,11 +548,11 @@ onMounted(async () => {
     <el-dialog v-model="templateDialogVisible" title="导入常用告警规则" width="900px" top="10vh">
       <div class="template-dialog-head">
         <div><strong>常用告警规则</strong><span>模板导入后仍可修改查询语句、阈值和通知策略。</span></div>
-        <el-radio-group v-model="templateType"><el-radio-button label="metric">PromQL 规则（10）</el-radio-button><el-radio-button label="log">ES 日志规则（10）</el-radio-button></el-radio-group>
+        <el-radio-group v-model="templateType"><el-radio-button label="metric">PromQL 规则（10）</el-radio-button><el-radio-button label="log">ES 日志规则（10）</el-radio-button><el-radio-button label="victorialogs">VictoriaLogs 规则（5）</el-radio-button></el-radio-group>
       </div>
       <div class="rule-template-grid">
         <button v-for="item in visibleRuleTemplates" :key="item.id" type="button" class="rule-template-card" @click="applyRuleTemplate(item)">
-          <div><el-tag :type="item.type === 'log' ? 'warning' : 'primary'" size="small">{{ item.type === 'log' ? 'ES 日志' : 'PromQL' }}</el-tag><el-tag effect="plain" size="small">{{ item.severity }}</el-tag></div>
+          <div><el-tag :type="alertTypeTag(item.type)" size="small">{{ item.type === 'victorialogs' ? 'VictoriaLogs' : (item.type === 'log' ? 'ES 日志' : 'PromQL') }}</el-tag><el-tag effect="plain" size="small">{{ item.severity }}</el-tag></div>
           <strong>{{ item.name }}</strong>
           <p>{{ item.description }}</p>
           <code>{{ item.queryText }}</code>
