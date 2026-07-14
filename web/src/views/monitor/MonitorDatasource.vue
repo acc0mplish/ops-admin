@@ -140,6 +140,7 @@ onMounted(loadData)
       <el-select v-model="query.type" clearable placeholder="类型" style="width: 170px">
         <el-option label="Prometheus" value="prometheus" />
         <el-option label="VictoriaMetrics" value="victoriametrics" />
+        <el-option label="VictoriaLogs" value="victorialogs" />
         <el-option label="Elasticsearch" value="elasticsearch" />
       </el-select>
       <el-select v-model="query.status" clearable placeholder="状态" style="width: 130px">
@@ -199,6 +200,7 @@ onMounted(loadData)
           <el-radio-group v-model="form.type">
             <el-radio-button label="prometheus">Prometheus</el-radio-button>
             <el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button>
+            <el-radio-button label="victorialogs">VictoriaLogs</el-radio-button>
             <el-radio-button label="elasticsearch">Elasticsearch</el-radio-button>
           </el-radio-group>
         </el-form-item>
@@ -207,8 +209,9 @@ onMounted(loadData)
             <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
           </el-select>
         </el-form-item>
-        <el-form-item label="地址" required><el-input v-model="form.url" :placeholder="form.type === 'elasticsearch' ? 'http://elasticsearch:9200' : 'http://prometheus:9090'" /></el-form-item>
+        <el-form-item label="地址" required><el-input v-model="form.url" :placeholder="form.type === 'elasticsearch' ? 'http://elasticsearch:9200' : (form.type === 'victorialogs' ? 'http://victorialogs:9428' : 'http://prometheus:9090')" /></el-form-item>
         <el-alert v-if="form.type === 'elasticsearch'" title="Elasticsearch 数据源用于日志查询与日志告警；PromQL 即时查询、监控大屏和巡检大屏仍需选择 Prometheus 或 VictoriaMetrics。" type="info" :closable="false" style="margin-bottom: 18px" />
+        <el-alert v-else-if="form.type === 'victorialogs'" title="VictoriaLogs 数据源用于 LogsQL 日志查询；PromQL 即时查询、监控大屏和巡检大屏仍需选择 Prometheus 或 VictoriaMetrics。" type="info" :closable="false" style="margin-bottom: 18px" />
         <el-form-item label="认证方式">
           <el-select v-model="form.authType" style="width: 100%">
             <el-option label="无认证" value="none" />

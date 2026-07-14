@@ -129,8 +129,25 @@ func (ctl *Controller) GetMonitorElasticsearchIndices(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetMonitorVictoriaLogsStreams(c *gin.Context) {
+	data, err := ctl.service.ListMonitorVictoriaLogsStreams(
+		uint(mustAtoi(c.Query("datasourceId"))), c.Query("field"), c.Query("query"),
+		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")),
+	)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func monitorQueryInt64(value string) int64 {
+	parsed, _ := strconv.ParseInt(value, 10, 64)
+	return parsed
+}
+
 func (ctl *Controller) GetMonitorLogShortcuts(c *gin.Context) {
-	data, err := ctl.service.ListMonitorLogShortcuts(c.GetString("username"))
+	data, err := ctl.service.ListMonitorLogShortcutsByType(c.GetString("username"), c.Query("datasourceType"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -144,7 +161,7 @@ func (ctl *Controller) SaveMonitorLogShortcut(c *gin.Context) {
 		httpx.Failed(c, 400, "invalid log shortcut payload")
 		return
 	}
-	if err := ctl.service.SaveMonitorLogShortcut(c.GetString("username"), payload); err != nil {
+	if err := ctl.service.SaveMonitorLogShortcutByType(c.GetString("username"), payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}

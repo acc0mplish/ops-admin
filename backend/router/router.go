@@ -278,6 +278,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/monitor/query/instant", ctl.QueryMonitorPrometheus)
 		authGroup.POST("/monitor/logs/query", ctl.QueryMonitorLogs)
 		authGroup.GET("/monitor/logs/indices", ctl.GetMonitorElasticsearchIndices)
+		authGroup.GET("/monitor/logs/streams", ctl.GetMonitorVictoriaLogsStreams)
 		authGroup.GET("/monitor/logs/shortcuts", ctl.GetMonitorLogShortcuts)
 		authGroup.POST("/monitor/logs/shortcuts/save", ctl.SaveMonitorLogShortcut)
 		authGroup.DELETE("/monitor/logs/shortcuts/delete", ctl.DeleteMonitorLogShortcut)

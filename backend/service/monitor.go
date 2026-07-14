@@ -156,12 +156,13 @@ type MonitorLogQueryPayload struct {
 }
 
 type MonitorLogShortcutPayload struct {
-	ID        uint   `json:"id"`
-	Name      string `json:"name"`
-	Query     string `json:"query"`
-	IndexName string `json:"indexName"`
-	TimeRange string `json:"timeRange"`
-	Sort      int    `json:"sort"`
+	ID             uint   `json:"id"`
+	DatasourceType string `json:"datasourceType"`
+	Name           string `json:"name"`
+	Query          string `json:"query"`
+	IndexName      string `json:"indexName"`
+	TimeRange      string `json:"timeRange"`
+	Sort           int    `json:"sort"`
 }
 
 type MonitorScheduler struct {
@@ -193,11 +194,18 @@ func normalizeMonitorDatasourceType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "victoriametrics", "victoria-metrics", "vm":
 		return "victoriametrics"
+	case "victorialogs", "victoria-logs", "vl":
+		return "victorialogs"
 	case "elasticsearch", "elastic", "es":
 		return "elasticsearch"
 	default:
 		return "prometheus"
 	}
+}
+
+func isMonitorLogDatasource(value string) bool {
+	datasourceType := normalizeMonitorDatasourceType(value)
+	return datasourceType == "elasticsearch" || datasourceType == "victorialogs"
 }
 
 func normalizeAlertType(value string) string {
@@ -597,8 +605,11 @@ func (s *Service) TestMonitorDatasource(id uint, payload MonitorDatasourcePayloa
 }
 
 func (s *Service) checkMonitorDatasourceHealth(ds model.MonitorDatasource) error {
-	if normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
+	switch normalizeMonitorDatasourceType(ds.Type) {
+	case "elasticsearch":
 		return s.elasticsearchHealth(ds)
+	case "victorialogs":
+		return s.victoriaLogsHealth(ds)
 	}
 	_, err := s.prometheusQuery(ds, "up", time.Now())
 	return err
@@ -649,6 +660,8 @@ func (s *Service) MonitorInstantQuery(datasourceID uint, query string, ts time.T
 	if normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
 		queryType = "elasticsearch"
 		response, err = s.elasticsearchQuery(*ds, query)
+	} else if normalizeMonitorDatasourceType(ds.Type) == "victorialogs" {
+		return nil, errors.New("VictoriaLogs 请在日志查询中使用 LogsQL")
 	} else {
 		var result *PromQueryResult
 		result, err = s.prometheusQuery(*ds, query, ts)
@@ -839,6 +852,24 @@ func (s *Service) elasticsearchQuery(ds model.MonitorDatasource, query string) (
 
 func (s *Service) QueryMonitorLogs(payload MonitorLogQueryPayload) (map[string]any, error) {
 	if payload.DatasourceID == 0 {
+		return nil, errors.New("请选择日志数据源")
+	}
+	ds, err := s.GetMonitorDatasource(payload.DatasourceID)
+	if err != nil {
+		return nil, err
+	}
+	switch normalizeMonitorDatasourceType(ds.Type) {
+	case "elasticsearch":
+		return s.queryElasticsearchMonitorLogs(payload)
+	case "victorialogs":
+		return s.queryVictoriaLogs(*ds, payload)
+	default:
+		return nil, errors.New("日志查询仅支持 Elasticsearch 或 VictoriaLogs 数据源")
+	}
+}
+
+func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) (map[string]any, error) {
+	if payload.DatasourceID == 0 {
 		return nil, errors.New("请选择 Elasticsearch 数据源")
 	}
 	ds, err := s.GetMonitorDatasource(payload.DatasourceID)
@@ -925,6 +956,246 @@ func (s *Service) QueryMonitorLogs(payload MonitorLogQueryPayload) (map[string]a
 		"items": items, "total": hits["total"], "took": response["took"], "histogram": buckets,
 		"startAt": startAt, "endAt": endAt,
 	}, nil
+}
+
+func (s *Service) victoriaLogsHealth(ds model.MonitorDatasource) error {
+	request, err := http.NewRequest(http.MethodGet, strings.TrimRight(ds.URL, "/")+"/metrics", nil)
+	if err != nil {
+		return err
+	}
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("VictoriaLogs 健康检查失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	return nil
+}
+
+func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorLogQueryPayload) (map[string]any, error) {
+	pageSize := payload.PageSize
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 500 {
+		pageSize = 500
+	}
+	endAt := payload.EndAt
+	if endAt <= 0 {
+		endAt = time.Now().UnixMilli()
+	}
+	startAt := payload.StartAt
+	if startAt <= 0 || startAt >= endAt {
+		startAt = time.UnixMilli(endAt).Add(-24 * time.Hour).UnixMilli()
+	}
+	query := strings.TrimSpace(payload.Query)
+	if query == "" {
+		query = "*"
+	}
+	form := url.Values{}
+	form.Set("query", query)
+	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
+	form.Set("end", time.UnixMilli(endAt).UTC().Format(time.RFC3339Nano))
+	form.Set("limit", strconv.Itoa(pageSize))
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/query", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	applyMonitorDatasourceAuth(request, ds)
+	startedAt := time.Now()
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("VictoriaLogs 查询失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	items := make([]map[string]any, 0)
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var source map[string]any
+		if err := json.Unmarshal([]byte(line), &source); err != nil {
+			return nil, fmt.Errorf("解析 VictoriaLogs 返回记录失败: %w", err)
+		}
+		items = append(items, formatMonitorLogItem(source, "", ""))
+	}
+	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
+	if total == 0 && len(items) > 0 {
+		total = int64(len(items))
+	}
+	return map[string]any{
+		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
+		"startAt": startAt, "endAt": endAt,
+	}, nil
+}
+
+func (s *Service) victoriaLogsHistogram(ds model.MonitorDatasource, query string, startAt, endAt int64) ([]map[string]any, int64) {
+	form := url.Values{}
+	form.Set("query", query)
+	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
+	form.Set("end", time.UnixMilli(endAt).UTC().Format(time.RFC3339Nano))
+	step := int64(60)
+	if span := (endAt - startAt) / 1000 / 60; span > 60 {
+		step = span
+	}
+	form.Set("step", strconv.FormatInt(step, 10)+"s")
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/hits", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, 0
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+	if err != nil {
+		return nil, 0
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, 0
+	}
+	var result struct {
+		Hits []struct {
+			Timestamps []string `json:"timestamps"`
+			Values     []int64  `json:"values"`
+			Total      int64    `json:"total"`
+		} `json:"hits"`
+	}
+	if json.Unmarshal(body, &result) != nil {
+		return nil, 0
+	}
+	bucketCounts := map[string]int64{}
+	var total int64
+	for _, group := range result.Hits {
+		total += group.Total
+		for i, timestamp := range group.Timestamps {
+			if i < len(group.Values) {
+				bucketCounts[timestamp] += group.Values[i]
+			}
+		}
+	}
+	timestamps := make([]string, 0, len(bucketCounts))
+	for timestamp := range bucketCounts {
+		timestamps = append(timestamps, timestamp)
+	}
+	sort.Strings(timestamps)
+	buckets := make([]map[string]any, 0, len(timestamps))
+	for _, timestamp := range timestamps {
+		parsed, err := time.Parse(time.RFC3339Nano, timestamp)
+		key := int64(0)
+		if err == nil {
+			key = parsed.UnixMilli()
+		}
+		buckets = append(buckets, map[string]any{
+			"key": key, "key_as_string": timestamp, "doc_count": bucketCounts[timestamp],
+		})
+	}
+	return buckets, total
+}
+
+func formatMonitorLogItem(source map[string]any, index, id string) map[string]any {
+	rawMessage := cleanMonitorLogMessage(firstNonEmpty(
+		monitorLogFieldValue(source, "_msg"), monitorLogFieldValue(source, "message"), monitorLogFieldValue(source, "log"),
+	))
+	messageFields := parseMonitorLogMessage(rawMessage)
+	level := firstNonEmpty(monitorLogFieldValue(source, "level"), messageFields["level"], detectMonitorLogLevel(rawMessage))
+	return map[string]any{
+		"index": index, "id": id,
+		"timestamp": firstNonEmpty(monitorLogFieldValue(source, "_time"), monitorLogFieldValue(source, "@timestamp"), monitorLogFieldValue(source, "timestamp")),
+		"namespace": firstNonEmpty(monitorLogFieldValue(source, "kubernetes.pod_namespace"), monitorLogFieldValue(source, "namespace")),
+		"pod":       firstNonEmpty(monitorLogFieldValue(source, "kubernetes.pod_name"), monitorLogFieldValue(source, "pod")),
+		"container": firstNonEmpty(monitorLogFieldValue(source, "kubernetes.container_name"), monitorLogFieldValue(source, "container")),
+		"level":     level, "message": messageFields["content"], "messageRaw": rawMessage,
+		"logTime": messageFields["timestamp"], "processId": messageFields["processId"], "thread": messageFields["thread"], "logger": messageFields["logger"], "source": source,
+	}
+}
+
+func monitorLogFieldValue(source map[string]any, path string) string {
+	if value, ok := source[path]; ok {
+		return monitorSourceString(value)
+	}
+	current := any(source)
+	for _, part := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current = object[part]
+	}
+	return monitorSourceString(current)
+}
+
+func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+	if datasourceID == 0 {
+		return nil, errors.New("请选择 VictoriaLogs 数据源")
+	}
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeMonitorDatasourceType(ds.Type) != "victorialogs" {
+		return nil, errors.New("当前数据源不是 VictoriaLogs")
+	}
+	field = firstNonEmpty(strings.TrimSpace(field), "kafka_topic")
+	end := time.UnixMilli(endAt)
+	if endAt <= 0 {
+		end = time.Now()
+	}
+	start := time.UnixMilli(startAt)
+	if startAt <= 0 || startAt >= end.UnixMilli() {
+		start = end.Add(-time.Hour)
+	}
+	logsQL := strings.TrimSpace(query)
+	if logsQL == "" {
+		logsQL = "*"
+	}
+	form := url.Values{}
+	form.Set("query", logsQL)
+	form.Set("field", field)
+	form.Set("start", start.UTC().Format(time.RFC3339Nano))
+	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/field_values", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	applyMonitorDatasourceAuth(request, *ds)
+	response, err := (&http.Client{Timeout: 20 * time.Second}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("获取 VictoriaLogs Stream 失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var raw struct {
+		Values []struct {
+			Value string `json:"value"`
+			Hits  int64  `json:"hits"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(raw.Values))
+	for _, item := range raw.Values {
+		if strings.TrimSpace(item.Value) == "" {
+			continue
+		}
+		items = append(items, map[string]any{"value": item.Value, "hits": item.Hits, "field": field})
+	}
+	return items, nil
 }
 
 func (s *Service) ListMonitorElasticsearchIndices(datasourceID uint) ([]map[string]any, error) {
@@ -1036,6 +1307,104 @@ func (s *Service) DeleteMonitorLogShortcut(owner string, id uint) error {
 		return errors.New("快捷语句不存在或无权删除")
 	}
 	return nil
+}
+
+func (s *Service) ListMonitorLogShortcutsByType(owner, datasourceType string) ([]model.MonitorLogShortcut, error) {
+	owner = firstNonEmpty(strings.TrimSpace(owner), "admin")
+	datasourceType = normalizeLogShortcutDatasourceType(datasourceType)
+	query := s.db.Where("owner = ?", owner)
+	if datasourceType == "victorialogs" {
+		query = query.Where("datasource_type = ?", datasourceType)
+	} else {
+		query = query.Where("datasource_type = ? OR datasource_type = ''", datasourceType)
+	}
+	var count int64
+	if err := query.Model(&model.MonitorLogShortcut{}).Count(&count).Error; err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		defaults := monitorLogShortcutDefaults(datasourceType)
+		items := make([]model.MonitorLogShortcut, 0, len(defaults))
+		for i, item := range defaults {
+			items = append(items, model.MonitorLogShortcut{Owner: owner, DatasourceType: datasourceType, Name: item.name, Query: item.query, IndexName: item.indexName, TimeRange: item.timeRange, Sort: i + 1})
+		}
+		if len(items) > 0 {
+			if err := s.db.Create(&items).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	query = s.db.Where("owner = ?", owner)
+	if datasourceType == "victorialogs" {
+		query = query.Where("datasource_type = ?", datasourceType)
+	} else {
+		query = query.Where("datasource_type = ? OR datasource_type = ''", datasourceType)
+	}
+	var list []model.MonitorLogShortcut
+	if err := query.Order("sort ASC, id ASC").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (s *Service) SaveMonitorLogShortcutByType(owner string, payload MonitorLogShortcutPayload) error {
+	if strings.TrimSpace(payload.Name) == "" {
+		return errors.New("快捷语句名称不能为空")
+	}
+	owner = firstNonEmpty(strings.TrimSpace(owner), "admin")
+	datasourceType := normalizeLogShortcutDatasourceType(payload.DatasourceType)
+	updates := map[string]any{
+		"datasource_type": datasourceType,
+		"name":            Trimmed(payload.Name),
+		"query":           strings.TrimSpace(payload.Query),
+		"index_name":      firstNonEmpty(strings.TrimSpace(payload.IndexName), "_all"),
+		"time_range":      firstNonEmpty(strings.TrimSpace(payload.TimeRange), "1h"),
+		"sort":            payload.Sort,
+	}
+	if payload.ID > 0 {
+		return s.db.Model(&model.MonitorLogShortcut{}).Where("id = ? AND owner = ?", payload.ID, owner).Updates(updates).Error
+	}
+	return s.db.Create(&model.MonitorLogShortcut{Owner: owner, DatasourceType: datasourceType, Name: updates["name"].(string), Query: updates["query"].(string), IndexName: updates["index_name"].(string), TimeRange: updates["time_range"].(string), Sort: payload.Sort}).Error
+}
+
+type monitorLogShortcutDefault struct {
+	name, query, indexName, timeRange string
+}
+
+func normalizeLogShortcutDatasourceType(value string) string {
+	if normalizeMonitorDatasourceType(value) == "victorialogs" {
+		return "victorialogs"
+	}
+	return "elasticsearch"
+}
+
+func monitorLogShortcutDefaults(datasourceType string) []monitorLogShortcutDefault {
+	if datasourceType == "victorialogs" {
+		return []monitorLogShortcutDefault{
+			{"全部日志", "*", "_all", "1h"},
+			{"错误日志", "_msg:error", "_all", "1h"},
+			{"异常与堆栈", "_msg:(Exception OR ERROR OR Caused)", "_all", "6h"},
+			{"告警与警告", "_msg:(WARN OR WARNING)", "_all", "6h"},
+			{"超时请求", "_msg:(timeout OR timed OR TimeoutException)", "_all", "6h"},
+			{"连接失败", "_msg:(connection refused OR connection reset OR connect timeout)", "_all", "6h"},
+			{"Kubernetes 重启", "_msg:(CrashLoopBackOff OR OOMKilled OR Back-off)", "_all", "24h"},
+			{"应用启动", "_msg:(Started OR application started)", "_all", "24h"},
+			{"指定命名空间", "kubernetes.pod_namespace:default", "_all", "6h"},
+			{"Kafka 错误主题", "kafka_topic:* AND _msg:error", "_all", "1h"},
+		}
+	}
+	return []monitorLogShortcutDefault{
+		{"全部日志", "", "_all", "1h"},
+		{"错误日志", "ERROR", "_all", "1h"},
+		{"异常与堆栈", "(Exception OR ERROR OR Caused\\ by)", "_all", "6h"},
+		{"告警与警告", "(WARN OR WARNING)", "_all", "6h"},
+		{"超时请求", "(timeout OR timed\\ out OR TimeoutException)", "_all", "6h"},
+		{"连接失败", "(connection\\ refused OR connection\\ reset OR connect\\ timeout)", "_all", "6h"},
+		{"Kubernetes 重启", "(CrashLoopBackOff OR OOMKilled OR Back-off\\ restarting)", "_all", "24h"},
+		{"应用启动", "(Started\\ .*Application OR application\\ started)", "_all", "24h"},
+		{"数据库慢查询", "(slow\\ query OR SlowQuery OR SQL\\ took)", "_all", "24h"},
+		{"指定命名空间", "kubernetes.pod_namespace:\"default\"", "_all", "6h"},
+	}
 }
 
 func (s *Service) elasticsearchSearch(ds model.MonitorDatasource, index string, payload map[string]any) (map[string]any, error) {
@@ -2498,8 +2867,8 @@ func (s *Service) SaveMonitorDashboardPanel(payload MonitorDashboardPanelPayload
 	if err != nil {
 		return err
 	}
-	if normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
-		return errors.New("Elasticsearch 数据源暂不支持 PromQL 监控面板，请在即时查询中使用 DSL")
+	if isMonitorLogDatasource(ds.Type) {
+		return errors.New("日志数据源不支持 PromQL 监控面板，请选择 Prometheus 或 VictoriaMetrics")
 	}
 	updates := map[string]any{
 		"dashboard_id":    payload.DashboardID,
@@ -2537,7 +2906,7 @@ func (s *Service) QueryMonitorDashboardPanel(payload MonitorDashboardPanelQueryP
 	if err != nil {
 		return nil, err
 	}
-	if normalizeMonitorDatasourceType(ds.Type) == "elasticsearch" {
+	if isMonitorLogDatasource(ds.Type) {
 		var fallback model.MonitorDatasource
 		if err := s.db.Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"}).Order("is_default DESC, id DESC").First(&fallback).Error; err != nil {
 			return nil, errors.New("监控面板仅支持 Prometheus 或 VictoriaMetrics，请先配置指标数据源")

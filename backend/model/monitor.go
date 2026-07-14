@@ -30,15 +30,16 @@ func (MonitorDatasource) TableName() string {
 }
 
 type MonitorLogShortcut struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Owner     string    `json:"owner" gorm:"size:128;not null;index"`
-	Name      string    `json:"name" gorm:"size:128;not null"`
-	Query     string    `json:"query" gorm:"type:text"`
-	IndexName string    `json:"indexName" gorm:"size:255"`
-	TimeRange string    `json:"timeRange" gorm:"size:32;default:24h"`
-	Sort      int       `json:"sort" gorm:"default:0;index"`
-	CreatedAt time.Time `json:"createTime"`
-	UpdatedAt time.Time `json:"updateTime"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	Owner          string    `json:"owner" gorm:"size:128;not null;index"`
+	DatasourceType string    `json:"datasourceType" gorm:"size:32;default:elasticsearch;index"`
+	Name           string    `json:"name" gorm:"size:128;not null"`
+	Query          string    `json:"query" gorm:"type:text"`
+	IndexName      string    `json:"indexName" gorm:"size:255"`
+	TimeRange      string    `json:"timeRange" gorm:"size:32;default:24h"`
+	Sort           int       `json:"sort" gorm:"default:0;index"`
+	CreatedAt      time.Time `json:"createTime"`
+	UpdatedAt      time.Time `json:"updateTime"`
 }
 
 func (MonitorLogShortcut) TableName() string {
