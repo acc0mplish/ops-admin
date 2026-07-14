@@ -160,7 +160,7 @@ func seedMenus(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	configMenu, err := ensureMenu(db, model.Menu{ParentID: systemRoot.ID, MenuName: "基础配置", MenuType: 2, URL: "/system/basic-config", Value: "system:config:view", MenuStatus: 1, Sort: 6, Icon: "Tools"})
+	configMenu, err := ensureMenu(db, model.Menu{ParentID: systemRoot.ID, MenuName: "系统设置", MenuType: 2, URL: "/system/settings", Value: "system:config:view", MenuStatus: 1, Sort: 6, Icon: "Tools"})
 	if err != nil {
 		return err
 	}
@@ -179,6 +179,7 @@ func seedMenus(db *gorm.DB) error {
 		{ParentID: adminMenu.ID, MenuName: "删除用户", MenuType: 3, Value: "system:admin:delete", MenuStatus: 1, Sort: 3},
 		{ParentID: adminMenu.ID, MenuName: "切换状态", MenuType: 3, Value: "system:admin:status", MenuStatus: 1, Sort: 4},
 		{ParentID: adminMenu.ID, MenuName: "重置密码", MenuType: 3, Value: "system:admin:resetpwd", MenuStatus: 1, Sort: 5},
+		{ParentID: adminMenu.ID, MenuName: "同步 LDAP 用户", MenuType: 3, Value: "system:admin:ldapSync", MenuStatus: 1, Sort: 6},
 
 		{ParentID: roleMenu.ID, MenuName: "新增角色", MenuType: 3, Value: "system:role:add", MenuStatus: 1, Sort: 1},
 		{ParentID: roleMenu.ID, MenuName: "编辑角色", MenuType: 3, Value: "system:role:edit", MenuStatus: 1, Sort: 2},
@@ -200,6 +201,7 @@ func seedMenus(db *gorm.DB) error {
 		{ParentID: postMenu.ID, MenuName: "切换状态", MenuType: 3, Value: "system:post:status", MenuStatus: 1, Sort: 4},
 
 		{ParentID: configMenu.ID, MenuName: "保存配置", MenuType: 3, Value: "system:config:save", MenuStatus: 1, Sort: 1},
+		{ParentID: configMenu.ID, MenuName: "配置 LDAP 集成", MenuType: 3, Value: "system:config:ldap", MenuStatus: 1, Sort: 2},
 
 		{ParentID: loginLogMenu.ID, MenuName: "删除登录日志", MenuType: 3, Value: "system:loginlog:delete", MenuStatus: 1, Sort: 1},
 		{ParentID: loginLogMenu.ID, MenuName: "清空登录日志", MenuType: 3, Value: "system:loginlog:clean", MenuStatus: 1, Sort: 2},

@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { addAdmin, adminInfo, adminUpdate, deleteAdmin, queryAdminList, queryDeptList, querySysPostVoList, querySysRoleVoList, resetPassword, updateAdminStatus } from '../../api/system'
+import { addAdmin, adminInfo, adminUpdate, deleteAdmin, previewLDAPUsers, queryAdminList, queryDeptList, querySysPostVoList, querySysRoleVoList, resetPassword, syncLDAPUsers, updateAdminStatus } from '../../api/system'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -11,6 +11,12 @@ const total = ref(0)
 const roles = ref([])
 const depts = ref([])
 const posts = ref([])
+const ldapDialogVisible = ref(false)
+const ldapLoading = ref(false)
+const ldapSyncing = ref(false)
+const ldapKeyword = ref('')
+const ldapUsers = ref([])
+const selectedLDAPUsers = ref([])
 
 const query = reactive({
   pageNum: 1,
@@ -115,6 +121,39 @@ async function handleResetPassword(row) {
   ElMessage.success('密码已重置为 123456')
 }
 
+async function openLDAPSync() {
+  ldapDialogVisible.value = true
+  ldapKeyword.value = ''
+  selectedLDAPUsers.value = []
+  await loadLDAPUsers()
+}
+
+async function loadLDAPUsers() {
+  ldapLoading.value = true
+  try {
+    ldapUsers.value = await previewLDAPUsers(ldapKeyword.value) || []
+    selectedLDAPUsers.value = []
+  } finally {
+    ldapLoading.value = false
+  }
+}
+
+async function submitLDAPSync() {
+  if (!selectedLDAPUsers.value.length) {
+    ElMessage.warning('请至少选择一个 LDAP 用户')
+    return
+  }
+  ldapSyncing.value = true
+  try {
+    const result = await syncLDAPUsers(selectedLDAPUsers.value)
+    ElMessage.success(`LDAP 同步完成：新增 ${result.created || 0}，更新 ${result.updated || 0}`)
+    ldapDialogVisible.value = false
+    await loadData()
+  } finally {
+    ldapSyncing.value = false
+  }
+}
+
 onMounted(async () => {
   await loadOptions()
   await loadData()
@@ -134,6 +173,7 @@ onMounted(async () => {
         <el-button type="primary" @click="loadData">查询</el-button>
       </div>
       <div class="toolbar-right">
+        <el-button v-permission="'system:admin:ldapSync'" @click="openLDAPSync">从 LDAP 同步</el-button>
         <el-button v-permission="'system:admin:add'" type="primary" @click="openCreate">新增用户</el-button>
       </div>
     </div>
@@ -193,5 +233,31 @@ onMounted(async () => {
         <el-button :type="'primary'" @click="submit">{{ isEdit ? '保存' : '创建' }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="ldapDialogVisible" title="从 LDAP 同步用户" width="900px" destroy-on-close>
+      <div class="ldap-dialog-tip">先从目录服务预览用户，再勾选同步。已有本地用户仅更新昵称、邮箱和手机号，不会覆盖密码、角色与状态。</div>
+      <div class="ldap-toolbar">
+        <el-input v-model="ldapKeyword" placeholder="按用户名过滤 LDAP 用户" clearable @keyup.enter="loadLDAPUsers" />
+        <el-button :loading="ldapLoading" @click="loadLDAPUsers">查询 LDAP</el-button>
+      </div>
+      <el-table v-loading="ldapLoading" :data="ldapUsers" row-key="username" @selection-change="(rows) => { selectedLDAPUsers = rows.map((item) => item.username) }">
+        <el-table-column type="selection" width="52" :reserve-selection="true" />
+        <el-table-column prop="username" label="用户名" min-width="160" />
+        <el-table-column prop="nickname" label="显示名" min-width="160" />
+        <el-table-column prop="email" label="邮箱" min-width="210" />
+        <el-table-column prop="phone" label="手机号" min-width="150" />
+        <el-table-column prop="dn" label="DN" min-width="260" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="ldapDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="ldapSyncing" @click="submitLDAPSync">同步已选用户（{{ selectedLDAPUsers.length }}）</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.ldap-dialog-tip { margin-bottom: 14px; padding: 11px 13px; color: #486283; background: #f2f7ff; border: 1px solid #dce9ff; border-radius: 6px; }
+.ldap-toolbar { display: flex; gap: 12px; margin-bottom: 14px; }
+.ldap-toolbar .el-input { width: 320px; }
+</style>

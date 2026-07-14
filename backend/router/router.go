@@ -41,6 +41,11 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/systemConfig", ctl.GetSystemConfig)
 		authGroup.PUT("/systemConfig", ctl.UpdateSystemConfig)
 		authGroup.POST("/systemConfig/upload", ctl.UploadSystemAsset)
+		authGroup.GET("/system/ldap/config", ctl.GetLDAPConfig)
+		authGroup.PUT("/system/ldap/config", ctl.SaveLDAPConfig)
+		authGroup.POST("/system/ldap/test", ctl.TestLDAPConfig)
+		authGroup.GET("/admin/ldap/users", ctl.PreviewLDAPUsers)
+		authGroup.POST("/admin/ldap/sync", ctl.SyncLDAPUsers)
 
 		authGroup.GET("/admin/list", ctl.GetSysAdminList)
 		authGroup.GET("/admin/info", ctl.GetSysAdminInfo)

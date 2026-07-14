@@ -18,6 +18,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.LoginLog{},
 		&model.OperationLog{},
 		&model.SystemConfig{},
+		&model.LDAPConfig{},
 		&model.AssetHostGroup{},
 		&model.AssetHostGroupRelation{},
 		&model.AssetCredential{},

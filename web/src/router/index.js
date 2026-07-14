@@ -11,7 +11,7 @@ import Dept from '../views/system/Dept.vue'
 import Post from '../views/system/Post.vue'
 import LoginLog from '../views/system/LoginLog.vue'
 import OperationLog from '../views/system/OperationLog.vue'
-import BasicConfig from '../views/system/BasicConfig.vue'
+import SystemSettings from '../views/system/SystemSettings.vue'
 import Host from '../views/assets/Host.vue'
 import HostGroup from '../views/assets/HostGroup.vue'
 import Credential from '../views/assets/Credential.vue'
@@ -85,7 +85,8 @@ const routes = [
       { path: '/system/menu', component: Menu, meta: { title: '菜单信息', app: 'console' } },
       { path: '/system/dept', component: Dept, meta: { title: '部门信息', app: 'console' } },
       { path: '/system/post', component: Post, meta: { title: '岗位信息', app: 'console' } },
-      { path: '/system/basic-config', component: BasicConfig, meta: { title: '基础配置', app: 'console' } },
+      { path: '/system/settings', component: SystemSettings, meta: { title: '系统设置', app: 'console' } },
+      { path: '/system/basic-config', redirect: '/system/settings' },
       { path: '/logs/login', component: LoginLog, meta: { title: '登录日志', app: 'console' } },
       { path: '/logs/operation', component: OperationLog, meta: { title: '操作日志', app: 'console' } },
 
