@@ -417,6 +417,22 @@ export const appDefinitions = [
     ]
   },
   {
+    key: 'integration',
+    name: '集成中心',
+    labelKey: 'appIntegration',
+    icon: 'Grid',
+    defaultRoute: '/integration/navigation',
+    menus: [
+      {
+        title: '导航管理',
+        titleKey: 'integrationNavigation',
+        path: '/integration/navigation',
+        icon: 'Grid',
+        children: []
+      }
+    ]
+  },
+  {
     key: 'monitor',
     name: '监控中心',
     labelKey: 'appMonitor',
@@ -516,6 +532,9 @@ export function getAppByRoute(path) {
   }
   if (path.startsWith('/monitor')) {
     return getAppByKey('monitor')
+  }
+  if (path.startsWith('/integration')) {
+    return getAppByKey('integration')
   }
   return getAppByKey('console')
 }

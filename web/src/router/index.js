@@ -61,6 +61,8 @@ import MonitorSilenceRule from '../views/monitor/MonitorSilenceRule.vue'
 import MonitorAggregationRule from '../views/monitor/MonitorAggregationRule.vue'
 import MonitorDashboard from '../views/monitor/MonitorDashboard.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
+import IntegrationNavigation from '../views/integration/IntegrationNavigation.vue'
+import PublicNavigation from '../views/integration/PublicNavigation.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
@@ -73,6 +75,7 @@ const moduleCards = {
 
 const routes = [
   { path: '/login', component: Login, meta: { title: '登录' } },
+  { path: '/public/navigation/:token', component: PublicNavigation, meta: { title: '公开导航', public: true } },
   {
     path: '/',
     component: MainLayout,
@@ -89,6 +92,12 @@ const routes = [
       { path: '/system/basic-config', redirect: '/system/settings' },
       { path: '/logs/login', component: LoginLog, meta: { title: '登录日志', app: 'console' } },
       { path: '/logs/operation', component: OperationLog, meta: { title: '操作日志', app: 'console' } },
+
+      {
+        path: '/integration/navigation',
+        component: IntegrationNavigation,
+        meta: { title: '导航管理', app: 'integration', summary: '按组维护常用系统入口，并可生成免登录公开导航。' }
+      },
 
       {
         path: '/assets/overview',
@@ -459,6 +468,10 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  if (to.meta.public) {
+    next()
+    return
+  }
   if (to.path === '/login') {
     if (getToken()) {
       next('/dashboard')

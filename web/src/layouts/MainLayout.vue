@@ -20,6 +20,7 @@ import { applySystemTheme, getSystemConfig, resolveSystemAsset, setSystemConfig 
 const route = useRoute()
 const router = useRouter()
 const TAGS_KEY = 'ops-admin-tags-view'
+const MAX_TAG_VIEWS = 10
 
 const user = ref(getUser())
 const rawMenus = ref(getMenus())
@@ -66,11 +67,11 @@ function loadTags() {
   try {
     const parsed = JSON.parse(raw)
     const source = Array.isArray(parsed) && parsed.length ? parsed : defaults
-    return source.map((item) => ({
+    return trimTagViews(source.map((item) => ({
       ...item,
       title: translateRoute(item.path, item.title),
       affix: isPinnedTag(item)
-    }))
+    })))
   } catch {
     return defaults
   }
@@ -85,6 +86,21 @@ function saveTags() {
 
 function isPinnedTag(tag) {
   return tag?.path === '/dashboard'
+}
+
+function trimTagViews(tags, protectedPath = '') {
+  const result = [...tags]
+  while (result.length > MAX_TAG_VIEWS) {
+    let removeIndex = result.findIndex((item) => !isPinnedTag(item) && item.path !== protectedPath)
+    if (removeIndex === -1) {
+      removeIndex = result.findIndex((item) => !isPinnedTag(item))
+    }
+    if (removeIndex === -1) {
+      break
+    }
+    result.splice(removeIndex, 1)
+  }
+  return result
 }
 
 function normalizeBackendMenus(raw) {
@@ -213,6 +229,7 @@ function ensureTag(path, title) {
     path,
     affix: path === '/dashboard'
   })
+  tagViews.value = trimTagViews(tagViews.value, path)
   saveTags()
 }
 

@@ -30,6 +30,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	{
 		api.POST("/login", ctl.Login)
 		api.GET("/systemConfig/public", ctl.GetSystemConfig)
+		api.GET("/integration/public/:token", ctl.GetPublicIntegrationNavigation)
 		api.GET("/asset/terminal/ws", ctl.AssetTerminalWS)
 		api.GET("/k8s/pod/terminal/ws", ctl.K8sPodTerminalWS)
 	}
@@ -44,6 +45,13 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/system/ldap/config", ctl.GetLDAPConfig)
 		authGroup.PUT("/system/ldap/config", ctl.SaveLDAPConfig)
 		authGroup.POST("/system/ldap/test", ctl.TestLDAPConfig)
+		authGroup.GET("/integration/navigation/group/list", ctl.GetIntegrationNavigationGroupList)
+		authGroup.POST("/integration/navigation/group/save", ctl.SaveIntegrationNavigationGroup)
+		authGroup.DELETE("/integration/navigation/group/delete", ctl.DeleteIntegrationNavigationGroup)
+		authGroup.POST("/integration/navigation/group/token", ctl.RegenerateIntegrationPublicToken)
+		authGroup.GET("/integration/navigation/list", ctl.GetIntegrationNavigationList)
+		authGroup.POST("/integration/navigation/save", ctl.SaveIntegrationNavigation)
+		authGroup.DELETE("/integration/navigation/delete", ctl.DeleteIntegrationNavigation)
 		authGroup.GET("/admin/ldap/users", ctl.PreviewLDAPUsers)
 		authGroup.POST("/admin/ldap/sync", ctl.SyncLDAPUsers)
 

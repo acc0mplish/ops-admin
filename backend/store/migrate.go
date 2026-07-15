@@ -69,6 +69,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MonitorQueryHistory{},
 		&model.MonitorDashboard{},
 		&model.MonitorDashboardPanel{},
+		&model.IntegrationNavigationGroup{},
+		&model.IntegrationNavigation{},
 	); err != nil {
 		return err
 	}
