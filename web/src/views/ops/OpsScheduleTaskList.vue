@@ -59,7 +59,8 @@ const form = reactive({
   description: '',
   status: 1,
   notifyEnabled: false,
-  notifyRuleId: undefined
+  notifyRuleId: undefined,
+  notifyOnFailureOnly: false
 })
 
 const selectedScriptTimeout = computed(() => {
@@ -88,7 +89,8 @@ function resetForm() {
     description: '',
     status: 1,
     notifyEnabled: false,
-    notifyRuleId: undefined
+    notifyRuleId: undefined,
+    notifyOnFailureOnly: false
   })
 }
 
@@ -182,7 +184,8 @@ async function openEdit(row) {
     description: data.description || '',
     status: data.status || 1,
     notifyEnabled: !!data.notifyEnabled,
-    notifyRuleId: data.notifyRuleId || undefined
+    notifyRuleId: data.notifyRuleId || undefined,
+    notifyOnFailureOnly: !!data.notifyOnFailureOnly
   })
   dialogVisible.value = true
 }
@@ -210,7 +213,8 @@ async function handleCopy(row) {
     description: data.description || '',
     status: data.status || 1,
     notifyEnabled: !!data.notifyEnabled,
-    notifyRuleId: data.notifyRuleId || undefined
+    notifyRuleId: data.notifyRuleId || undefined,
+    notifyOnFailureOnly: !!data.notifyOnFailureOnly
   })
   dialogVisible.value = true
 }
@@ -256,7 +260,8 @@ function buildPayload() {
     description: form.description,
     status: form.status,
     notifyEnabled: form.notifyEnabled,
-    notifyRuleId: form.notifyEnabled ? form.notifyRuleId : undefined
+    notifyRuleId: form.notifyEnabled ? form.notifyRuleId : undefined,
+    notifyOnFailureOnly: form.notifyEnabled && form.notifyOnFailureOnly
   }
 }
 
@@ -477,6 +482,12 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col v-if="form.notifyEnabled" :span="24">
+            <el-form-item label="通知策略">
+              <el-switch v-model="form.notifyOnFailureOnly" active-text="仅失败时通知" inactive-text="每次执行后通知" />
+              <span class="form-tip">开启后，只有执行失败或 HTTP 状态码不符合预期时才发送通知。</span>
+            </el-form-item>
+          </el-col>
 
           <template v-if="form.taskType === 'script'">
             <el-col :span="12">
@@ -578,4 +589,5 @@ onMounted(async () => {
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .toolbar-left, .toolbar-right { display: flex; gap: 12px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; }
+.form-tip { margin-left: 12px; color: #8694ad; font-size: 13px; }
 </style>

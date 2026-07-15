@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,26 +35,27 @@ type OpsScheduleTemplatePayload struct {
 }
 
 type OpsScheduleTaskPayload struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	TaskType       string `json:"taskType"`
-	TemplateID     uint   `json:"templateId"`
-	ScriptID       uint   `json:"scriptId"`
-	Parameters     string `json:"parameters"`
-	HostIDs        []uint `json:"hostIds"`
-	GroupIDs       []uint `json:"groupIds"`
-	Concurrency    int    `json:"concurrency"`
-	HTTPMethod     string `json:"httpMethod"`
-	URL            string `json:"url"`
-	HeadersJSON    string `json:"headersJson"`
-	Body           string `json:"body"`
-	ExpectedStatus int    `json:"expectedStatus"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
-	CronExpr       string `json:"cronExpr"`
-	Description    string `json:"description"`
-	Status         int    `json:"status"`
-	NotifyEnabled  bool   `json:"notifyEnabled"`
-	NotifyRuleID   uint   `json:"notifyRuleId"`
+	ID                  uint   `json:"id"`
+	Name                string `json:"name"`
+	TaskType            string `json:"taskType"`
+	TemplateID          uint   `json:"templateId"`
+	ScriptID            uint   `json:"scriptId"`
+	Parameters          string `json:"parameters"`
+	HostIDs             []uint `json:"hostIds"`
+	GroupIDs            []uint `json:"groupIds"`
+	Concurrency         int    `json:"concurrency"`
+	HTTPMethod          string `json:"httpMethod"`
+	URL                 string `json:"url"`
+	HeadersJSON         string `json:"headersJson"`
+	Body                string `json:"body"`
+	ExpectedStatus      int    `json:"expectedStatus"`
+	TimeoutSeconds      int    `json:"timeoutSeconds"`
+	CronExpr            string `json:"cronExpr"`
+	Description         string `json:"description"`
+	Status              int    `json:"status"`
+	NotifyEnabled       bool   `json:"notifyEnabled"`
+	NotifyRuleID        uint   `json:"notifyRuleId"`
+	NotifyOnFailureOnly bool   `json:"notifyOnFailureOnly"`
 }
 
 type OpsScheduleTaskStatusPayload struct {
@@ -228,33 +230,34 @@ func (s *Service) removeOpsScheduleTask(taskID uint) {
 
 func mapScheduleTaskItem(item model.OpsScheduleTask) map[string]any {
 	return map[string]any{
-		"id":             item.ID,
-		"name":           item.Name,
-		"taskType":       item.TaskType,
-		"templateId":     item.TemplateID,
-		"scriptId":       item.ScriptID,
-		"scriptName":     item.ScriptName,
-		"parameters":     item.Parameters,
-		"hostIds":        decodeUintList(item.HostIDsJSON),
-		"groupIds":       decodeUintList(item.GroupIDsJSON),
-		"concurrency":    item.Concurrency,
-		"httpMethod":     item.HTTPMethod,
-		"url":            item.URL,
-		"headersJson":    firstNonEmpty(item.HeadersJSON, "{}"),
-		"body":           item.Body,
-		"expectedStatus": item.ExpectedStatus,
-		"timeoutSeconds": item.TimeoutSeconds,
-		"cronExpr":       item.CronExpr,
-		"description":    item.Description,
-		"status":         item.Status,
-		"notifyEnabled":  item.NotifyEnabled,
-		"notifyRuleId":   item.NotifyRuleID,
-		"lastStatus":     item.LastStatus,
-		"lastSummary":    item.LastSummary,
-		"lastRunAt":      item.LastRunAt,
-		"nextRunAt":      item.NextRunAt,
-		"createTime":     item.CreatedAt,
-		"updateTime":     item.UpdatedAt,
+		"id":                  item.ID,
+		"name":                item.Name,
+		"taskType":            item.TaskType,
+		"templateId":          item.TemplateID,
+		"scriptId":            item.ScriptID,
+		"scriptName":          item.ScriptName,
+		"parameters":          item.Parameters,
+		"hostIds":             decodeUintList(item.HostIDsJSON),
+		"groupIds":            decodeUintList(item.GroupIDsJSON),
+		"concurrency":         item.Concurrency,
+		"httpMethod":          item.HTTPMethod,
+		"url":                 item.URL,
+		"headersJson":         firstNonEmpty(item.HeadersJSON, "{}"),
+		"body":                item.Body,
+		"expectedStatus":      item.ExpectedStatus,
+		"timeoutSeconds":      item.TimeoutSeconds,
+		"cronExpr":            item.CronExpr,
+		"description":         item.Description,
+		"status":              item.Status,
+		"notifyEnabled":       item.NotifyEnabled,
+		"notifyRuleId":        item.NotifyRuleID,
+		"notifyOnFailureOnly": item.NotifyOnFailureOnly,
+		"lastStatus":          item.LastStatus,
+		"lastSummary":         item.LastSummary,
+		"lastRunAt":           item.LastRunAt,
+		"nextRunAt":           item.NextRunAt,
+		"createTime":          item.CreatedAt,
+		"updateTime":          item.UpdatedAt,
 	}
 }
 
@@ -341,25 +344,26 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 	}
 
 	updates := map[string]any{
-		"name":            name,
-		"task_type":       taskType,
-		"template_id":     payload.TemplateID,
-		"parameters":      strings.TrimSpace(payload.Parameters),
-		"host_ids_json":   encodeUintList(payload.HostIDs),
-		"group_ids_json":  encodeUintList(payload.GroupIDs),
-		"concurrency":     normalizeOpsConcurrency(payload.Concurrency),
-		"http_method":     normalizeHTTPMethod(payload.HTTPMethod),
-		"url":             strings.TrimSpace(payload.URL),
-		"headers_json":    headersJSON,
-		"body":            payload.Body,
-		"expected_status": normalizeExpectedStatus(payload.ExpectedStatus),
-		"timeout_seconds": normalizeOpsTimeout(payload.TimeoutSeconds),
-		"cron_expr":       normalizeCronExpr(payload.CronExpr),
-		"description":     Trimmed(payload.Description),
-		"status":          normalizeScheduleStatus(payload.Status),
-		"notify_enabled":  payload.NotifyEnabled,
-		"notify_rule_id":  payload.NotifyRuleID,
-		"next_run_at":     nil,
+		"name":                   name,
+		"task_type":              taskType,
+		"template_id":            payload.TemplateID,
+		"parameters":             strings.TrimSpace(payload.Parameters),
+		"host_ids_json":          encodeUintList(payload.HostIDs),
+		"group_ids_json":         encodeUintList(payload.GroupIDs),
+		"concurrency":            normalizeOpsConcurrency(payload.Concurrency),
+		"http_method":            normalizeHTTPMethod(payload.HTTPMethod),
+		"url":                    strings.TrimSpace(payload.URL),
+		"headers_json":           headersJSON,
+		"body":                   payload.Body,
+		"expected_status":        normalizeExpectedStatus(payload.ExpectedStatus),
+		"timeout_seconds":        normalizeOpsTimeout(payload.TimeoutSeconds),
+		"cron_expr":              normalizeCronExpr(payload.CronExpr),
+		"description":            Trimmed(payload.Description),
+		"status":                 normalizeScheduleStatus(payload.Status),
+		"notify_enabled":         payload.NotifyEnabled,
+		"notify_rule_id":         payload.NotifyRuleID,
+		"notify_on_failure_only": payload.NotifyOnFailureOnly,
+		"next_run_at":            nil,
 	}
 
 	switch taskType {
@@ -736,7 +740,8 @@ func (s *Service) executeScheduledTask(taskID uint, triggerType string) {
 		"last_run_at":  &finishedAt,
 		"next_run_at":  nextRunAt,
 	}).Error
-	if task.NotifyEnabled && task.NotifyRuleID > 0 {
+	if task.NotifyEnabled && task.NotifyRuleID > 0 && (!task.NotifyOnFailureOnly || !strings.EqualFold(status, "success")) {
+		duration := finishedAt.Sub(startedAt)
 		s.DispatchNotifyRule(task.NotifyRuleID, NotifyEvent{
 			Scope:      "schedule",
 			Event:      status,
@@ -744,16 +749,82 @@ func (s *Service) executeScheduledTask(taskID uint, triggerType string) {
 			TargetName: task.Name,
 			Status:     status,
 			Summary:    summary,
-			Detail:     detail,
+			// The execution log keeps the complete response body. Notifications
+			// intentionally use a compact result, otherwise a successful HTTP
+			// probe can push an entire HTML page into chat.
+			Detail:     compactScheduleNotifyDetail(task, status, detail, httpCode),
 			StartedAt:  &startedAt,
 			FinishedAt: &finishedAt,
 			Extra: map[string]string{
-				"taskType":    task.TaskType,
-				"triggerType": triggerType,
-				"cronExpr":    task.CronExpr,
+				"taskName":       task.Name,
+				"taskType":       scheduleTaskTypeLabel(task.TaskType),
+				"triggerType":    scheduleTriggerTypeLabel(triggerType),
+				"cronExpr":       task.CronExpr,
+				"duration":       formatScheduleDuration(duration),
+				"durationMs":     fmt.Sprintf("%d", duration.Milliseconds()),
+				"httpStatus":     formatScheduleHTTPStatus(httpCode),
+				"expectedStatus": fmt.Sprintf("%d", normalizeExpectedStatus(task.ExpectedStatus)),
+				"alertName":      task.Name,
+				"severity":       "定时任务",
 			},
 		})
 	}
+}
+
+func compactScheduleNotifyDetail(task model.OpsScheduleTask, status, detail string, httpCode int) string {
+	if task.TaskType == "http" {
+		return scheduleHTTPNotifyDetail(status, httpCode, normalizeExpectedStatus(task.ExpectedStatus))
+	}
+	return trimNotifyText(detail, 1200)
+}
+
+func scheduleHTTPNotifyDetail(status string, httpCode, expectedStatus int) string {
+	if strings.EqualFold(status, "success") {
+		return fmt.Sprintf("HTTP 探针返回 %d，符合预期状态码 %d。", httpCode, expectedStatus)
+	}
+	if httpCode > 0 {
+		return fmt.Sprintf("HTTP 探针返回 %d，未达到预期状态码 %d。完整响应内容请在任务日志中查看。", httpCode, expectedStatus)
+	}
+	return "HTTP 探针请求失败。完整错误信息请在任务日志中查看。"
+}
+
+func trimNotifyText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "\n...（执行详情已截断，请在任务日志中查看完整输出）"
+}
+
+func scheduleTaskTypeLabel(value string) string {
+	if value == "http" {
+		return "HTTP 探针"
+	}
+	return "脚本任务"
+}
+
+func scheduleTriggerTypeLabel(value string) string {
+	if value == "manual" {
+		return "手动执行"
+	}
+	return "定时触发"
+}
+
+func formatScheduleDuration(value time.Duration) string {
+	if value < time.Second {
+		return fmt.Sprintf("%d 毫秒", value.Milliseconds())
+	}
+	return value.Round(time.Millisecond).String()
+}
+
+func formatScheduleHTTPStatus(value int) string {
+	if value <= 0 {
+		return "-"
+	}
+	return strconv.Itoa(value)
 }
 
 func nextRunTime(expr string) *time.Time {

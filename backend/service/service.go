@@ -445,8 +445,21 @@ func (s *Service) CurrentMenus(roleID uint) []map[string]any {
 
 	parentMap := map[uint][]model.Menu{}
 	roots := make([]model.Menu, 0)
+	applicationRoots := map[string]bool{
+		"/assets":       true,
+		"/ops":          true,
+		"/applications": true,
+		"/notify":       true,
+		"/monitor":      true,
+	}
 	for _, menu := range menus {
 		if menu.ParentID == 0 {
+			// Application navigation is rendered by the frontend app switcher.
+			// Keep these menus in sys_menu for role assignment, but never expose
+			// them as children of the console sidebar.
+			if applicationRoots[menu.URL] {
+				continue
+			}
 			roots = append(roots, menu)
 			continue
 		}

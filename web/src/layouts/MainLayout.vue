@@ -89,13 +89,13 @@ function isPinnedTag(tag) {
 
 function normalizeBackendMenus(raw) {
   const menuList = (raw || [])
-    .filter((item) => !isAppEntryMenu(item))
+    .filter((item) => !isAppEntryMenu(item) && !isApplicationRootPath(item.url || item.path))
     .map((item) => ({
       title: item.menuName,
       path: item.url || '',
       icon: item.icon || 'Menu',
       children: (item.menuSvoList || [])
-        .filter((child) => child.menuType !== 3 && !isAppEntryMenu(child))
+        .filter((child) => child.menuType !== 3 && !isAppEntryMenu(child) && !isApplicationRootPath(child.url || child.path))
         .map((child) => ({
           title: child.menuName,
           path: child.url || '',
@@ -146,6 +146,10 @@ function findMenuTitle(menuList, path) {
 
 function displayTitle(item) {
   return item.titleKey ? t(item.titleKey) : translateRoute(item.path, item.title)
+}
+
+function isApplicationRootPath(path) {
+  return ['/assets', '/ops', '/applications', '/notify', '/monitor'].includes(path)
 }
 
 function buildBreadcrumbs(menuList, path, fallbackTitle) {

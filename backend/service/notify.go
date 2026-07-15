@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ const (
 	notifyStatusFailed   = "failed"
 	defaultNotifyRetries = 3
 )
+
+var notifyTemplateVariablePattern = regexp.MustCompile(`{{\s*[^{}]+\s*}}`)
 
 type NotifyTemplatePayload struct {
 	ID          uint   `json:"id"`
@@ -732,24 +735,62 @@ func maxInt(value, fallback int) int {
 
 func renderNotifyTemplate(template string, event NotifyEvent) string {
 	statusColor, statusTone := notifyStatusStyle(event.Status)
-	replacer := strings.NewReplacer(
-		"{{scope}}", event.Scope,
-		"{{event}}", event.Event,
-		"{{targetId}}", fmt.Sprintf("%d", event.TargetID),
-		"{{targetName}}", event.TargetName,
-		"{{status}}", event.Status,
-		"{{summary}}", event.Summary,
-		"{{detail}}", event.Detail,
-		"{{startedAt}}", formatNotifyTime(event.StartedAt),
-		"{{finishedAt}}", formatNotifyTime(event.FinishedAt),
-		"{{statusColor}}", statusColor,
-		"{{statusTone}}", statusTone,
-	)
-	output := replacer.Replace(template)
-	for key, value := range event.Extra {
-		output = strings.ReplaceAll(output, "{{"+key+"}}", value)
+	status := event.Status
+	if normalizeNotifyScope(event.Scope) == "schedule" {
+		status = scheduleNotifyStatusLabel(event.Status)
 	}
-	return output
+	values := map[string]string{
+		"scope":       event.Scope,
+		"event":       event.Event,
+		"targetId":    fmt.Sprintf("%d", event.TargetID),
+		"targetName":  event.TargetName,
+		"status":      status,
+		"summary":     event.Summary,
+		"detail":      event.Detail,
+		"startedAt":   formatNotifyTime(event.StartedAt),
+		"finishedAt":  formatNotifyTime(event.FinishedAt),
+		"statusColor": statusColor,
+		"statusTone":  statusTone,
+		// Alert fields have sensible fallbacks for job and schedule templates.
+		// This prevents a wrongly selected template from exposing raw {{tokens}}.
+		"alertName":      event.TargetName,
+		"severity":       "-",
+		"datasourceName": "-",
+		"instance":       "-",
+		"value":          "-",
+		"threshold":      "-",
+		"taskName":       event.TargetName,
+		"taskType":       "-",
+		"triggerType":    "-",
+		"cronExpr":       "-",
+		"duration":       "-",
+		"durationMs":     "-",
+		"httpStatus":     "-",
+		"expectedStatus": "-",
+	}
+	for key, value := range event.Extra {
+		values[key] = value
+	}
+	return notifyTemplateVariablePattern.ReplaceAllStringFunc(template, func(token string) string {
+		key := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(token, "{{"), "}}"))
+		if value, ok := values[key]; ok {
+			return value
+		}
+		return "-"
+	})
+}
+
+func scheduleNotifyStatusLabel(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "success", "completed":
+		return "成功"
+	case "failed", "error":
+		return "失败"
+	case "running":
+		return "执行中"
+	default:
+		return status
+	}
 }
 
 func notifyStatusStyle(status string) (string, string) {
