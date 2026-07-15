@@ -2,6 +2,7 @@ package service
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,5 +43,41 @@ func TestParseNotifyBusinessResponse(t *testing.T) {
 func TestNotifyRetryDelay(t *testing.T) {
 	if notifyRetryDelay(1) != 10*time.Second || notifyRetryDelay(2) != 30*time.Second || notifyRetryDelay(3) != 2*time.Minute {
 		t.Fatal("unexpected retry schedule")
+	}
+}
+
+func TestRenderNotifyTemplateUsesBusinessStatusLabels(t *testing.T) {
+	job := renderNotifyTemplate("{{status}}/{{jobName}}/{{stepName}}", NotifyEvent{
+		Scope: "job", Status: "notice", TargetName: "发布作业",
+		Extra: map[string]string{"stepName": "消息通知"},
+	})
+	if job != "通知/发布作业/消息通知" {
+		t.Fatalf("unexpected job rendering: %q", job)
+	}
+	monitor := renderNotifyTemplate("{{status}}", NotifyEvent{Scope: "monitor", Status: "recovered"})
+	if monitor != "已恢复" {
+		t.Fatalf("unexpected monitor status: %q", monitor)
+	}
+}
+
+func TestNormalizeNotifyTemplateForJobRejectsMonitorLayout(t *testing.T) {
+	title, content := normalizeNotifyTemplateForEvent("【{{severity}}】{{alertName}} -- {{status}}", "实例：{{instance}}", NotifyEvent{Scope: "job"})
+	if !strings.Contains(title, "【作业通知】") || !strings.Contains(content, "{{jobHistoryId}}") {
+		t.Fatalf("monitor template was not replaced for job event: %q %q", title, content)
+	}
+}
+
+func TestNotifyTemplateScopeCompatible(t *testing.T) {
+	if !notifyTemplateScopeCompatible("all", "job") {
+		t.Fatal("通用模板应兼容作业场景")
+	}
+	if !notifyTemplateScopeCompatible("job", "job") {
+		t.Fatal("作业模板应兼容作业场景")
+	}
+	if notifyTemplateScopeCompatible("monitor", "job") {
+		t.Fatal("监控模板不应兼容作业场景")
+	}
+	if notifyTemplateScopeCompatible("job", "all") {
+		t.Fatal("具体场景模板不应绑定全部场景规则")
 	}
 }

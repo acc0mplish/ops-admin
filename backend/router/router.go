@@ -174,6 +174,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/dbms/backup/manual", ctl.RunManualDatabaseBackup)
 		authGroup.GET("/dbms/backup/record/list", ctl.GetDatabaseBackupRecordList)
 		authGroup.GET("/dbms/backup/download", ctl.DownloadDatabaseBackup)
+		authGroup.POST("/dbms/backup/import", ctl.CreateDatabaseBackupImportTask)
 
 		authGroup.GET("/ops/script/list", ctl.GetOpsScriptList)
 		authGroup.GET("/ops/script/options", ctl.GetOpsScriptOptions)

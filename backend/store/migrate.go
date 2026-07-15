@@ -1,13 +1,15 @@
 package store
 
 import (
+	"strings"
+
 	"ops-admin/backend/model"
 
 	"gorm.io/gorm"
 )
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&model.Dept{},
 		&model.Post{},
 		&model.Role{},
@@ -67,5 +69,33 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MonitorQueryHistory{},
 		&model.MonitorDashboard{},
 		&model.MonitorDashboardPanel{},
-	)
+	); err != nil {
+		return err
+	}
+
+	// Templates created before scope support are classified by their variables.
+	// Explicit generic templates remain "all".
+	legacyScopes := []struct {
+		scope   string
+		markers []string
+	}{
+		{scope: "job", markers: []string{"{{jobName}}", "{{jobHistoryId}}", "{{stepName}}"}},
+		{scope: "schedule", markers: []string{"{{taskName}}", "{{cronExpr}}", "{{durationMs}}"}},
+		{scope: "monitor", markers: []string{"{{alertName}}", "{{severity}}", "{{datasourceName}}"}},
+	}
+	for _, item := range legacyScopes {
+		conditions := make([]string, 0, len(item.markers))
+		args := make([]any, 0, len(item.markers)*2)
+		for _, marker := range item.markers {
+			conditions = append(conditions, "title LIKE ? OR content LIKE ?")
+			args = append(args, "%"+marker+"%", "%"+marker+"%")
+		}
+		query := db.Model(&model.NotifyTemplate{}).
+			Where("scope = ? OR scope = '' OR scope IS NULL", "all").
+			Where("("+strings.Join(conditions, ") OR (")+")", args...)
+		if err := query.Update("scope", item.scope).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

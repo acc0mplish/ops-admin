@@ -956,6 +956,10 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 		rawMessage := cleanMonitorLogMessage(firstNonEmpty(monitorSourceString(source["message"]), monitorSourceString(source["log"])))
 		messageFields := parseMonitorLogMessage(rawMessage)
 		level := firstNonEmpty(monitorSourceString(source["level"]), messageFields["level"], detectMonitorLogLevel(rawMessage))
+		displayMessage := messageFields["content"]
+		if opLogMessage := formatMonitorOpLogContent(source, monitorSourceString(hit["_index"]), rawMessage); opLogMessage != "" {
+			displayMessage = opLogMessage
+		}
 		items = append(items, map[string]any{
 			"index":      hit["_index"],
 			"id":         hit["_id"],
@@ -964,7 +968,7 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 			"pod":        firstNonEmpty(monitorSourceString(kubernetes["pod_name"]), monitorSourceString(source["pod"])),
 			"container":  firstNonEmpty(monitorSourceString(kubernetes["container_name"]), monitorSourceString(source["container"])),
 			"level":      level,
-			"message":    messageFields["content"],
+			"message":    displayMessage,
 			"messageRaw": rawMessage,
 			"logTime":    messageFields["timestamp"],
 			"processId":  messageFields["processId"],
@@ -1133,13 +1137,17 @@ func formatMonitorLogItem(source map[string]any, index, id string) map[string]an
 	))
 	messageFields := parseMonitorLogMessage(rawMessage)
 	level := firstNonEmpty(monitorLogFieldValue(source, "level"), messageFields["level"], detectMonitorLogLevel(rawMessage))
+	displayMessage := messageFields["content"]
+	if opLogMessage := formatMonitorOpLogContent(source, index, rawMessage); opLogMessage != "" {
+		displayMessage = opLogMessage
+	}
 	return map[string]any{
 		"index": index, "id": id,
 		"timestamp": firstNonEmpty(monitorLogFieldValue(source, "_time"), monitorLogFieldValue(source, "@timestamp"), monitorLogFieldValue(source, "timestamp")),
 		"namespace": firstNonEmpty(monitorLogFieldValue(source, "kubernetes.pod_namespace"), monitorLogFieldValue(source, "namespace")),
 		"pod":       firstNonEmpty(monitorLogFieldValue(source, "kubernetes.pod_name"), monitorLogFieldValue(source, "pod")),
 		"container": firstNonEmpty(monitorLogFieldValue(source, "kubernetes.container_name"), monitorLogFieldValue(source, "container")),
-		"level":     level, "message": messageFields["content"], "messageRaw": rawMessage,
+		"level":     level, "message": displayMessage, "messageRaw": rawMessage,
 		"logTime": messageFields["timestamp"], "processId": messageFields["processId"], "thread": messageFields["thread"], "logger": messageFields["logger"], "source": source,
 	}
 }
@@ -1246,6 +1254,15 @@ func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, que
 	}
 	field = strings.TrimSpace(field)
 	if !isCommonMonitorLogField(field) {
+		ds, err := s.GetMonitorDatasource(datasourceID)
+		if err != nil {
+			return nil, err
+		}
+		if normalizeMonitorDatasourceType(ds.Type) == "victorialogs" && isSafeVictoriaLogsField(field) {
+			return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+		}
+	}
+	if !isCommonMonitorLogField(field) {
 		return nil, errors.New("不支持的日志筛选字段")
 	}
 	ds, err := s.GetMonitorDatasource(datasourceID)
@@ -1271,6 +1288,19 @@ func isCommonMonitorLogField(field string) bool {
 		}
 	}
 	return false
+}
+
+func isSafeVictoriaLogsField(field string) bool {
+	if field == "" || len(field) > 128 {
+		return false
+	}
+	for _, char := range field {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_' || char == '.' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
@@ -1742,6 +1772,57 @@ func cleanMonitorLogMessage(value string) string {
 	value = strings.TrimSpace(value)
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 	return ansi.ReplaceAllString(value, "")
+}
+
+var monitorOpLogHiddenContentFields = map[string]struct{}{
+	"@timestamp":  {},
+	"source_type": {},
+	"timestamp":   {},
+	"ts":          {},
+}
+
+func formatMonitorOpLogContent(source map[string]any, index, rawMessage string) string {
+	var messageDocument map[string]any
+	if strings.TrimSpace(rawMessage) != "" {
+		_ = json.Unmarshal([]byte(rawMessage), &messageDocument)
+	}
+
+	if !isMonitorOpLogDocument(source, index) && !isMonitorOpLogDocument(messageDocument, index) {
+		return ""
+	}
+	document := messageDocument
+	if len(document) == 0 {
+		document = source
+	}
+	if len(document) == 0 {
+		return ""
+	}
+
+	content := make(map[string]any, len(document))
+	for name, value := range document {
+		if _, hidden := monitorOpLogHiddenContentFields[name]; hidden {
+			continue
+		}
+		content[name] = value
+	}
+	encoded, err := json.Marshal(content)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func isMonitorOpLogDocument(source map[string]any, index string) bool {
+	indexName := strings.ToLower(strings.TrimSpace(index))
+	if strings.Contains(indexName, "oplog") || strings.Contains(indexName, "op-log") {
+		return true
+	}
+	if len(source) == 0 {
+		return false
+	}
+	topic := strings.ToLower(monitorLogFieldValue(source, "kafka_topic"))
+	logType := strings.ToLower(monitorLogFieldValue(source, "log_type"))
+	return strings.Contains(topic, "op.log") || logType == "op"
 }
 
 func parseMonitorLogMessage(value string) map[string]string {

@@ -1,10 +1,28 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"ops-admin/backend/model"
 )
+
+func TestFormatMonitorOpLogContentHidesTransportFields(t *testing.T) {
+	raw := `{"@timestamp":"2026-07-15T01:41:18.013Z","actionType":14,"source_type":"kafka","timestamp":"2026-07-15T01:41:18.013Z","ts":"2026-07-15T09:41:18.013+08:00","kafka_topic":"szfc.op.log.0"}`
+	content := formatMonitorOpLogContent(map[string]any{"kafka_topic": "szfc.op.log.0", "message": raw}, "szfc-oplog", raw)
+	var document map[string]any
+	if err := json.Unmarshal([]byte(content), &document); err != nil {
+		t.Fatalf("expected valid compact JSON, got %q: %v", content, err)
+	}
+	for _, field := range []string{"@timestamp", "source_type", "timestamp", "ts"} {
+		if _, exists := document[field]; exists {
+			t.Fatalf("field %s should be hidden: %#v", field, document)
+		}
+	}
+	if document["actionType"] != float64(14) || document["kafka_topic"] != "szfc.op.log.0" {
+		t.Fatalf("business fields should be preserved: %#v", document)
+	}
+}
 
 func TestParseMonitorLogMessage(t *testing.T) {
 	fields := parseMonitorLogMessage("2026-07-10 14:20:56.431 INFO 1 --- [worker-5] c.example.CrossTransportHandler : keepalive received")

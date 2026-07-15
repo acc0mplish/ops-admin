@@ -31,6 +31,7 @@ const activeTemplate = ref('blank')
 const autoRefreshSeconds = ref(30)
 const timeRangeSeconds = ref(3600)
 const isFullscreen = ref(false)
+const lastRefreshAt = ref(new Date())
 let refreshTimer = null
 let panelRefreshVersion = 0
 const panelResultCache = new Map()
@@ -149,6 +150,8 @@ const dashboardHealth = computed(() => {
 })
 const defaultDatasourceId = computed(() => selectedDatasourceId.value || datasourceOptions.value[0]?.id)
 const currentTemplate = computed(() => dashboardTemplates.find((item) => item.key === activeTemplate.value) || dashboardTemplates[0])
+const currentDatasourceName = computed(() => datasourceOptions.value.find((item) => item.id === selectedDatasourceId.value)?.name || '未选择数据源')
+const lastRefreshText = computed(() => lastRefreshAt.value.toLocaleTimeString('zh-CN', { hour12: false }))
 
 function resetDashboardForm() {
   Object.assign(dashboardForm, {
@@ -235,12 +238,56 @@ function sparklinePoints(panel) {
   if (!values.length) return ''
   const max = Math.max(...values)
   const min = Math.min(...values)
+  return trendPoints(values, min, max)
+}
+
+function trendPoints(values, min, max) {
   const range = max - min || 1
   return values.map((value, index) => {
     const x = values.length === 1 ? 100 : (index / (values.length - 1)) * 100
     const y = 48 - ((value - min) / range) * 40
     return `${x},${y}`
   }).join(' ')
+}
+
+const lineColors = ['#3b82f6', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16', '#ec4899']
+
+function panelLineSeries(panel) {
+  const series = panelRows(panel)
+    .map((row) => ({ name: metricName(row.metric), values: (row.values || []).map((item) => Number(item?.[1])).filter(Number.isFinite) }))
+    .filter((item) => item.values.length)
+    .slice(0, 8)
+  const allValues = series.flatMap((item) => item.values)
+  if (!allValues.length) return []
+  const min = Math.min(...allValues)
+  const max = Math.max(...allValues)
+  return series.map((item, index) => ({
+    ...item,
+    color: lineColors[index % lineColors.length],
+    points: trendPoints(item.values, min, max)
+  }))
+}
+
+function sparklineAreaPoints(panel) {
+  const points = panelLineSeries(panel)[0]?.points || sparklinePoints(panel)
+  return points ? `0,52 ${points} 100,52` : ''
+}
+
+function panelStats(panel) {
+  const values = panelTrend(panel)
+  if (!values.length) return { min: '-', max: '-', avg: '-' }
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length
+  return {
+    min: formatByUnit(min, panel.unit),
+    max: formatByUnit(max, panel.unit),
+    avg: formatByUnit(avg, panel.unit)
+  }
+}
+
+function panelChartLabel(chartType) {
+  return ({ stat: '指标', gauge: '仪表盘', bar: '排行', line: '趋势', table: '明细' })[chartType] || chartType
 }
 
 function barRows(panel) {
@@ -528,6 +575,7 @@ async function refreshPanel(row) {
     return
   }
   await loadPanel(row, { force: true })
+  lastRefreshAt.value = new Date()
 }
 
 function panelQueryPayload(id) {
@@ -603,6 +651,7 @@ async function refreshAllPanels({ progressive = false, force = true } = {}) {
 
   await runPanelQueue(firstScreenPanels, version, force)
   if (version === panelRefreshVersion) await loadRemaining()
+  if (version === panelRefreshVersion) lastRefreshAt.value = new Date()
 }
 
 async function handleDatasourceChange() {
@@ -686,7 +735,7 @@ onBeforeUnmount(() => {
       <el-button class="create-screen-btn" type="primary" @click="openCreateDashboard">创建{{ pageTitle }}</el-button>
     </section>
 
-    <main class="dashboard-main" v-loading="loading">
+    <main class="dashboard-main observability-canvas" v-loading="loading">
       <section class="dashboard-hero">
         <div>
           <div class="eyebrow">Monitoring Dashboard</div>
@@ -694,6 +743,11 @@ onBeforeUnmount(() => {
           <p>{{ activeDashboard?.description || pageDescription }}</p>
           <div v-if="activeDashboard" class="layout-hint">
             {{ isListLayout ? '当前布局：列表巡检，适合日常排障和逐项核查。' : '当前布局：网格大屏，适合投屏展示和整体观测。' }}
+          </div>
+          <div v-if="activeDashboard" class="dashboard-context">
+            <span><i class="health-dot"></i>{{ currentDatasourceName }}</span>
+            <span>最近更新 {{ lastRefreshText }}</span>
+            <span>{{ activePanels.length }} 个启用面板</span>
           </div>
         </div>
 		<div class="hero-actions">
@@ -715,9 +769,9 @@ onBeforeUnmount(() => {
           <el-button @click="refreshAllPanels" :disabled="!activePanels.length">刷新全部</el-button>
           <el-button v-if="!isListLayout" @click="toggleFullscreen" :disabled="!activeDashboard">{{ isFullscreen ? '退出全屏' : '大屏展示' }}</el-button>
           <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">导出巡检报告 PDF</el-button>
-          <el-button @click="openEditDashboard" :disabled="!activeDashboard">编辑{{ pageTitle }}</el-button>
-          <el-button type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">删除{{ pageTitle }}</el-button>
-          <el-button type="primary" @click="openCreatePanel">新增面板</el-button>
+          <el-button v-if="!isFullscreen" @click="openEditDashboard" :disabled="!activeDashboard">编辑{{ pageTitle }}</el-button>
+          <el-button v-if="!isFullscreen" type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">删除{{ pageTitle }}</el-button>
+          <el-button v-if="!isFullscreen" type="primary" @click="openCreatePanel">新增面板</el-button>
         </div>
       </section>
 
@@ -800,19 +854,23 @@ onBeforeUnmount(() => {
         <div
           v-for="panel in panels"
           :key="panel.id"
-          class="metric-panel"
+          class="metric-panel chart-panel"
            :class="[`panel-${panel.chartType}`, { disabled: panel.status !== 1 }]"
            :style="{ gridColumn: `span ${panelSpan(panel)}` }"
            v-loading="panelPending[panel.id]"
-           element-loading-background="rgba(255, 255, 255, 0.72)"
+           :element-loading-background="isFullscreen ? 'rgba(8, 15, 28, 0.82)' : 'rgba(255, 255, 255, 0.72)'"
         >
           <div class="panel-glow"></div>
           <div class="panel-head">
-            <div>
-              <strong>{{ panel.title }}</strong>
-              <span>{{ datasourceOptions.find((item) => item.id === selectedDatasourceId)?.name || panel.datasourceName }} / {{ panel.chartType }} / {{ panelState(panel) }}</span>
+            <div class="panel-identity">
+              <div class="panel-title-row">
+                <i class="panel-signal"></i>
+                <strong>{{ panel.title }}</strong>
+              </div>
+              <span>{{ panelChartLabel(panel.chartType) }} · {{ panelResultCount(panel) }} 条序列 · {{ currentDatasourceName }}</span>
             </div>
             <div class="panel-actions">
+              <span class="panel-state" :class="`is-${panelStateType(panel)}`"><i></i>{{ panelState(panel) }}</span>
               <el-button link type="primary" @click="refreshPanel(panel)">刷新</el-button>
               <el-button link type="primary" @click="openEditPanel(panel)">编辑</el-button>
               <el-button link type="danger" @click="handleDeletePanel(panel)">删除</el-button>
@@ -822,7 +880,7 @@ onBeforeUnmount(() => {
           <div v-if="panelResults[panel.id]?.error" class="panel-error">{{ panelResults[panel.id].error }}</div>
 
           <template v-else-if="panel.chartType === 'table'">
-            <el-table :data="panelRows(panel)" size="small" height="250">
+            <el-table :data="panelRows(panel)" size="small" :height="isFullscreen ? 126 : 250">
               <el-table-column label="Metric" min-width="240" show-overflow-tooltip>
                 <template #default="{ row }">{{ metricText(row.metric) }}</template>
               </el-table-column>
@@ -840,6 +898,7 @@ onBeforeUnmount(() => {
                 <b>{{ item.displayValue }}</b>
               </div>
             </div>
+            <div class="panel-query" :title="panel.promql">{{ panel.promql }}</div>
           </template>
 
           <template v-else-if="panel.chartType === 'gauge'">
@@ -851,6 +910,48 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
+            <div class="panel-query" :title="panel.promql">{{ panel.promql }}</div>
+          </template>
+
+          <template v-else-if="panel.chartType === 'line'">
+            <div class="trend-summary">
+              <div class="trend-current">
+                <span>当前值</span>
+                <strong>{{ panelDisplayValue(panel) }}</strong>
+              </div>
+              <div class="trend-stats">
+                <span>最小 <b>{{ panelStats(panel).min }}</b></span>
+                <span>平均 <b>{{ panelStats(panel).avg }}</b></span>
+                <span>最大 <b>{{ panelStats(panel).max }}</b></span>
+              </div>
+            </div>
+            <div class="trend-chart">
+              <svg class="sparkline" viewBox="0 0 100 52" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient :id="`trend-area-${panel.id}`" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#4f8cff" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="#4f8cff" stop-opacity="0.02" />
+                  </linearGradient>
+                </defs>
+                <line v-for="y in [8, 18, 28, 38, 48]" :key="y" x1="0" :y1="y" x2="100" :y2="y" class="chart-grid-line" />
+                <polygon :points="sparklineAreaPoints(panel)" :fill="`url(#trend-area-${panel.id})`" />
+                <polyline
+                  v-for="(series, index) in panelLineSeries(panel)"
+                  :key="`${series.name}-${index}`"
+                  class="line-series"
+                  :points="series.points"
+                  :style="{ stroke: series.color }"
+                />
+              </svg>
+              <div class="trend-axis"><span>起始</span><span>当前</span></div>
+            </div>
+            <div v-if="panelLineSeries(panel).length > 1" class="trend-legend">
+              <span v-for="(series, index) in panelLineSeries(panel).slice(0, 4)" :key="`${series.name}-legend-${index}`">
+                <i :style="{ background: series.color }"></i>{{ series.name }}
+              </span>
+              <span v-if="panelLineSeries(panel).length > 4">+{{ panelLineSeries(panel).length - 4 }}</span>
+            </div>
+            <div class="panel-query" :title="panel.promql">{{ panel.promql }}</div>
           </template>
 
           <template v-else>
@@ -1644,6 +1745,657 @@ onBeforeUnmount(() => {
   border-color: #3b82f6;
   background: #eff6ff;
   box-shadow: inset 0 0 0 1px #3b82f6;
+}
+
+/* Grafana/Nightingale inspired observability workspace. */
+.dashboard-page {
+  gap: 14px;
+}
+.dashboard-workspace {
+  padding: 12px 14px;
+  border-color: #d8e0eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+.dashboard-switcher {
+  padding: 4px;
+  border-color: #dce4ef;
+  border-radius: 6px;
+  background: #f4f7fb;
+}
+.dashboard-list {
+  min-height: 46px;
+  gap: 4px;
+}
+.dashboard-item {
+  flex-basis: 176px;
+  padding: 8px 10px;
+  border-radius: 5px;
+}
+.dashboard-item.active,
+.dashboard-item:hover {
+  box-shadow: 0 1px 4px rgba(30, 64, 175, 0.08);
+}
+.observability-canvas {
+  padding: 14px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  background: #f2f5f9;
+  box-shadow: none;
+}
+.observability-canvas .dashboard-hero {
+  align-items: flex-start;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  border-color: #d9e1ec;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: none;
+}
+.observability-canvas .eyebrow {
+  margin-bottom: 4px;
+  color: #2563eb;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.observability-canvas .dashboard-hero h2 {
+  margin-bottom: 4px;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+.observability-canvas .dashboard-hero p {
+  font-size: 13px;
+}
+.observability-canvas .layout-hint {
+  display: none;
+}
+.dashboard-context {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+.dashboard-context span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+.observability-canvas .hero-actions {
+  align-items: center;
+  min-width: 0;
+  max-width: 760px;
+  gap: 6px;
+}
+.observability-canvas .hero-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+.observability-canvas .dashboard-summary {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.observability-canvas .summary-card {
+  min-height: 72px;
+  padding: 12px 14px;
+  border-color: #d9e1ec;
+  border-radius: 6px;
+  background: #fff;
+}
+.observability-canvas .summary-card::after {
+  right: 12px;
+  bottom: 11px;
+  width: 34px;
+  height: 3px;
+  background: #3b82f6;
+  opacity: 0.55;
+}
+.observability-canvas .summary-card span {
+  font-size: 12px;
+}
+.observability-canvas .summary-card strong {
+  margin-top: 5px;
+  font-size: 21px;
+}
+.panel-grid {
+  gap: 10px;
+}
+.chart-panel {
+  min-height: 238px;
+  padding: 0 0 34px;
+  border: 1px solid #d8e0eb;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.035);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.chart-panel:hover {
+  border-color: #b9c8dc;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+}
+.chart-panel::before {
+  display: none;
+}
+.chart-panel .panel-glow {
+  display: none;
+}
+.chart-panel .panel-head {
+  align-items: center;
+  min-height: 55px;
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e4e9f0;
+  background: #fbfcfe;
+}
+.panel-identity {
+  min-width: 0;
+}
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.panel-title-row strong {
+  overflow: hidden;
+  color: #172033;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-signal {
+  width: 3px;
+  height: 15px;
+  border-radius: 2px;
+  background: #3b82f6;
+}
+.chart-panel.panel-gauge .panel-signal { background: #f59e0b; }
+.chart-panel.panel-bar .panel-signal { background: #14b8a6; }
+.chart-panel.panel-table .panel-signal { background: #64748b; }
+.chart-panel .panel-head span {
+  margin-top: 3px;
+  color: #8491a5;
+  font-size: 11px;
+}
+.chart-panel .panel-actions {
+  align-items: center;
+  opacity: 1;
+}
+.chart-panel .panel-actions :deep(.el-button) {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chart-panel:hover .panel-actions :deep(.el-button) {
+  opacity: 1;
+}
+.panel-state {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  margin: 0 5px 0 0 !important;
+  color: #64748b !important;
+  white-space: nowrap;
+}
+.panel-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.panel-state.is-success i { background: #22c55e; }
+.panel-state.is-warning i { background: #f59e0b; }
+.panel-state.is-danger i { background: #ef4444; }
+.chart-panel .bar-chart,
+.chart-panel .gauge-wrap,
+.chart-panel .stat-row,
+.chart-panel .panel-error {
+  margin: 14px;
+}
+.chart-panel .bar-chart {
+  max-height: 172px;
+  gap: 9px;
+  overflow: auto;
+}
+.chart-panel .bar-row {
+  grid-template-columns: minmax(90px, 132px) 1fr 76px;
+  font-size: 12px;
+}
+.chart-panel .bar-row div {
+  height: 7px;
+  border-radius: 2px;
+  background: #edf1f6;
+}
+.chart-panel .bar-row i {
+  border-radius: 2px;
+  background: linear-gradient(90deg, #2563eb, #14b8a6);
+  box-shadow: none;
+}
+.chart-panel .gauge-wrap {
+  min-height: 142px;
+}
+.chart-panel .gauge {
+  width: 138px;
+  height: 138px;
+  box-shadow: none;
+}
+.chart-panel .gauge > div {
+  width: 100px;
+  height: 100px;
+}
+.chart-panel .gauge strong {
+  font-size: 28px;
+}
+.chart-panel .stat-row {
+  display: block;
+}
+.chart-panel .stat-value {
+  font-size: 36px;
+  text-shadow: none;
+}
+.trend-summary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px 0;
+}
+.trend-current span,
+.trend-current strong {
+  display: block;
+}
+.trend-current span {
+  color: #7c899d;
+  font-size: 11px;
+}
+.trend-current strong {
+  margin-top: 2px;
+  color: #172033;
+  font-size: 24px;
+}
+.trend-stats {
+  display: flex;
+  gap: 14px;
+  color: #8a96a8;
+  font-size: 10px;
+}
+.trend-stats b {
+  margin-left: 3px;
+  color: #475569;
+  font-weight: 600;
+}
+.trend-chart {
+  padding: 5px 14px 0;
+}
+.trend-chart .sparkline {
+  display: block;
+  height: 104px;
+}
+.trend-chart .sparkline polyline {
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+.chart-grid-line {
+  stroke: #e7ecf3;
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+.trend-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  color: #a0aaba;
+  font-size: 9px;
+}
+.trend-legend {
+  display: flex;
+  gap: 10px;
+  min-height: 16px;
+  padding: 2px 14px 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-legend i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.panel-query,
+.chart-panel .promql {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  left: 12px;
+  z-index: 1;
+  margin: 0;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid #e0e7f0;
+  border-radius: 3px;
+  background: #f6f8fb;
+  color: #64748b;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chart-panel.panel-table {
+  padding-bottom: 10px;
+}
+.chart-panel.panel-table .el-table {
+  padding: 10px 12px 0;
+}
+
+/* Fullscreen is a dedicated Grafana-style presentation mode. */
+.observability-canvas:fullscreen {
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: #0b1017;
+  color: #d7e0ea;
+}
+.observability-canvas:fullscreen .dashboard-hero {
+  align-items: center;
+  min-height: 94px;
+  padding: 12px 16px;
+  border-color: #283442;
+  background: #111923;
+}
+.observability-canvas:fullscreen .eyebrow {
+  color: #60a5fa;
+}
+.observability-canvas:fullscreen .dashboard-hero h2 {
+  color: #f1f5f9;
+}
+.observability-canvas:fullscreen .dashboard-hero p,
+.observability-canvas:fullscreen .dashboard-context {
+  color: #8291a5;
+}
+.observability-canvas:fullscreen .hero-actions {
+  max-width: none;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-input__wrapper),
+.observability-canvas:fullscreen .hero-actions :deep(.el-select__wrapper) {
+  border: 1px solid #334155;
+  background: #0c131c;
+  box-shadow: none;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-input__inner),
+.observability-canvas:fullscreen .hero-actions :deep(.el-select__selected-item),
+.observability-canvas:fullscreen .hero-actions :deep(.el-select__placeholder) {
+  color: #cbd5e1;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-button) {
+  border-color: #334155;
+  background: #17202c;
+  color: #d6e0eb;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-button:hover) {
+  border-color: #4f8cff;
+  background: #1c2a3d;
+  color: #fff;
+}
+.observability-canvas:fullscreen .dashboard-summary {
+  gap: 6px;
+}
+.observability-canvas:fullscreen .summary-card {
+  min-height: 64px;
+  border-color: #283442;
+  background: #111923;
+}
+.observability-canvas:fullscreen .summary-card::after {
+  display: none;
+}
+.observability-canvas:fullscreen .summary-card span {
+  color: #7f8ea3;
+}
+.observability-canvas:fullscreen .summary-card strong {
+  color: #e7edf5;
+}
+.observability-canvas:fullscreen .panel-grid {
+  gap: 6px;
+}
+.observability-canvas:fullscreen .chart-panel {
+  min-height: 224px;
+  padding-bottom: 8px;
+  border-color: #283442;
+  background: #111923;
+  box-shadow: none;
+}
+.observability-canvas:fullscreen .chart-panel:hover {
+  border-color: #3b4c60;
+  box-shadow: none;
+}
+.observability-canvas:fullscreen .chart-panel .panel-head {
+  min-height: 50px;
+  padding: 8px 10px;
+  border-color: #283442;
+  background: #151e29;
+}
+.observability-canvas:fullscreen .panel-title-row strong,
+.observability-canvas:fullscreen .trend-current strong,
+.observability-canvas:fullscreen .chart-panel .bar-row b {
+  color: #e5edf6;
+}
+.observability-canvas:fullscreen .chart-panel .panel-head span,
+.observability-canvas:fullscreen .trend-current span,
+.observability-canvas:fullscreen .trend-stats,
+.observability-canvas:fullscreen .trend-axis,
+.observability-canvas:fullscreen .trend-legend,
+.observability-canvas:fullscreen .chart-panel .bar-row {
+  color: #8493a7;
+}
+.observability-canvas:fullscreen .trend-stats b {
+  color: #bdc9d8;
+}
+.observability-canvas:fullscreen .chart-panel .panel-actions :deep(.el-button) {
+  display: none;
+}
+.observability-canvas:fullscreen .chart-panel .stat-value {
+  color: #60a5fa;
+}
+.observability-canvas:fullscreen .chart-panel .stat-value small {
+  color: #7f8ea3;
+}
+.observability-canvas:fullscreen .chart-panel.panel-stat .stat-row {
+  margin-top: 34px;
+}
+.observability-canvas:fullscreen .chart-panel .stat-caption {
+  color: #9aabc0;
+  background: #182330;
+}
+.observability-canvas:fullscreen .chart-panel .gauge {
+  background: conic-gradient(#3b82f6 var(--value), #263241 0deg);
+}
+.observability-canvas:fullscreen .chart-panel .gauge > div {
+  background: #111923;
+}
+.observability-canvas:fullscreen .chart-panel .gauge strong {
+  color: #e8eef6;
+}
+.observability-canvas:fullscreen .chart-panel .gauge span {
+  color: #7f8ea3;
+}
+.observability-canvas:fullscreen .chart-panel .bar-row div {
+  background: #263241;
+}
+.observability-canvas:fullscreen .chart-grid-line {
+  stroke: #263241;
+}
+.observability-canvas:fullscreen .panel-query,
+.observability-canvas:fullscreen .chart-panel .promql {
+  display: none;
+}
+.observability-canvas:fullscreen .chart-panel .el-table {
+  --el-table-bg-color: #111923;
+  --el-table-tr-bg-color: #111923;
+  --el-table-header-bg-color: #151e29;
+  --el-table-border-color: #283442;
+  --el-table-text-color: #c7d2df;
+  --el-table-header-text-color: #8fa0b5;
+}
+.observability-canvas:fullscreen .panel-error {
+  border: 1px solid rgba(239, 68, 68, 0.26);
+  background: rgba(127, 29, 29, 0.2);
+  color: #fca5a5;
+}
+
+/* Dense fullscreen layout: prioritize the monitoring surface over page chrome. */
+.observability-canvas:fullscreen {
+  padding: 8px;
+}
+.observability-canvas:fullscreen .dashboard-hero {
+  min-height: 62px;
+  margin-bottom: 6px;
+  padding: 8px 12px;
+}
+.observability-canvas:fullscreen .dashboard-hero p,
+.observability-canvas:fullscreen .eyebrow {
+  display: none;
+}
+.observability-canvas:fullscreen .dashboard-hero h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.observability-canvas:fullscreen .dashboard-context {
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 10px;
+}
+.observability-canvas:fullscreen .hero-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-select) {
+  width: 128px !important;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-select:first-child) {
+  width: 150px !important;
+}
+.observability-canvas:fullscreen .hero-actions :deep(.el-select__wrapper),
+.observability-canvas:fullscreen .hero-actions :deep(.el-button) {
+  min-height: 30px;
+  height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+}
+.observability-canvas:fullscreen .dashboard-summary {
+  display: none;
+}
+.observability-canvas:fullscreen .panel-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+.observability-canvas:fullscreen .chart-panel {
+  min-height: 164px;
+}
+.observability-canvas:fullscreen .chart-panel.panel-table {
+  grid-column: span 3 !important;
+  min-height: 174px;
+}
+.observability-canvas:fullscreen .chart-panel .panel-head {
+  min-height: 40px;
+  padding: 6px 8px;
+}
+.observability-canvas:fullscreen .panel-title-row {
+  gap: 5px;
+}
+.observability-canvas:fullscreen .panel-title-row strong {
+  font-size: 12px;
+}
+.observability-canvas:fullscreen .panel-signal {
+  height: 13px;
+}
+.observability-canvas:fullscreen .panel-identity > span {
+  display: none;
+}
+.observability-canvas:fullscreen .panel-state {
+  margin-right: 0 !important;
+  font-size: 9px !important;
+}
+.observability-canvas:fullscreen .chart-panel.panel-stat .stat-row,
+.observability-canvas:fullscreen .chart-panel .stat-row {
+  margin: 20px 10px 8px;
+}
+.observability-canvas:fullscreen .chart-panel .stat-value {
+  font-size: 30px;
+}
+.observability-canvas:fullscreen .chart-panel .stat-caption {
+  margin-top: 7px;
+  padding: 3px 7px;
+  font-size: 9px;
+}
+.observability-canvas:fullscreen .chart-panel .gauge-wrap {
+  min-height: 112px;
+  margin: 6px;
+}
+.observability-canvas:fullscreen .chart-panel .gauge {
+  width: 96px;
+  height: 96px;
+}
+.observability-canvas:fullscreen .chart-panel .gauge > div {
+  width: 68px;
+  height: 68px;
+}
+.observability-canvas:fullscreen .chart-panel .gauge strong {
+  font-size: 20px;
+}
+.observability-canvas:fullscreen .chart-panel .gauge span {
+  font-size: 10px;
+}
+.observability-canvas:fullscreen .chart-panel .bar-chart {
+  max-height: 112px;
+  margin: 8px 10px;
+  gap: 5px;
+}
+.observability-canvas:fullscreen .chart-panel .bar-row {
+  grid-template-columns: minmax(70px, 112px) 1fr 58px;
+  gap: 6px;
+  font-size: 10px;
+}
+.observability-canvas:fullscreen .chart-panel .bar-row div {
+  height: 5px;
+}
+.observability-canvas:fullscreen .trend-summary {
+  padding: 7px 9px 0;
+}
+.observability-canvas:fullscreen .trend-current strong {
+  font-size: 17px;
+}
+.observability-canvas:fullscreen .trend-stats {
+  gap: 7px;
+  font-size: 8px;
+}
+.observability-canvas:fullscreen .trend-chart {
+  padding: 2px 9px 0;
+}
+.observability-canvas:fullscreen .trend-chart .sparkline {
+  height: 70px;
+}
+.observability-canvas:fullscreen .trend-legend {
+  display: none;
+}
+.observability-canvas:fullscreen .chart-panel.panel-table .el-table {
+  padding: 5px 7px 0;
+  font-size: 10px;
 }
 @media (max-width: 1280px) {
   .dashboard-workspace {

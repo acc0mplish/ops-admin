@@ -57,11 +57,19 @@ const channelTypeLabels = {
 }
 
 const selectedTemplate = computed(() => templateOptions.value.find((item) => Number(item.id) === Number(form.templateId)))
+const compatibleTemplateOptions = computed(() => templateOptions.value.filter((item) => {
+  const templateScope = item.scope || 'all'
+  if (templateScope === 'all') return true
+  return form.scope !== 'all' && templateScope === form.scope
+}))
 const selectedChannels = computed(() => channelOptions.value.filter((item) => form.channelIds.map(Number).includes(Number(item.id))))
 const routeWarnings = computed(() => {
   const warnings = []
   if (!form.events.length) warnings.push('至少选择一个触发事件')
   if (!selectedTemplate.value) warnings.push('请选择消息模板')
+  if (selectedTemplate.value && !compatibleTemplateOptions.value.some((item) => Number(item.id) === Number(selectedTemplate.value.id))) {
+    warnings.push('消息模板与适用范围不一致')
+  }
   if (!selectedChannels.value.length) warnings.push('请选择通知媒介')
   const templateType = selectedTemplate.value?.channelType
   if (templateType && selectedChannels.value.some((item) => item.channelType !== templateType)) {
@@ -145,6 +153,10 @@ async function openEdit(row) {
 
 function handleScopeChange(value) {
   form.events = defaultEventsForScope(value)
+  if (!compatibleTemplateOptions.value.some((item) => Number(item.id) === Number(form.templateId))) {
+    form.templateId = undefined
+    form.channelIds = []
+  }
 }
 
 function handleEventsChange(values) {
@@ -284,7 +296,7 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item label="消息模板" required>
           <el-select v-model="form.templateId" filterable placeholder="选择与媒介类型一致的模板" style="width: 100%">
-            <el-option v-for="item in templateOptions" :key="item.id" :label="`${item.name} · ${typeLabel(item.channelType)}`" :value="item.id" />
+            <el-option v-for="item in compatibleTemplateOptions" :key="item.id" :label="`${item.name} · ${scopeLabel(item.scope || 'all')} · ${typeLabel(item.channelType)}`" :value="item.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="通知媒介" required>
@@ -301,7 +313,7 @@ onMounted(async () => {
               <span class="route-arrow">→</span>
               <span class="route-node">{{ selectedChannels.length ? selectedChannels.map((item) => item.name).join('、') : '未选媒介' }}</span>
             </div>
-            <div v-if="selectedTemplate" class="route-meta">消息格式：{{ typeLabel(selectedTemplate.channelType) }}</div>
+            <div v-if="selectedTemplate" class="route-meta">适用场景：{{ scopeLabel(selectedTemplate.scope || 'all') }} · 消息格式：{{ typeLabel(selectedTemplate.channelType) }}</div>
             <el-alert v-if="routeWarnings.length" :title="routeWarnings.join('；')" type="warning" :closable="false" show-icon />
             <el-alert v-else title="路由配置完整，保存后可在列表中发送测试消息。" type="success" :closable="false" show-icon />
           </div>

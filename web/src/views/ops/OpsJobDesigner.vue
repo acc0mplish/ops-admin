@@ -793,8 +793,9 @@ onBeforeUnmount(() => {
           <template v-else-if="selectedNodeForm.type === 'notify'">
             <el-form-item label="&#x901a;&#x77e5;&#x89c4;&#x5219;" required>
               <el-select v-model="selectedNodeForm.config.notifyRuleId" filterable placeholder="&#x9009;&#x62e9;&#x901a;&#x77e5;&#x89c4;&#x5219;">
-                <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
+                <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="`${item.name} · 作业编排`" :value="item.id" />
               </el-select>
+              <div class="form-tip">&#x4ec5;&#x5c55;&#x793a;&#x9002;&#x7528;&#x4e8e;&#x4f5c;&#x4e1a;&#x7f16;&#x6392;&#x7684;&#x901a;&#x77e5;&#x89c4;&#x5219;&#xff0c;&#x5361;&#x7247;&#x4f1a;&#x81ea;&#x52a8;&#x5e26;&#x4e0a;&#x4f5c;&#x4e1a;&#x4e0e;&#x5f53;&#x524d;&#x6b65;&#x9aa4;&#x4fe1;&#x606f;&#x3002;</div>
             </el-form-item>
             <el-form-item label="&#x901a;&#x77e5;&#x6458;&#x8981;">
               <el-input v-model="selectedNodeForm.config.message" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x53d1;&#x5e03;&#x5b8c;&#x6210;&#x901a;&#x77e5;" />
@@ -895,6 +896,13 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.7;
   color: #7d8cad;
+}
+
+.form-tip {
+  margin-top: 6px;
+  color: #8491a9;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .graph-container {

@@ -22,3 +22,4 @@ export const runDBMSBackupPlan = (id) => http.post('/api/v1/dbms/backup/plan/run
 export const runDBMSManualBackup = (data) => http.post('/api/v1/dbms/backup/manual', data)
 export const queryDBMSBackupRecordList = (params) => http.get('/api/v1/dbms/backup/record/list', { params })
 export const downloadDBMSBackup = (params) => http.get('/api/v1/dbms/backup/download', { params, responseType: 'blob' })
+export const createDBMSBackupImportTask = (data) => http.post('/api/v1/dbms/backup/import', data)

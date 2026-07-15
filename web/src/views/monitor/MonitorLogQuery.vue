@@ -24,6 +24,7 @@ const fieldsCollapsed = ref(false)
 const fieldValueVisible = ref(false)
 const fieldValueLoading = ref(false)
 const selectedField = ref('')
+const selectedFieldQuery = ref('')
 const fieldValues = ref([])
 const fieldValueKeyword = ref('')
 const timeRange = ref('1h')
@@ -31,6 +32,7 @@ const customDateRange = ref([])
 const streamOptions = ref([])
 const streamLoading = ref(false)
 const selectedTopics = ref([])
+const opLogFieldDrilldownEnabled = ref(false)
 const items = ref([])
 const histogram = ref([])
 const total = ref(0)
@@ -49,9 +51,28 @@ const victoriaLogsFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', '
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
 const isVictoriaLogs = computed(() => activeDatasource.value?.type === 'victorialogs')
 const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '常用' })))
+const opLogIgnoredFields = new Set(['@timestamp', 'kafka_topic', 'source_type', 'timestamp', 'ts'])
+const hasSelectedOpLogStream = computed(() => isVictoriaLogs.value && selectedTopics.value.some((topic) => String(topic).toLowerCase().includes('op.log')))
+const opLogFields = computed(() => {
+  const counts = new Map()
+  for (const item of items.value) {
+    const source = item?.source
+    if (!source || typeof source !== 'object') continue
+    for (const [name, value] of Object.entries(source)) {
+      if (opLogIgnoredFields.has(name) || value === null || value === undefined || typeof value === 'object') continue
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, hits]) => ({ name: `op.${name}`, queryName: name, type: 'OP 日志', hits }))
+    .sort((left, right) => right.hits - left.hits || left.name.localeCompare(right.name))
+})
 const fields = computed(() => {
   const phrase = fieldKeyword.value.trim().toLowerCase()
-  return phrase ? fallbackFields.value.filter((item) => item.name.toLowerCase().includes(phrase)) : fallbackFields.value
+  const base = opLogFieldDrilldownEnabled.value && hasSelectedOpLogStream.value
+    ? [...fallbackFields.value, ...opLogFields.value.filter((item) => !fallbackFields.value.some((field) => field.name === item.name))]
+    : fallbackFields.value
+  return phrase ? base.filter((item) => item.name.toLowerCase().includes(phrase)) : base
 })
 const maxBucketCount = computed(() => Math.max(1, ...histogram.value.map((item) => Number(item.doc_count || 0))))
 
@@ -83,6 +104,10 @@ function levelClass(level) {
   if (value.includes('WARN')) return 'level-warn'
   if (value.includes('DEBUG') || value.includes('TRACE')) return 'level-debug'
   return 'level-info'
+}
+
+function displayLogContent(row) {
+  return row?.message || row?.messageRaw || '-'
 }
 
 function escapeLogsQLValue(value) {
@@ -155,6 +180,20 @@ async function search() {
   }
 }
 
+function drillDownOpLogFields() {
+  if (!hasSelectedOpLogStream.value) return
+  if (!items.value.length) {
+    ElMessage.warning('请先查询包含 op.log 的日志，再进行字段下钻')
+    return
+  }
+  opLogFieldDrilldownEnabled.value = true
+  if (!opLogFields.value.length) {
+    ElMessage.info('当前结果中未发现可用于筛选的 OP 日志字段')
+    return
+  }
+  ElMessage.success(`已下钻 ${opLogFields.value.length} 个 OP 日志字段`)
+}
+
 function showDetail(row) {
   activeLog.value = row
   detailVisible.value = true
@@ -166,7 +205,8 @@ function insertField(field) {
 
 async function openFieldValues(field) {
   if (!datasourceId.value) return ElMessage.warning('请先选择日志数据源')
-  selectedField.value = field
+  selectedField.value = field.name || field
+  selectedFieldQuery.value = field.queryName || field.name || field
   fieldValueKeyword.value = ''
   fieldValues.value = []
   fieldValueVisible.value = true
@@ -175,7 +215,7 @@ async function openFieldValues(field) {
     fieldValues.value = await queryMonitorLogFieldValues({
       datasourceId: datasourceId.value,
       index: isVictoriaLogs.value ? '_all' : index.value,
-      field,
+      field: selectedFieldQuery.value,
       query: effectiveQuery(),
       ...rangeTimestamps()
     })
@@ -185,7 +225,7 @@ async function openFieldValues(field) {
 }
 
 function applyFieldValue(value) {
-  const expression = `${selectedField.value}:${escapeLogsQLValue(value)}`
+  const expression = `${selectedFieldQuery.value}:${escapeLogsQLValue(value)}`
   keyword.value = keyword.value ? `(${keyword.value}) AND ${expression}` : expression
   fieldValueVisible.value = false
   search()
@@ -238,9 +278,13 @@ watch(timeRange, async (value) => {
     await loadStreams()
   }
 })
-watch(selectedTopics, () => search())
+watch(selectedTopics, () => {
+  if (!hasSelectedOpLogStream.value) opLogFieldDrilldownEnabled.value = false
+  search()
+})
 watch(datasourceId, async () => {
   selectedTopics.value = []
+  opLogFieldDrilldownEnabled.value = false
   index.value = '_all'
   await loadIndices()
   await loadStreams()
@@ -297,6 +341,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
           </el-select>
         </template>
         <el-tag v-else effect="plain" type="success">LogsQL</el-tag>
+        <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">OP 日志下钻</el-button>
         <span class="source-status">{{ activeDatasource?.url || '未选择数据源' }}</span>
       </div>
       <div class="query-line">
@@ -324,7 +369,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
         <template v-if="!fieldsCollapsed">
           <el-input v-model="fieldKeyword" size="small" clearable placeholder="搜索字段" />
           <div class="field-list">
-            <button v-for="field in fields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field.name)">
+            <button v-for="field in fields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field)">
               <span>{{ field.name }}</span><b>›</b>
             </button>
           </div>
@@ -335,12 +380,12 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
         <div v-if="histogram.length" class="histogram-panel"><div class="histogram"><div v-for="bucket in histogram" :key="bucket.key" class="histogram-bar-wrap" :title="`${histogramTime(bucket)} / ${bucket.doc_count}`"><div class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></div></div></div>
         <div class="log-table-wrap">
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
-            <el-table-column label="时间" width="180"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
-            <el-table-column label="级别" width="82"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
-            <el-table-column prop="namespace" label="命名空间" width="155" show-overflow-tooltip />
-            <el-table-column prop="container" label="容器" width="140" show-overflow-tooltip />
-            <el-table-column prop="message" label="日志内容" min-width="440" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ row.message || row.messageRaw }}</span></template></el-table-column>
-            <el-table-column label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
+            <el-table-column label="时间" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
+            <el-table-column label="级别" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
+            <el-table-column prop="namespace" label="命名空间" width="126" show-overflow-tooltip />
+            <el-table-column prop="container" label="容器" width="108" show-overflow-tooltip />
+            <el-table-column prop="message" label="日志内容" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
+            <el-table-column label="操作" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
           </el-table>
         </div>
       </main>
@@ -350,7 +395,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
       <template v-if="activeLog">
         <div class="detail-meta"><span>{{ formatTime(activeLog.timestamp) }}</span><span>{{ activeLog.namespace || '-' }}</span><span>{{ activeLog.pod || '-' }}</span><span>{{ activeLog.container || '-' }}</span></div>
         <div class="message-fields"><div><small>日志时间</small><strong>{{ activeLog.logTime || formatTime(activeLog.timestamp) }}</strong></div><div><small>级别</small><strong :class="levelClass(activeLog.level)">{{ activeLog.level || '-' }}</strong></div><div><small>进程 ID</small><strong>{{ activeLog.processId || '-' }}</strong></div></div>
-        <h4>日志正文</h4><pre class="detail-message">{{ activeLog.message || activeLog.messageRaw }}</pre>
+        <h4>日志正文</h4><pre class="detail-message">{{ displayLogContent(activeLog) }}</pre>
         <details v-if="activeLog.messageRaw && activeLog.messageRaw !== activeLog.message" class="raw-log-line"><summary>查看原始日志行</summary><pre>{{ activeLog.messageRaw }}</pre></details>
         <h4>原始文档</h4><pre class="detail-json">{{ JSON.stringify(activeLog.source || {}, null, 2) }}</pre>
       </template>

@@ -473,6 +473,7 @@ type NotifyTemplate struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"size:128;not null;index"`
 	ChannelType string    `json:"channelType" gorm:"size:32;not null;index"`
+	Scope       string    `json:"scope" gorm:"size:32;not null;default:all;index"`
 	Title       string    `json:"title" gorm:"size:255"`
 	Content     string    `json:"content" gorm:"type:longtext"`
 	Status      int       `json:"status" gorm:"default:1;index"`

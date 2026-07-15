@@ -102,3 +102,19 @@ func (ctl *Controller) DownloadDatabaseBackup(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename*=UTF-8''"+url.QueryEscape(filename))
 	c.Data(200, "application/sql; charset=utf-8", data)
 }
+
+func (ctl *Controller) CreateDatabaseBackupImportTask(c *gin.Context) {
+	var payload service.DatabaseBackupImportPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid backup import payload")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	payload.ClientIP = c.ClientIP()
+	data, err := ctl.service.CreateDatabaseBackupImportTask(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}

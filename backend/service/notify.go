@@ -38,6 +38,7 @@ type NotifyTemplatePayload struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`
 	ChannelType string `json:"channelType"`
+	Scope       string `json:"scope"`
 	Title       string `json:"title"`
 	Content     string `json:"content"`
 	Status      int    `json:"status"`
@@ -181,6 +182,7 @@ func mapNotifyTemplate(item model.NotifyTemplate) map[string]any {
 		"id":          item.ID,
 		"name":        item.Name,
 		"channelType": item.ChannelType,
+		"scope":       normalizeNotifyScope(item.Scope),
 		"title":       item.Title,
 		"content":     item.Content,
 		"status":      item.Status,
@@ -221,7 +223,7 @@ func mapNotifyRule(item model.NotifyRule) map[string]any {
 	}
 }
 
-func (s *Service) ListNotifyTemplates(pageNum, pageSize int, keyword, channelType, status string) (map[string]any, error) {
+func (s *Service) ListNotifyTemplates(pageNum, pageSize int, keyword, channelType, scope, status string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -235,6 +237,9 @@ func (s *Service) ListNotifyTemplates(pageNum, pageSize int, keyword, channelTyp
 	}
 	if strings.TrimSpace(channelType) != "" {
 		query = query.Where("channel_type = ?", normalizeNotifyChannelType(channelType))
+	}
+	if strings.TrimSpace(scope) != "" {
+		query = query.Where("scope = ?", normalizeNotifyScope(scope))
 	}
 	if strings.TrimSpace(status) != "" {
 		query = query.Where("status = ?", status)
@@ -254,10 +259,14 @@ func (s *Service) ListNotifyTemplates(pageNum, pageSize int, keyword, channelTyp
 	return map[string]any{"list": rows, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
 
-func (s *Service) ListNotifyTemplateOptions(channelType string) ([]model.NotifyTemplate, error) {
+func (s *Service) ListNotifyTemplateOptions(channelType, scope string) ([]model.NotifyTemplate, error) {
 	query := s.db.Where("status = ?", 1)
 	if strings.TrimSpace(channelType) != "" {
 		query = query.Where("channel_type IN ?", []string{normalizeNotifyChannelType(channelType), "webhook"})
+	}
+	if strings.TrimSpace(scope) != "" {
+		normalizedScope := normalizeNotifyScope(scope)
+		query = query.Where("scope IN ? OR scope = '' OR scope IS NULL", []string{normalizedScope, "all"})
 	}
 	var list []model.NotifyTemplate
 	if err := query.Order("id DESC").Find(&list).Error; err != nil {
@@ -284,6 +293,7 @@ func (s *Service) SaveNotifyTemplate(payload NotifyTemplatePayload) error {
 	updates := map[string]any{
 		"name":         Trimmed(payload.Name),
 		"channel_type": normalizeNotifyChannelType(payload.ChannelType),
+		"scope":        normalizeNotifyScope(payload.Scope),
 		"title":        Trimmed(payload.Title),
 		"content":      payload.Content,
 		"status":       normalizeNotifyStatus(payload.Status),
@@ -471,6 +481,10 @@ func (s *Service) SaveNotifyRule(payload NotifyRulePayload) error {
 	if err := s.db.First(&tmpl, payload.TemplateID).Error; err != nil {
 		return errors.New("所选消息模板不存在")
 	}
+	ruleScope := normalizeNotifyScope(payload.Scope)
+	if !notifyTemplateScopeCompatible(tmpl.Scope, ruleScope) {
+		return fmt.Errorf("消息模板适用于%s，不能用于%s通知规则", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(ruleScope))
+	}
 	var channels []model.NotifyChannel
 	if err := s.db.Where("id IN ?", payload.ChannelIDs).Find(&channels).Error; err != nil {
 		return err
@@ -487,7 +501,7 @@ func (s *Service) SaveNotifyRule(payload NotifyRulePayload) error {
 	events := normalizeNotifyEvents(payload.Events, payload.Scope)
 	updates := map[string]any{
 		"name":             Trimmed(payload.Name),
-		"scope":            normalizeNotifyScope(payload.Scope),
+		"scope":            ruleScope,
 		"events_json":      encodeStringList(events),
 		"template_id":      payload.TemplateID,
 		"channel_ids_json": encodeUintList(payload.ChannelIDs),
@@ -510,8 +524,12 @@ func (s *Service) DispatchNotifyRule(ruleID uint, event NotifyEvent) {
 
 func (s *Service) TestNotifyRule(ruleID uint) (map[string]any, error) {
 	now := time.Now()
+	var rule model.NotifyRule
+	if err := s.db.First(&rule, ruleID).Error; err != nil {
+		return nil, err
+	}
 	count, err := s.enqueueNotifyRule(ruleID, NotifyEvent{
-		Scope:      "all",
+		Scope:      normalizeNotifyScope(rule.Scope),
 		Event:      "notify",
 		TargetID:   ruleID,
 		TargetName: "通知规则测试",
@@ -538,10 +556,10 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 	if !allowDisabledRule && rule.Status != 1 {
 		return 0, nil
 	}
+	if rule.Scope != "all" && rule.Scope != normalizeNotifyScope(event.Scope) {
+		return 0, nil
+	}
 	if event.Event != "notify" {
-		if rule.Scope != "all" && rule.Scope != normalizeNotifyScope(event.Scope) {
-			return 0, nil
-		}
 		if !notifyEventMatch(decodeStringList(rule.EventsJSON), event.Event, event.Status) {
 			return 0, nil
 		}
@@ -553,6 +571,9 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 	}
 	if tmpl.Status != 1 {
 		return 0, errors.New("消息模板已禁用")
+	}
+	if !notifyTemplateScopeCompatible(tmpl.Scope, event.Scope) {
+		return 0, fmt.Errorf("消息模板适用于%s，不能处理%s事件", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(event.Scope))
 	}
 
 	ids := decodeUintList(rule.ChannelIDsJSON)
@@ -570,8 +591,9 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 	now := time.Now()
 	queued := 0
 	for _, channel := range channels {
-		title := renderNotifyTemplate(firstNonEmpty(tmpl.Title, event.TargetName), event)
-		content := renderNotifyTemplate(tmpl.Content, event)
+		titleTemplate, contentTemplate := normalizeNotifyTemplateForEvent(firstNonEmpty(tmpl.Title, event.TargetName), tmpl.Content, event)
+		title := renderNotifyTemplate(titleTemplate, event)
+		content := renderNotifyTemplate(contentTemplate, event)
 		body, buildErr := buildNotifyBody(channel.ChannelType, title, content, event)
 		status := notifyStatusPending
 		errorText := ""
@@ -602,6 +624,28 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 		}
 	}
 	return queued, nil
+}
+
+func notifyTemplateScopeCompatible(templateScope, targetScope string) bool {
+	templateScope = normalizeNotifyScope(templateScope)
+	targetScope = normalizeNotifyScope(targetScope)
+	if templateScope == "all" {
+		return true
+	}
+	return targetScope != "all" && templateScope == targetScope
+}
+
+func notifyScopeLabel(scope string) string {
+	switch normalizeNotifyScope(scope) {
+	case "monitor":
+		return "监控告警"
+	case "schedule":
+		return "定时任务"
+	case "job":
+		return "作业编排"
+	default:
+		return "全部场景"
+	}
 }
 
 func notifyEventMatch(events []string, event, status string) bool {
@@ -735,10 +779,7 @@ func maxInt(value, fallback int) int {
 
 func renderNotifyTemplate(template string, event NotifyEvent) string {
 	statusColor, statusTone := notifyStatusStyle(event.Status)
-	status := event.Status
-	if normalizeNotifyScope(event.Scope) == "schedule" {
-		status = scheduleNotifyStatusLabel(event.Status)
-	}
+	status := notifyStatusLabel(event.Scope, event.Status)
 	values := map[string]string{
 		"scope":       event.Scope,
 		"event":       event.Event,
@@ -767,6 +808,11 @@ func renderNotifyTemplate(template string, event NotifyEvent) string {
 		"durationMs":     "-",
 		"httpStatus":     "-",
 		"expectedStatus": "-",
+		"jobName":        event.TargetName,
+		"jobHistoryId":   "-",
+		"stepName":       "-",
+		"stepMessage":    event.Summary,
+		"notifyAt":       formatNotifyTime(event.FinishedAt),
 	}
 	for key, value := range event.Extra {
 		values[key] = value
@@ -778,6 +824,62 @@ func renderNotifyTemplate(template string, event NotifyEvent) string {
 		}
 		return "-"
 	})
+}
+
+func notifyStatusLabel(scope, status string) string {
+	value := strings.ToLower(strings.TrimSpace(status))
+	switch normalizeNotifyScope(scope) {
+	case "monitor":
+		switch value {
+		case "firing":
+			return "触发中"
+		case "recovered", "resolved":
+			return "已恢复"
+		case "claimed":
+			return "已认领"
+		}
+	case "job":
+		switch value {
+		case "notice", "notify":
+			return "通知"
+		case "success", "completed":
+			return "成功"
+		case "failed", "error":
+			return "失败"
+		case "running":
+			return "执行中"
+		case "waiting_approval":
+			return "等待人工确认"
+		case "rejected":
+			return "已拒绝"
+		}
+	case "schedule":
+		return scheduleNotifyStatusLabel(status)
+	}
+	return status
+}
+
+func normalizeNotifyTemplateForEvent(title, content string, event NotifyEvent) (string, string) {
+	scope := normalizeNotifyScope(event.Scope)
+	if scope != "job" && scope != "schedule" {
+		return title, content
+	}
+	monitorTokens := []string{"{{severity}}", "{{alertName}}", "{{datasourceName}}", "{{instance}}", "{{value}}", "{{threshold}}"}
+	combined := title + "\n" + content
+	usesMonitorFields := false
+	for _, token := range monitorTokens {
+		if strings.Contains(combined, token) {
+			usesMonitorFields = true
+			break
+		}
+	}
+	if !usesMonitorFields {
+		return title, content
+	}
+	if scope == "schedule" {
+		return "【定时任务】{{taskName}} · {{status}}", "**执行状态：** {{status}}\n\n**任务名称：** {{taskName}}\n**任务类型：** {{taskType}}\n**触发方式：** {{triggerType}}\n**Cron：** {{cronExpr}}\n**执行耗时：** {{duration}}\n**完成时间：** {{finishedAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}"
+	}
+	return "【作业通知】{{jobName}} · {{stepName}}", "**通知类型：** {{status}}\n\n**作业名称：** {{jobName}}\n**执行编号：** #{{jobHistoryId}}\n**当前步骤：** {{stepName}}\n**触发方式：** {{triggerType}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**通知摘要**\n{{summary}}\n\n{{detail}}"
 }
 
 func scheduleNotifyStatusLabel(status string) string {
@@ -799,6 +901,8 @@ func notifyStatusStyle(status string) (string, string) {
 		return "#00B42A", "info"
 	case "firing", "failed", "error":
 		return "#F53F3F", "warning"
+	case "notice", "notify":
+		return "#165DFF", "info"
 	default:
 		return "#FF7D00", "comment"
 	}
@@ -810,6 +914,8 @@ func feishuHeaderTemplate(status string) string {
 		return "green"
 	case "firing", "failed", "error":
 		return "red"
+	case "notice", "notify":
+		return "blue"
 	default:
 		return "orange"
 	}

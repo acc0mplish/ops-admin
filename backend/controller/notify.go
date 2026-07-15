@@ -12,7 +12,7 @@ import (
 func (ctl *Controller) GetNotifyTemplateList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListNotifyTemplates(pageNum, pageSize, c.Query("keyword"), c.Query("channelType"), c.Query("status"))
+	data, err := ctl.service.ListNotifyTemplates(pageNum, pageSize, c.Query("keyword"), c.Query("channelType"), c.Query("scope"), c.Query("status"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -21,7 +21,7 @@ func (ctl *Controller) GetNotifyTemplateList(c *gin.Context) {
 }
 
 func (ctl *Controller) GetNotifyTemplateOptions(c *gin.Context) {
-	data, err := ctl.service.ListNotifyTemplateOptions(c.Query("channelType"))
+	data, err := ctl.service.ListNotifyTemplateOptions(c.Query("channelType"), c.Query("scope"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

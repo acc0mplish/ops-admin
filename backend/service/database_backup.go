@@ -1,12 +1,14 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +40,17 @@ type DatabaseManualBackupPayload struct {
 	DatabaseID uint   `json:"databaseId"`
 	SchemaName string `json:"schemaName"`
 	Operator   string `json:"-"`
+}
+
+type DatabaseBackupImportPayload struct {
+	BackupRecordID uint   `json:"backupRecordId"`
+	DatabaseID     uint   `json:"databaseId"`
+	SchemaName     string `json:"schemaName"`
+	FileName       string `json:"fileName"`
+	FileContent    string `json:"fileContent"`
+	Confirmed      bool   `json:"confirmed"`
+	Operator       string `json:"-"`
+	ClientIP       string `json:"-"`
 }
 
 func (s *Service) initDatabaseBackupScheduler() {
@@ -686,4 +699,191 @@ func (s *Service) GetDatabaseBackupFile(id uint) ([]byte, string, error) {
 		return nil, "", errors.New("备份文件尚不可下载")
 	}
 	return []byte(record.FileContent), record.FileName, nil
+}
+
+func (s *Service) CreateDatabaseBackupImportTask(payload DatabaseBackupImportPayload) (map[string]any, error) {
+	if payload.DatabaseID == 0 || strings.TrimSpace(payload.SchemaName) == "" {
+		return nil, errors.New("请选择目标数据库连接和 Schema")
+	}
+	if !payload.Confirmed {
+		return nil, errors.New("恢复备份前必须完成风险确认")
+	}
+	asset, err := s.getAssetDatabase(payload.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureDatabaseWritable(asset); err != nil {
+		return nil, err
+	}
+
+	fileName := strings.TrimSpace(payload.FileName)
+	content := strings.TrimSpace(payload.FileContent)
+	if payload.BackupRecordID > 0 {
+		var record model.DatabaseBackupRecord
+		if err := s.db.First(&record, payload.BackupRecordID).Error; err != nil {
+			return nil, errors.New("选择的备份记录不存在")
+		}
+		if record.Status != "success" || strings.TrimSpace(record.FileContent) == "" {
+			return nil, errors.New("选择的备份尚未成功或备份内容为空")
+		}
+		fileName = record.FileName
+		content = record.FileContent
+	}
+	if content == "" {
+		return nil, errors.New("请选择平台备份或上传 SQL 备份文件")
+	}
+	if len(content) > 50*1024*1024 {
+		return nil, errors.New("备份文件不能超过 50MB")
+	}
+	if fileName == "" {
+		fileName = "database-backup.sql"
+	}
+	if !strings.HasSuffix(strings.ToLower(fileName), ".sql") {
+		return nil, errors.New("备份导入仅支持 .sql 文件")
+	}
+
+	task := model.DatabaseTransferTask{
+		TaskType:      "backup_import",
+		Status:        "pending",
+		Progress:      0,
+		Message:       "等待恢复备份",
+		DatabaseID:    asset.ID,
+		DatabaseName:  asset.Name,
+		SchemaName:    strings.TrimSpace(payload.SchemaName),
+		FileName:      fileName,
+		FileContent:   content,
+		ExecutionMode: "sequential",
+		Operator:      payload.Operator,
+	}
+	if err := s.db.Create(&task).Error; err != nil {
+		return nil, err
+	}
+	go s.runDatabaseBackupImportTask(task.ID, payload.ClientIP)
+	return map[string]any{"taskId": task.ID}, nil
+}
+
+func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
+	var task model.DatabaseTransferTask
+	if err := s.db.First(&task, taskID).Error; err != nil {
+		return
+	}
+	startedAt := time.Now()
+	s.updateTransferTask(task.ID, map[string]any{
+		"status": "running", "progress": 3, "message": "正在解析备份文件", "started_at": &startedAt,
+	})
+
+	asset, db, cleanup, err := s.openDatabaseByID(task.DatabaseID, task.SchemaName)
+	if err != nil {
+		s.finishDatabaseBackupImportTask(task, startedAt, 0, err, clientIP)
+		return
+	}
+	defer db.Close()
+	defer cleanup()
+
+	script := normalizeDatabaseRestoreScript(task.FileContent, task.SchemaName)
+	statements := splitMySQLRestoreStatements(script)
+	if len(statements) == 0 {
+		s.finishDatabaseBackupImportTask(task, startedAt, 0, errors.New("备份文件中没有可执行的 SQL"), clientIP)
+		return
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		s.finishDatabaseBackupImportTask(task, startedAt, 0, err, clientIP)
+		return
+	}
+	defer conn.Close()
+
+	var rowsAffected int64
+	for index, statement := range statements {
+		result, execErr := conn.ExecContext(context.Background(), statement)
+		if execErr != nil {
+			err = fmt.Errorf("第 %d/%d 条 SQL 恢复失败: %w", index+1, len(statements), execErr)
+			break
+		}
+		if affected, affectedErr := result.RowsAffected(); affectedErr == nil {
+			rowsAffected += affected
+		}
+		progress := 5 + int(float64(index+1)/float64(len(statements))*90)
+		s.updateTransferTask(task.ID, map[string]any{
+			"progress": progress,
+			"message":  fmt.Sprintf("正在恢复 %d/%d", index+1, len(statements)),
+		})
+	}
+	if asset != nil {
+		status := 1
+		errText := ""
+		if err != nil {
+			status = 2
+			errText = err.Error()
+		}
+		s.logDBSQLHistory(asset, task.SchemaName, "", "RESTORE", "恢复备份: "+task.FileName, status, rowsAffected, time.Since(startedAt).Milliseconds(), errText, "")
+	}
+	s.finishDatabaseBackupImportTask(task, startedAt, rowsAffected, err, clientIP)
+}
+
+func (s *Service) finishDatabaseBackupImportTask(task model.DatabaseTransferTask, startedAt time.Time, rowsAffected int64, runErr error, _ string) {
+	finishedAt := time.Now()
+	updates := map[string]any{"finished_at": &finishedAt, "rows_affected": rowsAffected, "progress": 100}
+	if runErr != nil {
+		updates["status"] = "failed"
+		updates["message"] = runErr.Error()
+	} else {
+		updates["status"] = "success"
+		updates["message"] = fmt.Sprintf("备份恢复完成，影响 %d 行，耗时 %s", rowsAffected, time.Since(startedAt).Round(time.Millisecond))
+	}
+	s.updateTransferTask(task.ID, updates)
+}
+
+func normalizeDatabaseRestoreScript(script, targetSchema string) string {
+	targetSchema = strings.TrimSpace(targetSchema)
+	sourceSchema := ""
+	for _, line := range strings.Split(script, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "-- Schema:") {
+			sourceSchema = strings.TrimSpace(strings.TrimPrefix(trimmed, "-- Schema:"))
+			break
+		}
+	}
+	if sourceSchema != "" && sourceSchema != targetSchema {
+		script = strings.ReplaceAll(script, quoteIdentifier(sourceSchema)+".", quoteIdentifier(targetSchema)+".")
+	}
+	createDatabasePattern := regexp.MustCompile(`(?im)^\s*(CREATE|DROP)\s+DATABASE\b[^;]*;\s*$`)
+	usePattern := regexp.MustCompile(`(?im)^\s*USE\s+[^;]+;\s*$`)
+	script = createDatabasePattern.ReplaceAllString(script, "")
+	script = usePattern.ReplaceAllString(script, "")
+	return "USE " + quoteIdentifier(targetSchema) + ";\n" + script
+}
+
+func splitMySQLRestoreStatements(script string) []string {
+	delimiter := ";"
+	statements := make([]string, 0)
+	var current strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(script))
+	buffer := make([]byte, 64*1024)
+	scanner.Buffer(buffer, 64*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToUpper(trimmed), "DELIMITER ") {
+			delimiter = strings.TrimSpace(trimmed[len("DELIMITER "):])
+			if delimiter == "" {
+				delimiter = ";"
+			}
+			continue
+		}
+		current.WriteString(line)
+		current.WriteByte('\n')
+		if strings.HasSuffix(trimmed, delimiter) {
+			statement := strings.TrimSpace(current.String())
+			statement = strings.TrimSpace(strings.TrimSuffix(statement, delimiter))
+			if stripDBMSSQLComments(statement) != "" {
+				statements = append(statements, statement)
+			}
+			current.Reset()
+		}
+	}
+	if statement := strings.TrimSpace(current.String()); stripDBMSSQLComments(statement) != "" {
+		statements = append(statements, statement)
+	}
+	return statements
 }
