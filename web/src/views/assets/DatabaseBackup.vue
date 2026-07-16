@@ -47,8 +47,19 @@ const selectedPlanDatabase = computed(() => databases.value.find((item) => item.
 const selectedManualDatabase = computed(() => databases.value.find((item) => item.id === manualForm.databaseId))
 
 async function loadDatabases() {
-  const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1', dbType: 'mysql' })
-  databases.value = data.list || []
+  const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1' })
+  databases.value = (data.list || []).filter((item) => ['mysql', 'postgresql'].includes(String(item.dbType || '').toLowerCase()))
+}
+
+function databaseLabel(item) {
+  return `${item.name} (${String(item.dbType || 'mysql').toUpperCase()})`
+}
+
+function schemaLabel(database, schema) {
+  if (String(database?.dbType || '').toLowerCase() === 'postgresql') {
+    return `${database.dbName || database.name} / ${schema}`
+  }
+  return schema
 }
 
 async function loadSchemaOptions(databaseId) {
@@ -245,7 +256,7 @@ onBeforeUnmount(() => {
         <el-tab-pane label="备份列表" name="records">
           <div class="toolbar">
             <el-select v-model="recordQuery.databaseId" clearable filterable placeholder="全部数据库">
-              <el-option v-for="item in databases" :key="item.id" :label="item.name" :value="item.id" />
+              <el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" />
             </el-select>
             <el-select v-model="recordQuery.triggerType" clearable placeholder="触发方式">
               <el-option label="手动" value="manual" />
@@ -280,8 +291,8 @@ onBeforeUnmount(() => {
       <el-form label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" required><el-input v-model="planForm.name" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="数据库连接" required><el-select v-model="planForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="业务库" required><el-select v-model="planForm.schemaName" :loading="schemaLoading" :disabled="!planForm.databaseId" filterable placeholder="请选择需要备份的业务库"><el-option v-for="schema in schemaOptions" :key="schema" :label="schema" :value="schema" /></el-select><div v-if="selectedPlanDatabase" class="schema-hint">已连接：{{ selectedPlanDatabase.host }}:{{ selectedPlanDatabase.port }}</div></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="数据库连接" required><el-select v-model="planForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="selectedPlanDatabase?.dbType === 'postgresql' ? '业务 Schema' : '业务库'" required><el-select v-model="planForm.schemaName" :loading="schemaLoading" :disabled="!planForm.databaseId" filterable :placeholder="selectedPlanDatabase?.dbType === 'postgresql' ? '请选择需要备份的业务 Schema' : '请选择需要备份的业务库'"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedPlanDatabase, schema)" :value="schema" /></el-select><div v-if="selectedPlanDatabase" class="schema-hint">已连接：{{ selectedPlanDatabase.host }}:{{ selectedPlanDatabase.port }}</div></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="保留天数"><el-input-number v-model="planForm.retentionDays" :min="1" :max="365" /></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="状态"><el-switch v-model="planForm.status" :active-value="1" :inactive-value="2" /></el-form-item></el-col>
           <el-col :span="24"><el-form-item label="执行周期"><OpsCronEditor v-model="planForm.cronExpr" /></el-form-item></el-col>
@@ -293,8 +304,8 @@ onBeforeUnmount(() => {
 
     <el-dialog v-model="manualDialogVisible" title="手动备份" width="520px">
       <el-form label-width="90px">
-        <el-form-item label="数据库连接" required><el-select v-model="manualForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
-        <el-form-item label="业务库" required><el-select v-model="manualForm.schemaName" :loading="schemaLoading" :disabled="!manualForm.databaseId" filterable placeholder="请选择需要备份的业务库"><el-option v-for="schema in schemaOptions" :key="schema" :label="schema" :value="schema" /></el-select><div v-if="selectedManualDatabase" class="schema-hint">将备份 {{ manualForm.schemaName || '所选业务库' }} 的结构、数据和对象定义。</div></el-form-item>
+        <el-form-item label="数据库连接" required><el-select v-model="manualForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item>
+        <el-form-item :label="selectedManualDatabase?.dbType === 'postgresql' ? '业务 Schema' : '业务库'" required><el-select v-model="manualForm.schemaName" :loading="schemaLoading" :disabled="!manualForm.databaseId" filterable :placeholder="selectedManualDatabase?.dbType === 'postgresql' ? '请选择需要备份的业务 Schema' : '请选择需要备份的业务库'"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedManualDatabase, schema)" :value="schema" /></el-select><div v-if="selectedManualDatabase" class="schema-hint">将备份 {{ schemaLabel(selectedManualDatabase, manualForm.schemaName || (selectedManualDatabase.dbType === 'postgresql' ? '所选业务 Schema' : '所选业务库')) }} 的表结构、主键与数据。</div></el-form-item>
       </el-form>
       <template #footer><el-button @click="manualDialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="runManual">开始备份</el-button></template>
     </el-dialog>

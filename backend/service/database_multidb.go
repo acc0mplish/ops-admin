@@ -55,7 +55,7 @@ func databaseRequiresUsername(dbType string) bool {
 func databaseCapabilities(dbType string) map[string]bool {
 	switch normalizeDatabaseType(dbType) {
 	case "postgresql":
-		return map[string]bool{"sql": true, "schema": true, "tableData": true, "resourceData": false, "rowEdit": true, "transfer": false, "import": true, "export": false, "backup": false}
+		return map[string]bool{"sql": true, "schema": true, "tableData": true, "resourceData": false, "rowEdit": true, "transfer": false, "import": true, "export": false, "backup": true}
 	case "mongodb":
 		return map[string]bool{"sql": false, "schema": true, "tableData": false, "resourceData": true, "rowEdit": false, "transfer": false, "backup": false}
 	case "redis":

@@ -24,6 +24,21 @@ type DBMSSQLExecutePayload struct {
 	ClientIP   string `json:"-"`
 }
 
+var mysqlNamedForeignKeyPattern = regexp.MustCompile("(?i)CONSTRAINT\\s+(?:`[^`]+`|[a-zA-Z0-9_]+)\\s+(FOREIGN\\s+KEY)")
+
+// mysqlImportCreateTableSQL keeps foreign keys during an automatic table copy,
+// but drops their source-side names. MySQL requires foreign key names to be
+// unique within a schema, so reusing the source name can make the import fail.
+func mysqlImportCreateTableSQL(createSQL, sourceTable, targetTable string) string {
+	createSQL = strings.Replace(
+		createSQL,
+		"CREATE TABLE `"+sourceTable+"`",
+		"CREATE TABLE IF NOT EXISTS "+quoteIdentifier(targetTable),
+		1,
+	)
+	return mysqlNamedForeignKeyPattern.ReplaceAllString(createSQL, "$1")
+}
+
 type DBMSTableDataQueryPayload struct {
 	DatabaseID uint   `json:"databaseId"`
 	Schema     string `json:"schema"`
@@ -1148,12 +1163,6 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 	}
 	defer targetDB.Close()
 	defer targetCleanup()
-	if err := ensureRelationalImportFeature(sourceAsset); err != nil {
-		return nil, err
-	}
-	if err := ensureRelationalImportFeature(targetAsset); err != nil {
-		return nil, err
-	}
 	if err := ensureDatabaseWritable(targetAsset); err != nil {
 		return nil, err
 	}
@@ -1176,21 +1185,20 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 				return nil, err
 			}
 		} else {
-		showSQL := fmt.Sprintf("SHOW CREATE TABLE %s", importTableName(sourceAsset, sourceSchema, payload.SourceTable))
-		rows, err := sourceDB.Query(showSQL)
-		if err != nil {
-			return nil, err
-		}
-		_, list, err := scanRows(rows)
-		rows.Close()
-		if err != nil || len(list) == 0 {
-			return nil, errors.New("获取源表结构失败")
-		}
-		createSQL := fmt.Sprintf("%v", list[0]["Create Table"])
-		createSQL = strings.Replace(createSQL, "CREATE TABLE `"+payload.SourceTable+"`", "CREATE TABLE IF NOT EXISTS `"+targetTable+"`", 1)
-		if _, err := targetDB.Exec(createSQL); err != nil {
-			return nil, err
-		}
+			showSQL := fmt.Sprintf("SHOW CREATE TABLE %s", importTableName(sourceAsset, sourceSchema, payload.SourceTable))
+			rows, err := sourceDB.Query(showSQL)
+			if err != nil {
+				return nil, err
+			}
+			_, list, err := scanRows(rows)
+			rows.Close()
+			if err != nil || len(list) == 0 {
+				return nil, errors.New("获取源表结构失败")
+			}
+			createSQL := mysqlImportCreateTableSQL(fmt.Sprintf("%v", list[0]["Create Table"]), payload.SourceTable, targetTable)
+			if _, err := targetDB.Exec(createSQL); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -1217,9 +1225,6 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 		return nil, errors.New("源表和目标表没有可匹配的字段")
 	}
 
-	if normalizeDatabaseType(sourceAsset.DBType) != normalizeDatabaseType(targetAsset.DBType) && payload.CreateIfMissing {
-		warnings = append(warnings, "跨数据库类型导入不支持自动建表，请先创建目标表")
-	}
 	if payload.TruncateTarget {
 		if _, err := targetDB.Exec(fmt.Sprintf("TRUNCATE TABLE %s", importTableName(targetAsset, targetSchema, targetTable))); err != nil {
 			return nil, err
@@ -1356,10 +1361,20 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureRelationalImportFeature(sourceAsset); err != nil {
+		sourceDB.Close()
+		sourceCleanup()
+		return nil, err
+	}
 	defer sourceDB.Close()
 	defer sourceCleanup()
 	targetAsset, targetDB, targetCleanup, err := s.openDatabaseByID(payload.TargetDatabaseID, payload.TargetSchema)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureRelationalImportFeature(targetAsset); err != nil {
+		targetDB.Close()
+		targetCleanup()
 		return nil, err
 	}
 	defer targetDB.Close()
@@ -1407,6 +1422,9 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 	}
 	if len(targetColumns) == 0 && !payload.CreateIfMissing {
 		warnings = append(warnings, "目标表不存在，且未启用自动建表")
+	}
+	if normalizeDatabaseType(sourceAsset.DBType) != normalizeDatabaseType(targetAsset.DBType) && payload.CreateIfMissing {
+		warnings = append(warnings, "跨数据库类型导入不支持自动建表，请先创建目标表")
 	}
 	if payload.TruncateTarget {
 		warnings = append(warnings, "导入前将清空目标表全部数据")

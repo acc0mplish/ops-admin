@@ -324,7 +324,7 @@ onMounted(async () => {
             <div class="section-title">目标位置</div>
             <el-form-item label="目标数据库" required>
               <el-select v-model="importForm.targetDatabaseId" filterable>
-                <el-option v-for="item in databases" :key="item.id" :label="`${item.name} / ${item.accessMode === 'readonly' ? '只读' : '读写'}`" :value="item.id" />
+                <el-option v-for="item in relationalDatabases" :key="item.id" :label="databaseLabel(item, true)" :value="item.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="目标 Schema" required>
@@ -380,14 +380,14 @@ onMounted(async () => {
                   <input type="file" accept=".sql,text/plain" @change="readBackupFile" />
                   <span>{{ backupForm.fileName || '选择 SQL 备份文件' }}</span>
                 </label>
-                <span class="field-hint">支持平台内置逻辑备份及标准 MySQL SQL 文件，最大 50MB</span>
+                <span class="field-hint">支持平台内置 MySQL / PostgreSQL 逻辑备份及对应 SQL 文件，最大 50MB</span>
               </el-form-item>
 
               <div class="section-title target-title">选择恢复目标</div>
               <el-form-item label="目标数据库" required>
-                <el-select v-model="backupForm.databaseId" filterable placeholder="选择可写的 MySQL 连接">
+                <el-select v-model="backupForm.databaseId" filterable placeholder="选择可写的 MySQL 或 PostgreSQL 连接">
                   <el-option
-                    v-for="item in mysqlDatabases"
+                    v-for="item in relationalDatabases"
                     :key="item.id"
                     :label="`${item.name} / ${item.env || '-'} / ${item.accessMode === 'readonly' ? '只读' : '读写'}`"
                     :value="item.id"
@@ -419,7 +419,7 @@ onMounted(async () => {
           <el-form label-width="110px" class="operation-form">
             <el-form-item label="目标数据库" required>
               <el-select v-model="batchForm.databaseId" filterable>
-                <el-option v-for="item in databases" :key="item.id" :label="`${item.name} / ${item.env || '-'} / ${item.accessMode === 'readonly' ? '只读' : '读写'}`" :value="item.id" />
+                <el-option v-for="item in relationalDatabases" :key="item.id" :label="databaseLabel(item, true)" :value="item.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="Schema" required>

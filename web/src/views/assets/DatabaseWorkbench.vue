@@ -188,7 +188,8 @@ const sqlSnippets = computed(() => [
 ])
 const supportsTableData = computed(() => capabilities.value.tableData !== false)
 const supportsResourceData = computed(() => capabilities.value.resourceData === true)
-const supportsTransfer = computed(() => capabilities.value.transfer !== false)
+const supportsExport = computed(() => capabilities.value.export === true || (capabilities.value.export === undefined && capabilities.value.transfer !== false))
+const supportsImport = computed(() => capabilities.value.import === true || (capabilities.value.import === undefined && capabilities.value.transfer !== false))
 const canEditRows = computed(() => supportsTableData.value && !isReadOnly.value && selectedPrimaryKeys.value.length > 0 && capabilities.value.rowEdit !== false)
 const canManageRedisKeys = computed(() => isRedis.value && !isReadOnly.value && capabilities.value.keyEdit !== false)
 const redisKeyTypes = ['string', 'hash', 'list', 'set', 'zset']
@@ -978,8 +979,8 @@ async function createExportTask() {
 }
 
 async function openImportDialog() {
-  const list = await queryAssetDatabaseList({ pageNum: 1, pageSize: 200, keyword: '', dbType: 'mysql', status: '1' })
-  importDatabaseOptions.value = list.list || []
+  const list = await queryAssetDatabaseList({ pageNum: 1, pageSize: 200, keyword: '', status: '1' })
+  importDatabaseOptions.value = (list.list || []).filter((item) => ['mysql', 'postgresql'].includes(String(item.dbType || '').toLowerCase()))
   importPrecheck.value = null
   importDialogVisible.value = true
 }
@@ -1179,8 +1180,8 @@ onBeforeUnmount(() => {
             <div class="panel-actions">
               <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
               <el-button v-else-if="isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">执行 Redis 命令</el-button>
-              <el-button :disabled="!supportsTransfer || !selectedTable" @click="createExportTask">导出任务</el-button>
-              <el-button :disabled="!supportsTransfer || isReadOnly" @click="openImportDialog">导入任务</el-button>
+              <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">导出任务</el-button>
+              <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">导入任务</el-button>
             </div>
           </div>
 
@@ -1560,12 +1561,12 @@ onBeforeUnmount(() => {
       <el-form label-width="120px">
         <el-form-item label="源数据库">
           <el-select v-model="importForm.sourceDatabaseId" filterable style="width: 100%">
-            <el-option
-              v-for="item in importDatabaseOptions"
-              :key="item.id"
-              :label="`${item.name} (${item.host}:${item.port})`"
-              :value="item.id"
-            />
+              <el-option
+                v-for="item in importDatabaseOptions"
+                :key="item.id"
+                :label="`${item.name} (${String(item.dbType || 'mysql').toUpperCase()} · ${item.host}:${item.port})`"
+                :value="item.id"
+              />
           </el-select>
         </el-form-item>
         <el-form-item label="源库">
