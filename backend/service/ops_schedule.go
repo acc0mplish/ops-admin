@@ -904,5 +904,5 @@ func (s *Service) runScheduledHTTPTask(task model.OpsScheduleTask) (string, stri
 	if response.StatusCode == normalizeExpectedStatus(task.ExpectedStatus) {
 		return "success", summary, responseBody, response.StatusCode, responseBody
 	}
-	return "failed", fmt.Sprintf("%s锛屾湡鏈涚姸鎬佺爜 %d", summary, normalizeExpectedStatus(task.ExpectedStatus)), responseBody, response.StatusCode, responseBody
+	return "failed", fmt.Sprintf("%s，期望状态码 %d", summary, normalizeExpectedStatus(task.ExpectedStatus)), responseBody, response.StatusCode, responseBody
 }

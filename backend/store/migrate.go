@@ -71,6 +71,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MonitorDashboardPanel{},
 		&model.IntegrationNavigationGroup{},
 		&model.IntegrationNavigation{},
+		&model.IntegrationAIModel{},
+		&model.IntegrationAIConversation{},
+		&model.IntegrationAIMessage{},
+		&model.IntegrationAIToolConfig{},
+		&model.IntegrationAIToolAction{},
 	); err != nil {
 		return err
 	}

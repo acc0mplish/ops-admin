@@ -429,6 +429,18 @@ export const appDefinitions = [
         path: '/integration/navigation',
         icon: 'Grid',
         children: []
+      },
+      {
+        title: 'AI 助手',
+        titleKey: 'integrationAI',
+        path: '/integration/ai/chat',
+        icon: 'ChatLineRound',
+        children: [
+          { title: '智能对话', titleKey: 'integrationAIChat', path: '/integration/ai/chat', icon: 'ChatDotRound', children: [] },
+          { title: '会话管理', titleKey: 'integrationAIConversations', path: '/integration/ai/conversations', icon: 'Clock', children: [] },
+          { title: '模型管理', titleKey: 'integrationAIModels', path: '/integration/ai/models', icon: 'Cpu', children: [] },
+          { title: '工具集', titleKey: 'integrationAITools', path: '/integration/ai/tools', icon: 'Operation', children: [] }
+        ]
       }
     ]
   },

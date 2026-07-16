@@ -63,6 +63,10 @@ import MonitorDashboard from '../views/monitor/MonitorDashboard.vue'
 import ModuleWorkspace from '../views/modules/ModuleWorkspace.vue'
 import IntegrationNavigation from '../views/integration/IntegrationNavigation.vue'
 import PublicNavigation from '../views/integration/PublicNavigation.vue'
+import AIAssistantChat from '../views/integration/AIAssistantChat.vue'
+import AIConversations from '../views/integration/AIConversations.vue'
+import AIModels from '../views/integration/AIModels.vue'
+import AITools from '../views/integration/AITools.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
@@ -98,6 +102,10 @@ const routes = [
         component: IntegrationNavigation,
         meta: { title: '导航管理', app: 'integration', summary: '按组维护常用系统入口，并可生成免登录公开导航。' }
       },
+      { path: '/integration/ai/chat', component: AIAssistantChat, meta: { title: '智能对话', app: 'integration', summary: '通过自然语言查询监控与 Kubernetes，并安全执行运维操作。' } },
+      { path: '/integration/ai/conversations', component: AIConversations, meta: { title: '会话管理', app: 'integration', summary: '管理 AI 助手的多轮会话、上下文和历史记录。' } },
+      { path: '/integration/ai/models', component: AIModels, meta: { title: '模型管理', app: 'integration', summary: '配置 OpenAI 兼容模型 API 和默认生成参数。' } },
+      { path: '/integration/ai/tools', component: AITools, meta: { title: '工具集', app: 'integration', summary: '管理 PromQL、Grafana 与 Kubernetes AI 工具。' } },
 
       {
         path: '/assets/overview',

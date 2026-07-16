@@ -1,0 +1,1101 @@
+package service
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"sort"
+	"strings"
+	"time"
+
+	"ops-admin/backend/model"
+
+	"gorm.io/gorm"
+)
+
+type IntegrationAIModelPayload struct {
+	ID             uint    `json:"id"`
+	Name           string  `json:"name"`
+	Provider       string  `json:"provider"`
+	BaseURL        string  `json:"baseUrl"`
+	APIKey         string  `json:"apiKey"`
+	Model          string  `json:"model"`
+	SystemPrompt   string  `json:"systemPrompt"`
+	Temperature    float64 `json:"temperature"`
+	MaxTokens      int     `json:"maxTokens"`
+	TimeoutSeconds int     `json:"timeoutSeconds"`
+	IsDefault      bool    `json:"isDefault"`
+	Status         int     `json:"status"`
+	Description    string  `json:"description"`
+}
+
+type IntegrationAIConversationPayload struct {
+	ID      uint   `json:"id"`
+	ModelID uint   `json:"modelId"`
+	Title   string `json:"title"`
+	Pinned  bool   `json:"pinned"`
+}
+
+type IntegrationAIChatPayload struct {
+	ConversationID uint   `json:"conversationId"`
+	ModelID        uint   `json:"modelId"`
+	Content        string `json:"content"`
+}
+
+type IntegrationAIToolUpdatePayload struct {
+	ToolKey             string `json:"toolKey"`
+	Enabled             bool   `json:"enabled"`
+	RequireConfirmation bool   `json:"requireConfirmation"`
+}
+
+type IntegrationAIToolExecutePayload struct {
+	ToolKey   string         `json:"toolKey"`
+	Arguments map[string]any `json:"arguments"`
+}
+
+type aiToolDefinition struct {
+	Key                 string
+	Name                string
+	Category            string
+	Description         string
+	Permission          string
+	RequireConfirmation bool
+	Parameters          map[string]any
+}
+
+var integrationAIToolDefinitions = []aiToolDefinition{
+	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
+	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
+	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
+	{Key: "asset_host_list", Name: "服务器资产", Category: "资产管理", Description: "查询 CMDB 中的服务器、IP、环境、主机组与在线状态，不返回登录凭据。", Permission: "read", Parameters: assetQuerySchema("服务器名称、别名或 IP 关键词")},
+	{Key: "asset_mysql_list", Name: "MySQL 资产", Category: "资产管理", Description: "查询已纳管的 MySQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
+	{Key: "asset_postgresql_list", Name: "PostgreSQL 资产", Category: "资产管理", Description: "查询已纳管的 PostgreSQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
+	{Key: "asset_redis_list", Name: "Redis 资产", Category: "资产管理", Description: "查询已纳管的 Redis 实例、逻辑库、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("Redis 名称、地址或逻辑库关键词")},
+	{Key: "asset_mongodb_list", Name: "MongoDB 资产", Category: "资产管理", Description: "查询已纳管的 MongoDB 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
+	{Key: "k8s_list_clusters", Name: "K8s 集群列表", Category: "Kubernetes", Description: "查询已接入集群、状态、版本和节点数量。", Permission: "read", Parameters: objectSchema(map[string]any{}, nil)},
+	{Key: "k8s_cluster_overview", Name: "K8s 集群概览", Category: "Kubernetes", Description: "查询指定集群的节点、工作负载、Pod 与健康概况。", Permission: "read", Parameters: objectSchema(map[string]any{"clusterId": integerProperty("K8s 集群 ID")}, []string{"clusterId"})},
+	{Key: "k8s_restart_workload", Name: "重启 K8s 工作负载", Category: "Kubernetes", Description: "对 Deployment、StatefulSet 或 DaemonSet 执行滚动重启。", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(false)},
+	{Key: "k8s_scale_workload", Name: "扩缩容 K8s 工作负载", Category: "Kubernetes", Description: "修改 Deployment 或 StatefulSet 的副本数。", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(true)},
+}
+
+func stringProperty(description string) map[string]any {
+	return map[string]any{"type": "string", "description": description}
+}
+func integerProperty(description string) map[string]any {
+	return map[string]any{"type": "integer", "description": description}
+}
+func objectSchema(properties map[string]any, required []string) map[string]any {
+	result := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+	if len(required) > 0 {
+		result["required"] = required
+	}
+	return result
+}
+
+func assetQuerySchema(keywordDescription string) map[string]any {
+	return objectSchema(map[string]any{
+		"keyword":     stringProperty(keywordDescription),
+		"environment": stringProperty("环境编码，例如 dev、test、prod；留空查询全部环境"),
+		"limit":       integerProperty("最多返回多少条，范围 1 到 50，默认 20"),
+	}, nil)
+}
+
+func logQueryToolSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"datasourceId":   integerProperty("日志数据源 ID；留空则查询所有启用的 Elasticsearch 和 VictoriaLogs 数据源"),
+		"datasourceName": stringProperty("数据源名称关键词，仅在未指定 datasourceId 时使用"),
+		"index":          stringProperty("Elasticsearch 索引或索引模式，例如 logs-*；留空查询全部索引"),
+		"streams":        stringProperty("Stream/Topic，多个值用逗号分隔；默认按包含关系匹配，例如 err.log 可匹配 szfc.err.log.1053；使用 =szfc.err.log.1053 可精确匹配"),
+		"query":          stringProperty("日志条件：Elasticsearch 使用 Lucene，VictoriaLogs 使用 LogsQL；例如 level:ERROR，留空表示全部"),
+		"startTime":      stringProperty("开始时间，支持 RFC3339、YYYY-MM-DD HH:mm:ss、昨天 10:00 或 yesterday 10:00，时区 Asia/Shanghai"),
+		"endTime":        stringProperty("结束时间，格式与 startTime 相同，必须晚于开始时间"),
+		"mode":           stringProperty("返回模式：count 仅统计数量，list 返回少量日志明细；默认 count"),
+		"limit":          integerProperty("list 模式最多返回的日志条数，范围 1 到 50，默认 20"),
+	}, []string{"startTime", "endTime"})
+}
+
+func workloadActionSchema(withReplicas bool) map[string]any {
+	properties := map[string]any{
+		"clusterId": integerProperty("K8s 集群 ID"), "namespace": stringProperty("命名空间"),
+		"workloadType": stringProperty("工作负载类型，例如 deployment"), "workloadName": stringProperty("工作负载名称"),
+	}
+	required := []string{"clusterId", "namespace", "workloadType", "workloadName"}
+	if withReplicas {
+		properties["replicas"] = integerProperty("目标副本数")
+		required = append(required, "replicas")
+	}
+	return objectSchema(properties, required)
+}
+
+func (s *Service) ListIntegrationAIModels() ([]map[string]any, error) {
+	var list []model.IntegrationAIModel
+	if err := s.db.Order("is_default DESC, id ASC").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, aiModelView(item))
+	}
+	return result, nil
+}
+
+func aiModelView(item model.IntegrationAIModel) map[string]any {
+	return map[string]any{"id": item.ID, "name": item.Name, "provider": item.Provider, "baseUrl": item.BaseURL,
+		"model": item.Model, "systemPrompt": item.SystemPrompt, "temperature": item.Temperature, "maxTokens": item.MaxTokens,
+		"timeoutSeconds": item.TimeoutSeconds, "isDefault": item.IsDefault, "status": item.Status, "description": item.Description,
+		"hasApiKey": strings.TrimSpace(item.APIKey) != "", "apiKeyMasked": maskSecret(item.APIKey), "createTime": item.CreatedAt, "updateTime": item.UpdatedAt}
+}
+
+func maskSecret(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 8 {
+		return "********"
+	}
+	return value[:3] + strings.Repeat("*", 8) + value[len(value)-4:]
+}
+
+func (s *Service) SaveIntegrationAIModel(payload IntegrationAIModelPayload) (map[string]any, error) {
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.BaseURL = strings.TrimRight(strings.TrimSpace(payload.BaseURL), "/")
+	payload.Model = strings.TrimSpace(payload.Model)
+	if payload.Name == "" || payload.BaseURL == "" || payload.Model == "" {
+		return nil, errors.New("模型名称、API 地址和模型标识不能为空")
+	}
+	if parsed, err := url.Parse(payload.BaseURL); err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, errors.New("请输入有效的 OpenAI 兼容 API 地址")
+	}
+	if payload.Provider == "" {
+		payload.Provider = "openai_compatible"
+	}
+	if payload.Status == 0 {
+		payload.Status = 1
+	}
+	if payload.TimeoutSeconds < 5 {
+		payload.TimeoutSeconds = 60
+	}
+	if payload.TimeoutSeconds > 600 {
+		payload.TimeoutSeconds = 600
+	}
+	if payload.MaxTokens <= 0 {
+		payload.MaxTokens = 2048
+	}
+	if payload.MaxTokens > 393216 {
+		payload.MaxTokens = 393216
+	}
+	if payload.Temperature < 0 {
+		payload.Temperature = 0
+	}
+	if payload.Temperature > 2 {
+		payload.Temperature = 2
+	}
+	var item model.IntegrationAIModel
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if payload.IsDefault {
+			if err := tx.Model(&model.IntegrationAIModel{}).Where("is_default = ?", true).Update("is_default", false).Error; err != nil {
+				return err
+			}
+		}
+		if payload.ID > 0 {
+			if err := tx.First(&item, payload.ID).Error; err != nil {
+				return err
+			}
+			item.Name, item.Provider, item.BaseURL, item.Model = payload.Name, payload.Provider, payload.BaseURL, payload.Model
+			item.SystemPrompt, item.Temperature, item.MaxTokens = payload.SystemPrompt, payload.Temperature, payload.MaxTokens
+			item.TimeoutSeconds, item.IsDefault, item.Status, item.Description = payload.TimeoutSeconds, payload.IsDefault, payload.Status, payload.Description
+			if strings.TrimSpace(payload.APIKey) != "" {
+				item.APIKey = strings.TrimSpace(payload.APIKey)
+			}
+			return tx.Save(&item).Error
+		}
+		item = model.IntegrationAIModel{Name: payload.Name, Provider: payload.Provider, BaseURL: payload.BaseURL, APIKey: strings.TrimSpace(payload.APIKey), Model: payload.Model,
+			SystemPrompt: payload.SystemPrompt, Temperature: payload.Temperature, MaxTokens: payload.MaxTokens, TimeoutSeconds: payload.TimeoutSeconds,
+			IsDefault: payload.IsDefault, Status: payload.Status, Description: payload.Description}
+		return tx.Create(&item).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return aiModelView(item), nil
+}
+
+func (s *Service) DeleteIntegrationAIModel(id uint) error {
+	if id == 0 {
+		return errors.New("模型 ID 不能为空")
+	}
+	var count int64
+	if err := s.db.Model(&model.IntegrationAIConversation{}).Where("model_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("该模型已被会话使用，请先停用模型，不能直接删除")
+	}
+	return s.db.Delete(&model.IntegrationAIModel{}, id).Error
+}
+
+func (s *Service) TestIntegrationAIModel(payload IntegrationAIModelPayload) (map[string]any, error) {
+	var item model.IntegrationAIModel
+	if payload.ID > 0 {
+		if err := s.db.First(&item, payload.ID).Error; err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(payload.BaseURL) != "" {
+		item.BaseURL = strings.TrimRight(strings.TrimSpace(payload.BaseURL), "/")
+	}
+	if strings.TrimSpace(payload.Model) != "" {
+		item.Model = strings.TrimSpace(payload.Model)
+	}
+	if strings.TrimSpace(payload.APIKey) != "" {
+		item.APIKey = strings.TrimSpace(payload.APIKey)
+	}
+	if payload.TimeoutSeconds > 0 {
+		item.TimeoutSeconds = payload.TimeoutSeconds
+	}
+	if payload.MaxTokens > 0 {
+		item.MaxTokens = payload.MaxTokens
+	} else if item.MaxTokens <= 0 {
+		item.MaxTokens = 2048
+	}
+	if payload.Temperature >= 0 && payload.Temperature <= 2 {
+		item.Temperature = payload.Temperature
+	}
+	started := time.Now()
+	response, err := s.callOpenAICompatible(item, []map[string]any{{"role": "user", "content": "只回复 OK"}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"success": true, "latencyMs": time.Since(started).Milliseconds(), "response": response.Content}, nil
+}
+
+func (s *Service) ListIntegrationAIConversations(userID uint, keyword string) ([]map[string]any, error) {
+	query := s.db.Model(&model.IntegrationAIConversation{}).Where("user_id = ?", userID)
+	if keyword = strings.TrimSpace(keyword); keyword != "" {
+		query = query.Where("title LIKE ?", "%"+keyword+"%")
+	}
+	var list []model.IntegrationAIConversation
+	if err := query.Order("pinned DESC, COALESCE(last_message_at, created_at) DESC").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	modelNames := map[uint]string{}
+	var models []model.IntegrationAIModel
+	_ = s.db.Find(&models).Error
+	for _, item := range models {
+		modelNames[item.ID] = item.Name
+	}
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, map[string]any{
+			"id": item.ID, "title": item.Title, "modelId": item.ModelID, "modelName": modelNames[item.ModelID], "username": item.Username,
+			"status": item.Status, "pinned": item.Pinned, "messageCount": item.MessageCount, "lastMessageAt": item.LastMessageAt, "createTime": item.CreatedAt, "updateTime": item.UpdatedAt})
+	}
+	return result, nil
+}
+
+func (s *Service) SaveIntegrationAIConversation(userID uint, username string, payload IntegrationAIConversationPayload) (*model.IntegrationAIConversation, error) {
+	title := strings.TrimSpace(payload.Title)
+	if title == "" {
+		title = "新会话"
+	}
+	if payload.ModelID == 0 {
+		payload.ModelID = s.defaultAIModelID()
+	}
+	if payload.ID > 0 {
+		var item model.IntegrationAIConversation
+		if err := s.db.Where("id = ? AND user_id = ?", payload.ID, userID).First(&item).Error; err != nil {
+			return nil, err
+		}
+		item.Title, item.ModelID, item.Pinned = title, payload.ModelID, payload.Pinned
+		if err := s.db.Save(&item).Error; err != nil {
+			return nil, err
+		}
+		return &item, nil
+	}
+	item := model.IntegrationAIConversation{UserID: userID, Username: username, ModelID: payload.ModelID, Title: title, Status: 1, Pinned: payload.Pinned}
+	if err := s.db.Create(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (s *Service) defaultAIModelID() uint {
+	var item model.IntegrationAIModel
+	if s.db.Where("status = ?", 1).Order("is_default DESC, id ASC").First(&item).Error == nil {
+		return item.ID
+	}
+	return 0
+}
+
+func (s *Service) GetIntegrationAIConversation(userID, id uint) (map[string]any, error) {
+	var conversation model.IntegrationAIConversation
+	if err := s.db.Where("id = ? AND user_id = ?", id, userID).First(&conversation).Error; err != nil {
+		return nil, err
+	}
+	var messages []model.IntegrationAIMessage
+	if err := s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	var actions []model.IntegrationAIToolAction
+	_ = s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&actions).Error
+	return map[string]any{"conversation": conversation, "messages": messages, "actions": actions}, nil
+}
+
+func (s *Service) DeleteIntegrationAIConversation(userID, id uint) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var item model.IntegrationAIConversation
+		if err := tx.Where("id = ? AND user_id = ?", id, userID).First(&item).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("conversation_id = ?", id).Delete(&model.IntegrationAIToolAction{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("conversation_id = ?", id).Delete(&model.IntegrationAIMessage{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&item).Error
+	})
+}
+
+func (s *Service) SendIntegrationAIChat(userID uint, username string, payload IntegrationAIChatPayload) (map[string]any, error) {
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		return nil, errors.New("请输入对话内容")
+	}
+	var conversation model.IntegrationAIConversation
+	if payload.ConversationID == 0 {
+		item, err := s.SaveIntegrationAIConversation(userID, username, IntegrationAIConversationPayload{ModelID: payload.ModelID, Title: truncateRunes(content, 40)})
+		if err != nil {
+			return nil, err
+		}
+		conversation = *item
+	} else if err := s.db.Where("id = ? AND user_id = ?", payload.ConversationID, userID).First(&conversation).Error; err != nil {
+		return nil, err
+	}
+	if payload.ModelID > 0 && payload.ModelID != conversation.ModelID {
+		conversation.ModelID = payload.ModelID
+		_ = s.db.Model(&conversation).Update("model_id", payload.ModelID).Error
+	}
+	var aiModel model.IntegrationAIModel
+	if err := s.db.Where("id = ? AND status = ?", conversation.ModelID, 1).First(&aiModel).Error; err != nil {
+		return nil, errors.New("请选择一个已启用的 AI 模型")
+	}
+	userMessage := model.IntegrationAIMessage{ConversationID: conversation.ID, Role: "user", Content: content, Status: "completed"}
+	if err := s.db.Create(&userMessage).Error; err != nil {
+		return nil, err
+	}
+	var history []model.IntegrationAIMessage
+	if err := s.db.Where("conversation_id = ? AND role IN ?", conversation.ID, []string{"user", "assistant"}).Order("id DESC").Limit(30).Find(&history).Error; err != nil {
+		return nil, err
+	}
+	sort.Slice(history, func(i, j int) bool { return history[i].ID < history[j].ID })
+	messages := []map[string]any{{"role": "system", "content": integrationAISystemPrompt(aiModel.SystemPrompt)}}
+	for _, item := range history {
+		messages = append(messages, map[string]any{"role": item.Role, "content": item.Content})
+	}
+	tools, configs, err := s.openAIToolDefinitions()
+	if err != nil {
+		return nil, err
+	}
+	response, err := s.callOpenAICompatible(aiModel, messages, tools)
+	if err != nil {
+		return nil, err
+	}
+	actions := make([]model.IntegrationAIToolAction, 0)
+	if len(response.ToolCalls) > 0 {
+		assistantCall := map[string]any{"role": "assistant", "content": response.Content, "tool_calls": response.RawToolCalls}
+		messages = append(messages, assistantCall)
+		for _, call := range response.ToolCalls {
+			config, exists := configs[call.Name]
+			if !exists || !config.Enabled {
+				continue
+			}
+			var args map[string]any
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				args = map[string]any{}
+			}
+			var toolResult any
+			if config.RequireConfirmation {
+				rawArgs, _ := json.Marshal(args)
+				action := model.IntegrationAIToolAction{ConversationID: conversation.ID, UserID: userID, ToolKey: call.Name, ArgumentsJSON: string(rawArgs), Status: "pending"}
+				if err := s.db.Create(&action).Error; err != nil {
+					return nil, err
+				}
+				actions = append(actions, action)
+				toolResult = map[string]any{"status": "pending_confirmation", "actionId": action.ID, "message": "该操作需要用户确认后执行"}
+			} else {
+				toolResult, err = s.executeIntegrationAITool(call.Name, args)
+				if err != nil {
+					toolResult = map[string]any{"error": err.Error()}
+				}
+			}
+			rawResult, _ := json.Marshal(toolResult)
+			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawResult)})
+		}
+		response, err = s.callOpenAICompatible(aiModel, messages, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(response.Content) == "" {
+		response.Content = "操作已生成，请在下方确认后执行。"
+	}
+	assistantMessage := model.IntegrationAIMessage{ConversationID: conversation.ID, Role: "assistant", Content: response.Content, Status: "completed"}
+	if err := s.db.Create(&assistantMessage).Error; err != nil {
+		return nil, err
+	}
+	for i := range actions {
+		actions[i].MessageID = assistantMessage.ID
+		_ = s.db.Model(&actions[i]).Update("message_id", assistantMessage.ID).Error
+	}
+	now := time.Now()
+	updates := map[string]any{"message_count": gorm.Expr("message_count + ?", 2), "last_message_at": &now}
+	if conversation.Title == "新会话" {
+		updates["title"] = truncateRunes(content, 40)
+	}
+	_ = s.db.Model(&conversation).Updates(updates).Error
+	return map[string]any{"conversationId": conversation.ID, "message": assistantMessage, "actions": actions}, nil
+}
+
+func truncateRunes(value string, limit int) string {
+	chars := []rune(strings.TrimSpace(value))
+	if len(chars) <= limit {
+		return string(chars)
+	}
+	return string(chars[:limit]) + "..."
+}
+
+func integrationAISystemPrompt(custom string) string {
+	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取实时数据。"
+	if strings.TrimSpace(custom) != "" {
+		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
+	}
+	return base
+}
+
+type openAIResponse struct {
+	Content      string
+	ToolCalls    []openAIToolCall
+	RawToolCalls []any
+}
+type openAIToolCall struct{ ID, Name, Arguments string }
+
+func (s *Service) callOpenAICompatible(item model.IntegrationAIModel, messages []map[string]any, tools []map[string]any) (*openAIResponse, error) {
+	endpoint := strings.TrimRight(item.BaseURL, "/")
+	if !strings.HasSuffix(endpoint, "/chat/completions") {
+		if !strings.HasSuffix(endpoint, "/v1") {
+			endpoint += "/v1"
+		}
+		endpoint += "/chat/completions"
+	}
+	maxTokens := item.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 2048
+	}
+	body := map[string]any{"model": item.Model, "messages": messages, "temperature": item.Temperature, "max_tokens": maxTokens}
+	if len(tools) > 0 {
+		body["tools"] = tools
+		body["tool_choice"] = "auto"
+	}
+	raw, _ := json.Marshal(body)
+	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(item.APIKey) != "" {
+		request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(item.APIKey))
+	}
+	timeout := item.TimeoutSeconds
+	if timeout < 5 {
+		timeout = 60
+	}
+	response, err := (&http.Client{Timeout: time.Duration(timeout) * time.Second}).Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("模型请求失败: %w", err)
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("模型 API 返回 %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+	var decoded struct {
+		Choices []struct {
+			Message struct {
+				Content   any `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
+		return nil, err
+	}
+	if decoded.Error != nil {
+		return nil, errors.New(decoded.Error.Message)
+	}
+	if len(decoded.Choices) == 0 {
+		return nil, errors.New("模型 API 未返回有效内容")
+	}
+	message := decoded.Choices[0].Message
+	result := &openAIResponse{Content: openAIContentString(message.Content), RawToolCalls: make([]any, 0, len(message.ToolCalls))}
+	for _, call := range message.ToolCalls {
+		result.ToolCalls = append(result.ToolCalls, openAIToolCall{ID: call.ID, Name: call.Function.Name, Arguments: call.Function.Arguments})
+		result.RawToolCalls = append(result.RawToolCalls, map[string]any{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Function.Name, "arguments": call.Function.Arguments}})
+	}
+	return result, nil
+}
+
+func openAIContentString(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	if parts, ok := value.([]any); ok {
+		var builder strings.Builder
+		for _, part := range parts {
+			if item, ok := part.(map[string]any); ok {
+				if text, ok := item["text"].(string); ok {
+					builder.WriteString(text)
+				}
+			}
+		}
+		return builder.String()
+	}
+	return ""
+}
+
+func (s *Service) openAIToolDefinitions() ([]map[string]any, map[string]model.IntegrationAIToolConfig, error) {
+	configs, err := s.ensureIntegrationAIToolConfigs()
+	if err != nil {
+		return nil, nil, err
+	}
+	configMap := map[string]model.IntegrationAIToolConfig{}
+	for _, item := range configs {
+		configMap[item.ToolKey] = item
+	}
+	tools := make([]map[string]any, 0)
+	for _, definition := range integrationAIToolDefinitions {
+		config := configMap[definition.Key]
+		if !config.Enabled {
+			continue
+		}
+		tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": definition.Key, "description": definition.Description, "parameters": definition.Parameters}})
+	}
+	return tools, configMap, nil
+}
+
+func (s *Service) ensureIntegrationAIToolConfigs() ([]model.IntegrationAIToolConfig, error) {
+	for _, definition := range integrationAIToolDefinitions {
+		var count int64
+		if err := s.db.Model(&model.IntegrationAIToolConfig{}).Where("tool_key = ?", definition.Key).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			item := model.IntegrationAIToolConfig{ToolKey: definition.Key, Enabled: true, RequireConfirmation: definition.RequireConfirmation}
+			if err := s.db.Create(&item).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	var configs []model.IntegrationAIToolConfig
+	err := s.db.Order("id ASC").Find(&configs).Error
+	return configs, err
+}
+
+func (s *Service) ListIntegrationAITools() ([]map[string]any, error) {
+	configs, err := s.ensureIntegrationAIToolConfigs()
+	if err != nil {
+		return nil, err
+	}
+	configMap := map[string]model.IntegrationAIToolConfig{}
+	for _, item := range configs {
+		configMap[item.ToolKey] = item
+	}
+	result := make([]map[string]any, 0, len(integrationAIToolDefinitions))
+	for _, definition := range integrationAIToolDefinitions {
+		config := configMap[definition.Key]
+		result = append(result, map[string]any{"id": config.ID, "toolKey": definition.Key, "name": definition.Name, "category": definition.Category, "description": definition.Description, "permission": definition.Permission, "enabled": config.Enabled, "requireConfirmation": config.RequireConfirmation, "parameters": definition.Parameters, "updateTime": config.UpdatedAt})
+	}
+	return result, nil
+}
+
+func (s *Service) UpdateIntegrationAITool(payload IntegrationAIToolUpdatePayload) error {
+	for _, definition := range integrationAIToolDefinitions {
+		if definition.Key == payload.ToolKey {
+			if definition.Permission == "write" {
+				payload.RequireConfirmation = true
+			}
+			return s.db.Model(&model.IntegrationAIToolConfig{}).Where("tool_key = ?", payload.ToolKey).Updates(map[string]any{"enabled": payload.Enabled, "require_confirmation": payload.RequireConfirmation}).Error
+		}
+	}
+	return errors.New("未知的 AI 工具")
+}
+
+func (s *Service) ExecuteIntegrationAITool(payload IntegrationAIToolExecutePayload) (any, error) {
+	return s.executeIntegrationAITool(payload.ToolKey, payload.Arguments)
+}
+
+func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) (any, error) {
+	switch toolKey {
+	case "prometheus_query":
+		query := strings.TrimSpace(anyString(args["query"]))
+		if query == "" {
+			return nil, errors.New("PromQL 不能为空")
+		}
+		datasourceID := anyUint(args["datasourceId"])
+		var ds model.MonitorDatasource
+		q := s.db.Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"})
+		if datasourceID > 0 {
+			q = s.db.Where("id = ? AND status = ?", datasourceID, 1)
+		} else {
+			q = q.Order("is_default DESC, id ASC")
+		}
+		if err := q.First(&ds).Error; err != nil {
+			return nil, errors.New("没有可用的 Prometheus/VictoriaMetrics 数据源")
+		}
+		return s.prometheusQuery(ds, query, time.Now())
+	case "monitor_log_query":
+		return s.queryAIRealtimeLogs(args, time.Now())
+	case "monitor_dashboard_list":
+		return s.ListMonitorDashboards(1, 20, anyString(args["keyword"]), "1")
+	case "asset_host_list":
+		return s.queryAIAssetHosts(args)
+	case "asset_mysql_list":
+		return s.queryAIAssetDatabases("mysql", args)
+	case "asset_postgresql_list":
+		return s.queryAIAssetDatabases("postgresql", args)
+	case "asset_redis_list":
+		return s.queryAIAssetDatabases("redis", args)
+	case "asset_mongodb_list":
+		return s.queryAIAssetDatabases("mongodb", args)
+	case "k8s_list_clusters":
+		return s.ListK8sClusters()
+	case "k8s_cluster_overview":
+		return s.GetK8sClusterDetail(anyUint(args["clusterId"]))
+	default:
+		return nil, errors.New("该工具只能通过待确认动作执行")
+	}
+}
+
+func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[string]any, error) {
+	startAt, err := parseAILogTime(anyString(args["startTime"]), now)
+	if err != nil {
+		return nil, fmt.Errorf("开始时间无效: %w", err)
+	}
+	endAt, err := parseAILogTime(anyString(args["endTime"]), now)
+	if err != nil {
+		return nil, fmt.Errorf("结束时间无效: %w", err)
+	}
+	if !endAt.After(startAt) {
+		return nil, errors.New("结束时间必须晚于开始时间")
+	}
+	if endAt.Sub(startAt) > 31*24*time.Hour {
+		return nil, errors.New("单次日志查询时间范围不能超过 31 天")
+	}
+
+	datasourceID := anyUint(args["datasourceId"])
+	datasourceName := strings.TrimSpace(anyString(args["datasourceName"]))
+	query := strings.TrimSpace(anyString(args["query"]))
+	index := strings.TrimSpace(anyString(args["index"]))
+	streams := splitAIQueryValues(anyString(args["streams"]))
+	mode := strings.ToLower(strings.TrimSpace(anyString(args["mode"])))
+	if mode == "" {
+		mode = "count"
+	}
+	if mode != "count" && mode != "list" {
+		return nil, errors.New("返回模式仅支持 count 或 list")
+	}
+	limit := aiAssetQueryLimit(args["limit"])
+	if mode == "count" {
+		limit = 1
+	}
+
+	var datasources []model.MonitorDatasource
+	datasourceQuery := s.db.Where("status = ? AND type IN ?", 1, []string{"elasticsearch", "victorialogs"})
+	if datasourceID > 0 {
+		datasourceQuery = datasourceQuery.Where("id = ?", datasourceID)
+	} else if datasourceName != "" {
+		datasourceQuery = datasourceQuery.Where("name LIKE ?", "%"+datasourceName+"%")
+	}
+	if err := datasourceQuery.Order("is_default DESC, id ASC").Find(&datasources).Error; err != nil {
+		return nil, err
+	}
+	if len(datasources) == 0 {
+		return nil, errors.New("没有匹配且已启用的 Elasticsearch/VictoriaLogs 数据源")
+	}
+
+	results := make([]map[string]any, 0, len(datasources))
+	errorsByDatasource := make([]string, 0)
+	var total int64
+	for _, datasource := range datasources {
+		datasourceQueryText := query
+		if normalizeMonitorDatasourceType(datasource.Type) == "victorialogs" {
+			datasourceQueryText = appendAILogStreamFilter(datasourceQueryText, streams, true)
+		} else {
+			datasourceQueryText = appendAILogStreamFilter(datasourceQueryText, streams, false)
+		}
+		payload := MonitorLogQueryPayload{
+			DatasourceID:   datasource.ID,
+			Index:          index,
+			Query:          datasourceQueryText,
+			StartAt:        startAt.UnixMilli(),
+			EndAt:          endAt.UnixMilli(),
+			PageSize:       limit,
+			TrackTotalHits: mode == "count",
+		}
+		data, queryErr := s.QueryMonitorLogs(payload)
+		if queryErr != nil {
+			errorsByDatasource = append(errorsByDatasource, fmt.Sprintf("%s: %v", datasource.Name, queryErr))
+			continue
+		}
+		count := aiLogTotal(data["total"])
+		total += count
+		item := map[string]any{
+			"datasourceId": datasource.ID,
+			"datasource":   datasource.Name,
+			"type":         normalizeMonitorDatasourceType(datasource.Type),
+			"count":        count,
+			"tookMs":       data["took"],
+		}
+		if mode == "list" {
+			item["items"] = data["items"]
+		}
+		results = append(results, item)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("所有日志数据源查询均失败: %s", strings.Join(errorsByDatasource, "; "))
+	}
+	return map[string]any{
+		"mode": mode, "total": total, "query": query, "index": index, "streams": streams,
+		"startTime": startAt.Format(time.RFC3339), "endTime": endAt.Format(time.RFC3339),
+		"timezone": "Asia/Shanghai", "datasources": results, "errors": errorsByDatasource,
+	}, nil
+}
+
+func parseAILogTime(value string, now time.Time) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New("时间不能为空")
+	}
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		location = time.Local
+	}
+	now = now.In(location)
+	lower := strings.ToLower(value)
+	for _, relative := range []struct {
+		prefix string
+		days   int
+	}{
+		{prefix: "昨天", days: -1}, {prefix: "yesterday", days: -1},
+		{prefix: "今天", days: 0}, {prefix: "today", days: 0},
+	} {
+		if strings.HasPrefix(lower, relative.prefix) {
+			clock := strings.TrimSpace(value[len(relative.prefix):])
+			if clock == "" {
+				clock = "00:00"
+			}
+			parsedClock, parseErr := time.ParseInLocation("15:04:05", clock, location)
+			if parseErr != nil {
+				parsedClock, parseErr = time.ParseInLocation("15:04", clock, location)
+			}
+			if parseErr != nil {
+				return time.Time{}, errors.New("相对时间应为‘昨天 10:00’或‘today 10:00’")
+			}
+			date := now.AddDate(0, 0, relative.days)
+			return time.Date(date.Year(), date.Month(), date.Day(), parsedClock.Hour(), parsedClock.Minute(), parsedClock.Second(), 0, location), nil
+		}
+	}
+	if parsed, parseErr := time.Parse(time.RFC3339, value); parseErr == nil {
+		return parsed.In(location), nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006/01/02 15:04:05", "2006/01/02 15:04"} {
+		if parsed, parseErr := time.ParseInLocation(layout, value, location); parseErr == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, errors.New("支持 RFC3339、YYYY-MM-DD HH:mm:ss 或‘昨天 10:00’")
+}
+
+func splitAIQueryValues(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == '，' || r == '\n' })
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field != "" && !aiStringSliceContains(result, field) {
+			result = append(result, field)
+		}
+	}
+	return result
+}
+
+func appendAILogStreamFilter(query string, streams []string, victoriaLogs bool) string {
+	query = strings.TrimSpace(query)
+	if len(streams) == 0 {
+		return query
+	}
+	if victoriaLogs {
+		return appendAIVictoriaLogsStreamFilter(query, streams)
+	}
+	filters := make([]string, 0, len(streams))
+	for _, rawStream := range streams {
+		stream := strings.TrimSpace(rawStream)
+		exact := strings.HasPrefix(stream, "=")
+		if exact {
+			stream = strings.TrimSpace(strings.TrimPrefix(stream, "="))
+		}
+		if stream == "" {
+			continue
+		}
+		if exact {
+			escaped := strings.ReplaceAll(strings.ReplaceAll(stream, "\\", "\\\\"), "\"", "\\\"")
+			filters = append(filters, "kafka_topic:\""+escaped+"\"")
+			continue
+		}
+		filters = append(filters, "kafka_topic:*"+escapeAILuceneWildcardValue(stream)+"*")
+	}
+	if len(filters) == 0 {
+		return query
+	}
+	streamQuery := "(" + strings.Join(filters, " OR ") + ")"
+	if query == "" {
+		return streamQuery
+	}
+	return "(" + query + ") AND " + streamQuery
+}
+
+func appendAIVictoriaLogsStreamFilter(query string, streams []string) string {
+	filters := make([]string, 0, len(streams))
+	for _, rawStream := range streams {
+		stream := strings.TrimSpace(rawStream)
+		exact := strings.HasPrefix(stream, "=")
+		if exact {
+			stream = strings.TrimSpace(strings.TrimPrefix(stream, "="))
+		}
+		if stream == "" {
+			continue
+		}
+		if exact {
+			escaped := strings.ReplaceAll(strings.ReplaceAll(stream, "\\", "\\\\"), "\"", "\\\"")
+			filters = append(filters, `{kafka_topic="`+escaped+`"}`)
+		} else {
+			filters = append(filters, "kafka_topic:*"+escapeAILuceneWildcardValue(stream)+"*")
+		}
+	}
+	if len(filters) == 0 {
+		return query
+	}
+	streamQuery := "(" + strings.Join(filters, " OR ") + ")"
+	if query == "" || query == "*" {
+		return streamQuery
+	}
+	return streamQuery + " AND (" + query + ")"
+}
+
+func escapeAILuceneWildcardValue(value string) string {
+	const reserved = `+-=&|><!(){}[]^"~*?:\/`
+	var builder strings.Builder
+	for _, char := range value {
+		if strings.ContainsRune(reserved, char) {
+			builder.WriteByte('\\')
+		}
+		builder.WriteRune(char)
+	}
+	return builder.String()
+}
+
+func aiLogTotal(value any) int64 {
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case json.Number:
+		result, _ := typed.Int64()
+		return result
+	case map[string]any:
+		return aiLogTotal(typed["value"])
+	default:
+		return 0
+	}
+}
+
+func aiAssetQueryLimit(value any) int {
+	limit := int(anyUint(value))
+	if limit < 1 {
+		return 20
+	}
+	if limit > 50 {
+		return 50
+	}
+	return limit
+}
+
+func (s *Service) queryAIAssetHosts(args map[string]any) (map[string]any, error) {
+	keyword := strings.TrimSpace(anyString(args["keyword"]))
+	environment := strings.TrimSpace(anyString(args["environment"]))
+	limit := aiAssetQueryLimit(args["limit"])
+	query := s.db.Model(&model.AssetHost{}).Preload("Group").Preload("HostGroups")
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("host_name LIKE ? OR alias LIKE ? OR private_ip LIKE ? OR public_ip LIKE ? OR ssh_ip LIKE ?", like, like, like, like, like)
+	}
+	if environment != "" {
+		query = query.Where("environment = ?", normalizeEnvCode(environment))
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var hosts []model.AssetHost
+	if err := query.Order("id DESC").Limit(limit).Find(&hosts).Error; err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(hosts))
+	for _, host := range hosts {
+		groupNames := make([]string, 0, len(host.HostGroups)+1)
+		if host.Group.ID > 0 {
+			groupNames = append(groupNames, host.Group.Name)
+		}
+		for _, group := range host.HostGroups {
+			if group.Name != "" && !aiStringSliceContains(groupNames, group.Name) {
+				groupNames = append(groupNames, group.Name)
+			}
+		}
+		items = append(items, map[string]any{
+			"id": host.ID, "name": host.HostName, "alias": host.Alias,
+			"privateIp": host.PrivateIP, "publicIp": host.PublicIP, "sshPort": host.SSHPort,
+			"os": host.OS, "arch": host.Arch, "cpu": host.CPU, "memory": host.Memory, "disk": host.Disk,
+			"environment": host.Environment, "tags": host.Tags, "groups": groupNames,
+			"enabled": host.Status == 1, "online": host.AliveStatus == 1, "lastCheckTime": host.LastCheckTime,
+		})
+	}
+	return map[string]any{"resourceType": "server", "total": total, "returned": len(items), "items": items}, nil
+}
+
+func (s *Service) queryAIAssetDatabases(dbType string, args map[string]any) (map[string]any, error) {
+	keyword := strings.TrimSpace(anyString(args["keyword"]))
+	environment := strings.TrimSpace(anyString(args["environment"]))
+	limit := aiAssetQueryLimit(args["limit"])
+	normalizedType := normalizeDatabaseType(dbType)
+	query := s.db.Model(&model.AssetDatabase{}).Where("db_type = ?", normalizedType)
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("name LIKE ? OR host LIKE ? OR db_name LIKE ?", like, like, like)
+	}
+	if environment != "" {
+		query = query.Where("env = ?", normalizeEnvCode(environment))
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var databases []model.AssetDatabase
+	if err := query.Order("id DESC").Limit(limit).Find(&databases).Error; err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(databases))
+	for _, database := range databases {
+		items = append(items, map[string]any{
+			"id": database.ID, "name": database.Name, "type": normalizedType,
+			"host": database.Host, "port": database.Port, "database": database.DBName,
+			"environment": database.Env, "tags": database.Tags, "version": database.Version,
+			"accessMode": database.AccessMode, "connectionMode": database.ConnectionMode,
+			"enabled": database.Status == 1, "connected": database.ConnectStatus == 1,
+			"connectStatus": database.ConnectStatus, "lastCheckTime": database.LastCheckTime,
+		})
+	}
+	return map[string]any{"resourceType": "database", "databaseType": normalizedType, "total": total, "returned": len(items), "items": items}, nil
+}
+
+func aiStringSliceContains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func anyString(value any) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
+}
+func anyUint(value any) uint {
+	switch item := value.(type) {
+	case float64:
+		return uint(item)
+	case int:
+		return uint(item)
+	case uint:
+		return item
+	case json.Number:
+		v, _ := item.Int64()
+		return uint(v)
+	default:
+		var result uint
+		_, _ = fmt.Sscan(fmt.Sprint(value), &result)
+		return result
+	}
+}
+
+func (s *Service) ConfirmIntegrationAIToolAction(userID uint, username string, id uint) (map[string]any, error) {
+	var action model.IntegrationAIToolAction
+	if err := s.db.Where("id = ? AND user_id = ?", id, userID).First(&action).Error; err != nil {
+		return nil, err
+	}
+	if action.Status != "pending" {
+		return nil, errors.New("该动作已处理")
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(action.ArgumentsJSON), &args); err != nil {
+		return nil, err
+	}
+	payload := model.K8sWorkloadActionPayload{ClusterID: anyUint(args["clusterId"]), Namespace: anyString(args["namespace"]), WorkloadType: anyString(args["workloadType"]), WorkloadName: anyString(args["workloadName"]), Replicas: int(anyUint(args["replicas"]))}
+	var result map[string]any
+	var err error
+	switch action.ToolKey {
+	case "k8s_restart_workload":
+		result, err = s.RestartK8sWorkload(payload)
+	case "k8s_scale_workload":
+		result, err = s.ScaleK8sWorkload(payload)
+	default:
+		err = errors.New("不支持的待确认动作")
+	}
+	now := time.Now()
+	action.ConfirmedAt, action.ConfirmedBy = &now, username
+	if err != nil {
+		action.Status = "failed"
+		action.ResultJSON = err.Error()
+	} else {
+		action.Status = "completed"
+		raw, _ := json.Marshal(result)
+		action.ResultJSON = string(raw)
+	}
+	_ = s.db.Save(&action).Error
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"action": action, "result": result}, nil
+}
+
+func (s *Service) RejectIntegrationAIToolAction(userID, id uint) error {
+	return s.db.Model(&model.IntegrationAIToolAction{}).Where("id = ? AND user_id = ? AND status = ?", id, userID, "pending").Update("status", "rejected").Error
+}

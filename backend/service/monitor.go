@@ -158,12 +158,13 @@ type MonitorDashboardPanelQueryPayload struct {
 }
 
 type MonitorLogQueryPayload struct {
-	DatasourceID uint   `json:"datasourceId"`
-	Index        string `json:"index"`
-	Query        string `json:"query"`
-	StartAt      int64  `json:"startAt"`
-	EndAt        int64  `json:"endAt"`
-	PageSize     int    `json:"pageSize"`
+	DatasourceID   uint   `json:"datasourceId"`
+	Index          string `json:"index"`
+	Query          string `json:"query"`
+	StartAt        int64  `json:"startAt"`
+	EndAt          int64  `json:"endAt"`
+	PageSize       int    `json:"pageSize"`
+	TrackTotalHits bool   `json:"trackTotalHits"`
 }
 
 type MonitorLogShortcutPayload struct {
@@ -941,6 +942,9 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 		"aggs": map[string]any{"histogram": map[string]any{"date_histogram": map[string]any{
 			"field": "@timestamp", "fixed_interval": "1h", "min_doc_count": 0,
 		}}},
+	}
+	if payload.TrackTotalHits {
+		body["track_total_hits"] = true
 	}
 	response, err := s.elasticsearchSearch(*ds, index, body)
 	if err != nil {
