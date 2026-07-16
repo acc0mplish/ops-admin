@@ -6,15 +6,18 @@ import { queryAssetDatabaseList } from '../../api/asset'
 import DatabaseConnectionTree from './database/DatabaseConnectionTree.vue'
 import {
   analyzeDBMSSQL,
+  analyzeRedisCommand,
   createDBMSExportTask,
   createDBMSImportTask,
   deleteDBMSTableRow,
   downloadDBMSTaskFile,
   executeDBMSSQL,
+  executeRedisCommand,
   insertDBMSTableRow,
   precheckDBMSImportTask,
   queryDBMSSchemaTree,
   queryDBMSSQLHistory,
+  queryDBMSResourceData,
   queryDBMSTableData,
   queryDBMSTaskList,
   queryDBMSWorkbench,
@@ -29,15 +32,18 @@ const databaseId = computed(() => Number(route.params.id || 0))
 const loading = ref(false)
 const treeLoading = ref(false)
 const sqlRunning = ref(false)
+const redisRunning = ref(false)
 const dataLoading = ref(false)
 const historyLoading = ref(false)
 const taskLoading = ref(false)
 const rowDialogVisible = ref(false)
+const redisKeyDialogVisible = ref(false)
 const rollbackDialogVisible = ref(false)
 const importDialogVisible = ref(false)
 const sqlConfirmVisible = ref(false)
 const activeTab = ref('data')
 const rowDialogMode = ref('insert')
+const redisKeyDialogMode = ref('create')
 
 const connection = ref(null)
 const schemaTree = ref([])
@@ -47,6 +53,8 @@ const selectedColumns = ref([])
 const selectedRows = ref([])
 const selectedTotal = ref(0)
 const selectedPrimaryKeys = ref([])
+const resourceIndexes = ref([])
+const resourceType = ref('')
 const historyList = ref([])
 const historyTotal = ref(0)
 const taskList = ref([])
@@ -63,11 +71,14 @@ const importPrechecking = ref(false)
 const selectedSchema = ref('')
 const selectedTable = ref('')
 const treeKeyword = ref('')
+const schemaTablePages = reactive({})
+const schemaTablePageSize = 20
 const showSuggestions = ref(false)
 const currentToken = ref('')
 const activeSuggestionIndex = ref(0)
 const currentLine = ref(1)
 const sqlText = ref('SELECT *\nFROM your_table\nLIMIT 50;')
+const redisCommandText = ref('GET key')
 const sqlScrollTop = ref(0)
 const sqlScrollLeft = ref(0)
 const sqlEditorRef = ref(null)
@@ -116,6 +127,12 @@ const editingOriginalRow = ref(null)
 
 const rowForm = reactive({})
 const rowOriginal = ref({})
+const redisKeyForm = reactive({
+  key: '',
+  type: 'string',
+  value: '',
+  ttl: undefined
+})
 
 const importForm = reactive({
   sourceDatabaseId: undefined,
@@ -132,17 +149,55 @@ const sqlKeywordPool = [
   'RIGHT JOIN', 'INNER JOIN', 'UNION ALL', 'COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NOW()'
 ]
 
-const sqlSnippets = [
+const baseSqlSnippets = [
   { label: 'SELECT', text: 'SELECT *\nFROM table_name\nLIMIT 50;' },
   { label: 'UPDATE', text: "UPDATE table_name\nSET column_name = 'value'\nWHERE id = 1;" },
   { label: 'INSERT', text: "INSERT INTO table_name (column_1, column_2)\nVALUES ('value_1', 'value_2');" },
-  { label: 'DELETE', text: 'DELETE FROM table_name\nWHERE id = 1;' },
-  { label: 'SHOW TABLES', text: 'SHOW TABLES;' }
+  { label: 'DELETE', text: 'DELETE FROM table_name\nWHERE id = 1;' }
+]
+
+const redisCommandSnippets = [
+  { label: 'GET', text: 'GET key' },
+  { label: 'MGET', text: 'MGET key1 key2' },
+  { label: 'TTL', text: 'TTL key' },
+  { label: 'TYPE', text: 'TYPE key' },
+  { label: 'SCAN', text: 'SCAN 0 MATCH * COUNT 100' },
+  { label: 'HGETALL', text: 'HGETALL hash_key' },
+  { label: 'LRANGE', text: 'LRANGE list_key 0 -1' },
+  { label: 'SMEMBERS', text: 'SMEMBERS set_key' },
+  { label: 'ZRANGE', text: 'ZRANGE zset_key 0 -1 WITHSCORES' },
+  { label: 'SET', text: 'SET key value' },
+  { label: 'DEL', text: 'DEL key' },
+  { label: 'EXPIRE', text: 'EXPIRE key 3600' }
 ]
 
 const sourceSchemas = computed(() => importSchemaTree.value || [])
 const isReadOnly = computed(() => connection.value?.accessMode === 'readonly')
-const canEditRows = computed(() => !isReadOnly.value && selectedPrimaryKeys.value.length > 0)
+const capabilities = computed(() => connection.value?.capabilities || {})
+const supportsSQL = computed(() => capabilities.value.sql !== false)
+const isRedis = computed(() => connection.value?.dbType === 'redis')
+const isPostgres = computed(() => connection.value?.dbType === 'postgresql')
+const sqlSnippets = computed(() => [
+  ...baseSqlSnippets,
+  isPostgres.value
+    ? {
+        label: '查看表',
+        text: "SELECT table_schema, table_name\nFROM information_schema.tables\nWHERE table_type = 'BASE TABLE'\n  AND table_schema NOT IN ('pg_catalog', 'information_schema')\n  AND table_schema NOT LIKE 'pg_%'\nORDER BY table_schema, table_name;"
+      }
+    : { label: 'SHOW TABLES', text: 'SHOW TABLES;' }
+])
+const supportsTableData = computed(() => capabilities.value.tableData !== false)
+const supportsResourceData = computed(() => capabilities.value.resourceData === true)
+const supportsTransfer = computed(() => capabilities.value.transfer !== false)
+const canEditRows = computed(() => supportsTableData.value && !isReadOnly.value && selectedPrimaryKeys.value.length > 0 && capabilities.value.rowEdit !== false)
+const canManageRedisKeys = computed(() => isRedis.value && !isReadOnly.value && capabilities.value.keyEdit !== false)
+const redisKeyTypes = ['string', 'hash', 'list', 'set', 'zset']
+const redisKeyValuePlaceholder = computed(() => {
+  if (redisKeyForm.type === 'hash') return '{"field":"value"}'
+  if (redisKeyForm.type === 'zset') return '[{"member":"user:1","score":100}]'
+  if (['list', 'set'].includes(redisKeyForm.type)) return '["value-1", "value-2"]'
+  return '请输入字符串值'
+})
 const sourceTables = computed(() => {
   const schema = sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)
   return schema?.tables || []
@@ -213,6 +268,8 @@ function normalizeTree(data) {
     id: `schema:${schema.name}`,
     label: schema.name,
     name: schema.name,
+    isSchema: true,
+    tableCount: Number(schema.tableCount || schema.tables?.length || 0),
     tables: schema.tables || [],
     children: (schema.tables || []).map((table) => ({
       id: `table:${schema.name}.${table.name}`,
@@ -225,6 +282,32 @@ function normalizeTree(data) {
   }))
 }
 
+const pagedSchemaTree = computed(() => {
+  const keyword = treeKeyword.value.trim().toLowerCase()
+  return schemaTree.value
+    .map((schema) => {
+      const allChildren = schema.children || []
+      const schemaMatched = schema.name.toLowerCase().includes(keyword)
+      const children = keyword && !schemaMatched
+        ? allChildren.filter((table) => {
+          const fullName = `${schema.name}.${table.name}`.toLowerCase()
+          return String(table.name || '').toLowerCase().includes(keyword) || fullName.includes(keyword)
+        })
+        : allChildren
+      const totalPages = Math.max(1, Math.ceil(children.length / schemaTablePageSize))
+      const currentPage = Math.min(Math.max(Number(schemaTablePages[schema.name] || 1), 1), totalPages)
+      const start = (currentPage - 1) * schemaTablePageSize
+      return {
+        ...schema,
+        children: children.slice(start, start + schemaTablePageSize),
+        visibleTableCount: children.length,
+        currentPage,
+        totalPages
+      }
+    })
+    .filter((schema) => !keyword || schema.children.length > 0 || schema.name.toLowerCase().includes(keyword))
+})
+
 function syncEditorMetrics() {
   const el = sqlEditorRef.value
   if (!el) return
@@ -234,9 +317,13 @@ function syncEditorMetrics() {
   currentLine.value = before.split('\n').length
 }
 
-function treeFilterMethod(value, data) {
-  if (!value) return true
-  return String(data.label || data.name || '').toLowerCase().includes(String(value).toLowerCase())
+function treeFilterMethod() {
+  return true
+}
+
+function changeSchemaTablePage(schema, page) {
+  const nextPage = Math.min(Math.max(page, 1), schema.totalPages || 1)
+  schemaTablePages[schema.name] = nextPage
 }
 
 function rowKeyFor(row, index = 0) {
@@ -296,6 +383,7 @@ async function loadTree() {
   try {
     const data = await queryDBMSSchemaTree(databaseId.value)
     schemaTree.value = normalizeTree(data)
+    Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
     if (!selectedSchema.value && data.defaultSchema) {
       selectedSchema.value = data.defaultSchema
     }
@@ -336,6 +424,7 @@ async function loadTasks() {
 }
 
 async function loadTableData() {
+  if (!supportsTableData.value) return
   if (!selectedSchema.value || !selectedTable.value) return
   dataLoading.value = true
   try {
@@ -355,6 +444,46 @@ async function loadTableData() {
   } finally {
     dataLoading.value = false
   }
+}
+
+async function loadResourceData() {
+  if (!supportsResourceData.value || !selectedSchema.value || !selectedTable.value) return
+  dataLoading.value = true
+  try {
+    const data = await queryDBMSResourceData({
+      databaseId: databaseId.value,
+      schema: selectedSchema.value,
+      table: selectedTable.value,
+      pageNum: tableQuery.pageNum,
+      pageSize: tableQuery.pageSize,
+      filterKey: tableFilter.key,
+      filterText: tableFilter.text
+    })
+    selectedColumns.value = data.columns || []
+    selectedRows.value = data.rows || []
+    selectedTotal.value = Number(data.total || 0)
+    selectedPrimaryKeys.value = []
+    resourceIndexes.value = data.indexes || []
+    resourceType.value = data.resourceType || ''
+  } finally {
+    dataLoading.value = false
+  }
+}
+
+function refreshSelectedData() {
+  return supportsResourceData.value ? loadResourceData() : loadTableData()
+}
+
+function formatResourceValue(value) {
+  if (value == null) return '-'
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
 }
 
 async function initialize() {
@@ -379,6 +508,7 @@ function resetWorkbenchState() {
   selectedSchema.value = ''
   selectedTable.value = ''
   treeKeyword.value = ''
+  Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
   schemaTree.value = []
   resultColumns.value = []
   resultRows.value = []
@@ -386,6 +516,8 @@ function resetWorkbenchState() {
   selectedRows.value = []
   selectedTotal.value = 0
   selectedPrimaryKeys.value = []
+  resourceIndexes.value = []
+  resourceType.value = ''
   historyList.value = []
   taskList.value = []
   execMeta.sqlType = ''
@@ -406,11 +538,35 @@ function setupTaskPolling() {
 }
 
 function onTreeNodeClick(node) {
+  if (node.isSchema) {
+    selectedSchema.value = node.name
+    const firstTable = node.children?.[0]
+    if (!firstTable) {
+      selectedTable.value = ''
+      selectedColumns.value = []
+      selectedRows.value = []
+      selectedTotal.value = 0
+      activeTab.value = 'data'
+      ElMessage.info(`Schema ${node.name} 暂无可浏览的数据表`)
+      return
+    }
+    treeRef.value?.setCurrentKey(firstTable.id)
+    onTreeNodeClick(firstTable)
+    return
+  }
   if (!node.isTable) return
   selectedSchema.value = node.schema
   selectedTable.value = node.name
   tableQuery.pageNum = 1
   activeTab.value = 'data'
+  if (supportsResourceData.value) {
+    loadResourceData()
+    return
+  }
+  if (!supportsTableData.value) {
+    ElMessage.info('当前数据库类型已支持连接和结构浏览，数据编辑功能将在后续版本提供')
+    return
+  }
   loadTableData()
 }
 
@@ -442,6 +598,10 @@ async function executeAnalyzedSQL(statement, confirmed = false) {
 }
 
 async function runSQL() {
+  if (!supportsSQL.value) {
+    ElMessage.warning('当前数据库类型不使用 SQL 工作台，请通过左侧资源树查看连接与结构信息')
+    return
+  }
   const statement = selectedSQLText()
   if (!statement) {
     ElMessage.warning('请输入要执行的 SQL')
@@ -474,6 +634,194 @@ async function confirmSQLExecution() {
     sqlConfirmVisible.value = false
   } finally {
     sqlRunning.value = false
+  }
+}
+
+async function executeRedisCommandText(confirmed = false) {
+  const data = await executeRedisCommand({
+    databaseId: databaseId.value,
+    commandText: redisCommandText.value.trim(),
+    confirmed
+  })
+  resultColumns.value = data.columns || []
+  resultRows.value = data.rows || []
+  execMeta.sqlType = `REDIS ${data.command || ''}`.trim()
+  execMeta.rowsAffected = Number(data.rowsAffected || 0)
+  execMeta.durationMs = Number(data.durationMs || 0)
+  activeTab.value = 'result'
+  ElMessage.success('Redis 命令执行完成')
+  await loadHistory()
+  if (selectedTable.value) await loadResourceData()
+}
+
+async function runRedisCommand() {
+  if (!isRedis.value) return
+  if (!redisCommandText.value.trim()) {
+    ElMessage.warning('请输入 Redis 命令')
+    return
+  }
+  redisRunning.value = true
+  resetExecMeta()
+  try {
+    const analysis = await analyzeRedisCommand({
+      databaseId: databaseId.value,
+      commandText: redisCommandText.value.trim()
+    })
+    if (analysis.writeOperation) {
+      await ElMessageBox.confirm(
+        `即将执行 Redis 写命令 ${analysis.command}，该操作会修改数据。`,
+        '确认执行 Redis 命令',
+        { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' }
+      )
+    }
+    await executeRedisCommandText(analysis.writeOperation)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') throw error
+  } finally {
+    redisRunning.value = false
+  }
+}
+
+function quoteRedisArgument(value) {
+  return JSON.stringify(String(value ?? ''))
+}
+
+function resetRedisKeyForm() {
+  redisKeyForm.key = ''
+  redisKeyForm.type = 'string'
+  redisKeyForm.value = ''
+  redisKeyForm.ttl = undefined
+}
+
+function openRedisKeyCreate() {
+  resetRedisKeyForm()
+  redisKeyDialogMode.value = 'create'
+  redisKeyDialogVisible.value = true
+}
+
+function openRedisKeyEdit(row) {
+  if (row.type === 'stream') {
+    ElMessage.warning('Stream 类型暂不支持可视化编辑，请使用上方 Redis 命令控制台')
+    return
+  }
+  redisKeyDialogMode.value = 'edit'
+  redisKeyForm.key = row.key || ''
+  redisKeyForm.type = row.type || 'string'
+  redisKeyForm.value = row.value || ''
+  redisKeyForm.ttl = Number(row.ttlSeconds) >= 0 ? Number(row.ttlSeconds) : undefined
+  redisKeyDialogVisible.value = true
+}
+
+function parseRedisValueArguments() {
+  const raw = redisKeyForm.value ?? ''
+  if (redisKeyForm.type === 'string') return [quoteRedisArgument(raw)]
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('复杂类型的值必须填写合法 JSON')
+  }
+  if (redisKeyForm.type === 'hash') {
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Hash 值必须是 JSON 对象')
+    const entries = Object.entries(parsed)
+    if (!entries.length) throw new Error('Hash 至少需要一个字段')
+    return entries.flatMap(([field, value]) => [quoteRedisArgument(field), quoteRedisArgument(value)])
+  }
+  if (redisKeyForm.type === 'zset') {
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error('有序集合值必须是非空 JSON 数组')
+    return parsed.flatMap((item) => {
+      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error('有序集合元素必须包含 member 和 score')
+      return [quoteRedisArgument(item.score), quoteRedisArgument(item.member)]
+    })
+  }
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('List 或 Set 值必须是非空 JSON 数组')
+  return parsed.map((item) => quoteRedisArgument(item))
+}
+
+function redisTTLCommand(key) {
+  if (redisKeyForm.ttl === undefined || redisKeyForm.ttl === null || redisKeyForm.ttl === '') return ''
+  const ttl = Number(redisKeyForm.ttl)
+  if (!Number.isInteger(ttl) || ttl < -1) throw new Error('TTL 只能设置为 -1 或非负整数秒')
+  return ttl === -1 ? `PERSIST ${quoteRedisArgument(key)}` : `EXPIRE ${quoteRedisArgument(key)} ${ttl}`
+}
+
+function buildRedisKeyCommands() {
+  const key = redisKeyForm.key.trim()
+  if (!key) throw new Error('请输入 Key 名称')
+  const valueArgs = parseRedisValueArguments()
+  const quotedKey = quoteRedisArgument(key)
+  const editing = redisKeyDialogMode.value === 'edit'
+  let command = ''
+  switch (redisKeyForm.type) {
+    case 'string':
+      command = `SET ${quotedKey} ${valueArgs[0]}${editing && redisKeyForm.ttl === undefined ? ' KEEPTTL' : ''}`
+      break
+    case 'hash': command = `HSET ${quotedKey} ${valueArgs.join(' ')}`; break
+    case 'list': command = `RPUSH ${quotedKey} ${valueArgs.join(' ')}`; break
+    case 'set': command = `SADD ${quotedKey} ${valueArgs.join(' ')}`; break
+    case 'zset': command = `ZADD ${quotedKey} ${valueArgs.join(' ')}`; break
+    default: throw new Error('不支持的 Redis Key 类型')
+  }
+  const commands = []
+  if (editing && redisKeyForm.type !== 'string') commands.push(`DEL ${quotedKey}`)
+  commands.push(command)
+  const ttlCommand = redisTTLCommand(key)
+  if (ttlCommand) commands.push(ttlCommand)
+  return commands
+}
+
+async function submitRedisKey() {
+  let commands
+  try {
+    commands = buildRedisKeyCommands()
+  } catch (error) {
+    ElMessage.warning(error.message || 'Key 内容不正确')
+    return
+  }
+  const action = redisKeyDialogMode.value === 'create' ? '新增' : '更新'
+  try {
+    await ElMessageBox.confirm(`将${action} Redis Key “${redisKeyForm.key}”，该操作会直接修改数据。`, `确认${action} Key`, {
+      type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  redisRunning.value = true
+  try {
+    for (const commandText of commands) {
+      await executeRedisCommand({ databaseId: databaseId.value, commandText, confirmed: true })
+    }
+    redisKeyDialogVisible.value = false
+    await Promise.all([loadTree(), loadHistory()])
+    selectedSchema.value = schemaTree.value?.[0]?.name || selectedSchema.value
+    selectedTable.value = redisKeyForm.key
+    await loadResourceData()
+    ElMessage.success(`Redis Key 已${action}`)
+  } finally {
+    redisRunning.value = false
+  }
+}
+
+async function deleteRedisKey(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除 Redis Key “${row.key}”吗？此操作不可恢复。`, '确认删除 Key', {
+      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  redisRunning.value = true
+  try {
+    await executeRedisCommand({ databaseId: databaseId.value, commandText: `DEL ${quoteRedisArgument(row.key)}`, confirmed: true })
+    if (selectedTable.value === row.key) {
+      selectedTable.value = ''
+      selectedRows.value = []
+      selectedColumns.value = []
+    }
+    await Promise.all([loadTree(), loadHistory()])
+    ElMessage.success('Redis Key 已删除')
+  } finally {
+    redisRunning.value = false
   }
 }
 
@@ -712,8 +1060,8 @@ function taskStatusText(status) {
   return '等待中'
 }
 
-watch(treeKeyword, (value) => {
-  treeRef.value?.filter(value)
+watch(treeKeyword, () => {
+  Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
 })
 
 watch(() => importForm.sourceDatabaseId, loadImportSchemas)
@@ -735,7 +1083,7 @@ watch(
 watch([() => tableFilter.key, () => tableFilter.text], () => {
   tableQuery.pageNum = 1
   if (selectedSchema.value && selectedTable.value) {
-    loadTableData()
+    refreshSelectedData()
   }
 })
 
@@ -780,16 +1128,39 @@ onBeforeUnmount(() => {
             v-loading="treeLoading"
             node-key="id"
             class="schema-tree"
-            :data="schemaTree"
+            :data="pagedSchemaTree"
             :props="{ label: 'label', children: 'children' }"
             :filter-node-method="treeFilterMethod"
             default-expand-all
+            :expand-on-click-node="false"
             @node-click="onTreeNodeClick"
           >
             <template #default="{ data }">
               <div class="tree-node">
                 <span>{{ data.label }}</span>
                 <small v-if="data.isTable && Number.isFinite(data.rows)">{{ data.rows }}</small>
+                <template v-else-if="data.isSchema">
+                  <span class="schema-node-meta" @click.stop>
+                    <small>{{ data.visibleTableCount ?? data.tableCount }}</small>
+                    <span v-if="data.totalPages > 1" class="schema-pagination">
+                      <el-button
+                        text
+                        size="small"
+                        :disabled="data.currentPage <= 1"
+                        title="上一页"
+                        @click.stop="changeSchemaTablePage(data, data.currentPage - 1)"
+                      >上一页</el-button>
+                      <span>{{ data.currentPage }}/{{ data.totalPages }}</span>
+                      <el-button
+                        text
+                        size="small"
+                        :disabled="data.currentPage >= data.totalPages"
+                        title="下一页"
+                        @click.stop="changeSchemaTablePage(data, data.currentPage + 1)"
+                      >下一页</el-button>
+                    </span>
+                  </span>
+                </template>
               </div>
             </template>
           </el-tree>
@@ -800,24 +1171,54 @@ onBeforeUnmount(() => {
         <div class="dbms-editor page-card">
           <div class="panel-head">
             <div>
-              <h3>SQL 编辑器</h3>
-              <p>支持语法高亮、关键字/库表字段补全、常用语句模板和快捷执行。</p>
+              <h3>{{ supportsSQL ? 'SQL 编辑器' : isRedis ? 'Redis 命令控制台' : `${connection?.dbType?.toUpperCase() || '数据库'} 资源浏览` }}</h3>
+              <p v-if="supportsSQL">支持语法高亮、关键字/库表字段补全、常用语句模板和快捷执行。</p>
+              <p v-else-if="isRedis">支持常用 Redis 读取与变更命令，变更操作需二次确认并写入执行记录。</p>
+              <p v-else>当前类型支持连接检测和资源结构浏览；文档、键值和数据编辑能力将按类型逐步开放。</p>
             </div>
             <div class="panel-actions">
-              <el-button :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
-              <el-button :disabled="!selectedTable" @click="createExportTask">导出任务</el-button>
-              <el-button :disabled="isReadOnly" @click="openImportDialog">导入任务</el-button>
+              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
+              <el-button v-else-if="isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">执行 Redis 命令</el-button>
+              <el-button :disabled="!supportsTransfer || !selectedTable" @click="createExportTask">导出任务</el-button>
+              <el-button :disabled="!supportsTransfer || isReadOnly" @click="openImportDialog">导入任务</el-button>
             </div>
           </div>
 
-          <div class="snippet-row">
+          <div v-if="supportsSQL" class="snippet-row">
             <el-button v-for="item in sqlSnippets" :key="item.label" size="small" plain @click="insertSnippet(item.text)">
               {{ item.label }}
             </el-button>
             <span class="snippet-hint">`Ctrl + Enter` 可执行当前选中 SQL</span>
           </div>
 
-          <div ref="editorWrapRef" class="editor-shell">
+          <div v-else-if="isRedis" class="redis-command-console">
+            <div class="redis-command-head">
+              <strong>Redis 命令控制台</strong>
+              <span>读取命令可直接执行，写入命令需确认；高危管理命令已禁用。</span>
+            </div>
+            <div class="redis-command-snippets">
+              <el-button v-for="item in redisCommandSnippets" :key="item.label" size="small" plain @click="redisCommandText = item.text">
+                {{ item.label }}
+              </el-button>
+            </div>
+            <el-input
+              v-model="redisCommandText"
+              class="redis-command-input"
+              type="textarea"
+              :rows="6"
+              spellcheck="false"
+              placeholder="例如：GET key、HGETALL hash_key 或 SET key value"
+              @keydown.ctrl.enter.prevent="runRedisCommand"
+              @keydown.meta.enter.prevent="runRedisCommand"
+            />
+            <div class="redis-command-hint">支持带引号参数。按 Ctrl + Enter 执行，执行记录会保留在下方历史中。</div>
+          </div>
+
+          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="当前数据库不是 SQL 类型">
+            可在左侧选择数据库、库与资源查看结构；MySQL 保留完整的数据编辑、导入导出与备份能力。
+          </el-alert>
+
+          <div v-if="supportsSQL" ref="editorWrapRef" class="editor-shell">
             <div class="line-gutter" :style="{ transform: `translateY(-${sqlScrollTop}px)` }">
               <div v-for="line in sqlLines" :key="line" class="line-number" :class="{ active: line === currentLine }">
                 {{ line }}
@@ -867,9 +1268,10 @@ onBeforeUnmount(() => {
               <p v-if="selectedTable">{{ selectedSchema }} / {{ selectedTable }}</p>
               <p v-else>先从左侧选中一张表，或直接执行 SQL 查看结果。</p>
             </div>
-            <div v-if="selectedTable" class="panel-actions">
-              <el-button type="primary" plain :disabled="!canEditRows" @click="openInsertRow">新增数据</el-button>
-              <el-button @click="loadTableData">刷新数据</el-button>
+            <div v-if="selectedTable || isRedis" class="panel-actions">
+              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">新增 Key</el-button>
+              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">新增数据</el-button>
+              <el-button @click="refreshSelectedData">刷新数据</el-button>
             </div>
           </div>
 
@@ -881,7 +1283,33 @@ onBeforeUnmount(() => {
                 </el-select>
                 <el-input v-model="tableFilter.text" clearable placeholder="输入筛选值，支持模糊匹配" style="width: 280px" />
               </div>
-              <el-table v-loading="dataLoading" :data="selectedRows" border height="380">
+              <el-alert
+                v-if="supportsResourceData"
+                class="resource-readonly-alert"
+                type="info"
+                :closable="false"
+                show-icon
+                :title="isRedis && canManageRedisKeys ? '当前 Redis 连接支持直接管理 Key' : '当前资源以只读方式浏览'"
+              >
+                <template v-if="resourceType === 'collection'">可按字段筛选 MongoDB 文档；下方会展示集合索引摘要。</template>
+                <template v-else-if="resourceType === 'key'">
+                  <span v-if="canManageRedisKeys">支持新增、编辑和删除 Redis Key；所有写入操作均需确认并记录审计。</span>
+                  <span v-else>展示 Redis Key 的类型、TTL 与值摘要，不会直接修改 Key。</span>
+                </template>
+                <template v-else>PostgreSQL 表数据支持分页与字段筛选；执行计划可直接在 SQL 编辑器中使用 EXPLAIN ANALYZE。</template>
+              </el-alert>
+              <el-table v-if="supportsResourceData" v-loading="dataLoading" :data="selectedRows" border height="380">
+                <el-table-column v-for="col in selectedColumns" :key="col.name" :label="col.name" min-width="180" show-overflow-tooltip>
+                  <template #default="{ row }">{{ formatResourceValue(row[col.name]) }}</template>
+                </el-table-column>
+                <el-table-column v-if="isRedis" label="操作" width="150" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">编辑</el-button>
+                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <el-table v-else v-loading="dataLoading" :data="selectedRows" border height="380">
                 <el-table-column v-for="(col, index) in selectedColumns" :key="col.name" :label="col.name" min-width="160">
                   <template #default="{ row, $index }">
                     <el-input
@@ -903,14 +1331,20 @@ onBeforeUnmount(() => {
                   </template>
                 </el-table-column>
               </el-table>
+              <div v-if="supportsResourceData && resourceIndexes.length" class="resource-indexes">
+                <strong>集合索引</strong>
+                <el-tag v-for="(item, index) in resourceIndexes" :key="index" effect="plain">
+                  {{ formatResourceValue(item.name || item.key || item) }}
+                </el-tag>
+              </div>
               <div class="pager">
                 <el-pagination
                   v-model:current-page="tableQuery.pageNum"
                   v-model:page-size="tableQuery.pageSize"
                   :total="selectedTotal"
                   layout="total, sizes, prev, pager, next"
-                  @current-change="loadTableData"
-                  @size-change="loadTableData"
+                  @current-change="refreshSelectedData"
+                  @size-change="refreshSelectedData"
                 />
               </div>
             </el-tab-pane>
@@ -1065,6 +1499,37 @@ onBeforeUnmount(() => {
         >
           确认执行
         </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? '新增 Redis Key' : '编辑 Redis Key'" width="720px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="写入 Redis 将立即生效，并写入执行审计记录"
+        class="redis-key-alert"
+      />
+      <el-form label-width="112px" class="redis-key-form">
+        <el-form-item label="Key 名称" required>
+          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" placeholder="例如：app:config" />
+        </el-form-item>
+        <el-form-item label="数据类型">
+          <el-select v-model="redisKeyForm.type" :disabled="redisKeyDialogMode === 'edit'" style="width: 100%">
+            <el-option v-for="type in redisKeyTypes" :key="type" :label="type" :value="type" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="值" required>
+          <el-input v-model="redisKeyForm.value" type="textarea" :rows="8" :placeholder="redisKeyValuePlaceholder" />
+        </el-form-item>
+        <el-form-item label="TTL（秒）">
+          <el-input-number v-model="redisKeyForm.ttl" :min="-1" :precision="0" controls-position="right" />
+          <span class="redis-key-help">留空表示不修改 TTL；-1 表示永不过期。</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="redisKeyDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">确认保存</el-button>
       </template>
     </el-dialog>
 
@@ -1269,6 +1734,31 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-secondary);
 }
 
+.schema-node-meta,
+.schema-pagination {
+  display: inline-flex;
+  align-items: center;
+}
+
+.schema-node-meta {
+  margin-left: auto;
+  gap: 6px;
+}
+
+.schema-pagination {
+  gap: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.schema-pagination .el-button {
+  min-width: auto;
+  height: 20px;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
 .dbms-main {
   display: flex;
   flex-direction: column;
@@ -1306,6 +1796,71 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.database-capability-alert {
+  margin-top: 16px;
+}
+
+.redis-command-console {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #253653;
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.redis-command-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
+  color: #e2e8f0;
+}
+
+.redis-command-head span,
+.redis-command-hint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.redis-command-snippets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.redis-command-input :deep(.el-textarea__inner) {
+  min-height: 132px;
+  border-color: #334155;
+  background: #111827;
+  color: #e2e8f0;
+  font-family: Consolas, 'Courier New', monospace;
+  line-height: 1.65;
+}
+
+.redis-command-input :deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 1px #3b82f6 inset;
+}
+
+.redis-command-hint {
+  margin-top: 10px;
+}
+
+.resource-readonly-alert {
+  margin-bottom: 12px;
+}
+
+.resource-indexes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 
 .snippet-hint {
@@ -1526,6 +2081,20 @@ onBeforeUnmount(() => {
 
 .rollback-alert {
   margin-bottom: 12px;
+}
+
+.redis-key-alert {
+  margin-bottom: 18px;
+}
+
+.redis-key-form .el-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.redis-key-help {
+  margin-left: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .import-precheck {

@@ -122,6 +122,25 @@ func (ctl *Controller) GetDatabaseTableData(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetDatabaseResourceData(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "25"))
+	data, err := ctl.service.GetDatabaseResourceData(service.DBMSTableDataQueryPayload{
+		DatabaseID: uint(mustAtoi(c.Query("databaseId"))),
+		Schema:     c.Query("schema"),
+		Table:      c.Query("table"),
+		PageNum:    pageNum,
+		PageSize:   pageSize,
+		FilterKey:  c.Query("filterKey"),
+		FilterText: c.Query("filterText"),
+	})
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) ExecuteDatabaseSQL(c *gin.Context) {
 	var payload service.DBMSSQLExecutePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -145,6 +164,36 @@ func (ctl *Controller) AnalyzeDatabaseSQL(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.AnalyzeDatabaseSQL(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) AnalyzeRedisCommand(c *gin.Context) {
+	var payload service.RedisCommandPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "Redis 命令参数不正确")
+		return
+	}
+	data, err := ctl.service.AnalyzeRedisCommand(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) ExecuteRedisCommand(c *gin.Context) {
+	var payload service.RedisCommandPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "Redis 命令参数不正确")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	payload.ClientIP = c.ClientIP()
+	data, err := ctl.service.ExecuteRedisCommand(payload)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

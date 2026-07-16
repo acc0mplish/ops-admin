@@ -12,8 +12,7 @@ async function enterWorkbench() {
     const data = await queryAssetDatabaseList({
       pageNum: 1,
       pageSize: 500,
-      status: '1',
-      dbType: 'mysql'
+      status: '1'
     })
     const database = (data.list || []).find((item) => item.connectStatus === 1)
     if (!database) {

@@ -28,7 +28,7 @@ const query = reactive({
   pageNum: 1,
   pageSize: 10,
   keyword: '',
-  dbType: 'mysql',
+  dbType: '',
   status: '',
   env: '',
   tag: ''
@@ -72,6 +72,25 @@ function resetForm() {
     status: 1,
     description: ''
   })
+}
+
+const databaseTypeOptions = [
+  { label: 'MySQL', value: 'mysql', port: 3306, charset: 'utf8mb4', dbName: 'mysql' },
+  { label: 'PostgreSQL', value: 'postgresql', port: 5432, charset: 'UTF8', dbName: 'postgres' },
+  { label: 'MongoDB', value: 'mongodb', port: 27017, charset: '', dbName: 'admin' },
+  { label: 'Redis', value: 'redis', port: 6379, charset: '', dbName: '0' }
+]
+
+function databaseTypeLabel(value) {
+  return databaseTypeOptions.find((item) => item.value === value)?.label || value || '-'
+}
+
+function onDatabaseTypeChange(value) {
+  const option = databaseTypeOptions.find((item) => item.value === value)
+  if (!option) return
+  form.port = option.port
+  form.charset = option.charset
+  if (!form.dbName || ['mysql', 'postgres', 'admin', '0'].includes(form.dbName)) form.dbName = option.dbName
 }
 
 function connectionStatusText(row) {
@@ -118,7 +137,7 @@ async function handleTest() {
   testing.value = true
   try {
     const data = await testAssetDatabase(form)
-    ElMessage.success(`连接成功，MySQL 版本 ${data.version || '-'}`)
+    ElMessage.success(`连接成功，${databaseTypeLabel(data.dbType || form.dbType)} 版本 ${data.version || '-'}`)
   } finally {
     testing.value = false
   }
@@ -171,7 +190,7 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2 class="page-title">数据库管理</h2>
-        <p class="page-desc">集中维护 MySQL 数据库资产，并直接进入 SQL 工作台进行结构、数据和执行记录管理。</p>
+        <p class="page-desc">统一维护 MySQL、PostgreSQL、MongoDB 与 Redis 资产，并按数据库类型提供连接、结构与工作台能力。</p>
       </div>
       <el-button type="primary" @click="openCreate">新增数据库</el-button>
     </div>
@@ -186,7 +205,11 @@ onMounted(() => {
           @keyup.enter="loadData"
         />
         <el-select v-model="query.dbType" clearable style="width: 140px" placeholder="数据库类型">
+          <el-option label="全部类型" value="" />
           <el-option label="MySQL" value="mysql" />
+          <el-option label="PostgreSQL" value="postgresql" />
+          <el-option label="MongoDB" value="mongodb" />
+          <el-option label="Redis" value="redis" />
         </el-select>
         <el-select v-model="query.status" clearable style="width: 140px" placeholder="状态">
           <el-option label="启用" value="1" />
@@ -197,7 +220,7 @@ onMounted(() => {
         </el-select>
         <el-input v-model="query.tag" clearable placeholder="标签" style="width: 150px" @keyup.enter="loadData" />
         <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: 'mysql', status: '', env: '', tag: '' }); loadData()">重置</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: '', status: '', env: '', tag: '' }); loadData()">重置</el-button>
       </div>
     </div>
 
@@ -207,7 +230,9 @@ onMounted(() => {
           <el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button>
         </template>
       </el-table-column>
-      <el-table-column prop="dbType" label="类型" width="100" />
+      <el-table-column label="类型" width="120">
+        <template #default="{ row }"><el-tag effect="plain">{{ databaseTypeLabel(row.dbType) }}</el-tag></template>
+      </el-table-column>
       <el-table-column label="访问模式" width="110">
         <template #default="{ row }">
           <el-tag :type="row.accessMode === 'readonly' ? 'warning' : 'success'" effect="plain">
@@ -273,8 +298,11 @@ onMounted(() => {
           </el-col>
           <el-col :span="12">
             <el-form-item label="数据库类型">
-              <el-select v-model="form.dbType" style="width: 100%">
+              <el-select v-model="form.dbType" style="width: 100%" @change="onDatabaseTypeChange">
                 <el-option label="MySQL" value="mysql" />
+                <el-option label="PostgreSQL" value="postgresql" />
+                <el-option label="MongoDB" value="mongodb" />
+                <el-option label="Redis" value="redis" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -307,16 +335,22 @@ onMounted(() => {
             <el-form-item label="端口"><el-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
+            <el-form-item :label="form.dbType === 'redis' || form.dbType === 'mongodb' ? '用户名（可选）' : '用户名'">
+              <el-input v-model="form.username" :placeholder="form.dbType === 'redis' || form.dbType === 'mongodb' ? '未启用认证时可留空' : ''" />
+            </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="密码"><el-input v-model="form.password" show-password :placeholder="isEdit ? '留空则保持不变' : ''" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="默认库"><el-input v-model="form.dbName" placeholder="例如：app_db" /></el-form-item>
+            <el-form-item :label="form.dbType === 'redis' ? '逻辑库编号' : '默认库'">
+              <el-input v-model="form.dbName" :placeholder="form.dbType === 'redis' ? '例如：0' : form.dbType === 'mongodb' ? '例如：admin' : '例如：app_db'" />
+            </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="字符集"><el-input v-model="form.charset" placeholder="默认 utf8mb4" /></el-form-item>
+            <el-form-item label="字符集">
+              <el-input v-model="form.charset" :disabled="form.dbType === 'mongodb' || form.dbType === 'redis'" placeholder="默认 utf8mb4" />
+            </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="连接方式">

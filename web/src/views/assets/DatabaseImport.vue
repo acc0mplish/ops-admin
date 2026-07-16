@@ -61,11 +61,21 @@ const targetSchemas = computed(() => targetTree.value || [])
 const backupTargetSchemas = computed(() => backupTargetTree.value || [])
 const selectedBackupRecord = computed(() => backupRecords.value.find((item) => item.id === backupForm.backupRecordId))
 const selectedBackupDatabase = computed(() => databases.value.find((item) => item.id === backupForm.databaseId))
+const relationalDatabases = computed(() => databases.value.filter((item) => ['mysql', 'postgresql'].includes(String(item.dbType || '').toLowerCase())))
+const mysqlDatabases = computed(() => databases.value.filter((item) => String(item.dbType || '').toLowerCase() === 'mysql'))
 const sourceTables = computed(() => sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)?.tables || [])
 
 async function loadDatabases() {
-  const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1', dbType: 'mysql' })
-  databases.value = data.list || []
+	const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1' })
+	databases.value = data.list || []
+}
+
+function databaseLabel(item, withAccess = false) {
+	const type = String(item.dbType || '').toUpperCase()
+	const address = `${item.host || '-'}:${item.port || '-'}`
+	return withAccess
+		? `${item.name} / ${type} / ${item.accessMode === 'readonly' ? '只读' : '读写'}`
+		: `${item.name} (${type} · ${address})`
 }
 
 async function loadBackupRecords() {
@@ -297,7 +307,7 @@ onMounted(async () => {
             <div class="section-title">源数据</div>
             <el-form-item label="源数据库" required>
               <el-select v-model="importForm.sourceDatabaseId" filterable>
-                <el-option v-for="item in databases" :key="item.id" :label="`${item.name} (${item.host}:${item.port})`" :value="item.id" />
+                <el-option v-for="item in relationalDatabases" :key="item.id" :label="databaseLabel(item)" :value="item.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="源 Schema" required>
@@ -377,7 +387,7 @@ onMounted(async () => {
               <el-form-item label="目标数据库" required>
                 <el-select v-model="backupForm.databaseId" filterable placeholder="选择可写的 MySQL 连接">
                   <el-option
-                    v-for="item in databases"
+                    v-for="item in mysqlDatabases"
                     :key="item.id"
                     :label="`${item.name} / ${item.env || '-'} / ${item.accessMode === 'readonly' ? '只读' : '读写'}`"
                     :value="item.id"

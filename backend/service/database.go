@@ -123,17 +123,20 @@ type databaseTableColumn struct {
 }
 
 func normalizeDatabaseType(v string) string {
-	if strings.EqualFold(strings.TrimSpace(v), "mysql") {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "postgres", "postgresql":
+		return "postgresql"
+	case "mongo", "mongodb":
+		return "mongodb"
+	case "redis":
+		return "redis"
+	default:
 		return "mysql"
 	}
-	return "mysql"
 }
 
 func databasePort(v int) int {
-	if v > 0 {
-		return v
-	}
-	return 3306
+	return databasePortByType("mysql", v)
 }
 
 func databaseCharset(v string) string {
@@ -319,13 +322,13 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 		Name:           Trimmed(payload.Name),
 		DBType:         normalizeDatabaseType(payload.DBType),
 		Host:           Trimmed(payload.Host),
-		Port:           databasePort(payload.Port),
+		Port:           databasePortByType(payload.DBType, payload.Port),
 		Username:       Trimmed(payload.Username),
 		Password:       payload.Password,
 		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		DBName:         Trimmed(payload.DBName),
-		Charset:        databaseCharset(payload.Charset),
+		Charset:        databaseCharsetByType(payload.DBType, payload.Charset),
 		Env:            normalizeEnvCode(payload.Env),
 		Tags:           normalizeAssetTags(payload.Tags),
 		AccessMode:     normalizeDatabaseAccessMode(payload.AccessMode),
@@ -338,7 +341,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 	if item.Host == "" {
 		return errors.New("数据库地址不能为空")
 	}
-	if item.Username == "" {
+	if databaseRequiresUsername(item.DBType) && item.Username == "" {
 		return errors.New("数据库用户名不能为空")
 	}
 	if item.Env == "" {
@@ -352,7 +355,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 	}
 	now := time.Now()
 	item.LastCheckTime = &now
-	version, err := s.inspectAssetMySQLDatabase(item)
+	version, err := s.inspectAssetDatabase(item)
 	if err == nil {
 		item.Version = version
 		item.ConnectStatus = 1
@@ -379,13 +382,13 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		"name":            Trimmed(payload.Name),
 		"db_type":         normalizeDatabaseType(payload.DBType),
 		"host":            Trimmed(payload.Host),
-		"port":            databasePort(payload.Port),
+		"port":            databasePortByType(payload.DBType, payload.Port),
 		"username":        Trimmed(payload.Username),
 		"password":        password,
 		"connection_mode": normalizeConnectionMode(payload.ConnectionMode),
 		"gateway_id":      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		"db_name":         Trimmed(payload.DBName),
-		"charset":         databaseCharset(payload.Charset),
+		"charset":         databaseCharsetByType(payload.DBType, payload.Charset),
 		"env":             normalizeEnvCode(payload.Env),
 		"tags":            normalizeAssetTags(payload.Tags),
 		"access_mode":     normalizeDatabaseAccessMode(payload.AccessMode),
@@ -398,7 +401,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 	if Trimmed(payload.Host) == "" {
 		return errors.New("数据库地址不能为空")
 	}
-	if Trimmed(payload.Username) == "" {
+	if databaseRequiresUsername(payload.DBType) && Trimmed(payload.Username) == "" {
 		return errors.New("数据库用户名不能为空")
 	}
 	if normalizeEnvCode(payload.Env) == "" {
@@ -414,16 +417,17 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 	updates["last_check_time"] = &now
 	probeItem := *existing
 	probeItem.Host = Trimmed(payload.Host)
-	probeItem.Port = databasePort(payload.Port)
+	probeItem.DBType = normalizeDatabaseType(payload.DBType)
+	probeItem.Port = databasePortByType(payload.DBType, payload.Port)
 	probeItem.Username = Trimmed(payload.Username)
 	probeItem.Password = password
 	probeItem.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
 	probeItem.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
 	probeItem.DBName = Trimmed(payload.DBName)
-	probeItem.Charset = databaseCharset(payload.Charset)
+	probeItem.Charset = databaseCharsetByType(payload.DBType, payload.Charset)
 	probeItem.Env = normalizeEnvCode(payload.Env)
 	probeItem.AccessMode = normalizeDatabaseAccessMode(payload.AccessMode)
-	version, err := s.inspectAssetMySQLDatabase(probeItem)
+	version, err := s.inspectAssetDatabase(probeItem)
 	if err == nil {
 		updates["version"] = version
 		updates["connect_status"] = 1
@@ -450,29 +454,28 @@ func (s *Service) DeleteAssetDatabase(id uint) error {
 
 func (s *Service) TestAssetDatabaseConnection(payload AssetDatabasePayload) (map[string]any, error) {
 	dbType := normalizeDatabaseType(payload.DBType)
-	if dbType != "mysql" {
-		return nil, errors.New("当前仅支持 MySQL")
-	}
 	item := model.AssetDatabase{
+		DBType:         dbType,
 		Host:           Trimmed(payload.Host),
-		Port:           databasePort(payload.Port),
+		Port:           databasePortByType(dbType, payload.Port),
 		Username:       Trimmed(payload.Username),
 		Password:       payload.Password,
 		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		DBName:         Trimmed(payload.DBName),
-		Charset:        databaseCharset(payload.Charset),
+		Charset:        databaseCharsetByType(dbType, payload.Charset),
 		Env:            normalizeEnvCode(payload.Env),
 		AccessMode:     normalizeDatabaseAccessMode(payload.AccessMode),
 	}
 	if err := validateGatewaySelection(item.ConnectionMode, item.GatewayID); err != nil {
 		return nil, err
 	}
-	version, err := s.inspectAssetMySQLDatabase(item)
+	version, err := s.inspectAssetDatabase(item)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{
+		"dbType":        dbType,
 		"version":       version,
 		"connectStatus": 1,
 		"checkedAt":     time.Now(),
@@ -495,10 +498,20 @@ func (s *Service) GetDatabaseWorkbench(databaseID uint) (map[string]any, error) 
 		"charset":       item.Charset,
 		"version":       item.Version,
 		"connectStatus": item.ConnectStatus,
+		"accessMode":    item.AccessMode,
+		"mode":          databaseMode(item.DBType),
+		"capabilities":  databaseCapabilities(item.DBType),
 	}, nil
 }
 
 func (s *Service) GetDatabaseSchemaTree(databaseID uint) (map[string]any, error) {
+	item, err := s.getAssetDatabase(databaseID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeDatabaseType(item.DBType) != "mysql" {
+		return s.getNonMySQLSchemaTree(item)
+	}
 	item, db, cleanup, err := s.openDatabaseByID(databaseID, "")
 	if err != nil {
 		return nil, err
@@ -564,6 +577,16 @@ func (s *Service) GetDatabaseSchemaTree(databaseID uint) (map[string]any, error)
 }
 
 func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[string]any, error) {
+	if payload.DatabaseID == 0 || strings.TrimSpace(payload.Table) == "" {
+		return nil, errors.New("请先选择数据表")
+	}
+	asset, err := s.getAssetDatabase(payload.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeDatabaseType(asset.DBType) == "postgresql" {
+		return s.getPostgresTableData(asset, payload)
+	}
 	if payload.DatabaseID == 0 || payload.Table == "" {
 		return nil, errors.New("请先选择表")
 	}
@@ -576,6 +599,11 @@ func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[s
 	schema := strings.TrimSpace(payload.Schema)
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, schema)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureMySQLFeature(item); err != nil {
+		db.Close()
+		cleanup()
 		return nil, err
 	}
 	defer db.Close()
@@ -837,8 +865,20 @@ func (s *Service) ListDatabaseSQLHistory(databaseID uint, pageNum, pageSize int)
 }
 
 func (s *Service) InsertDatabaseTableRow(payload DBMSTableInsertPayload) (map[string]any, error) {
+	asset, err := s.getAssetDatabase(payload.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeDatabaseType(asset.DBType) == "postgresql" {
+		return s.insertPostgresTableRow(asset, payload)
+	}
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, payload.Schema)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureMySQLFeature(item); err != nil {
+		db.Close()
+		cleanup()
 		return nil, err
 	}
 	if err := ensureDatabaseWritable(item); err != nil {
@@ -898,8 +938,20 @@ func (s *Service) InsertDatabaseTableRow(payload DBMSTableInsertPayload) (map[st
 }
 
 func (s *Service) UpdateDatabaseTableRow(payload DBMSTableUpdatePayload) (map[string]any, error) {
+	asset, err := s.getAssetDatabase(payload.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeDatabaseType(asset.DBType) == "postgresql" {
+		return s.updatePostgresTableRow(asset, payload)
+	}
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, payload.Schema)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureMySQLFeature(item); err != nil {
+		db.Close()
+		cleanup()
 		return nil, err
 	}
 	if err := ensureDatabaseWritable(item); err != nil {
@@ -956,8 +1008,20 @@ func (s *Service) UpdateDatabaseTableRow(payload DBMSTableUpdatePayload) (map[st
 }
 
 func (s *Service) DeleteDatabaseTableRow(payload DBMSTableDeletePayload) (map[string]any, error) {
+	asset, err := s.getAssetDatabase(payload.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeDatabaseType(asset.DBType) == "postgresql" {
+		return s.deletePostgresTableRow(asset, payload)
+	}
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, payload.Schema)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureMySQLFeature(item); err != nil {
+		db.Close()
+		cleanup()
 		return nil, err
 	}
 	if err := ensureDatabaseWritable(item); err != nil {
@@ -998,6 +1062,11 @@ func (s *Service) ExportDatabaseTable(databaseID uint, schema string, table stri
 	}
 	item, db, cleanup, err := s.openDatabaseByID(databaseID, schema)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := ensureMySQLFeature(item); err != nil {
+		db.Close()
+		cleanup()
 		return nil, "", err
 	}
 	defer db.Close()
@@ -1060,6 +1129,11 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureRelationalImportFeature(sourceAsset); err != nil {
+		sourceDB.Close()
+		sourceCleanup()
+		return nil, err
+	}
 	defer sourceDB.Close()
 	defer sourceCleanup()
 
@@ -1067,8 +1141,19 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureRelationalImportFeature(targetAsset); err != nil {
+		targetDB.Close()
+		targetCleanup()
+		return nil, err
+	}
 	defer targetDB.Close()
 	defer targetCleanup()
+	if err := ensureRelationalImportFeature(sourceAsset); err != nil {
+		return nil, err
+	}
+	if err := ensureRelationalImportFeature(targetAsset); err != nil {
+		return nil, err
+	}
 	if err := ensureDatabaseWritable(targetAsset); err != nil {
 		return nil, err
 	}
@@ -1081,7 +1166,17 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 	}
 
 	if payload.CreateIfMissing {
-		showSQL := fmt.Sprintf("SHOW CREATE TABLE %s.%s", quoteIdentifier(sourceSchema), quoteIdentifier(payload.SourceTable))
+		sourceType := normalizeDatabaseType(sourceAsset.DBType)
+		targetType := normalizeDatabaseType(targetAsset.DBType)
+		if sourceType != targetType {
+			return nil, errors.New("跨数据库类型导入暂不支持自动建表，请先创建目标表后再导入")
+		}
+		if sourceType == "postgresql" {
+			if err := s.createPostgresImportTable(sourceDB, targetDB, sourceSchema, payload.SourceTable, targetSchema, targetTable); err != nil {
+				return nil, err
+			}
+		} else {
+		showSQL := fmt.Sprintf("SHOW CREATE TABLE %s", importTableName(sourceAsset, sourceSchema, payload.SourceTable))
 		rows, err := sourceDB.Query(showSQL)
 		if err != nil {
 			return nil, err
@@ -1096,13 +1191,14 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 		if _, err := targetDB.Exec(createSQL); err != nil {
 			return nil, err
 		}
+		}
 	}
 
-	sourceColumns, err := s.getTableColumns(sourceDB, sourceSchema, payload.SourceTable)
+	sourceColumns, err := s.getImportTableColumns(sourceAsset, sourceDB, sourceSchema, payload.SourceTable)
 	if err != nil {
 		return nil, err
 	}
-	targetColumns, err := s.getTableColumns(targetDB, targetSchema, targetTable)
+	targetColumns, err := s.getImportTableColumns(targetAsset, targetDB, targetSchema, targetTable)
 	if err != nil {
 		return nil, err
 	}
@@ -1121,17 +1217,19 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 		return nil, errors.New("源表和目标表没有可匹配的字段")
 	}
 
+	if normalizeDatabaseType(sourceAsset.DBType) != normalizeDatabaseType(targetAsset.DBType) && payload.CreateIfMissing {
+		warnings = append(warnings, "跨数据库类型导入不支持自动建表，请先创建目标表")
+	}
 	if payload.TruncateTarget {
-		if _, err := targetDB.Exec(fmt.Sprintf("TRUNCATE TABLE %s.%s", quoteIdentifier(targetSchema), quoteIdentifier(targetTable))); err != nil {
+		if _, err := targetDB.Exec(fmt.Sprintf("TRUNCATE TABLE %s", importTableName(targetAsset, targetSchema, targetTable))); err != nil {
 			return nil, err
 		}
 	}
 
 	selectSQL := fmt.Sprintf(
-		"SELECT %s FROM %s.%s",
-		joinIdentifiers(commonColumns),
-		quoteIdentifier(sourceSchema),
-		quoteIdentifier(payload.SourceTable),
+		"SELECT %s FROM %s",
+		importJoinIdentifiers(sourceAsset, commonColumns),
+		importTableName(sourceAsset, sourceSchema, payload.SourceTable),
 	)
 	rows, err := sourceDB.Query(selectSQL)
 	if err != nil {
@@ -1147,12 +1245,11 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 	if err != nil {
 		return nil, err
 	}
-	placeholders := strings.TrimRight(strings.Repeat("?,", len(commonColumns)), ",")
+	placeholders := importPlaceholders(targetAsset, len(commonColumns))
 	insertSQL := fmt.Sprintf(
-		"INSERT INTO %s.%s (%s) VALUES (%s)",
-		quoteIdentifier(targetSchema),
-		quoteIdentifier(targetTable),
-		joinIdentifiers(commonColumns),
+		"INSERT INTO %s (%s) VALUES (%s)",
+		importTableName(targetAsset, targetSchema, targetTable),
+		importJoinIdentifiers(targetAsset, commonColumns),
 		placeholders,
 	)
 	stmt, err := tx.Prepare(insertSQL)
@@ -1274,19 +1371,19 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 	if targetTable == "" {
 		targetTable = strings.TrimSpace(payload.SourceTable)
 	}
-	sourceColumns, err := s.getTableColumns(sourceDB, sourceSchema, payload.SourceTable)
+	sourceColumns, err := s.getImportTableColumns(sourceAsset, sourceDB, sourceSchema, payload.SourceTable)
 	if err != nil {
 		return nil, err
 	}
 	if len(sourceColumns) == 0 {
 		return nil, errors.New("源表不存在或没有可导入字段")
 	}
-	targetColumns, err := s.getTableColumns(targetDB, targetSchema, targetTable)
+	targetColumns, err := s.getImportTableColumns(targetAsset, targetDB, targetSchema, targetTable)
 	if err != nil {
 		return nil, err
 	}
 	var estimatedRows int64
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s", quoteIdentifier(sourceSchema), quoteIdentifier(payload.SourceTable))
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s", importTableName(sourceAsset, sourceSchema, payload.SourceTable))
 	if err := sourceDB.QueryRow(countSQL).Scan(&estimatedRows); err != nil {
 		return nil, err
 	}
@@ -1318,7 +1415,7 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 		warnings = append(warnings, fmt.Sprintf("有 %d 个源字段无法映射到目标表", len(missingColumns)))
 	}
 	ready := normalizeDatabaseAccessMode(targetAsset.AccessMode) != "readonly" &&
-		(len(targetColumns) > 0 || payload.CreateIfMissing) &&
+		(len(targetColumns) > 0 || (payload.CreateIfMissing && normalizeDatabaseType(sourceAsset.DBType) == normalizeDatabaseType(targetAsset.DBType))) &&
 		len(commonColumns) > 0
 	return &DBMSImportPrecheck{
 		SourceDatabase: sourceAsset.Name,
@@ -1536,10 +1633,16 @@ func (s *Service) openDatabaseByID(id uint, schema string) (*model.AssetDatabase
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
-	if normalizeDatabaseType(item.DBType) != "mysql" {
-		return nil, nil, func() {}, errors.New("当前仅支持 MySQL")
+	var db *sql.DB
+	var cleanup func()
+	switch normalizeDatabaseType(item.DBType) {
+	case "mysql":
+		db, cleanup, err = s.openAssetMySQLDatabase(*item, schema)
+	case "postgresql":
+		db, cleanup, err = s.openAssetPostgresDatabase(*item)
+	default:
+		return nil, nil, func() {}, errors.New("当前数据库类型不支持 SQL 工作台，可在左侧查看数据库结构与连接状态")
 	}
-	db, cleanup, err := s.openAssetMySQLDatabase(*item, schema)
 	if err != nil {
 		return nil, nil, cleanup, err
 	}
@@ -1556,8 +1659,14 @@ func defaultSchema(item *model.AssetDatabase, schema string) string {
 	if value != "" {
 		return value
 	}
+	if normalizeDatabaseType(item.DBType) == "postgresql" {
+		return "public"
+	}
 	if strings.TrimSpace(item.DBName) != "" {
 		return strings.TrimSpace(item.DBName)
+	}
+	if normalizeDatabaseType(item.DBType) == "redis" {
+		return "db0"
 	}
 	return "mysql"
 }

@@ -217,14 +217,12 @@ onMounted(async () => {
   <div class="integration-page">
     <section class="integration-header">
       <div class="header-copy">
-        <span class="eyebrow">INTEGRATION HUB</span>
-        <h1>集成中心</h1>
-        <p>集中管理内部系统、运维工具和第三方平台入口，并按使用场景分组共享。</p>
-      </div>
-      <div class="header-summary" aria-label="集成中心统计">
-        <div><strong>{{ groups.length }}</strong><span>导航分组</span></div>
-        <div><strong>{{ totalNavigationCount }}</strong><span>系统入口</span></div>
-        <div><strong>{{ publicGroupCount }}</strong><span>公开分组</span></div>
+        <span class="hub-mark">NH</span>
+        <div>
+          <span class="eyebrow">INTEGRATION NAVIGATION</span>
+          <h1>导航管理</h1>
+          <p>按场景沉淀内部系统、运维工具和第三方平台入口，并支持按组公开分享。</p>
+        </div>
       </div>
       <div class="header-actions">
         <el-button @click="openCreateGroup">新增分组</el-button>
@@ -232,10 +230,29 @@ onMounted(async () => {
       </div>
     </section>
 
+    <section class="navigation-summary" aria-label="导航资源概览">
+      <div class="summary-cell tone-blue">
+        <div><i></i><span>导航分组</span><em>GROUP</em></div>
+        <strong>{{ groups.length }}</strong>
+      </div>
+      <div class="summary-cell tone-cyan">
+        <div><i></i><span>系统入口</span><em>ENTRY</em></div>
+        <strong>{{ totalNavigationCount }}</strong>
+      </div>
+      <div class="summary-cell tone-green">
+        <div><i></i><span>公开分组</span><em>PUBLIC</em></div>
+        <strong>{{ publicGroupCount }}</strong>
+      </div>
+      <div class="summary-cell tone-violet">
+        <div><i></i><span>当前分组</span><em>ACTIVE</em></div>
+        <strong class="active-group-name">{{ selectedGroup?.name || '-' }}</strong>
+      </div>
+    </section>
+
     <section class="integration-workspace">
       <aside class="group-panel">
         <div class="panel-title">
-          <div><strong>导航分组</strong><small>按使用场景组织入口</small></div>
+          <div><span class="panel-kicker">GROUP DIRECTORY</span><strong>导航分组</strong><small>按使用场景组织入口</small></div>
           <el-button link type="primary" @click="openCreateGroup">新增</el-button>
         </div>
         <div v-if="groups.length" class="group-list">
@@ -262,7 +279,7 @@ onMounted(async () => {
         <template v-if="selectedGroup">
           <div class="group-heading">
             <div>
-              <span class="section-label">当前分组</span>
+              <span class="section-label">GROUP WORKSPACE</span>
               <div class="heading-line">
                 <h2>{{ selectedGroup.name }}</h2>
                 <el-tag :type="selectedGroup.status === 1 ? 'success' : 'info'" effect="light">
@@ -367,30 +384,44 @@ onMounted(async () => {
 
 <style scoped>
 .integration-page { display: flex; flex-direction: column; gap: 14px; color: #10213e; }
-.integration-header { display: grid; grid-template-columns: minmax(360px, 1fr) auto auto; align-items: center; gap: 28px; padding: 22px 26px; background: #fff; border: 1px solid #e0e8f3; border-radius: 8px; box-shadow: 0 7px 22px rgba(45, 72, 110, .05); }
-.header-copy { min-width: 0; }
-.eyebrow, .section-label { color: #356fd6; font-size: 11px; font-weight: 800; letter-spacing: 0; }
-.integration-header h1 { margin: 4px 0; font-size: 27px; line-height: 1.2; }
+.integration-header,
+.navigation-summary,
+.integration-workspace { border: 1px solid #dfe8f5; border-radius: 8px; box-shadow: 0 8px 24px rgba(35, 63, 112, .05); }
+.integration-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 18px; background: #fff; }
+.header-copy { display: flex; min-width: 0; align-items: center; gap: 14px; }
+.hub-mark { display: grid; width: 42px; height: 42px; flex: 0 0 42px; color: #fff; background: #2563eb; border-radius: 8px; font: 800 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace; place-items: center; box-shadow: 0 8px 18px rgba(37, 99, 235, .24); }
+.eyebrow, .section-label { color: #356fd6; font-size: 11px; font-weight: 800; letter-spacing: 1.1px; }
+.integration-header h1 { margin: 4px 0; font-size: 23px; line-height: 1.2; }
 .integration-header p, .group-heading p { margin: 0; color: #74839d; }
-.header-summary { display: flex; align-items: stretch; height: 48px; }
-.header-summary > div { display: flex; min-width: 88px; padding: 0 18px; border-left: 1px solid #e6ebf3; flex-direction: column; justify-content: center; }
-.header-summary strong { color: #173e79; font-size: 20px; line-height: 1.1; }
-.header-summary span { margin-top: 4px; color: #8996aa; font-size: 12px; }
-.header-actions { display: flex; flex-shrink: 0; }
-.integration-workspace { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 630px; overflow: hidden; background: #fff; border: 1px solid #e0e8f3; border-radius: 8px; box-shadow: 0 8px 25px rgba(45, 72, 110, .04); }
-.group-panel { padding: 17px 10px; border-right: 1px solid #e5ebf4; background: #f7f9fd; }
-.panel-title { display: flex; align-items: center; justify-content: space-between; padding: 0 9px 13px; }
+.header-actions { display: flex; flex-shrink: 0; gap: 9px; }
+.navigation-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; background: #fff; }
+.summary-cell { min-width: 0; padding: 11px 14px; border-right: 1px solid #e8eef7; }
+.summary-cell:last-child { border-right: 0; }
+.summary-cell > div { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.summary-cell i { width: 6px; height: 6px; flex: none; background: var(--tone); border-radius: 2px; }
+.summary-cell span { color: #52637f; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.summary-cell em { margin-left: auto; overflow: hidden; color: var(--tone); font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal; text-overflow: ellipsis; white-space: nowrap; opacity: .72; }
+.summary-cell strong { display: block; margin-top: 7px; color: #10213e; font-size: 22px; line-height: 1; }
+.summary-cell .active-group-name { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.tone-blue { --tone: #3b82f6; }
+.tone-cyan { --tone: #06b6d4; }
+.tone-green { --tone: #10b981; }
+.tone-violet { --tone: #7c3aed; }
+.integration-workspace { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 630px; overflow: hidden; background: #fff; }
+.group-panel { padding: 17px 10px; border-right: 1px solid #e5ebf4; background: linear-gradient(180deg, #f7faff, #f9fbfe); }
+.panel-title { display: flex; align-items: center; justify-content: space-between; padding: 0 9px 15px; }
 .panel-title div { display: flex; flex-direction: column; gap: 3px; }
+.panel-kicker { color: #6c86b2; font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .8px; }
 .panel-title small { color: #8a97ac; font-size: 12px; }
 .group-list { display: flex; flex-direction: column; gap: 5px; }
-.group-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 9px; border: 1px solid transparent; border-radius: 7px; color: #34445f; background: transparent; text-align: left; cursor: pointer; transition: background-color .16s, border-color .16s; }
+.group-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 58px; padding: 10px; border: 1px solid transparent; border-radius: 7px; color: #34445f; background: transparent; text-align: left; cursor: pointer; transition: background-color .16s, border-color .16s, box-shadow .16s; }
 .group-item:hover { border-color: #dce7f7; background: #fff; }
 .group-item.active { border-color: #b8cff4; background: #fff; color: #1e5dbb; box-shadow: 0 4px 12px rgba(40, 89, 154, .07); }
 .group-mark { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 7px; background: #e5efff; color: #2563c3; font-weight: 800; }
 .group-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
 .group-copy strong, .group-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-copy small { color: #8996aa; }
-.navigation-panel { min-width: 0; padding: 22px 24px 28px; }
+.navigation-panel { min-width: 0; padding: 20px 22px 26px; }
 .group-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid #edf1f6; }
 .heading-line { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .heading-line h2 { margin: 0 0 4px; font-size: 22px; }
@@ -399,16 +430,16 @@ onMounted(async () => {
 .public-status { display: flex; align-items: center; gap: 7px; color: #187847; white-space: nowrap; }
 .public-status span { width: 7px; height: 7px; border-radius: 50%; background: #22b66c; }
 .public-link-bar code { overflow: hidden; color: #46617c; text-overflow: ellipsis; white-space: nowrap; }
-.navigation-toolbar { display: flex; align-items: center; gap: 9px; margin: 14px 0; }
+.navigation-toolbar { display: flex; align-items: center; gap: 9px; margin: 16px 0 13px; }
 .navigation-toolbar .el-input { width: min(420px, 55%); }
 .navigation-count { margin-left: auto; color: #8996aa; }
 .navigation-count strong { color: #2a4e7f; }
-.navigation-grid { display: grid; grid-template-columns: repeat(4, minmax(210px, 1fr)); gap: 11px; align-content: start; min-height: 300px; }
-.navigation-card { position: relative; display: flex; min-width: 0; min-height: 138px; padding: 0; overflow: hidden; border: 1px solid #dfe7f1; border-top: 3px solid #5b8def; border-radius: 7px; color: inherit; background: #fff; flex-direction: column; cursor: pointer; transition: border-color .18s, box-shadow .18s, transform .18s; }
+.navigation-grid { display: grid; grid-template-columns: repeat(4, minmax(210px, 1fr)); gap: 12px; align-content: start; min-height: 300px; }
+.navigation-card { position: relative; display: flex; min-width: 0; min-height: 130px; padding: 0; overflow: hidden; border: 1px solid #dfe7f1; border-left: 4px solid #5b8def; border-radius: 7px; color: inherit; background: #fff; flex-direction: column; cursor: pointer; transition: border-color .18s, box-shadow .18s, transform .18s; }
 .navigation-card:hover { transform: translateY(-2px); border-color: #a7c1ea; box-shadow: 0 9px 22px rgba(34, 82, 145, .1); }
-.card-main { display: flex; min-width: 0; flex: 1; align-items: flex-start; gap: 12px; padding: 15px 14px 11px; }
-.navigation-icon { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; overflow: hidden; border-radius: 8px; background: #eaf2ff; color: #2f6ed3; font-size: 18px; font-weight: 800; }
-.navigation-icon img { width: 30px; height: 30px; object-fit: contain; }
+.card-main { display: flex; min-width: 0; flex: 1; align-items: flex-start; gap: 11px; padding: 14px 13px 10px; }
+.navigation-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; overflow: hidden; border-radius: 7px; background: #eaf2ff; color: #2f6ed3; font-size: 16px; font-weight: 800; }
+.navigation-icon img { width: 27px; height: 27px; object-fit: contain; }
 .navigation-info { min-width: 0; flex: 1; }
 .navigation-name { display: flex; align-items: center; gap: 6px; min-height: 24px; }
 .navigation-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -418,21 +449,21 @@ onMounted(async () => {
 .host-name { min-width: 0; overflow: hidden; color: #8492a6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; flex: 0 0 auto; }
 .card-actions :deep(.el-button) { margin-left: 7px; font-size: 12px; }
-.tone-1 { border-top-color: #21a675; }
-.tone-2 { border-top-color: #de8a24; }
-.tone-3 { border-top-color: #18a3b7; }
-.tone-4 { border-top-color: #7359c9; }
+.tone-1 { border-left-color: #21a675; }
+.tone-2 { border-left-color: #de8a24; }
+.tone-3 { border-left-color: #18a3b7; }
+.tone-4 { border-left-color: #7359c9; }
 .navigation-icon.tone-1, .group-mark.tone-1 { color: #14805b; background: #e5f6ef; }
 .navigation-icon.tone-2, .group-mark.tone-2 { color: #b76c12; background: #fff2df; }
 .navigation-icon.tone-3, .group-mark.tone-3 { color: #127d8c; background: #e5f7fa; }
 .navigation-icon.tone-4, .group-mark.tone-4 { color: #6046b3; background: #eeeafe; }
-.add-card { justify-content: center; gap: 5px; min-height: 138px; border-top-width: 1px; border-style: dashed; color: #6f7f97; align-items: center; }
+.add-card { justify-content: center; gap: 5px; min-height: 130px; border-left-width: 1px; border-style: dashed; color: #6f7f97; align-items: center; }
 .add-symbol { font-size: 26px; line-height: 1; color: #477fd8; }
 .add-card small { color: #9aa5b5; }
 .form-grid { display: grid; gap: 16px; }
 .two-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .three-columns { grid-template-columns: 1.4fr 1fr 1fr; }
-@media (max-width: 1450px) { .navigation-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); } .integration-header { grid-template-columns: minmax(320px, 1fr) auto; } .header-summary { display: none; } }
+@media (max-width: 1450px) { .navigation-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); } }
 @media (max-width: 1100px) { .navigation-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); } }
-@media (max-width: 800px) { .integration-header { grid-template-columns: 1fr; } .header-actions, .group-heading { align-items: flex-start; } .group-heading { flex-direction: column; } .integration-workspace { grid-template-columns: 1fr; } .group-panel { border-right: 0; border-bottom: 1px solid #e7edf6; } .group-list { flex-direction: row; overflow-x: auto; } .group-item { min-width: 210px; } .navigation-grid { grid-template-columns: 1fr; } .public-link-bar { grid-template-columns: 1fr auto; } .public-link-bar code { grid-column: 1 / -1; } .form-grid { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .integration-header { align-items: flex-start; flex-direction: column; } .navigation-summary { grid-template-columns: repeat(2, 1fr); } .summary-cell:nth-child(2) { border-right: 0; } .summary-cell:nth-child(-n + 2) { border-bottom: 1px solid #e8eef7; } .header-actions, .group-heading { align-items: flex-start; } .group-heading { flex-direction: column; } .integration-workspace { grid-template-columns: 1fr; } .group-panel { border-right: 0; border-bottom: 1px solid #e7edf6; } .group-list { flex-direction: row; overflow-x: auto; } .group-item { min-width: 210px; } .navigation-grid { grid-template-columns: 1fr; } .public-link-bar { grid-template-columns: 1fr auto; } .public-link-bar code { grid-column: 1 / -1; } .form-grid { grid-template-columns: 1fr; } }
 </style>

@@ -36,7 +36,7 @@ const treeData = computed(() => {
 async function loadData() {
   loading.value = true
   try {
-    const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1', dbType: 'mysql' })
+    const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1' })
     databases.value = data.list || []
   } finally {
     loading.value = false
@@ -71,7 +71,7 @@ defineExpose({ refresh: loadData })
             <span class="status-dot" :class="{ online: data.database.connectStatus === 1 }" />
             <div class="connection-label">
               <strong>{{ data.label }}</strong>
-              <small>{{ data.database.dbName || data.database.host }} · {{ data.database.accessMode === 'readonly' ? '只读' : '读写' }}</small>
+              <small>{{ data.database.dbType?.toUpperCase() || 'MYSQL' }} · {{ data.database.dbName || data.database.host }} · {{ data.database.accessMode === 'readonly' ? '只读' : '读写' }}</small>
             </div>
           </template>
           <template v-else>
