@@ -52,6 +52,8 @@ type IntegrationFinOpsRecommendation struct {
 	AccountID   uint      `json:"accountId" gorm:"not null;index"`
 	Provider    string    `json:"provider" gorm:"size:32;not null;index"`
 	Category    string    `json:"category" gorm:"size:64;index"`
+	Strategy    string    `json:"strategy" gorm:"size:32;index"`
+	ModelName   string    `json:"modelName" gorm:"size:128"`
 	Priority    string    `json:"priority" gorm:"size:16;index"`
 	Title       string    `json:"title" gorm:"size:255;not null"`
 	Description string    `json:"description" gorm:"type:text"`

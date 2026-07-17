@@ -108,12 +108,18 @@ func (ctl *Controller) GetFinOpsDashboard(c *gin.Context) {
 }
 
 func (ctl *Controller) GetFinOpsBreakdown(c *gin.Context) {
-	start, end, err := finOpsDateRange(c)
-	if err != nil {
-		httpx.Failed(c, 400, "日期范围格式无效")
+	month := strings.TrimSpace(c.Query("month"))
+	if month == "" {
+		httpx.Failed(c, 400, "month 参数不能为空，格式为 YYYY-MM")
 		return
 	}
-	accountID, _ := strconv.ParseUint(c.Query("accountId"), 10, 64)
+	start, err := time.ParseInLocation("2006-01", month, time.Local)
+	if err != nil {
+		httpx.Failed(c, 400, "month 参数格式无效，格式为 YYYY-MM")
+		return
+	}
+	end := start.AddDate(0, 1, 0)
+	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
 	data, err := ctl.service.FinOpsBreakdown(start, end, c.DefaultQuery("dimension", "provider"), uint(accountID))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
@@ -122,14 +128,39 @@ func (ctl *Controller) GetFinOpsBreakdown(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetFinOpsLatestBreakdownMonth(c *gin.Context) {
+	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
+	month, err := ctl.service.LatestFinOpsBreakdownMonth(uint(accountID))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, gin.H{"month": month})
+}
+
 func (ctl *Controller) GetFinOpsResources(c *gin.Context) {
+	accountText := c.Query("account_id")
+	if accountText == "" {
+		accountText = c.Query("accountId")
+	}
+	accountID, _ := strconv.ParseUint(accountText, 10, 64)
+	if accountID == 0 || strings.TrimSpace(c.Query("start")) == "" || strings.TrimSpace(c.Query("end")) == "" {
+		httpx.Failed(c, 400, "请选择云账号、开始日期和结束日期后再进行资源拆分")
+		return
+	}
 	start, end, err := finOpsDateRange(c)
 	if err != nil {
 		httpx.Failed(c, 400, "日期范围格式无效")
 		return
 	}
-	accountID, _ := strconv.ParseUint(c.Query("accountId"), 10, 64)
-	data, err := ctl.service.FinOpsResources(start, end, uint(accountID))
+	filters := func(key string) []string {
+		values := c.QueryArray(key)
+		if len(values) == 0 && c.Query(key) != "" {
+			values = strings.Split(c.Query(key), ",")
+		}
+		return values
+	}
+	data, err := ctl.service.FinOpsResources(start, end, uint(accountID), filters("region"), filters("resource_type"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -147,12 +178,17 @@ func (ctl *Controller) GetFinOpsRecommendationList(c *gin.Context) {
 }
 
 func (ctl *Controller) GenerateFinOpsRecommendations(c *gin.Context) {
-	count, err := ctl.service.GenerateFinOpsRecommendations()
+	var payload service.FinOpsRecommendationGeneratePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "无效的建议生成参数")
+		return
+	}
+	count, mode, err := ctl.service.GenerateFinOpsRecommendations(payload.ModelID, payload.Strategy)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
-	httpx.Success(c, gin.H{"count": count})
+	httpx.Success(c, gin.H{"count": count, "mode": mode})
 }
 
 func (ctl *Controller) UpdateFinOpsRecommendation(c *gin.Context) {
@@ -171,6 +207,15 @@ func (ctl *Controller) UpdateFinOpsRecommendation(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
+func (ctl *Controller) DeleteFinOpsRecommendation(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Query("id"), 10, 64)
+	if err := ctl.service.DeleteFinOpsRecommendation(uint(id)); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) GetFinOpsSyncLogs(c *gin.Context) {
 	data, err := ctl.service.ListFinOpsSyncLogs(finOpsID(c))
 	if err != nil {
@@ -182,13 +227,22 @@ func (ctl *Controller) GetFinOpsSyncLogs(c *gin.Context) {
 
 func (ctl *Controller) TriggerFinOpsSync(c *gin.Context) {
 	var payload struct {
-		AccountID uint `json:"accountId"`
+		AccountID  uint   `json:"accountId"`
+		StartMonth string `json:"start_month"`
+		EndMonth   string `json:"end_month"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		httpx.Failed(c, 400, "请选择云账号")
 		return
 	}
-	data, err := ctl.service.SyncFinOpsAccount(payload.AccountID, "manual")
+	now := time.Now()
+	if strings.TrimSpace(payload.StartMonth) == "" {
+		payload.StartMonth = now.AddDate(0, -5, 0).Format("2006-01")
+	}
+	if strings.TrimSpace(payload.EndMonth) == "" {
+		payload.EndMonth = now.Format("2006-01")
+	}
+	data, err := ctl.service.SyncFinOpsAccountMonths(payload.AccountID, "manual", payload.StartMonth, payload.EndMonth)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

@@ -27,13 +27,20 @@ const finOpsBillPageSize = 300
 // fetchFinOpsCosts selects the official billing API for supported providers.
 // A custom HTTP endpoint remains available for adapters that return {"records": []}.
 func (s *Service) fetchFinOpsCosts(ctx context.Context, account model.IntegrationFinOpsAccount, maxPages int) ([]FinOpsCostInput, error) {
+	return s.fetchFinOpsCostsForMonth(ctx, account, time.Now().Format("2006-01"), maxPages)
+}
+
+// fetchFinOpsCostsForMonth fetches a single natural month's bill.  Keeping the
+// month at this boundary makes callers unable to accidentally turn a multi-month
+// sync into one opaque provider request.
+func (s *Service) fetchFinOpsCostsForMonth(ctx context.Context, account model.IntegrationFinOpsAccount, month string, maxPages int) ([]FinOpsCostInput, error) {
 	switch strings.ToLower(strings.TrimSpace(account.Provider)) {
 	case "alicloud":
-		return s.fetchAliCloudBill(ctx, account, maxPages)
+		return s.fetchAliCloudBill(ctx, account, month, maxPages)
 	case "tencent":
-		return s.fetchTencentBill(ctx, account, maxPages)
+		return s.fetchTencentBill(ctx, account, month, maxPages)
 	default:
-		return s.fetchCustomFinOpsBill(ctx, account)
+		return s.fetchCustomFinOpsBill(ctx, account, month)
 	}
 }
 
@@ -48,12 +55,20 @@ func finOpsBillingSource(provider string) string {
 	}
 }
 
-func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.IntegrationFinOpsAccount) ([]FinOpsCostInput, error) {
+func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.IntegrationFinOpsAccount, month string) ([]FinOpsCostInput, error) {
 	endpoint := strings.TrimSpace(account.BillingEndpoint)
 	if endpoint == "" {
 		return nil, fmt.Errorf("%s尚未配置账单 HTTP 地址", finOpsBillingSource(account.Provider))
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	requestURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	// Custom adapters receive one explicit month per request as well.
+	query := requestURL.Query()
+	query.Set("month", month)
+	requestURL.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -80,18 +95,40 @@ func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.Integ
 	return wrapper.Records, nil
 }
 
-func (s *Service) fetchAliCloudBill(ctx context.Context, account model.IntegrationFinOpsAccount, maxPages int) ([]FinOpsCostInput, error) {
+func (s *Service) fetchAliCloudBill(ctx context.Context, account model.IntegrationFinOpsAccount, cycle string, maxPages int) ([]FinOpsCostInput, error) {
 	if strings.TrimSpace(account.AccessKey) == "" || strings.TrimSpace(account.SecretKey) == "" {
 		return nil, fmt.Errorf("阿里云账单同步需要 AccessKey 与 SecretKey")
 	}
 	if maxPages < 1 {
 		maxPages = 1
 	}
-	cycle := time.Now().Format("2006-01")
+	month, err := time.ParseInLocation("2006-01", cycle, time.Local)
+	if err != nil {
+		return nil, fmt.Errorf("账期格式无效: %s", cycle)
+	}
+	// QueryBill only provides monthly product summaries.  The breakdown page needs
+	// actual bill dates and instance metadata, so fetch the official daily instance
+	// bill for every day in the requested natural month instead.
+	lastDay := month.AddDate(0, 1, -1)
+	if current := time.Now(); month.Year() == current.Year() && month.Month() == current.Month() {
+		lastDay = time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, current.Location())
+	}
+	all := make([]FinOpsCostInput, 0)
+	for day := month; !day.After(lastDay); day = day.AddDate(0, 0, 1) {
+		records, err := s.fetchAliCloudDailyInstanceBill(ctx, account, cycle, day.Format("2006-01-02"), maxPages)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, records...)
+	}
+	return all, nil
+}
+
+func (s *Service) fetchAliCloudDailyInstanceBill(ctx context.Context, account model.IntegrationFinOpsAccount, cycle, billingDate string, maxPages int) ([]FinOpsCostInput, error) {
 	all := make([]FinOpsCostInput, 0)
 	for page := 1; page <= maxPages; page++ {
 		params := url.Values{
-			"Action":           {"QueryBill"},
+			"Action":           {"DescribeInstanceBill"},
 			"Version":          {"2017-12-14"},
 			"Format":           {"JSON"},
 			"AccessKeyId":      {account.AccessKey},
@@ -100,6 +137,9 @@ func (s *Service) fetchAliCloudBill(ctx context.Context, account model.Integrati
 			"SignatureVersion": {"1.0"},
 			"SignatureNonce":   {finOpsNonce()},
 			"BillingCycle":     {cycle},
+			"BillingDate":      {billingDate},
+			"Granularity":      {"DAILY"},
+			"IsHideZeroCharge": {"true"},
 			"PageNum":          {strconv.Itoa(page)},
 			"PageSize":         {strconv.Itoa(finOpsBillPageSize)},
 		}
@@ -122,7 +162,7 @@ func (s *Service) fetchAliCloudBill(ctx context.Context, account model.Integrati
 			return nil, fmt.Errorf("解析阿里云账单响应失败: %w", err)
 		}
 		items := finOpsMaps(finOpsPath(payload, "Data", "Items", "Item"))
-		all = append(all, finOpsAliCloudRecords(items, account, cycle)...)
+		all = append(all, finOpsAliCloudDailyRecords(items, account, cycle, billingDate)...)
 		if len(items) < finOpsBillPageSize {
 			break
 		}
@@ -130,14 +170,13 @@ func (s *Service) fetchAliCloudBill(ctx context.Context, account model.Integrati
 	return all, nil
 }
 
-func (s *Service) fetchTencentBill(ctx context.Context, account model.IntegrationFinOpsAccount, maxPages int) ([]FinOpsCostInput, error) {
+func (s *Service) fetchTencentBill(ctx context.Context, account model.IntegrationFinOpsAccount, month string, maxPages int) ([]FinOpsCostInput, error) {
 	if strings.TrimSpace(account.AccessKey) == "" || strings.TrimSpace(account.SecretKey) == "" {
 		return nil, fmt.Errorf("腾讯云账单同步需要 SecretId 与 SecretKey")
 	}
 	if maxPages < 1 {
 		maxPages = 1
 	}
-	month := time.Now().Format("2006-01")
 	all := make([]FinOpsCostInput, 0)
 	for page := 0; page < maxPages; page++ {
 		body, _ := json.Marshal(map[string]any{"Month": month, "Offset": page * finOpsBillPageSize, "Limit": finOpsBillPageSize})
@@ -232,7 +271,39 @@ func finOpsHMAC(key []byte, value string) []byte {
 func finOpsAliCloudRecords(items []map[string]any, account model.IntegrationFinOpsAccount, cycle string) []FinOpsCostInput {
 	records := make([]FinOpsCostInput, 0, len(items))
 	for _, item := range items {
-		records = append(records, FinOpsCostInput{ExternalID: finOpsFirst(item, "BillAccountId", "BillOwnerId", "InstanceID", "ProductCode") + "|" + finOpsFirst(item, "BillingCycle", "BillingDate", "BillingDateTime", "UsageStartTime"), BillingDate: finOpsFirst(item, "BillingCycle", "BillingDate", "UsageStartTime", "BillingDateTime", "Date"), Service: finOpsFirst(item, "ProductDetail", "ProductName", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName"), ResourceID: finOpsFirst(item, "InstanceID", "ResourceId"), ResourceName: finOpsFirst(item, "InstanceID", "ResourceName"), ResourceType: finOpsFirst(item, "ProductCode", "ProductType"), Amount: finOpsFloat(item, "PretaxAmount", "DeductedByCashCoupons", "CashAmount", "Amount"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"), Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle}})
+		billingDate := finOpsMonthBillingDate(finOpsFirst(item, "BillingCycle", "BillingDate", "UsageStartTime", "BillingDateTime", "Date"), cycle)
+		records = append(records, FinOpsCostInput{ExternalID: finOpsAliCloudExternalID(item, cycle), BillingDate: billingDate, Service: finOpsFirst(item, "ProductDetail", "ProductName", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName"), ResourceID: finOpsFirst(item, "InstanceID", "ResourceId"), ResourceName: finOpsFirst(item, "InstanceID", "ResourceName"), ResourceType: finOpsFirst(item, "ProductCode", "ProductType"), Amount: finOpsFloat(item, "PretaxAmount", "DeductedByCashCoupons", "CashAmount", "Amount"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"), Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle}})
+	}
+	return records
+}
+
+func finOpsAliCloudExternalID(item map[string]any, cycle string) string {
+	if recordID := finOpsFirst(item, "RecordID", "RecordId", "BillId", "BillID"); recordID != "" {
+		return "alicloud|" + cycle + "|" + recordID
+	}
+	return "alicloud|" + cycle + "|" + finOpsFirst(item, "SubOrderId", "InstanceID", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "PaymentTime", "UsageStartTime", "BillingDate", "BillingCycle")
+}
+
+func finOpsAliCloudDailyRecords(items []map[string]any, account model.IntegrationFinOpsAccount, cycle, billingDate string) []FinOpsCostInput {
+	records := make([]FinOpsCostInput, 0, len(items))
+	for _, item := range items {
+		date := finOpsMonthBillingDate(finOpsFirst(item, "BillingDate", "UsageStartTime", "BillingDateTime", "Date"), billingDate)
+		instanceID := finOpsFirst(item, "InstanceID", "InstanceId", "ResourceId")
+		resourceName := finOpsFirst(item, "InstanceName", "ResourceName", "InstanceID", "InstanceId")
+		records = append(records, FinOpsCostInput{
+			ExternalID:    finOpsAliCloudExternalID(item, cycle) + "|" + date,
+			BillingDate:   date,
+			Service:       finOpsFirst(item, "ProductName", "ProductDetail", "ProductCode"),
+			Region:        finOpsFirst(item, "Region", "RegionName", "RegionId"),
+			ResourceID:    instanceID,
+			ResourceName:  resourceName,
+			ResourceType:  finOpsFirst(item, "ProductCode", "ProductType", "ProductName"),
+			Amount:        finOpsFloat(item, "PretaxAmount", "PaymentAmount", "DeductedByCashCoupons", "CashAmount", "Amount"),
+			Currency:      finOpsFirst(item, "Currency", "CurrencyCode"),
+			UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"),
+			UsageUnit:     finOpsFirst(item, "UsageUnit", "SubscriptionType"),
+			Tags:          map[string]string{"provider": "alicloud", "billingCycle": cycle, "granularity": "daily"},
+		})
 	}
 	return records
 }
@@ -240,9 +311,20 @@ func finOpsAliCloudRecords(items []map[string]any, account model.IntegrationFinO
 func finOpsTencentRecords(items []map[string]any, account model.IntegrationFinOpsAccount, month string) []FinOpsCostInput {
 	records := make([]FinOpsCostInput, 0, len(items))
 	for _, item := range items {
-		records = append(records, FinOpsCostInput{ExternalID: finOpsFirst(item, "BillId", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "OperateTime", "PayTime", "BillMonth"), BillingDate: finOpsFirst(item, "OperateTime", "PayTime", "BillMonth", "Month"), Service: finOpsFirst(item, "BusinessCodeName", "ProductCodeName", "ProductCode"), Region: finOpsFirst(item, "RegionName", "RegionId"), ResourceID: finOpsFirst(item, "ResourceId", "InstanceId"), ResourceName: finOpsFirst(item, "ResourceName", "InstanceName"), ResourceType: finOpsFirst(item, "PayModeName", "ProductCode"), Amount: finOpsFloat(item, "RealTotalCost", "CashPayAmount", "TotalCost"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "UsageAmount", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit"), Tags: map[string]string{"provider": "tencent", "billingMonth": month}})
+		billingDate := finOpsMonthBillingDate(finOpsFirst(item, "OperateTime", "PayTime", "BillMonth", "Month"), month)
+		records = append(records, FinOpsCostInput{ExternalID: finOpsFirst(item, "BillId", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "OperateTime", "PayTime", "BillMonth"), BillingDate: billingDate, Service: finOpsFirst(item, "BusinessCodeName", "ProductCodeName", "ProductCode"), Region: finOpsFirst(item, "RegionName", "RegionId"), ResourceID: finOpsFirst(item, "ResourceId", "InstanceId"), ResourceName: finOpsFirst(item, "ResourceName", "InstanceName"), ResourceType: finOpsFirst(item, "PayModeName", "ProductCode"), Amount: finOpsFloat(item, "RealTotalCost", "CashPayAmount", "TotalCost"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "UsageAmount", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit"), Tags: map[string]string{"provider": "tencent", "billingMonth": month}})
 	}
 	return records
+}
+
+// A provider may return an invalid detail timestamp for an otherwise valid
+// monthly bill. The requested billing month remains the authoritative boundary
+// for this sync, so use it rather than failing the entire month.
+func finOpsMonthBillingDate(value, month string) string {
+	if _, err := parseFinOpsDate(value); err == nil {
+		return value
+	}
+	return month
 }
 
 func finOpsPath(value map[string]any, keys ...string) any {
