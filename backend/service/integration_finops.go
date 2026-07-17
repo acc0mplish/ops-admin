@@ -55,8 +55,10 @@ type FinOpsCostImportPayload struct {
 }
 
 type FinOpsRecommendationGeneratePayload struct {
-	ModelID  uint   `json:"modelId"`
-	Strategy string `json:"strategy"`
+	ModelID   uint   `json:"modelId"`
+	Strategy  string `json:"strategy"`
+	AccountID uint   `json:"account_id"`
+	Month     string `json:"month"`
 }
 
 type FinOpsMonthSyncResult struct {
@@ -137,6 +139,7 @@ func (s *Service) ListFinOpsAccounts(keyword, provider string) ([]map[string]any
 }
 
 func finOpsAccountView(a model.IntegrationFinOpsAccount) map[string]any {
+	capability := finOpsProviderCapability(a.Provider)
 	return map[string]any{
 		"id": a.ID, "name": a.Name, "provider": a.Provider, "accountIdentifier": a.AccountIdentifier,
 		"region": a.Region, "currency": a.Currency, "billingEndpoint": a.BillingEndpoint,
@@ -144,6 +147,21 @@ func finOpsAccountView(a model.IntegrationFinOpsAccount) map[string]any {
 		"lastSyncAt": a.LastSyncAt, "nextSyncAt": a.NextSyncAt, "description": a.Description,
 		"hasAccessKey": a.AccessKey != "", "hasSecretKey": a.SecretKey != "", "hasBillingToken": a.BillingToken != "",
 		"createTime": a.CreatedAt, "updateTime": a.UpdatedAt,
+		"billingCapability": capability,
+	}
+}
+
+func finOpsProviderCapability(provider string) map[string]any {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	switch provider {
+	case "alicloud":
+		return map[string]any{"mode": "builtin", "label": "内置官方账单 API", "supportsOfficialSync": true}
+	case "tencent":
+		return map[string]any{"mode": "builtin", "label": "内置官方账单 API", "supportsOfficialSync": true}
+	case "aws", "azure", "gcp":
+		return map[string]any{"mode": "adapter", "label": "账单适配器", "supportsOfficialSync": false}
+	default:
+		return map[string]any{"mode": "adapter", "label": "自定义账单适配器", "supportsOfficialSync": false}
 	}
 }
 
@@ -370,7 +388,7 @@ func (s *Service) SyncFinOpsAccountMonths(accountID uint, trigger, startMonth, e
 func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount, trigger string, month time.Time) FinOpsMonthSyncResult {
 	monthText := month.Format("2006-01")
 	now := time.Now()
-	logEntry := model.IntegrationFinOpsSyncLog{AccountID: account.ID, Provider: account.Provider, TriggerType: trigger, Status: "running", StartedAt: now, CreatedAt: now}
+	logEntry := model.IntegrationFinOpsSyncLog{AccountID: account.ID, Provider: account.Provider, TriggerType: trigger, BillingMonth: monthText, Status: "running", StartedAt: now, CreatedAt: now}
 	result := FinOpsMonthSyncResult{Month: monthText, Status: "failed"}
 	if err := s.db.Create(&logEntry).Error; err != nil {
 		result.Error = err.Error()
@@ -385,6 +403,14 @@ func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount,
 	if err != nil {
 		result.Error = err.Error()
 		finish("failed", result.Error, 0, 0)
+		return result
+	}
+	if len(records) == 0 {
+		// An empty provider response can be a legitimate zero-cost month, but it
+		// must never erase a previously successful snapshot.  Keep old data and
+		// make the condition explicit in the execution history.
+		result.Status = "success"
+		finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText+"（未返回账单明细，未覆盖历史数据）", 0, 0)
 		return result
 	}
 	count, amount, err := s.upsertFinOpsCosts(account, records)
@@ -421,17 +447,26 @@ func (s *Service) removeStaleFinOpsCostsForMonth(accountID uint, month time.Time
 	return query.Delete(&model.IntegrationFinOpsCostRecord{}).Error
 }
 
-func (s *Service) FinOpsDashboard(start, end time.Time) (map[string]any, error) {
-	records, accounts, err := s.finOpsRecords(start, end, 0)
+func (s *Service) FinOpsDashboard(start, end time.Time, accountID uint) (map[string]any, error) {
+	records, accounts, err := s.finOpsRecords(start, end, accountID)
 	if err != nil {
 		return nil, err
 	}
 	provider, daily := map[string]float64{}, map[string]float64{}
+	estimatedRecordCount := 0
+	monthlyRecordCount := 0
 	total := 0.0
 	for _, r := range records {
 		total += r.Amount
 		provider[r.Provider] += r.Amount
 		daily[r.BillingDate.Format("2006-01-02")] += r.Amount
+		var tags map[string]string
+		_ = json.Unmarshal([]byte(r.Tags), &tags)
+		if tags["granularity"] == "daily_estimate" {
+			estimatedRecordCount++
+		} else if tags["billingCycle"] != "" {
+			monthlyRecordCount++
+		}
 	}
 	trend := make([]map[string]any, 0, len(daily))
 	for d, v := range daily {
@@ -440,8 +475,20 @@ func (s *Service) FinOpsDashboard(start, end time.Time) (map[string]any, error) 
 	sort.Slice(trend, func(i, j int) bool { return trend[i]["date"].(string) < trend[j]["date"].(string) })
 	providerRows := mapToDimensionRows(provider)
 	var saving float64
-	s.db.Model(&model.IntegrationFinOpsRecommendation{}).Where("status = ?", "open").Select("COALESCE(SUM(saving),0)").Scan(&saving)
-	return map[string]any{"totalCost": total, "accountCount": len(accounts), "recordCount": len(records), "estimatedSaving": saving, "trend": trend, "providerDistribution": providerRows}, nil
+	savingQuery := s.db.Model(&model.IntegrationFinOpsRecommendation{}).
+		Where("status = ?", "open").
+		Where("analysis_month >= ? AND analysis_month <= ?", start.Format("2006-01"), end.Add(-time.Nanosecond).Format("2006-01"))
+	if accountID > 0 {
+		savingQuery = savingQuery.Where("analysis_account_id = ?", accountID)
+	}
+	savingQuery.Select("COALESCE(SUM(saving),0)").Scan(&saving)
+	var latestSyncAt *time.Time
+	for _, account := range accounts {
+		if account.LastSyncAt != nil && (latestSyncAt == nil || account.LastSyncAt.After(*latestSyncAt)) {
+			latestSyncAt = account.LastSyncAt
+		}
+	}
+	return map[string]any{"totalCost": total, "accountCount": len(accounts), "recordCount": len(records), "estimatedRecordCount": estimatedRecordCount, "monthlyRecordCount": monthlyRecordCount, "exactRecordCount": len(records) - estimatedRecordCount - monthlyRecordCount, "estimatedSaving": saving, "trend": trend, "providerDistribution": providerRows, "latestSyncAt": latestSyncAt}, nil
 }
 
 func (s *Service) FinOpsBreakdown(start, end time.Time, dimension string, accountID uint) ([]map[string]any, error) {
@@ -467,7 +514,7 @@ func (s *Service) FinOpsBreakdown(start, end time.Time, dimension string, accoun
 			rows = append(rows, map[string]any{
 				"billingDate": r.BillingDate.Format("2006-01-02"), "service": r.Service,
 				"region": r.Region, "resourceId": r.ResourceID, "resourceName": instance,
-				"amount": r.Amount, "currency": r.Currency, "percent": percent,
+				"amount": r.Amount, "currency": r.Currency, "percent": percent, "dataQuality": finOpsRecordDataQuality(r.Tags),
 			})
 		}
 		sort.Slice(rows, func(i, j int) bool {
@@ -570,6 +617,7 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 		if key == "" {
 			key = "未关联资源|" + r.Service
 		}
+		key = fmt.Sprintf("%d|%s|%s", r.AccountID, key, r.ResourceType)
 		a := values[key]
 		if a == nil {
 			a = &aggregate{Provider: r.Provider, Account: names[r.AccountID], Region: r.Region, Type: r.ResourceType, Name: r.ResourceName}
@@ -595,10 +643,20 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 	return map[string]any{"items": rows, "regions": regionOptions, "resourceTypes": typeOptions}, nil
 }
 
-func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string) (int, string, error) {
+func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, accountID uint, analysisMonth string) (int, string, error) {
 	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	records, _, err := s.finOpsRecords(start, now, 0)
+	if strings.TrimSpace(analysisMonth) == "" {
+		analysisMonth = now.Format("2006-01")
+	}
+	start, err := parseFinOpsMonth(analysisMonth)
+	if err != nil {
+		return 0, "", errors.New("month 参数格式无效，格式为 YYYY-MM")
+	}
+	end := start.AddDate(0, 1, 0)
+	if now.After(start) && now.Before(end) {
+		end = now
+	}
+	records, accounts, err := s.finOpsRecords(start, end, accountID)
 	if err != nil {
 		return 0, "", err
 	}
@@ -622,6 +680,15 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string) (
 	if strategy != "default" && strategy != "ai" {
 		return 0, "", errors.New("无效的建议生成策略")
 	}
+	analysisScope := "全部云账号"
+	if accountID > 0 {
+		for _, account := range accounts {
+			if account.ID == accountID {
+				analysisScope = account.Name
+				break
+			}
+		}
+	}
 	var aiModel *model.IntegrationAIModel
 	if strategy == "ai" {
 		aiModel, err = s.finOpsRecommendationAIModel(modelID)
@@ -634,7 +701,15 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string) (
 	var recommendations []model.IntegrationFinOpsRecommendation
 	mode := "default"
 	if aiModel != nil {
-		recommendations, err = s.generateFinOpsAIRecommendations(*aiModel, m)
+		// Reuse the AI assistant's read-only FinOps tool as the single source of
+		// aggregate billing context. This reads only synchronized local records.
+		analysisData, analysisErr := s.queryAIFinOpsAnalysis(map[string]any{
+			"accountId": accountID, "month": analysisMonth, "trendMonths": 6,
+		})
+		if analysisErr != nil {
+			return 0, "", analysisErr
+		}
+		recommendations, err = s.generateFinOpsAIRecommendations(*aiModel, m, analysisData)
 		if err != nil {
 			return 0, "", err
 		}
@@ -644,6 +719,11 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string) (
 	}
 	for _, rec := range recommendations {
 		rec.Strategy = mode
+		rec.AnalysisMonth = analysisMonth
+		rec.AnalysisAccountID = accountID
+		rec.Title = finOpsRecommendationTitle(analysisScope, analysisMonth, mode)
+		// A recommendation is an account-and-billing-period analysis report, not a resource record.
+		rec.ResourceID = ""
 		if aiModel != nil {
 			rec.ModelName = aiModel.Name
 		}
@@ -652,6 +732,20 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string) (
 		}
 	}
 	return len(recommendations), mode, nil
+}
+
+func finOpsRecommendationTitle(scope, analysisMonth, strategy string) string {
+	if strings.TrimSpace(scope) == "" {
+		scope = "全部云账号"
+	}
+	if strings.TrimSpace(analysisMonth) == "" {
+		analysisMonth = time.Now().Format("2006-01")
+	}
+	strategyName := "默认策略"
+	if strategy == "ai" {
+		strategyName = "AI 分析"
+	}
+	return fmt.Sprintf("%s｜%s｜%s优化建议", scope, analysisMonth, strategyName)
 }
 
 func defaultFinOpsRecommendations(values map[string]*finOpsRecommendationAggregate) []model.IntegrationFinOpsRecommendation {
@@ -708,7 +802,7 @@ func (s *Service) finOpsRecommendationAIModel(modelID uint) (*model.IntegrationA
 	return &item, nil
 }
 
-func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIModel, values map[string]*finOpsRecommendationAggregate) ([]model.IntegrationFinOpsRecommendation, error) {
+func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIModel, values map[string]*finOpsRecommendationAggregate, analysisData map[string]any) ([]model.IntegrationFinOpsRecommendation, error) {
 	items := make([]map[string]any, 0, len(values))
 	for _, value := range values {
 		if value.Cost > 0 {
@@ -719,8 +813,8 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 	if len(items) > 30 {
 		items = items[:30]
 	}
-	contextJSON, _ := json.Marshal(items)
-	prompt := "根据以下本月云费用数据生成不超过 20 条可执行优化建议。必须覆盖：空闲资源、低利用率资源、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。账单没有实时监控指标时，明确说明需要核查而不得断言资源闲置。仅输出 JSON，格式为 {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。不得编造资源；saving 必须非负且不超过 currentCost。数据：" + string(contextJSON)
+	contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData, "costItems": items})
+	prompt := "根据以下云费用分析工具结果生成不超过 20 条可执行优化建议。工具结果只来自本地已同步账单数据库，绝不代表实时云端数据。必须覆盖：空闲资源、低利用率资源、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。账单没有实时监控指标时，明确说明需要核查而不得断言资源闲置。仅输出 JSON，格式为 {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。不得编造资源；saving 必须非负且不超过 currentCost。数据：" + string(contextJSON)
 	response, err := s.callOpenAICompatible(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师，只输出符合要求的 JSON。"}, {"role": "user", "content": prompt}}, nil)
 	if err != nil {
 		return nil, err
@@ -786,14 +880,32 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 	return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "ai_finops", Priority: priority, Title: "本月云费用 AI 优化建议", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}, nil
 }
 
-func (s *Service) ListFinOpsRecommendations(status string) ([]model.IntegrationFinOpsRecommendation, error) {
+func (s *Service) ListFinOpsRecommendations(status string, accountID uint, analysisMonth string) ([]model.IntegrationFinOpsRecommendation, error) {
 	var rows []model.IntegrationFinOpsRecommendation
 	q := s.db.Order("saving DESC,id DESC")
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
+	if accountID > 0 {
+		q = q.Where("analysis_account_id = ?", accountID)
+	}
+	if strings.TrimSpace(analysisMonth) != "" {
+		q = q.Where("analysis_month = ?", analysisMonth)
+	}
 	err := q.Find(&rows).Error
 	return rows, err
+}
+
+func finOpsRecordDataQuality(tagsJSON string) string {
+	var tags map[string]string
+	_ = json.Unmarshal([]byte(tagsJSON), &tags)
+	if tags["granularity"] == "daily_estimate" {
+		return "estimated"
+	}
+	if tags["billingCycle"] != "" {
+		return "monthly"
+	}
+	return "exact"
 }
 func (s *Service) UpdateFinOpsRecommendation(id uint, status string) error {
 	if !map[string]bool{"open": true, "accepted": true, "ignored": true, "done": true}[status] {
@@ -808,14 +920,64 @@ func (s *Service) DeleteFinOpsRecommendation(id uint) error {
 	}
 	return s.db.Delete(&model.IntegrationFinOpsRecommendation{}, id).Error
 }
-func (s *Service) ListFinOpsSyncLogs(accountID uint) ([]model.IntegrationFinOpsSyncLog, error) {
+func (s *Service) ListFinOpsSyncLogs(accountID uint) ([]map[string]any, error) {
 	var rows []model.IntegrationFinOpsSyncLog
 	q := s.db.Order("id DESC").Limit(200)
 	if accountID > 0 {
 		q = q.Where("account_id = ?", accountID)
 	}
-	err := q.Find(&rows).Error
-	return rows, err
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	var accounts []model.IntegrationFinOpsAccount
+	accountQuery := s.db
+	if accountID > 0 {
+		accountQuery = accountQuery.Where("id = ?", accountID)
+	}
+	if err := accountQuery.Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	accountNames := make(map[uint]string, len(accounts))
+	for _, account := range accounts {
+		accountNames[account.ID] = account.Name
+	}
+	triggerLabels := map[string]string{"manual": "手动同步", "scheduled": "定时同步", "api": "接口触发"}
+	result := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		finishedAt := row.FinishedAt
+		durationSeconds := 0
+		if finishedAt != nil {
+			durationSeconds = int(finishedAt.Sub(row.StartedAt).Seconds())
+			if durationSeconds < 0 {
+				durationSeconds = 0
+			}
+		}
+		month := row.BillingMonth
+		if month == "" {
+			month = finOpsMonthFromText(row.Message)
+		}
+		trigger := triggerLabels[row.TriggerType]
+		if trigger == "" {
+			trigger = row.TriggerType
+		}
+		result = append(result, map[string]any{
+			"id": row.ID, "accountId": row.AccountID, "accountName": accountNames[row.AccountID], "provider": row.Provider,
+			"trigger": trigger, "triggerType": row.TriggerType, "billingMonth": month, "status": row.Status,
+			"recordCount": row.RecordCount, "totalAmount": row.TotalAmount, "message": row.Message,
+			"startedAt": row.StartedAt, "finishedAt": finishedAt, "durationSeconds": durationSeconds,
+		})
+	}
+	return result, nil
+}
+
+func finOpsMonthFromText(value string) string {
+	for i := 0; i+7 <= len(value); i++ {
+		part := value[i : i+7]
+		if len(part) == 7 && part[4] == '-' && part[0] >= '0' && part[0] <= '9' && part[1] >= '0' && part[1] <= '9' && part[2] >= '0' && part[2] <= '9' && part[3] >= '0' && part[3] <= '9' && part[5] >= '0' && part[5] <= '9' && part[6] >= '0' && part[6] <= '9' {
+			return part
+		}
+	}
+	return ""
 }
 
 func (s *Service) finOpsRecords(start, end time.Time, accountID uint) ([]model.IntegrationFinOpsCostRecord, []model.IntegrationFinOpsAccount, error) {

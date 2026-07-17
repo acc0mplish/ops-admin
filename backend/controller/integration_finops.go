@@ -99,7 +99,8 @@ func (ctl *Controller) GetFinOpsDashboard(c *gin.Context) {
 		httpx.Failed(c, 400, "日期范围格式无效")
 		return
 	}
-	data, err := ctl.service.FinOpsDashboard(start, end)
+	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
+	data, err := ctl.service.FinOpsDashboard(start, end, uint(accountID))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -158,7 +159,13 @@ func (ctl *Controller) GetFinOpsResources(c *gin.Context) {
 		if len(values) == 0 && c.Query(key) != "" {
 			values = strings.Split(c.Query(key), ",")
 		}
-		return values
+		result := make([]string, 0, len(values))
+		for _, value := range values {
+			if value = strings.TrimSpace(value); value != "" {
+				result = append(result, value)
+			}
+		}
+		return result
 	}
 	data, err := ctl.service.FinOpsResources(start, end, uint(accountID), filters("region"), filters("resource_type"))
 	if err != nil {
@@ -169,7 +176,8 @@ func (ctl *Controller) GetFinOpsResources(c *gin.Context) {
 }
 
 func (ctl *Controller) GetFinOpsRecommendationList(c *gin.Context) {
-	data, err := ctl.service.ListFinOpsRecommendations(c.Query("status"))
+	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
+	data, err := ctl.service.ListFinOpsRecommendations(c.Query("status"), uint(accountID), c.Query("month"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -183,7 +191,7 @@ func (ctl *Controller) GenerateFinOpsRecommendations(c *gin.Context) {
 		httpx.Failed(c, 400, "无效的建议生成参数")
 		return
 	}
-	count, mode, err := ctl.service.GenerateFinOpsRecommendations(payload.ModelID, payload.Strategy)
+	count, mode, err := ctl.service.GenerateFinOpsRecommendations(payload.ModelID, payload.Strategy, payload.AccountID, payload.Month)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return

@@ -8,7 +8,7 @@ import './ai.css'
 const tools = ref([]), loading = ref(false), testVisible = ref(false), testing = ref(false), activeTool = ref(null)
 const args = reactive({ datasourceId: undefined, query: 'up', keyword: '', clusterId: undefined })
 const grouped = computed(() => Object.entries(tools.value.reduce((map, item) => { (map[item.category] ||= []).push(item); return map }, {})))
-const categoryIcon = (name) => name.includes('资产') ? Coin : name.includes('监控') ? DataAnalysis : name.includes('Grafana') ? Monitor : name.includes('Kubernetes') ? Operation : Connection
+const categoryIcon = (name) => name.includes('云费用') || name.includes('资产') ? Coin : name.includes('监控') ? DataAnalysis : name.includes('Grafana') ? Monitor : name.includes('Kubernetes') ? Operation : Connection
 async function load() { loading.value = true; try { tools.value = (await queryAITools()) || [] } finally { loading.value = false } }
 async function toggle(row) { await updateAITool({ toolKey: row.toolKey, enabled: row.enabled, requireConfirmation: row.requireConfirmation }); ElMessage.success('工具配置已更新') }
 function openTest(row) { activeTool.value = row; Object.assign(args, { datasourceId: undefined, query: 'up', keyword: '', clusterId: undefined }); testVisible.value = true }

@@ -41,5 +41,5 @@ export const generateFinOpsRecommendations = (data = {}) => http.post('/api/v1/i
 export const updateFinOpsRecommendation = (data) => http.put('/api/v1/integration/finops/recommendation/status', data)
 export const deleteFinOpsRecommendation = (id) => http.delete('/api/v1/integration/finops/recommendation/delete', { params: { id } })
 export const queryFinOpsSyncLogs = (params = {}) => http.get('/api/v1/integration/finops/sync/logs', { params })
-export const triggerFinOpsSync = (accountId) => http.post('/api/v1/integration/finops/sync/trigger', { accountId })
+export const triggerFinOpsSync = (payload) => http.post('/api/v1/integration/finops/sync/trigger', typeof payload === 'object' ? payload : { accountId: payload })
 export const importFinOpsCosts = (data) => http.post('/api/v1/integration/finops/cost/import', data)

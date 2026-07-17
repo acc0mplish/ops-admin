@@ -71,6 +71,7 @@ var integrationAIToolDefinitions = []aiToolDefinition{
 	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
 	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
 	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
+	{Key: "finops_cost_analysis", Name: "云费用分析", Category: "云费用 FinOps", Description: "仅查询本地数据库中已通过账单同步导入的云费用数据，返回指定云账号和账期的费用总览、趋势、产品与地域拆分。绝不调用云厂商接口、不会同步账单。", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
 	{Key: "asset_host_list", Name: "服务器资产", Category: "资产管理", Description: "查询 CMDB 中的服务器、IP、环境、主机组与在线状态，不返回登录凭据。", Permission: "read", Parameters: assetQuerySchema("服务器名称、别名或 IP 关键词")},
 	{Key: "asset_mysql_list", Name: "MySQL 资产", Category: "资产管理", Description: "查询已纳管的 MySQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
 	{Key: "asset_postgresql_list", Name: "PostgreSQL 资产", Category: "资产管理", Description: "查询已纳管的 PostgreSQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
@@ -101,6 +102,14 @@ func assetQuerySchema(keywordDescription string) map[string]any {
 		"keyword":     stringProperty(keywordDescription),
 		"environment": stringProperty("环境编码，例如 dev、test、prod；留空查询全部环境"),
 		"limit":       integerProperty("最多返回多少条，范围 1 到 50，默认 20"),
+	}, nil)
+}
+
+func finOpsAnalysisToolSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"accountId":   integerProperty("云账号 ID；留空则分析全部已同步云账号"),
+		"month":       stringProperty("分析账期，格式 YYYY-MM；留空默认最近一个有本地同步账单的自然月"),
+		"trendMonths": integerProperty("趋势月份数，1 到 12，默认 6"),
 	}, nil)
 }
 
@@ -407,6 +416,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 		return nil, err
 	}
 	actions := make([]model.IntegrationAIToolAction, 0)
+	finOpsToolUsed := false
 	if len(response.ToolCalls) > 0 {
 		assistantCall := map[string]any{"role": "assistant", "content": response.Content, "tool_calls": response.RawToolCalls}
 		messages = append(messages, assistantCall)
@@ -434,8 +444,14 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 					toolResult = map[string]any{"error": err.Error()}
 				}
 			}
+			if call.Name == "finops_cost_analysis" {
+				finOpsToolUsed = true
+			}
 			rawResult, _ := json.Marshal(toolResult)
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawResult)})
+		}
+		if finOpsToolUsed {
+			messages = append(messages, map[string]any{"role": "system", "content": finOpsChatResponseInstruction})
 		}
 		response, err = s.callOpenAICompatible(aiModel, messages, nil)
 		if err != nil {
@@ -471,12 +487,14 @@ func truncateRunes(value string, limit int) string {
 }
 
 func integrationAISystemPrompt(custom string) string {
-	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取实时数据。"
+	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
 	if strings.TrimSpace(custom) != "" {
 		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
 	}
 	return base
 }
+
+const finOpsChatResponseInstruction = "云费用工具已返回结果。请严格使用简洁要点格式回答，不超过 8 行，不使用 Markdown 标题、表格、引用、代码块、漏斗图或长段落。格式：\n【账期｜账号】\n- 总费用：金额（如为当前月须注明截至日期）\n- 主要产品：仅列 Top 3，产品 + 金额 + 占比\n- 地域：一句结论\n- 关注项：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
 
 type openAIResponse struct {
 	Content      string
@@ -671,6 +689,8 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 		return s.queryAIRealtimeLogs(args, time.Now())
 	case "monitor_dashboard_list":
 		return s.ListMonitorDashboards(1, 20, anyString(args["keyword"]), "1")
+	case "finops_cost_analysis":
+		return s.queryAIFinOpsAnalysis(args)
 	case "asset_host_list":
 		return s.queryAIAssetHosts(args)
 	case "asset_mysql_list":
@@ -688,6 +708,80 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 	default:
 		return nil, errors.New("该工具只能通过待确认动作执行")
 	}
+}
+
+// queryAIFinOpsAnalysis only reads the local FinOps tables populated by the
+// account/synchronization workflows. It must never invoke a cloud billing API.
+func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, error) {
+	analysisMonth := strings.TrimSpace(anyString(args["month"]))
+	monthSource := "specified"
+	if analysisMonth == "" {
+		latestMonth, err := s.LatestFinOpsBreakdownMonth(anyUint(args["accountId"]))
+		if err != nil {
+			return nil, err
+		}
+		if latestMonth != "" {
+			analysisMonth = latestMonth
+			monthSource = "latest_synced"
+		} else {
+			analysisMonth = time.Now().Format("2006-01")
+			monthSource = "current_month_no_local_bill"
+		}
+	}
+	monthStart, err := parseFinOpsMonth(analysisMonth)
+	if err != nil {
+		return nil, errors.New("month 参数格式无效，格式为 YYYY-MM")
+	}
+	accountID := anyUint(args["accountId"])
+	trendMonths := int(anyUint(args["trendMonths"]))
+	if trendMonths == 0 {
+		trendMonths = 6
+	}
+	if trendMonths < 1 || trendMonths > 12 {
+		return nil, errors.New("trendMonths 必须在 1 到 12 之间")
+	}
+
+	monthEnd := monthStart.AddDate(0, 1, 0)
+	now := time.Now()
+	if now.After(monthStart) && now.Before(monthEnd) {
+		monthEnd = now
+	}
+	trendStart := monthStart.AddDate(0, -trendMonths+1, 0)
+	dashboard, err := s.FinOpsDashboard(trendStart, monthEnd, accountID)
+	if err != nil {
+		return nil, err
+	}
+	selectedMonthSummary, err := s.FinOpsDashboard(monthStart, monthEnd, accountID)
+	if err != nil {
+		return nil, err
+	}
+	services, err := s.FinOpsBreakdown(monthStart, monthEnd, "service", accountID)
+	if err != nil {
+		return nil, err
+	}
+	regions, err := s.FinOpsBreakdown(monthStart, monthEnd, "region", accountID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"source":               "local_synced_finops_database",
+		"sourceDescription":    "仅使用本地已同步云账单数据；未调用云厂商接口",
+		"analysisMonth":        analysisMonth,
+		"monthSource":          monthSource,
+		"accountId":            accountID,
+		"trendMonths":          trendMonths,
+		"trendDashboard":       dashboard,
+		"selectedMonthSummary": selectedMonthSummary,
+		"serviceBreakdown":     limitAIFinOpsRows(services, 12),
+		"regionBreakdown":      limitAIFinOpsRows(regions, 12),
+	}, nil
+}
+
+func limitAIFinOpsRows(rows []map[string]any, limit int) []map[string]any {
+	if len(rows) <= limit {
+		return rows
+	}
+	return rows[:limit]
 }
 
 func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[string]any, error) {

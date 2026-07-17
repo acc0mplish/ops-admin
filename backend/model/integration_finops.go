@@ -48,21 +48,23 @@ type IntegrationFinOpsCostRecord struct {
 func (IntegrationFinOpsCostRecord) TableName() string { return "integration_finops_cost_record" }
 
 type IntegrationFinOpsRecommendation struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	AccountID   uint      `json:"accountId" gorm:"not null;index"`
-	Provider    string    `json:"provider" gorm:"size:32;not null;index"`
-	Category    string    `json:"category" gorm:"size:64;index"`
-	Strategy    string    `json:"strategy" gorm:"size:32;index"`
-	ModelName   string    `json:"modelName" gorm:"size:128"`
-	Priority    string    `json:"priority" gorm:"size:16;index"`
-	Title       string    `json:"title" gorm:"size:255;not null"`
-	Description string    `json:"description" gorm:"type:text"`
-	ResourceID  string    `json:"resourceId" gorm:"size:191;index"`
-	CurrentCost float64   `json:"currentCost" gorm:"type:decimal(20,6);not null;default:0"`
-	Saving      float64   `json:"saving" gorm:"type:decimal(20,6);not null;default:0"`
-	Status      string    `json:"status" gorm:"size:32;not null;default:open;index"`
-	CreatedAt   time.Time `json:"createTime"`
-	UpdatedAt   time.Time `json:"updateTime"`
+	ID                uint      `json:"id" gorm:"primaryKey"`
+	AccountID         uint      `json:"accountId" gorm:"not null;index"`
+	Provider          string    `json:"provider" gorm:"size:32;not null;index"`
+	Category          string    `json:"category" gorm:"size:64;index"`
+	Strategy          string    `json:"strategy" gorm:"size:32;index"`
+	ModelName         string    `json:"modelName" gorm:"size:128"`
+	AnalysisMonth     string    `json:"analysisMonth" gorm:"size:7;index"`
+	AnalysisAccountID uint      `json:"analysisAccountId" gorm:"index"`
+	Priority          string    `json:"priority" gorm:"size:16;index"`
+	Title             string    `json:"title" gorm:"size:255;not null"`
+	Description       string    `json:"description" gorm:"type:text"`
+	ResourceID        string    `json:"resourceId" gorm:"size:191;index"`
+	CurrentCost       float64   `json:"currentCost" gorm:"type:decimal(20,6);not null;default:0"`
+	Saving            float64   `json:"saving" gorm:"type:decimal(20,6);not null;default:0"`
+	Status            string    `json:"status" gorm:"size:32;not null;default:open;index"`
+	CreatedAt         time.Time `json:"createTime"`
+	UpdatedAt         time.Time `json:"updateTime"`
 }
 
 func (IntegrationFinOpsRecommendation) TableName() string {
@@ -70,17 +72,18 @@ func (IntegrationFinOpsRecommendation) TableName() string {
 }
 
 type IntegrationFinOpsSyncLog struct {
-	ID          uint       `json:"id" gorm:"primaryKey"`
-	AccountID   uint       `json:"accountId" gorm:"not null;index"`
-	Provider    string     `json:"provider" gorm:"size:32;not null;index"`
-	TriggerType string     `json:"triggerType" gorm:"size:32;not null;index"`
-	Status      string     `json:"status" gorm:"size:32;not null;index"`
-	StartedAt   time.Time  `json:"startedAt" gorm:"not null;index"`
-	FinishedAt  *time.Time `json:"finishedAt"`
-	RecordCount int        `json:"recordCount" gorm:"not null;default:0"`
-	TotalAmount float64    `json:"totalAmount" gorm:"type:decimal(20,6);not null;default:0"`
-	Message     string     `json:"message" gorm:"type:text"`
-	CreatedAt   time.Time  `json:"createTime"`
+	ID           uint       `json:"id" gorm:"primaryKey"`
+	AccountID    uint       `json:"accountId" gorm:"not null;index"`
+	Provider     string     `json:"provider" gorm:"size:32;not null;index"`
+	TriggerType  string     `json:"triggerType" gorm:"size:32;not null;index"`
+	BillingMonth string     `json:"billingMonth" gorm:"size:7;index"`
+	Status       string     `json:"status" gorm:"size:32;not null;index"`
+	StartedAt    time.Time  `json:"startedAt" gorm:"not null;index"`
+	FinishedAt   *time.Time `json:"finishedAt"`
+	RecordCount  int        `json:"recordCount" gorm:"not null;default:0"`
+	TotalAmount  float64    `json:"totalAmount" gorm:"type:decimal(20,6);not null;default:0"`
+	Message      string     `json:"message" gorm:"type:text"`
+	CreatedAt    time.Time  `json:"createTime"`
 }
 
 func (IntegrationFinOpsSyncLog) TableName() string { return "integration_finops_sync_log" }

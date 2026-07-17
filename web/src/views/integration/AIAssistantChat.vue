@@ -28,7 +28,7 @@ const route = useRoute()
 
 const activeConversation = computed(() => conversations.value.find((item) => item.id === currentId.value))
 const pendingActions = computed(() => actions.value.filter((item) => item.status === 'pending'))
-const suggestions = ['检查当前 K8s 集群健康状态', '查询最近主机 CPU 使用率', '列出可用监控大屏', '分析 Pod 频繁重启的排障步骤']
+const suggestions = ['查询最近 6 个月云费用趋势', '分析本月云费用的产品和地域分布', '检查当前 K8s 集群健康状态', '分析 Pod 频繁重启的排障步骤']
 
 async function loadModels() {
   models.value = (await queryAIModels()) || []
@@ -133,7 +133,7 @@ onMounted(async () => {
       <div>
         <div class="ai-kicker">AI OPERATIONS COPILOT</div>
         <h1>智能对话</h1>
-        <p>用自然语言查询监控与 K8s 资源；所有变更操作都需要人工确认。</p>
+        <p>可查询本地监控、K8s 与已同步云账单数据；所有变更操作都需要人工确认。</p>
       </div>
       <div class="hero-actions">
         <el-select v-model="currentModelId" placeholder="选择模型" style="width: 220px">
@@ -172,7 +172,7 @@ onMounted(async () => {
           <div v-if="!messages.length" class="welcome-block">
             <div class="assistant-mark">AI</div>
             <h2>今天需要排查什么？</h2>
-            <p>我可以读取平台中的监控、Grafana 大屏和 Kubernetes 信息。</p>
+            <p>我可以读取平台中的监控、Grafana、Kubernetes，以及本地已同步的云费用账单数据。</p>
             <div class="suggestions">
               <button v-for="item in suggestions" :key="item" @click="send(item)">{{ item }}</button>
             </div>
@@ -194,7 +194,7 @@ onMounted(async () => {
 
         <footer class="composer">
           <el-input v-model="input" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" resize="none" placeholder="描述现象、资源范围或期望执行的操作，Enter 发送，Shift + Enter 换行" @keydown="keydown"/>
-          <div class="composer-foot"><span>只读工具自动执行，K8s 变更必须二次确认</span><el-button type="primary" :icon="Promotion" :loading="sending" @click="send()">发送</el-button></div>
+          <div class="composer-foot"><span>费用分析仅查询本地已同步账单；不会调用云厂商接口</span><el-button type="primary" :icon="Promotion" :loading="sending" @click="send()">发送</el-button></div>
         </footer>
       </main>
     </section>

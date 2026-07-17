@@ -145,6 +145,11 @@ onMounted(load)
         <el-table-column label="云厂商" width="110">
           <template #default="{ row }"><span class="finops-provider">{{ providerName(row.provider) }}</span></template>
         </el-table-column>
+        <el-table-column label="账单接入" width="140">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.billingCapability?.mode === 'builtin' ? 'success' : 'info'">{{ row.billingCapability?.label || '账单适配器' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="accountIdentifier" label="账号标识" min-width="140" />
         <el-table-column prop="region" label="默认区域" width="130" />
         <el-table-column prop="currency" label="币种" width="75" />

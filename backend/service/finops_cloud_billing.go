@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -102,30 +103,16 @@ func (s *Service) fetchAliCloudBill(ctx context.Context, account model.Integrati
 	if maxPages < 1 {
 		maxPages = 1
 	}
-	month, err := time.ParseInLocation("2006-01", cycle, time.Local)
-	if err != nil {
-		return nil, fmt.Errorf("账期格式无效: %s", cycle)
-	}
-	// QueryBill only provides monthly product summaries.  The breakdown page needs
-	// actual bill dates and instance metadata, so fetch the official daily instance
-	// bill for every day in the requested natural month instead.
-	lastDay := month.AddDate(0, 1, -1)
-	if current := time.Now(); month.Year() == current.Year() && month.Month() == current.Month() {
-		lastDay = time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, current.Location())
-	}
-	all := make([]FinOpsCostInput, 0)
-	for day := month; !day.After(lastDay); day = day.AddDate(0, 0, 1) {
-		records, err := s.fetchAliCloudDailyInstanceBill(ctx, account, cycle, day.Format("2006-01-02"), maxPages)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, records...)
-	}
-	return all, nil
+	// Fetch one monthly instance bill only.  Calling the cloud API once per day
+	// made a six-month sync exceed the request timeout.  We keep the source
+	// dimensions, then create an explicitly estimated daily view locally.
+	return s.fetchAliCloudMonthlyInstanceBill(ctx, account, cycle, maxPages)
 }
 
-func (s *Service) fetchAliCloudDailyInstanceBill(ctx context.Context, account model.IntegrationFinOpsAccount, cycle, billingDate string, maxPages int) ([]FinOpsCostInput, error) {
+func (s *Service) fetchAliCloudMonthlyInstanceBill(ctx context.Context, account model.IntegrationFinOpsAccount, cycle string, maxPages int) ([]FinOpsCostInput, error) {
 	all := make([]FinOpsCostInput, 0)
+	nextToken := ""
+	seenTokens := map[string]bool{}
 	for page := 1; page <= maxPages; page++ {
 		params := url.Values{
 			"Action":           {"DescribeInstanceBill"},
@@ -137,11 +124,11 @@ func (s *Service) fetchAliCloudDailyInstanceBill(ctx context.Context, account mo
 			"SignatureVersion": {"1.0"},
 			"SignatureNonce":   {finOpsNonce()},
 			"BillingCycle":     {cycle},
-			"BillingDate":      {billingDate},
-			"Granularity":      {"DAILY"},
 			"IsHideZeroCharge": {"true"},
-			"PageNum":          {strconv.Itoa(page)},
-			"PageSize":         {strconv.Itoa(finOpsBillPageSize)},
+			"MaxResults":       {strconv.Itoa(finOpsBillPageSize)},
+		}
+		if nextToken != "" {
+			params.Set("NextToken", nextToken)
 		}
 		params.Set("Signature", finOpsAliCloudSignature(params, account.SecretKey))
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://business.aliyuncs.com/?"+params.Encode(), nil)
@@ -161,11 +148,19 @@ func (s *Service) fetchAliCloudDailyInstanceBill(ctx context.Context, account mo
 		if err := json.Unmarshal(body, &payload); err != nil {
 			return nil, fmt.Errorf("解析阿里云账单响应失败: %w", err)
 		}
-		items := finOpsMaps(finOpsPath(payload, "Data", "Items", "Item"))
-		all = append(all, finOpsAliCloudDailyRecords(items, account, cycle, billingDate)...)
-		if len(items) < finOpsBillPageSize {
+		items, declaredCount := finOpsAliCloudBillItems(payload)
+		if declaredCount > 0 && len(items) == 0 {
+			return nil, fmt.Errorf("阿里云账单接口声明 %d 条记录，但响应结构未解析到明细", declaredCount)
+		}
+		all = append(all, finOpsAliCloudEstimatedDailyRecords(items, account, cycle)...)
+		nextToken = finOpsFirst(finOpsMap(payload["Data"]), "NextToken")
+		if nextToken == "" {
 			break
 		}
+		if seenTokens[nextToken] {
+			return nil, errors.New("阿里云账单接口返回重复的 NextToken，已停止以避免重复计费")
+		}
+		seenTokens[nextToken] = true
 	}
 	return all, nil
 }
@@ -284,26 +279,33 @@ func finOpsAliCloudExternalID(item map[string]any, cycle string) string {
 	return "alicloud|" + cycle + "|" + finOpsFirst(item, "SubOrderId", "InstanceID", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "PaymentTime", "UsageStartTime", "BillingDate", "BillingCycle")
 }
 
-func finOpsAliCloudDailyRecords(items []map[string]any, account model.IntegrationFinOpsAccount, cycle, billingDate string) []FinOpsCostInput {
-	records := make([]FinOpsCostInput, 0, len(items))
+func finOpsAliCloudEstimatedDailyRecords(items []map[string]any, account model.IntegrationFinOpsAccount, cycle string) []FinOpsCostInput {
+	month, err := time.ParseInLocation("2006-01", cycle, time.Local)
+	if err != nil {
+		return nil
+	}
+	lastDay := month.AddDate(0, 1, -1)
+	if current := time.Now(); month.Year() == current.Year() && month.Month() == current.Month() {
+		lastDay = time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, current.Location())
+	}
+	days := int(lastDay.Sub(month).Hours()/24) + 1
+	if days < 1 {
+		return nil
+	}
+	records := make([]FinOpsCostInput, 0, len(items)*days)
 	for _, item := range items {
-		date := finOpsMonthBillingDate(finOpsFirst(item, "BillingDate", "UsageStartTime", "BillingDateTime", "Date"), billingDate)
 		instanceID := finOpsFirst(item, "InstanceID", "InstanceId", "ResourceId")
 		resourceName := finOpsFirst(item, "InstanceName", "ResourceName", "InstanceID", "InstanceId")
-		records = append(records, FinOpsCostInput{
-			ExternalID:    finOpsAliCloudExternalID(item, cycle) + "|" + date,
-			BillingDate:   date,
-			Service:       finOpsFirst(item, "ProductName", "ProductDetail", "ProductCode"),
-			Region:        finOpsFirst(item, "Region", "RegionName", "RegionId"),
-			ResourceID:    instanceID,
-			ResourceName:  resourceName,
-			ResourceType:  finOpsFirst(item, "ProductCode", "ProductType", "ProductName"),
-			Amount:        finOpsFloat(item, "PretaxAmount", "PaymentAmount", "DeductedByCashCoupons", "CashAmount", "Amount"),
-			Currency:      finOpsFirst(item, "Currency", "CurrencyCode"),
-			UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"),
-			UsageUnit:     finOpsFirst(item, "UsageUnit", "SubscriptionType"),
-			Tags:          map[string]string{"provider": "alicloud", "billingCycle": cycle, "granularity": "daily"},
-		})
+		for day := month; !day.After(lastDay); day = day.AddDate(0, 0, 1) {
+			records = append(records, FinOpsCostInput{
+				ExternalID: finOpsAliCloudExternalID(item, cycle) + "|estimated|" + day.Format("2006-01-02"), BillingDate: day.Format("2006-01-02"),
+				Service: finOpsFirst(item, "ProductName", "ProductDetail", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName", "RegionId"),
+				ResourceID: instanceID, ResourceName: resourceName, ResourceType: finOpsFirst(item, "ProductCode", "ProductType", "ProductName"),
+				Amount: finOpsFloat(item, "PretaxAmount", "PaymentAmount", "DeductedByCashCoupons", "CashAmount", "Amount") / float64(days), Currency: finOpsFirst(item, "Currency", "CurrencyCode"),
+				UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity") / float64(days), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"),
+				Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle, "granularity": "daily_estimate"},
+			})
+		}
 	}
 	return records
 }
@@ -334,6 +336,21 @@ func finOpsPath(value map[string]any, keys ...string) any {
 	}
 	return current
 }
+
+// AliCloud returns the instance-bill list in slightly different envelopes for
+// legacy and upgraded APIs.  Accept all documented variants rather than
+// treating a non-empty response as a successful zero-record sync.
+func finOpsAliCloudBillItems(payload map[string]any) ([]map[string]any, int) {
+	data := finOpsMap(payload["Data"])
+	items := finOpsMaps(finOpsPath(payload, "Data", "Items", "Item"))
+	if len(items) == 0 {
+		items = finOpsMaps(data["Items"])
+	}
+	if len(items) == 0 {
+		items = finOpsMaps(data["Item"])
+	}
+	return items, int(finOpsFloat(data, "TotalCount", "Count"))
+}
 func finOpsMap(value any) map[string]any { result, _ := value.(map[string]any); return result }
 func finOpsMaps(value any) []map[string]any {
 	if item := finOpsMap(value); item != nil {
@@ -362,6 +379,14 @@ func finOpsString(value any) string {
 		return strings.TrimSpace(typed)
 	case float64:
 		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	case uint:
+		return strconv.FormatUint(uint64(typed), 10)
+	case uint64:
+		return strconv.FormatUint(typed, 10)
 	case json.Number:
 		return typed.String()
 	default:
