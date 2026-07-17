@@ -67,6 +67,12 @@ import AIAssistantChat from '../views/integration/AIAssistantChat.vue'
 import AIConversations from '../views/integration/AIConversations.vue'
 import AIModels from '../views/integration/AIModels.vue'
 import AITools from '../views/integration/AITools.vue'
+import FinOpsDashboard from '../views/integration/finops/FinOpsDashboard.vue'
+import FinOpsAccounts from '../views/integration/finops/FinOpsAccounts.vue'
+import FinOpsBreakdown from '../views/integration/finops/FinOpsBreakdown.vue'
+import FinOpsRecommendations from '../views/integration/finops/FinOpsRecommendations.vue'
+import FinOpsResources from '../views/integration/finops/FinOpsResources.vue'
+import FinOpsSync from '../views/integration/finops/FinOpsSync.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
@@ -106,6 +112,12 @@ const routes = [
       { path: '/integration/ai/conversations', component: AIConversations, meta: { title: '会话管理', app: 'integration', summary: '管理 AI 助手的多轮会话、上下文和历史记录。' } },
       { path: '/integration/ai/models', component: AIModels, meta: { title: '模型管理', app: 'integration', summary: '配置 OpenAI 兼容模型 API 和默认生成参数。' } },
       { path: '/integration/ai/tools', component: AITools, meta: { title: '工具集', app: 'integration', summary: '管理 PromQL、Grafana 与 Kubernetes AI 工具。' } },
+      { path: '/integration/finops/dashboard', component: FinOpsDashboard, meta: { title: '费用看板', app: 'integration', summary: '集中查看多云成本总览、趋势和费用结构。' } },
+      { path: '/integration/finops/accounts', component: FinOpsAccounts, meta: { title: '云账号', app: 'integration', summary: '管理 AWS、Azure、GCP、阿里云和腾讯云账单账号。' } },
+      { path: '/integration/finops/breakdown', component: FinOpsBreakdown, meta: { title: '费用拆分', app: 'integration', summary: '按账号、区域、服务、资源和标签拆分云费用。' } },
+      { path: '/integration/finops/recommendations', component: FinOpsRecommendations, meta: { title: '优化建议', app: 'integration', summary: '识别闲置资源、规格偏高与费用异常。' } },
+      { path: '/integration/finops/resources', component: FinOpsResources, meta: { title: '资源拆分', app: 'integration', summary: '查看云资源数量、成本分布和利用率。' } },
+      { path: '/integration/finops/sync', component: FinOpsSync, meta: { title: '账单同步', app: 'integration', summary: '配置云账单同步频率并追踪同步历史。' } },
 
       {
         path: '/assets/overview',

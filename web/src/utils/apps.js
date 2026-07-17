@@ -441,6 +441,20 @@ export const appDefinitions = [
           { title: '模型管理', titleKey: 'integrationAIModels', path: '/integration/ai/models', icon: 'Cpu', children: [] },
           { title: '工具集', titleKey: 'integrationAITools', path: '/integration/ai/tools', icon: 'Operation', children: [] }
         ]
+      },
+      {
+        title: '云费用分析',
+        titleKey: 'integrationCloudCost',
+        path: '/integration/finops/dashboard',
+        icon: 'Coin',
+        children: [
+          { title: '费用看板', titleKey: 'integrationCostDashboard', path: '/integration/finops/dashboard', icon: 'DataAnalysis', children: [] },
+          { title: '云账号', titleKey: 'integrationCloudAccounts', path: '/integration/finops/accounts', icon: 'CreditCard', children: [] },
+          { title: '费用拆分', titleKey: 'integrationCostBreakdown', path: '/integration/finops/breakdown', icon: 'PieChart', children: [] },
+          { title: '优化建议', titleKey: 'integrationCostRecommendations', path: '/integration/finops/recommendations', icon: 'Opportunity', children: [] },
+          { title: '资源拆分', titleKey: 'integrationCostResources', path: '/integration/finops/resources', icon: 'Box', children: [] },
+          { title: '账单同步', titleKey: 'integrationCostSync', path: '/integration/finops/sync', icon: 'Refresh', children: [] }
+        ]
       }
     ]
   },

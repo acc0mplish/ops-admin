@@ -28,6 +28,8 @@ type Service struct {
 	monitorSchedulerOnce sync.Once
 	dbBackupScheduler    *DatabaseBackupScheduler
 	dbBackupOnce         sync.Once
+	finOpsScheduler      *FinOpsScheduler
+	finOpsSchedulerOnce  sync.Once
 	notifyDispatcherOnce sync.Once
 	notifyConcurrency    chan struct{}
 	monitorNotifyMu      sync.Mutex
@@ -47,6 +49,7 @@ func New(db *gorm.DB) *Service {
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
 	svc.initDatabaseBackupScheduler()
+	svc.initFinOpsScheduler()
 	svc.initNotifyDispatcher()
 	return svc
 }

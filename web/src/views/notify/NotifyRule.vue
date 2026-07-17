@@ -13,6 +13,7 @@ import {
 
 const loading = ref(false)
 const saving = ref(false)
+const optionsLoading = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const rows = ref([])
@@ -59,8 +60,9 @@ const channelTypeLabels = {
 const selectedTemplate = computed(() => templateOptions.value.find((item) => Number(item.id) === Number(form.templateId)))
 const compatibleTemplateOptions = computed(() => templateOptions.value.filter((item) => {
   const templateScope = item.scope || 'all'
+  if (form.scope === 'all') return true
   if (templateScope === 'all') return true
-  return form.scope !== 'all' && templateScope === form.scope
+  return templateScope === form.scope
 }))
 const selectedChannels = computed(() => channelOptions.value.filter((item) => form.channelIds.map(Number).includes(Number(item.id))))
 const routeWarnings = computed(() => {
@@ -110,12 +112,21 @@ function resetForm() {
 }
 
 async function loadBaseOptions() {
-  const [templates, channels] = await Promise.all([
-    queryNotifyTemplateOptions(),
-    queryNotifyChannelOptions()
-  ])
-  templateOptions.value = templates || []
-  channelOptions.value = channels || []
+  optionsLoading.value = true
+  try {
+    const [templates, channels] = await Promise.all([
+      queryNotifyTemplateOptions(),
+      queryNotifyChannelOptions()
+    ])
+    templateOptions.value = Array.isArray(templates) ? templates : []
+    channelOptions.value = Array.isArray(channels) ? channels : []
+  } catch (error) {
+    templateOptions.value = []
+    channelOptions.value = []
+    ElMessage.error(error?.message || '加载消息模板和通知媒介失败')
+  } finally {
+    optionsLoading.value = false
+  }
 }
 
 async function loadData() {
@@ -129,15 +140,20 @@ async function loadData() {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   isEdit.value = false
   resetForm()
   dialogVisible.value = true
+  await loadBaseOptions()
 }
 
 async function openEdit(row) {
   isEdit.value = true
-  const data = await notifyRuleInfo(row.id)
+  dialogVisible.value = true
+  const [data] = await Promise.all([
+    notifyRuleInfo(row.id),
+    loadBaseOptions()
+  ])
   Object.assign(form, {
     id: data.id,
     name: data.name || '',
@@ -148,7 +164,6 @@ async function openEdit(row) {
     status: data.status || 1,
     description: data.description || ''
   })
-  dialogVisible.value = true
 }
 
 function handleScopeChange(value) {
@@ -162,6 +177,15 @@ function handleScopeChange(value) {
 function handleEventsChange(values) {
   const last = values[values.length - 1]
   form.events = last === 'all' ? ['all'] : values.filter((item) => item !== 'all')
+}
+
+function handleTemplateChange(value) {
+  const template = templateOptions.value.find((item) => Number(item.id) === Number(value))
+  const templateScope = template?.scope || 'all'
+  if (!template || form.scope !== 'all' || templateScope === 'all') return
+  form.scope = templateScope
+  form.events = defaultEventsForScope(templateScope)
+  ElMessage.info(`已根据模板切换到「${scopeLabel(templateScope)}」场景`)
 }
 
 function channelDisabled(item) {
@@ -295,12 +319,20 @@ onMounted(async () => {
           </el-checkbox-group>
         </el-form-item>
         <el-form-item label="消息模板" required>
-          <el-select v-model="form.templateId" filterable placeholder="选择与媒介类型一致的模板" style="width: 100%">
+          <el-select
+            v-model="form.templateId"
+            filterable
+            :loading="optionsLoading"
+            no-data-text="暂无已启用的消息模板，请先在消息模板中创建或启用模板"
+            placeholder="选择与媒介类型一致的模板"
+            style="width: 100%"
+            @change="handleTemplateChange"
+          >
             <el-option v-for="item in compatibleTemplateOptions" :key="item.id" :label="`${item.name} · ${scopeLabel(item.scope || 'all')} · ${typeLabel(item.channelType)}`" :value="item.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="通知媒介" required>
-          <el-select v-model="form.channelIds" multiple filterable placeholder="可选择多个同类型媒介" style="width: 100%">
+          <el-select v-model="form.channelIds" multiple filterable :loading="optionsLoading" placeholder="可选择多个同类型媒介" style="width: 100%">
             <el-option v-for="item in channelOptions" :key="item.id" :label="`${item.name} · ${typeLabel(item.channelType)}`" :value="item.id" :disabled="channelDisabled(item)" />
           </el-select>
         </el-form-item>
