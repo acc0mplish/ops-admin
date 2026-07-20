@@ -1,6 +1,15 @@
 import http from './http'
 
 export const queryAssetOverview = () => http.get('/api/v1/asset/overview')
+export const queryAssetServiceList = (params) => http.get('/api/v1/asset/service/list', { params })
+export const assetServiceInfo = (id) => http.get('/api/v1/asset/service/info', { params: { id } })
+export const saveAssetService = (data) => http.post('/api/v1/asset/service/save', data)
+export const deleteAssetService = (id) => http.delete('/api/v1/asset/service/delete', { data: { id } })
+export const queryAssetServiceK8sCatalog = (params) => http.get('/api/v1/asset/service/k8s/catalog', { params })
+export const queryAssetServiceRuntimeTopology = (serviceId) => http.get('/api/v1/asset/service/runtime-topology', { params: { serviceId } })
+export const queryAssetServiceWorkloadRuntime = (params) => http.get('/api/v1/asset/service/workload/runtime', { params })
+export const queryAssetServiceWorkloadTopology = (params) => http.get('/api/v1/asset/service/workload/topology', { params })
+export const queryAssetServiceWorkloadLogs = (params) => http.get('/api/v1/asset/service/workload/logs', { params })
 export const queryAssetChangeLogs = (params) => http.get('/api/v1/asset/change-log/list', { params })
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })
 export const assetHostInfo = (id) => http.get('/api/v1/asset/host/info', { params: { id } })

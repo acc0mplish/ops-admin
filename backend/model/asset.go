@@ -2,6 +2,36 @@ package model
 
 import "time"
 
+// AssetService is an operational service discovered from one Kubernetes
+// namespace. It is intentionally independent from application-center projects
+// and their repository, build, release, and pipeline records.
+type AssetService struct {
+	ID           uint                   `json:"id" gorm:"primaryKey"`
+	Name         string                 `json:"name" gorm:"size:128;not null;index"`
+	ServiceUID   string                 `json:"serviceUid" gorm:"size:255;not null;uniqueIndex"`
+	K8sClusterID uint                   `json:"k8sClusterId" gorm:"not null;index"`
+	Namespace    string                 `json:"namespace" gorm:"size:128;not null;index"`
+	ServiceType  string                 `json:"serviceType" gorm:"size:64;index"`
+	Status       int                    `json:"status" gorm:"default:1;index"`
+	Description  string                 `json:"description" gorm:"size:255"`
+	Workloads    []AssetServiceWorkload `json:"workloads" gorm:"foreignKey:ServiceID"`
+	CreatedAt    time.Time              `json:"createTime"`
+	UpdatedAt    time.Time              `json:"updateTime"`
+}
+
+func (AssetService) TableName() string { return "asset_service" }
+
+type AssetServiceWorkload struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	ServiceID    uint      `json:"serviceId" gorm:"index;not null;uniqueIndex:idx_asset_service_workload"`
+	WorkloadType string    `json:"workloadType" gorm:"size:32;not null;uniqueIndex:idx_asset_service_workload"`
+	WorkloadName string    `json:"workloadName" gorm:"size:128;not null;uniqueIndex:idx_asset_service_workload"`
+	CreatedAt    time.Time `json:"createTime"`
+	UpdatedAt    time.Time `json:"updateTime"`
+}
+
+func (AssetServiceWorkload) TableName() string { return "asset_service_workload" }
+
 type AssetHostGroup struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	ParentID    uint      `json:"parentId" gorm:"index;default:0"`

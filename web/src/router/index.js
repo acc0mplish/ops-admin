@@ -28,6 +28,10 @@ import TerminalLogin from '../views/assets/Terminal.vue'
 import K8s from '../views/assets/K8s.vue'
 import K8sClusterManage from '../views/assets/K8sClusterManage.vue'
 import K8sPodTerminal from '../views/assets/K8sPodTerminal.vue'
+import AssetApplication from '../views/assets/Application.vue'
+import AssetApplicationTopology from '../views/assets/ApplicationTopology.vue'
+import AssetServiceWorkloadDetail from '../views/assets/ServiceWorkloadDetail.vue'
+import AssetServiceWorkloadLogs from '../views/assets/ServiceWorkloadLogs.vue'
 import OpsScriptLibrary from '../views/ops/OpsScriptLibrary.vue'
 import OpsExecutionHistory from '../views/ops/OpsExecutionHistory.vue'
 import OpsCommandExecute from '../views/ops/OpsCommandExecute.vue'
@@ -203,6 +207,10 @@ const routes = [
           summary: '维护 SSH 跳板网关，为内网主机、数据库和 K8s 集群提供访问入口。'
         }
       },
+      { path: '/assets/services', component: AssetApplication, meta: { title: '服务管理', app: 'assets', summary: '从 Kubernetes 命名空间发现工作负载，并维护业务服务与通信链路。' } },
+      { path: '/assets/services/topology', component: AssetApplicationTopology, meta: { title: '服务资源拓扑', app: 'assets', summary: '展示玩家入口、GM 管理、ZooKeeper 和游戏服务通信链路。' } },
+      { path: '/assets/services/workload', component: AssetServiceWorkloadDetail, meta: { title: '服务详情', app: 'assets', summary: '展示服务工作负载、Service、Deployment、ReplicaSet 与 Pod 的资源关系。' } },
+      { path: '/assets/services/logs', component: AssetServiceWorkloadLogs, meta: { title: '查看日志', app: 'assets', summary: '查看服务工作负载中 Pod 的 Kubernetes 日志。' } },
       { path: '/assets/k8s', redirect: '/assets/k8s/clusters' },
       { path: '/assets/k8s/clusters', component: K8sClusterManage, meta: { title: '集群管理', app: 'assets' } },
       { path: '/assets/k8s/clusters/:id/detail', name: 'K8sClusterDetail', component: AssetDetail, props: { resourceType: 'k8s' }, meta: { title: '集群详情', app: 'assets' } },

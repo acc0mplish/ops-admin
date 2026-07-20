@@ -154,12 +154,13 @@ func (ctl *Controller) GetK8sPodLogs(c *gin.Context) {
 		Namespace string `form:"namespace"`
 		PodName   string `form:"podName"`
 		Container string `form:"container"`
+		TailLines int    `form:"tailLines"`
 	}
 	if err := c.ShouldBindQuery(&query); err != nil || query.ClusterID == 0 || query.Namespace == "" || query.PodName == "" {
 		httpx.Failed(c, http.StatusBadRequest, "invalid pod query")
 		return
 	}
-	data, err := ctl.service.GetK8sPodLogs(query.ClusterID, query.Namespace, query.PodName, query.Container)
+	data, err := ctl.service.GetK8sPodLogs(query.ClusterID, query.Namespace, query.PodName, query.Container, query.TailLines)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return

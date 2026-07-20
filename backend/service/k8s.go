@@ -112,6 +112,10 @@ type kubeDeploymentListResponse struct {
 	Items []kubeDeployment `json:"items"`
 }
 
+type kubeReplicaSetListResponse struct {
+	Items []kubeReplicaSet `json:"items"`
+}
+
 type kubeStatefulSetListResponse struct {
 	Items []kubeStatefulSet `json:"items"`
 }
@@ -196,6 +200,17 @@ type kubePod struct {
 			RestartCount int    `json:"restartCount"`
 			Ready        bool   `json:"ready"`
 		} `json:"containerStatuses"`
+	} `json:"status"`
+}
+
+type kubeReplicaSet struct {
+	Metadata kubeMetadata `json:"metadata"`
+	Spec     struct {
+		Replicas *int `json:"replicas"`
+	} `json:"spec"`
+	Status struct {
+		ReadyReplicas     int `json:"readyReplicas"`
+		AvailableReplicas int `json:"availableReplicas"`
 	} `json:"status"`
 }
 
@@ -882,7 +897,7 @@ func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName stri
 	}, nil
 }
 
-func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string, container string) (map[string]any, error) {
+func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string, container string, tailLines int) (map[string]any, error) {
 	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
 		return nil, err
@@ -893,6 +908,13 @@ func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string
 	if strings.TrimSpace(container) != "" {
 		query["container"] = strings.TrimSpace(container)
 	}
+	if tailLines <= 0 {
+		tailLines = 200
+	}
+	if tailLines > 1000 {
+		tailLines = 1000
+	}
+	query["tailLines"] = strconv.Itoa(tailLines)
 	body, err := k8sGetText(client, runtime, path, query)
 	if err != nil {
 		return nil, errors.New(k8sClusterConnectError)
@@ -902,6 +924,7 @@ func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string
 		"namespace": namespace,
 		"podName":   podName,
 		"container": container,
+		"tailLines": tailLines,
 		"content":   body,
 	}, nil
 }

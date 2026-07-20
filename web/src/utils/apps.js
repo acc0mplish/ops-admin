@@ -109,6 +109,12 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '服务管理',
+        path: '/assets/services',
+        icon: 'Grid',
+        children: []
+      },
+      {
         title: 'K8s 管理',
         titleKey: 'k8sManagement',
         path: '/assets/k8s',

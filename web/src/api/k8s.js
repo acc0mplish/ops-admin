@@ -50,8 +50,8 @@ export const queryK8sPodDetail = (clusterId, namespace, podName) =>
 export const queryK8sPodContainers = (clusterId, namespace, podName) =>
   http.get('/api/v1/k8s/pod/containers', { params: { clusterId, namespace, podName } })
 
-export const queryK8sPodLogs = (clusterId, namespace, podName, container = '') =>
-  http.get('/api/v1/k8s/pod/logs', { params: { clusterId, namespace, podName, container } })
+export const queryK8sPodLogs = (clusterId, namespace, podName, container = '', tailLines = 200) =>
+  http.get('/api/v1/k8s/pod/logs', { params: { clusterId, namespace, podName, container, tailLines } })
 
 export const queryK8sPodEvents = (clusterId, namespace, podName) =>
   http.get('/api/v1/k8s/pod/events', { params: { clusterId, namespace, podName } })
