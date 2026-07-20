@@ -580,13 +580,13 @@ watch(
         </template>
       </el-table-column>
       <el-table-column label="CPU使用" width="110">
-        <template #default>-</template>
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.cpuUsage }" :title="row.metricsStatus === 'not_configured' ? '未配置 Prometheus/VictoriaMetrics 数据源' : '来自本地监控数据源'">{{ row.cpuUsage || '-' }}</span></template>
       </el-table-column>
       <el-table-column label="内存使用" width="120">
-        <template #default>-</template>
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.memoryUsage }" :title="row.metricsStatus === 'not_configured' ? '未配置 Prometheus/VictoriaMetrics 数据源' : '来自本地监控数据源'">{{ row.memoryUsage || '-' }}</span></template>
       </el-table-column>
       <el-table-column label="磁盘使用" width="120">
-        <template #default>-</template>
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.diskUsage }" :title="row.metricsStatus === 'not_configured' ? '未配置 Prometheus/VictoriaMetrics 数据源' : '来自本地监控数据源'">{{ row.diskUsage || '-' }}</span></template>
       </el-table-column>
       <el-table-column label="配置信息" min-width="170">
         <template #default="{ row }">
@@ -976,5 +976,9 @@ watch(
 :deep(.host-more-dropdown .el-dropdown-menu__item:hover) {
   background: #eef4ff;
   color: #4669c9;
+}
+
+.metric-unavailable {
+  color: #a6b1c2;
 }
 </style>

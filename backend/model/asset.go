@@ -121,6 +121,10 @@ type AssetHost struct {
 	AuthStatus     int               `json:"authStatus" gorm:"default:2;not null"`
 	Description    string            `json:"description" gorm:"size:255"`
 	LastCheckTime  *time.Time        `json:"lastCheckTime"`
+	CPUUsage       string            `json:"cpuUsage" gorm:"-"`
+	MemoryUsage    string            `json:"memoryUsage" gorm:"-"`
+	DiskUsage      string            `json:"diskUsage" gorm:"-"`
+	MetricsStatus  string            `json:"metricsStatus" gorm:"-"`
 	CreatedAt      time.Time         `json:"createTime"`
 	UpdatedAt      time.Time         `json:"updateTime"`
 }

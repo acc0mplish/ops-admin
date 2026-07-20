@@ -998,6 +998,7 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 		return nil, err
 	}
 	ensureHostGroupFallbackList(list)
+	s.enrichAssetHostUsageMetrics(list)
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -71,7 +72,7 @@ var integrationAIToolDefinitions = []aiToolDefinition{
 	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
 	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
 	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
-	{Key: "finops_cost_analysis", Name: "云费用分析", Category: "云费用 FinOps", Description: "仅查询本地数据库中已通过账单同步导入的云费用数据，返回指定云账号和账期的费用总览、趋势、产品与地域拆分。绝不调用云厂商接口、不会同步账单。", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
+	{Key: "finops_cost_analysis", Name: "云费用分析", Category: "云费用 FinOps", Description: "仅查询本地数据库中已通过账单同步导入的云费用数据。可返回费用总览、趋势、产品/地域拆分；询问某云产品的实例数或每实例费用时，传入 service 和 includeResourceBreakdown=true，按本地账单的资源 ID/名称聚合。绝不调用云厂商接口、不会同步账单。", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
 	{Key: "asset_host_list", Name: "服务器资产", Category: "资产管理", Description: "查询 CMDB 中的服务器、IP、环境、主机组与在线状态，不返回登录凭据。", Permission: "read", Parameters: assetQuerySchema("服务器名称、别名或 IP 关键词")},
 	{Key: "asset_mysql_list", Name: "MySQL 资产", Category: "资产管理", Description: "查询已纳管的 MySQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
 	{Key: "asset_postgresql_list", Name: "PostgreSQL 资产", Category: "资产管理", Description: "查询已纳管的 PostgreSQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
@@ -88,6 +89,9 @@ func stringProperty(description string) map[string]any {
 }
 func integerProperty(description string) map[string]any {
 	return map[string]any{"type": "integer", "description": description}
+}
+func booleanProperty(description string) map[string]any {
+	return map[string]any{"type": "boolean", "description": description}
 }
 func objectSchema(properties map[string]any, required []string) map[string]any {
 	result := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
@@ -107,9 +111,11 @@ func assetQuerySchema(keywordDescription string) map[string]any {
 
 func finOpsAnalysisToolSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"accountId":   integerProperty("云账号 ID；留空则分析全部已同步云账号"),
-		"month":       stringProperty("分析账期，格式 YYYY-MM；留空默认最近一个有本地同步账单的自然月"),
-		"trendMonths": integerProperty("趋势月份数，1 到 12，默认 6"),
+		"accountId":                integerProperty("云账号 ID；留空则分析全部已同步云账号"),
+		"month":                    stringProperty("分析账期，格式 YYYY-MM；留空默认最近一个有本地同步账单的自然月"),
+		"trendMonths":              integerProperty("趋势月份数，1 到 12，默认 6"),
+		"service":                  stringProperty("云产品名称关键词；例如 负载均衡、NAT网关、ECS"),
+		"includeResourceBreakdown": booleanProperty("是否返回该云产品按实例/资源 ID 聚合的费用；询问实例数量或每实例费用时设为 true"),
 	}, nil)
 }
 
@@ -352,6 +358,9 @@ func (s *Service) GetIntegrationAIConversation(userID, id uint) (map[string]any,
 	}
 	var actions []model.IntegrationAIToolAction
 	_ = s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&actions).Error
+	for index := range messages {
+		messages[index].Content = sanitizeAIMessageContent(messages[index].Content)
+	}
 	return map[string]any{"conversation": conversation, "messages": messages, "actions": actions}, nil
 }
 
@@ -405,7 +414,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 	sort.Slice(history, func(i, j int) bool { return history[i].ID < history[j].ID })
 	messages := []map[string]any{{"role": "system", "content": integrationAISystemPrompt(aiModel.SystemPrompt)}}
 	for _, item := range history {
-		messages = append(messages, map[string]any{"role": item.Role, "content": item.Content})
+		messages = append(messages, map[string]any{"role": item.Role, "content": sanitizeAIMessageContent(item.Content)})
 	}
 	tools, configs, err := s.openAIToolDefinitions()
 	if err != nil {
@@ -415,9 +424,21 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 	if err != nil {
 		return nil, err
 	}
+	if len(response.ToolCalls) == 0 && hasUnsupportedAIToolProtocol(response.Content) {
+		repairMessages := append([]map[string]any{}, messages...)
+		repairMessages = append(repairMessages,
+			map[string]any{"role": "assistant", "content": response.Content},
+			map[string]any{"role": "user", "content": "不要输出内部工具调用标记或 XML/DSML。只能调用已提供的原生工具；如果没有可调用工具，请直接用简洁中文回答。"},
+		)
+		response, err = s.callOpenAICompatible(aiModel, repairMessages, tools)
+		if err != nil {
+			return nil, err
+		}
+	}
 	actions := make([]model.IntegrationAIToolAction, 0)
 	finOpsToolUsed := false
-	if len(response.ToolCalls) > 0 {
+	finOpsInstructionAdded := false
+	for round := 0; round < 3 && len(response.ToolCalls) > 0; round++ {
 		assistantCall := map[string]any{"role": "assistant", "content": response.Content, "tool_calls": response.RawToolCalls}
 		messages = append(messages, assistantCall)
 		for _, call := range response.ToolCalls {
@@ -450,16 +471,23 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 			rawResult, _ := json.Marshal(toolResult)
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawResult)})
 		}
-		if finOpsToolUsed {
+		if finOpsToolUsed && !finOpsInstructionAdded {
 			messages = append(messages, map[string]any{"role": "system", "content": finOpsChatResponseInstruction})
+			finOpsInstructionAdded = true
 		}
-		response, err = s.callOpenAICompatible(aiModel, messages, nil)
+		response, err = s.callOpenAICompatible(aiModel, messages, tools)
 		if err != nil {
 			return nil, err
 		}
 	}
+	if len(response.ToolCalls) > 0 && strings.TrimSpace(response.Content) == "" {
+		response.Content = "工具调用轮次已达到安全上限，未继续执行。请缩小查询范围后重试。"
+	}
 	if strings.TrimSpace(response.Content) == "" {
 		response.Content = "操作已生成，请在下方确认后执行。"
+	}
+	if hasUnsupportedAIToolProtocol(response.Content) {
+		response.Content = "模型返回了不受支持的内部工具调用格式，未执行任何操作。请重新提问，或切换支持原生工具调用的模型。"
 	}
 	assistantMessage := model.IntegrationAIMessage{ConversationID: conversation.ID, Role: "assistant", Content: response.Content, Status: "completed"}
 	if err := s.db.Create(&assistantMessage).Error; err != nil {
@@ -487,14 +515,27 @@ func truncateRunes(value string, limit int) string {
 }
 
 func integrationAISystemPrompt(custom string) string {
-	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
+	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。只能调用本请求提供的原生工具名称；绝不在回复正文输出 XML、DSML、tool_calls、invoke 或其他内部工具协议。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
 	if strings.TrimSpace(custom) != "" {
 		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
 	}
 	return base
 }
 
-const finOpsChatResponseInstruction = "云费用工具已返回结果。请严格使用简洁要点格式回答，不超过 8 行，不使用 Markdown 标题、表格、引用、代码块、漏斗图或长段落。格式：\n【账期｜账号】\n- 总费用：金额（如为当前月须注明截至日期）\n- 主要产品：仅列 Top 3，产品 + 金额 + 占比\n- 地域：一句结论\n- 关注项：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
+func hasUnsupportedAIToolProtocol(content string) bool {
+	value := strings.ToLower(content)
+	compact := strings.NewReplacer(" ", "", "\n", "", "\t", "").Replace(value)
+	return strings.Contains(value, "dsml") || strings.Contains(compact, "<tool_calls>") || strings.Contains(compact, "<invokename=")
+}
+
+func sanitizeAIMessageContent(content string) string {
+	if !hasUnsupportedAIToolProtocol(content) {
+		return content
+	}
+	return "该历史消息包含模型未支持的内部工具调用格式，未执行任何操作。请重新发起查询。"
+}
+
+const finOpsChatResponseInstruction = "云费用工具已返回结果。请严格使用简洁要点格式回答，不超过 8 行，不使用 Markdown 标题、表格、引用、代码块、漏斗图或长段落。普通费用问题格式：\n【账期｜账号】\n- 总费用：金额（如为当前月须注明截至日期）\n- 主要产品：仅列 Top 3，产品 + 金额 + 占比\n- 地域：一句结论\n- 关注项：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n当用户询问某产品的实例数量或每实例费用时：优先读取 resourceBreakdown，回答“实例数”和最多 5 个“实例名称/ID：费用”；若 resourceBreakdown.resourceCount 为 0，只能说明本地同步账单缺少可关联的资源 ID/名称及未关联金额，不能建议用户去云厂商控制台。不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
 
 type openAIResponse struct {
 	Content      string
@@ -502,6 +543,38 @@ type openAIResponse struct {
 	RawToolCalls []any
 }
 type openAIToolCall struct{ ID, Name, Arguments string }
+
+var (
+	dsmlInvokePattern    = regexp.MustCompile(`(?s)<\|DSML\|invoke\s+name="([^"]+)">(.*?)</\|DSML\|invoke>`)
+	dsmlParameterPattern = regexp.MustCompile(`(?s)<\|DSML\|parameter\s+name="([^"]+)"[^>]*>(.*?)</\|DSML\|parameter>`)
+)
+
+func parseDSMLToolCalls(content string) []openAIToolCall {
+	aliases := map[string]string{
+		"k8s_get_nodes":         "k8s_cluster_overview",
+		"k8s_get_control_plane": "k8s_cluster_overview",
+	}
+	seen := map[string]bool{}
+	calls := make([]openAIToolCall, 0)
+	for _, match := range dsmlInvokePattern.FindAllStringSubmatch(content, -1) {
+		name := aliases[match[1]]
+		if name == "" {
+			continue
+		}
+		args := map[string]any{}
+		for _, parameter := range dsmlParameterPattern.FindAllStringSubmatch(match[2], -1) {
+			args[parameter[1]] = strings.TrimSpace(parameter[2])
+		}
+		rawArgs, _ := json.Marshal(args)
+		key := name + "|" + string(rawArgs)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		calls = append(calls, openAIToolCall{ID: fmt.Sprintf("dsml-%d", len(calls)+1), Name: name, Arguments: string(rawArgs)})
+	}
+	return calls
+}
 
 func (s *Service) callOpenAICompatible(item model.IntegrationAIModel, messages []map[string]any, tools []map[string]any) (*openAIResponse, error) {
 	endpoint := strings.TrimRight(item.BaseURL, "/")
@@ -573,6 +646,15 @@ func (s *Service) callOpenAICompatible(item model.IntegrationAIModel, messages [
 	for _, call := range message.ToolCalls {
 		result.ToolCalls = append(result.ToolCalls, openAIToolCall{ID: call.ID, Name: call.Function.Name, Arguments: call.Function.Arguments})
 		result.RawToolCalls = append(result.RawToolCalls, map[string]any{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Function.Name, "arguments": call.Function.Arguments}})
+	}
+	if len(result.ToolCalls) == 0 {
+		for _, call := range parseDSMLToolCalls(result.Content) {
+			result.ToolCalls = append(result.ToolCalls, call)
+			result.RawToolCalls = append(result.RawToolCalls, map[string]any{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": call.Arguments}})
+		}
+		if len(result.ToolCalls) > 0 {
+			result.Content = ""
+		}
 	}
 	return result, nil
 }
@@ -763,6 +845,15 @@ func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, er
 	if err != nil {
 		return nil, err
 	}
+	serviceKeyword := strings.TrimSpace(anyString(args["service"]))
+	includeResources := serviceKeyword != "" || anyBool(args["includeResourceBreakdown"])
+	resourceBreakdown := map[string]any{"requested": includeResources}
+	if includeResources {
+		resourceBreakdown, err = s.queryAIFinOpsResourceBreakdown(monthStart, monthEnd, accountID, serviceKeyword)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return map[string]any{
 		"source":               "local_synced_finops_database",
 		"sourceDescription":    "仅使用本地已同步云账单数据；未调用云厂商接口",
@@ -774,6 +865,8 @@ func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, er
 		"selectedMonthSummary": selectedMonthSummary,
 		"serviceBreakdown":     limitAIFinOpsRows(services, 12),
 		"regionBreakdown":      limitAIFinOpsRows(regions, 12),
+		"serviceFilter":        serviceKeyword,
+		"resourceBreakdown":    resourceBreakdown,
 	}, nil
 }
 
@@ -782,6 +875,56 @@ func limitAIFinOpsRows(rows []map[string]any, limit int) []map[string]any {
 		return rows
 	}
 	return rows[:limit]
+}
+
+// queryAIFinOpsResourceBreakdown aggregates only persisted cost records. A row
+// without resource ID/name is retained as unattributed cost instead of being
+// invented as an instance.
+func (s *Service) queryAIFinOpsResourceBreakdown(start, end time.Time, accountID uint, serviceKeyword string) (map[string]any, error) {
+	records, _, err := s.finOpsRecords(start, end, accountID)
+	if err != nil {
+		return nil, err
+	}
+	keyword := strings.ToLower(strings.TrimSpace(serviceKeyword))
+	rowsByResource := map[string]map[string]any{}
+	unattributedCost := 0.0
+	matchedRecordCount := 0
+	for _, record := range records {
+		if keyword != "" && !strings.Contains(strings.ToLower(record.Service), keyword) {
+			continue
+		}
+		matchedRecordCount++
+		resourceID, resourceName := strings.TrimSpace(record.ResourceID), strings.TrimSpace(record.ResourceName)
+		if resourceID == "" && resourceName == "" {
+			unattributedCost += record.Amount
+			continue
+		}
+		key := resourceID
+		if key == "" {
+			key = "name:" + resourceName
+		}
+		row := rowsByResource[key]
+		if row == nil {
+			row = map[string]any{"resourceId": resourceID, "resourceName": resourceName, "service": record.Service, "region": record.Region, "amount": 0.0, "recordCount": 0}
+			rowsByResource[key] = row
+		}
+		row["amount"] = row["amount"].(float64) + record.Amount
+		row["recordCount"] = row["recordCount"].(int) + 1
+	}
+	items := make([]map[string]any, 0, len(rowsByResource))
+	for _, row := range rowsByResource {
+		items = append(items, row)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i]["amount"].(float64) > items[j]["amount"].(float64) })
+	return map[string]any{
+		"requested":          true,
+		"serviceFilter":      serviceKeyword,
+		"matchedRecordCount": matchedRecordCount,
+		"resourceCount":      len(items),
+		"unattributedCost":   unattributedCost,
+		"items":              limitAIFinOpsRows(items, 20),
+		"sourceDescription":  "按本地已同步账单的 resourceId/resourceName 聚合；不会查询云厂商接口",
+	}, nil
 }
 
 func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[string]any, error) {
@@ -1147,6 +1290,17 @@ func anyUint(value any) uint {
 		var result uint
 		_, _ = fmt.Sscan(fmt.Sprint(value), &result)
 		return result
+	}
+}
+
+func anyBool(value any) bool {
+	switch item := value.(type) {
+	case bool:
+		return item
+	case string:
+		return strings.EqualFold(strings.TrimSpace(item), "true") || strings.TrimSpace(item) == "1"
+	default:
+		return false
 	}
 }
 

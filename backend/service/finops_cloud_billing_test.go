@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -136,4 +137,96 @@ func TestFinOpsAICostAnalysisProbe(t *testing.T) {
 	}
 	dashboard, _ := data["selectedMonthSummary"].(map[string]any)
 	t.Logf("AI FinOps tool selected month=%v source=%v records=%v total=%v", data["analysisMonth"], data["monthSource"], dashboard["recordCount"], dashboard["totalCost"])
+	resourceData, err := (&Service{db: db}).queryAIFinOpsAnalysis(map[string]any{"month": data["analysisMonth"], "service": "负载均衡", "includeResourceBreakdown": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	breakdown, _ := resourceData["resourceBreakdown"].(map[string]any)
+	t.Logf("load balancer local resource breakdown: instances=%v matchedRecords=%v unattributedCost=%v", breakdown["resourceCount"], breakdown["matchedRecordCount"], breakdown["unattributedCost"])
+	for _, item := range breakdown["items"].([]map[string]any) {
+		t.Logf("load balancer instance id=%v name=%v amount=%.2f", item["resourceId"], item["resourceName"], item["amount"].(float64))
+	}
+}
+
+func TestAssetHostUsageMetricsProbe(t *testing.T) {
+	if os.Getenv("ASSET_HOST_METRICS_PROBE") != "1" {
+		t.Skip("set ASSET_HOST_METRICS_PROBE=1 to inspect local host monitoring metrics")
+	}
+	cfg, err := config.Load("../config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.NewDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := (&Service{db: db}).ListAssetHosts(1, 10, "", 0, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosts, _ := data["list"].([]model.AssetHost)
+	for _, host := range hosts {
+		t.Logf("host=%s ip=%s metrics=%s cpu=%s memory=%s disk=%s", host.HostName, host.SSHIP, host.MetricsStatus, host.CPUUsage, host.MemoryUsage, host.DiskUsage)
+	}
+}
+
+func TestIntegrationAIDSMLToolProbe(t *testing.T) {
+	if os.Getenv("AI_DSML_TOOL_PROBE") != "1" {
+		t.Skip("set AI_DSML_TOOL_PROBE=1 to make one controlled local AI tool-call probe")
+	}
+	cfg, err := config.Load("../config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.NewDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{db: db}
+	var aiModel model.IntegrationAIModel
+	if err := db.Where("status = ?", 1).Order("is_default DESC, id ASC").First(&aiModel).Error; err != nil {
+		t.Fatal(err)
+	}
+	tools, _, err := service.openAIToolDefinitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := []map[string]any{
+		{"role": "system", "content": integrationAISystemPrompt(aiModel.SystemPrompt)},
+		{"role": "user", "content": "检查当前 K8s 集群健康状态。"},
+	}
+	response, err := service.callOpenAICompatible(aiModel, messages, tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.ToolCalls) == 0 {
+		t.Fatalf("expected native or DSML-mapped tool calls, got content=%q", truncateRunes(response.Content, 300))
+	}
+	for round := 0; round < 3 && len(response.ToolCalls) > 0; round++ {
+		messages = append(messages, map[string]any{"role": "assistant", "content": response.Content, "tool_calls": response.RawToolCalls})
+		for _, call := range response.ToolCalls {
+			if call.Name == "k8s_restart_workload" || call.Name == "k8s_scale_workload" {
+				t.Fatalf("probe refuses to execute non-read tool %s", call.Name)
+			}
+			var args map[string]any
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				t.Fatal(err)
+			}
+			result, toolErr := service.executeIntegrationAITool(call.Name, args)
+			if toolErr != nil {
+				result = map[string]any{"error": toolErr.Error()}
+			}
+			rawResult, _ := json.Marshal(result)
+			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawResult)})
+			t.Logf("mapped AI tool call: round=%d name=%s arguments=%s", round+1, call.Name, call.Arguments)
+		}
+		response, err = service.callOpenAICompatible(aiModel, messages, tools)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hasUnsupportedAIToolProtocol(response.Content) {
+		t.Fatalf("DSML protocol leaked into final answer: %q", truncateRunes(response.Content, 300))
+	}
+	t.Logf("final AI answer: %s", truncateRunes(response.Content, 500))
 }

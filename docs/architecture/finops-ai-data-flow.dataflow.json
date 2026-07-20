@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Ops Admin FinOps 与 AI 数据流",
+    "subtitle": "账单仅经同步入库；看板、建议与 AI 只读本地数据",
+    "output": "finops-ai-data-flow.html",
+    "viewBox": [940, 720]
+  },
+  "stages": [
+    { "label": "账单来源" },
+    { "label": "受控入库" },
+    { "label": "本地存储" },
+    { "label": "只读消费" }
+  ],
+  "nodes": [
+    { "id": "cloud", "type": "external", "label": "云厂商账单 API", "sublabel": "仅同步服务访问", "stage": 0, "row": 0, "tag": "受控" },
+    { "id": "import", "type": "frontend", "label": "标准 JSON 导入", "sublabel": "人工导入账单", "stage": 0, "row": 3, "tag": "可选" },
+    { "id": "sync", "type": "backend", "label": "逐月账单同步", "sublabel": "独立成功 / 失败", "stage": 1, "row": 1, "tag": "upsert" },
+    { "id": "db", "type": "database", "label": "本地费用账单", "sublabel": "MySQL + 同步历史", "stage": 2, "row": 1, "tag": "唯一数据源" },
+    { "id": "dashboard", "type": "frontend", "label": "看板与拆分", "sublabel": "趋势 / 产品 / 资源", "stage": 3, "row": 0, "tag": "只读" },
+    { "id": "advice", "type": "backend", "label": "优化建议", "sublabel": "默认或 AI 策略", "stage": 3, "row": 2, "tag": "本地分析" },
+    { "id": "ai", "type": "security", "label": "AI 云费用工具", "sublabel": "finops_cost_analysis", "stage": 3, "row": 4, "tag": "只读" }
+  ],
+  "flows": [
+    { "from": "cloud", "to": "sync", "label": "月度账单", "classification": "账单 API", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[208, 157], [208, 271]], "labelAt": [180, 212] },
+    { "from": "import", "to": "sync", "label": "标准记录", "classification": "人工导入", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[220, 499], [220, 271]], "labelAt": [192, 390] },
+    { "from": "sync", "to": "db", "label": "幂等账单", "classification": "记录 + 日志", "variant": "emphasis", "route": "straight", "labelAt": [422, 264] },
+    { "from": "db", "to": "dashboard", "label": "聚合费用", "classification": "只读", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[638, 271], [638, 157]], "labelAt": [610, 212] },
+    { "from": "db", "to": "advice", "label": "分析数据", "classification": "只读", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[650, 271], [650, 385]], "labelAt": [622, 330] },
+    { "from": "db", "to": "ai", "label": "工具结果", "classification": "只读本地账单", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[662, 271], [662, 613]], "labelAt": [634, 492] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "数据边界",
+      "items": [
+        "云账单只由云账号测试与账单同步访问",
+        "同步逐月执行，失败月不阻断后续月份",
+        "消费端从本地 MySQL 聚合，不触发云侧读取"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "AI 边界",
+      "items": [
+        "finops_cost_analysis 只查询已同步账单",
+        "AI 可用于本地分析和建议生成",
+        "可能改变外部状态的工具仍需人工确认"
+      ]
+    }
+  ]
+}
