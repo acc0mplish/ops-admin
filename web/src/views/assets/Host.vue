@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 import {
   addAssetHost,
@@ -35,6 +36,7 @@ const batchCredentialDialogVisible = ref(false)
 const importSubmitting = ref(false)
 const cloudSyncSubmitting = ref(false)
 const batchCredentialSubmitting = ref(false)
+const batchSyncSubmitting = ref(false)
 const isEdit = ref(false)
 const isCopy = ref(false)
 const tableData = ref([])
@@ -44,7 +46,7 @@ const credentialOptions = ref([])
 const gatewayOptions = ref([])
 const cloudAccountOptions = ref([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined, environment: '', tag: '' })
+const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', ipKeyword: '', status: '', groupId: undefined, environment: '' })
 const form = reactive({
   id: undefined,
   hostName: '',
@@ -57,7 +59,6 @@ const form = reactive({
   connectionMode: 'direct',
   gatewayId: undefined,
   environment: '',
-  tags: [],
   status: 1,
   description: ''
 })
@@ -70,9 +71,12 @@ const cloudSyncForm = reactive({
   provider: 'tencent',
   useExistingAccount: true,
   cloudAccountId: undefined,
+	credentialId: undefined,
+	connectionMode: 'direct',
+	gatewayId: undefined,
+	environment: '',
   accessKey: '',
   secretKey: '',
-  region: '',
   saveAccount: false,
   accountName: ''
 })
@@ -98,7 +102,6 @@ function resetForm() {
     connectionMode: 'direct',
     gatewayId: undefined,
     environment: '',
-    tags: [],
     status: 1,
     description: ''
   })
@@ -117,9 +120,12 @@ function resetCloudSyncForm() {
     provider: 'tencent',
     useExistingAccount: true,
     cloudAccountId: undefined,
+	credentialId: undefined,
+	connectionMode: 'direct',
+	gatewayId: undefined,
+	environment: '',
     accessKey: '',
     secretKey: '',
-    region: '',
     saveAccount: false,
     accountName: ''
   })
@@ -152,8 +158,7 @@ async function loadData() {
       keyword,
       status: query.status,
       groupId: query.groupId,
-      environment: query.environment,
-      tag: query.tag
+      environment: query.environment
     })
     tableData.value = data.list || []
     total.value = data.total || 0
@@ -168,7 +173,6 @@ function resetQuery() {
   query.status = ''
   query.groupId = undefined
   query.environment = ''
-  query.tag = ''
   query.pageNum = 1
   loadData()
 }
@@ -222,7 +226,6 @@ async function openEdit(row) {
     connectionMode: data.connectionMode || 'direct',
     gatewayId: data.gatewayId || undefined,
     environment: data.environment || '',
-    tags: data.tags || [],
     status: data.status || 1,
     description: data.description
   })
@@ -246,7 +249,6 @@ async function openCopy(row) {
     connectionMode: data.connectionMode || 'direct',
     gatewayId: data.gatewayId || undefined,
     environment: data.environment || '',
-    tags: data.tags || [],
     status: data.status || 1,
     description: data.description
   })
@@ -314,14 +316,20 @@ function selectedIds() {
 }
 
 async function handleBatchSync() {
+	if (batchSyncSubmitting.value) return
   const ids = selectedIds()
   if (!ids.length) {
     ElMessage.warning('请先选择主机')
     return
   }
-  const data = await batchSyncAssetHosts(ids)
-  ElMessage.success(`批量同步完成：成功 ${data.success} 台，失败 ${data.fail} 台`)
-  await loadData()
+	batchSyncSubmitting.value = true
+	try {
+		const data = await batchSyncAssetHosts(ids)
+		ElMessage.success(`批量同步完成：成功 ${data.success} 台，失败 ${data.fail} 台`)
+		await loadData()
+	} finally {
+		batchSyncSubmitting.value = false
+	}
 }
 
 async function handleBatchDelete() {
@@ -399,7 +407,8 @@ async function submitImport() {
     formData.append('groupId', importForm.groupId)
     formData.append('file', importForm.file)
     const data = await importAssetHosts(formData)
-    ElMessage.success(`导入完成：成功 ${data.success} 台，失败 ${data.fail} 台`)
+    const failedPreview = (data.failedHosts || []).slice(0, 3).join('；')
+    ElMessage.success(`导入完成：成功 ${data.success} 台，失败 ${data.fail} 台${failedPreview ? `（${failedPreview}）` : ''}`)
     importDialogVisible.value = false
     await loadData()
   } finally {
@@ -416,6 +425,18 @@ async function submitCloudSync() {
     ElMessage.warning('请选择已有云账号')
     return
   }
+	if (!cloudSyncForm.credentialId) {
+		ElMessage.warning('请选择认证凭据')
+		return
+	}
+  if (!cloudSyncForm.environment) {
+		ElMessage.warning('请选择所属环境')
+		return
+	}
+	if (cloudSyncForm.connectionMode === 'gateway' && !cloudSyncForm.gatewayId) {
+		ElMessage.warning('请选择访问网关')
+		return
+	}
   if (!cloudSyncForm.useExistingAccount && (!cloudSyncForm.accessKey || !cloudSyncForm.secretKey)) {
     ElMessage.warning('请填写 AccessKey 和 SecretKey')
     return
@@ -423,7 +444,14 @@ async function submitCloudSync() {
   cloudSyncSubmitting.value = true
   try {
     const data = await syncAssetHostsFromCloud(cloudSyncForm)
-    ElMessage.success(`同步完成：新增 ${data.added} 台，更新 ${data.updated} 台，跳过 ${data.skipped} 台`)
+    const addedNames = (data.addedHosts || []).slice(0, 3).join('、')
+    const updatedNames = (data.updatedHosts || []).slice(0, 3).join('、')
+    const details = [
+      addedNames ? `新增：${addedNames}` : '',
+      updatedNames ? `更新：${updatedNames}` : '',
+      Object.keys(data.regionCounts || {}).length ? `地域：${Object.entries(data.regionCounts).map(([region, count]) => `${region} ${count} 台`).join('，')}` : ''
+    ].filter(Boolean).join('；')
+    ElMessage.success(`云端发现 ${data.total || 0} 台：新增 ${data.added} 台，更新 ${data.updated} 台，跳过 ${data.skipped} 台${details ? `（${details}）` : ''}`)
     cloudSyncDialogVisible.value = false
     await loadData()
   } finally {
@@ -521,9 +549,6 @@ watch(
             <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标签">
-          <el-input v-model="query.tag" clearable placeholder="输入标签" style="width: 140px" @keyup.enter="loadData" />
-        </el-form-item>
       </el-form>
       <div class="query-actions">
         <el-button type="primary" @click="loadData">搜索</el-button>
@@ -551,7 +576,10 @@ watch(
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="batch-sync">批量同步</el-dropdown-item>
+			  <el-dropdown-item command="batch-sync" :disabled="batchSyncSubmitting">
+				<el-icon v-if="batchSyncSubmitting" class="is-loading"><Loading /></el-icon>
+				{{ batchSyncSubmitting ? '同步中' : '批量同步' }}
+			  </el-dropdown-item>
               <el-dropdown-item command="batch-delete">{{ isGroupView ? '批量移出当前组' : '批量删除' }}</el-dropdown-item>
               <el-dropdown-item command="batch-credential">批量替换认证凭据</el-dropdown-item>
             </el-dropdown-menu>
@@ -622,9 +650,6 @@ watch(
       <el-table-column label="环境" width="110">
         <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.environment) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="标签" min-width="150">
-        <template #default="{ row }"><el-tag v-for="tag in (row.tags || [])" :key="tag" size="small" effect="plain" class="asset-tag">{{ tag }}</el-tag><span v-if="!(row.tags || []).length">-</span></template>
-      </el-table-column>
       <el-table-column label="所属分组" min-width="120">
         <template #default="{ row }">{{ groupName(row) }}</template>
       </el-table-column>
@@ -693,11 +718,6 @@ watch(
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="资产标签">
-              <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="输入后回车创建标签" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="连接方式">
               <el-radio-group v-model="form.connectionMode">
                 <el-radio-button label="direct">直连</el-radio-button>
@@ -747,7 +767,7 @@ watch(
             <el-button type="primary">选择文件</el-button>
           </el-upload>
         </el-form-item>
-        <div class="dialog-tip">请上传 Excel 文件，模板列为：主机名称、SSH地址、SSH端口、SSH用户、认证凭据、备注。</div>
+        <div class="dialog-tip">目标分组由本窗口统一指定。模板必填列：主机名称、SSH地址、SSH用户、认证凭据、连接方式、所属环境；网关模式还需填写访问网关名称。SSH 地址建议填写内网 IP。</div>
       </el-form>
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
@@ -768,35 +788,41 @@ watch(
             <el-option label="阿里云" value="aliyun" />
           </el-select>
         </el-form-item>
-        <el-form-item label="认证方式">
-          <el-radio-group v-model="cloudSyncForm.useExistingAccount">
-            <el-radio :value="true">选择已有云账号</el-radio>
-            <el-radio :value="false">直接输入凭据</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="cloudSyncForm.useExistingAccount" label="已有云账号">
+        <el-form-item label="云账号">
           <el-select v-model="cloudSyncForm.cloudAccountId" filterable clearable placeholder="请选择云账号" style="width: 100%">
-            <el-option v-for="item in filteredCloudAccounts" :key="item.id" :value="item.id" :label="item.name" />
+            <el-option
+              v-for="item in filteredCloudAccounts"
+              :key="item.id"
+              :value="item.id"
+              :label="`${item.name}（${(item.regions?.length ? item.regions : (item.region ? item.region.split(/[,，;；\s]+/).filter(Boolean) : [])).join('、')}）`"
+            />
           </el-select>
         </el-form-item>
-        <template v-else>
-          <el-form-item label="账号名称">
-            <el-input v-model="cloudSyncForm.accountName" placeholder="可选，保存账号时使用" />
-          </el-form-item>
-          <el-form-item label="AccessKey">
-            <el-input v-model="cloudSyncForm.accessKey" placeholder="请输入 AccessKey" />
-          </el-form-item>
-          <el-form-item label="SecretKey">
-            <el-input v-model="cloudSyncForm.secretKey" show-password placeholder="请输入 SecretKey" />
-          </el-form-item>
-          <el-form-item label="保存为云账号">
-            <el-switch v-model="cloudSyncForm.saveAccount" />
-          </el-form-item>
-        </template>
-        <el-form-item label="区域">
-          <el-input v-model="cloudSyncForm.region" placeholder="例如 ap-guangzhou、cn-hangzhou，可选" />
-        </el-form-item>
-        <div class="dialog-tip">当前 `ops-admin` 已接入腾讯云同步流程，阿里云入口已预留，后端 SDK 接入后即可无缝启用。</div>
+		<el-form-item label="认证凭据" required>
+		  <div class="credential-line">
+			<el-select v-model="cloudSyncForm.credentialId" clearable filterable placeholder="请选择认证凭据">
+			  <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
+			</el-select>
+			<el-button color="#f59e0b" @click="goCredential">+ 创建凭据</el-button>
+		  </div>
+		</el-form-item>
+        <el-form-item label="连接方式">
+		  <el-radio-group v-model="cloudSyncForm.connectionMode">
+			<el-radio value="direct">直连</el-radio>
+			<el-radio value="gateway">通过网关</el-radio>
+		  </el-radio-group>
+		</el-form-item>
+		<el-form-item v-if="cloudSyncForm.connectionMode === 'gateway'" label="访问网关">
+		  <el-select v-model="cloudSyncForm.gatewayId" filterable placeholder="请选择网关" style="width: 100%">
+			<el-option v-for="item in gatewayOptions" :key="item.id" :value="item.id" :label="item.name" />
+		  </el-select>
+		</el-form-item>
+		<el-form-item label="所属环境">
+		  <el-select v-model="cloudSyncForm.environment" filterable placeholder="请选择所属环境" :loading="environmentLoading" style="width: 100%">
+			<el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
+		  </el-select>
+		</el-form-item>
+        <div class="dialog-tip">同步将严格使用云账号管理中配置的地域；请先在云账号管理维护至少一个地域。阿里云和腾讯云均支持多地域云主机同步。</div>
       </el-form>
       <template #footer>
         <el-button @click="cloudSyncDialogVisible = false">取消</el-button>
@@ -891,10 +917,6 @@ watch(
 
 .config-info small {
   color: #8190ad;
-}
-
-.asset-tag + .asset-tag {
-  margin-left: 4px;
 }
 
 .pager {

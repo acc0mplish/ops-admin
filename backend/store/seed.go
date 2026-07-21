@@ -125,6 +125,19 @@ func seedMenus(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	businessTopologyMenu, err := ensureMenu(db, model.Menu{
+		ParentID:   0,
+		MenuName:   "业务拓扑图",
+		MenuType:   2,
+		URL:        "/business-topology",
+		Value:      "console:business-topology",
+		MenuStatus: 1,
+		Sort:       0,
+		Icon:       "Share",
+	})
+	if err != nil {
+		return err
+	}
 
 	logRoot, err := ensureMenu(db, model.Menu{
 		ParentID:   0,
@@ -174,6 +187,7 @@ func seedMenus(db *gorm.DB) error {
 	}
 
 	buttons := []model.Menu{
+		{ParentID: businessTopologyMenu.ID, MenuName: "查看业务拓扑", MenuType: 3, Value: "console:business-topology:view", MenuStatus: 1, Sort: 1},
 		{ParentID: adminMenu.ID, MenuName: "新增用户", MenuType: 3, Value: "system:admin:add", MenuStatus: 1, Sort: 1},
 		{ParentID: adminMenu.ID, MenuName: "编辑用户", MenuType: 3, Value: "system:admin:edit", MenuStatus: 1, Sort: 2},
 		{ParentID: adminMenu.ID, MenuName: "删除用户", MenuType: 3, Value: "system:admin:delete", MenuStatus: 1, Sort: 3},

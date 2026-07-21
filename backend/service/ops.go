@@ -165,7 +165,7 @@ func opsTargetSnapshot(hosts []model.AssetHost) string {
 	for _, host := range hosts {
 		items = append(items, map[string]any{
 			"id": host.ID, "hostName": host.HostName, "sshIp": host.SSHIP,
-			"environment": host.Environment, "tags": host.Tags,
+			"environment": host.Environment,
 		})
 	}
 	data, _ := json.Marshal(items)

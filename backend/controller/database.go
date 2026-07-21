@@ -30,6 +30,15 @@ func (ctl *Controller) GetAssetDatabaseInfo(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetAssetDatabaseMetrics(c *gin.Context) {
+	data, err := ctl.service.GetAssetDatabaseMetrics(uint(mustAtoi(c.Query("id"))), c.DefaultQuery("range", "1h"), c.Query("start"), c.Query("end"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) CreateAssetDatabase(c *gin.Context) {
 	var payload service.AssetDatabasePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

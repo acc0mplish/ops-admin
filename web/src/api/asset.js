@@ -13,6 +13,7 @@ export const queryAssetServiceWorkloadLogs = (params) => http.get('/api/v1/asset
 export const queryAssetChangeLogs = (params) => http.get('/api/v1/asset/change-log/list', { params })
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })
 export const assetHostInfo = (id) => http.get('/api/v1/asset/host/info', { params: { id } })
+export const queryAssetHostMetrics = (params) => http.get('/api/v1/asset/host/metrics', { params })
 export const downloadAssetHostTemplate = () => http.get('/api/v1/asset/host/template', { responseType: 'blob' })
 export const addAssetHost = (data) => http.post('/api/v1/asset/host/add', data)
 export const importAssetHosts = (data) =>
@@ -23,7 +24,8 @@ export const updateAssetHost = (data) => http.put('/api/v1/asset/host/update', d
 export const syncAssetHostsFromCloud = (data) => http.post('/api/v1/asset/host/cloudSync', data)
 export const syncAssetHost = (id) => http.post('/api/v1/asset/host/sync', { id })
 export const deleteAssetHost = (id) => http.delete('/api/v1/asset/host/delete', { data: { id } })
-export const batchSyncAssetHosts = (ids) => http.post('/api/v1/asset/host/batch/sync', { ids })
+// SSH connectivity and host-information collection can exceed the global 15-second timeout.
+export const batchSyncAssetHosts = (ids) => http.post('/api/v1/asset/host/batch/sync', { ids }, { timeout: 60000 })
 export const batchDeleteAssetHosts = (ids) => http.delete('/api/v1/asset/host/batch/delete', { data: { ids } })
 export const batchReplaceAssetHostCredential = (data) => http.put('/api/v1/asset/host/batch/credential', data)
 export const removeAssetHostsFromGroup = (data) => http.delete('/api/v1/asset/host/group/remove', { data })
@@ -59,6 +61,7 @@ export const testAssetGateway = (id) => http.post('/api/v1/asset/gateway/test', 
 
 export const queryAssetDatabaseList = (params) => http.get('/api/v1/asset/database/list', { params })
 export const assetDatabaseInfo = (id) => http.get('/api/v1/asset/database/info', { params: { id } })
+export const queryAssetDatabaseMetrics = (params) => http.get('/api/v1/asset/database/metrics', { params })
 export const addAssetDatabase = (data) => http.post('/api/v1/asset/database/add', data)
 export const updateAssetDatabase = (data) => http.put('/api/v1/asset/database/update', data)
 export const deleteAssetDatabase = (id) => http.delete('/api/v1/asset/database/delete', { data: { id } })

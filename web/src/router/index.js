@@ -3,6 +3,7 @@
 import MainLayout from '../layouts/MainLayout.vue'
 import Login from '../views/Login.vue'
 import Dashboard from '../views/Dashboard.vue'
+import BusinessTopology from '../views/BusinessTopology.vue'
 import Profile from '../views/Profile.vue'
 import Admin from '../views/system/Admin.vue'
 import Role from '../views/system/Role.vue'
@@ -96,6 +97,7 @@ const routes = [
     redirect: '/dashboard',
     children: [
       { path: '/dashboard', component: Dashboard, meta: { title: '仪表盘', app: 'console', affix: true } },
+      { path: '/business-topology', component: BusinessTopology, meta: { title: '业务拓扑图', app: 'console', summary: '按环境展示应用的业务功能与已绑定的运行资源。' } },
       { path: '/profile', component: Profile, meta: { title: '个人信息', app: 'console' } },
       { path: '/system/admin', component: Admin, meta: { title: '用户信息', app: 'console' } },
       { path: '/system/role', component: Role, meta: { title: '角色信息', app: 'console' } },

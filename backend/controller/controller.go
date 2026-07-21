@@ -122,7 +122,7 @@ func (ctl *Controller) UploadSystemAsset(c *gin.Context) {
 func (ctl *Controller) DownloadAssetHostTemplate(c *gin.Context) {
 	file := excelize.NewFile()
 	sheet := file.GetSheetName(0)
-	headers := []string{"主机名称", "SSH地址", "SSH端口", "SSH用户", "认证凭据", "备注"}
+	headers := []string{"主机名称*", "SSH地址*", "SSH端口", "SSH用户*", "认证凭据*", "连接方式*", "访问网关", "所属环境*", "私网IP", "公网IP", "云厂商", "所在区域", "备注"}
 	for idx, header := range headers {
 		cell, _ := excelize.CoordinatesToCellName(idx+1, 1)
 		_ = file.SetCellValue(sheet, cell, header)
@@ -132,7 +132,24 @@ func (ctl *Controller) DownloadAssetHostTemplate(c *gin.Context) {
 	_ = file.SetCellValue(sheet, "C2", 22)
 	_ = file.SetCellValue(sheet, "D2", "root")
 	_ = file.SetCellValue(sheet, "E2", "default-ssh")
-	_ = file.SetCellValue(sheet, "F2", "excel导入示例")
+	_ = file.SetCellValue(sheet, "F2", "direct")
+	_ = file.SetCellValue(sheet, "H2", "production")
+	_ = file.SetCellValue(sheet, "I2", "192.168.101.159")
+	_ = file.SetCellValue(sheet, "K2", "自建")
+	_ = file.SetCellValue(sheet, "M2", "excel导入示例")
+	_ = file.SetColWidth(sheet, "A", "M", 18)
+	_ = file.SetColWidth(sheet, "M", "M", 30)
+	_ = file.SetPanes(sheet, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"})
+	_, err := file.NewSheet("填写说明")
+	if err == nil {
+		_ = file.SetCellValue("填写说明", "A1", "字段说明")
+		_ = file.SetCellValue("填写说明", "A2", "带 * 的列为必填；目标主机组由导入弹窗统一选择。")
+		_ = file.SetCellValue("填写说明", "A3", "连接方式仅支持 direct（直连）或 gateway（通过网关）；gateway 时必须填写已启用的访问网关名称。")
+		_ = file.SetCellValue("填写说明", "A4", "认证凭据和访问网关均按名称匹配，必须已在平台中创建且启用。")
+		_ = file.SetCellValue("填写说明", "A5", "所属环境填写环境编码，例如 production、test；SSH 地址建议填写内网 IP。")
+		_ = file.SetColWidth("填写说明", "A", "A", 100)
+		file.SetActiveSheet(0)
+	}
 	buffer, err := file.WriteToBuffer()
 	if err != nil {
 		httpx.Failed(c, 500, "failed to generate template")
@@ -713,7 +730,7 @@ func (ctl *Controller) CleanOperationLog(c *gin.Context) {
 func (ctl *Controller) GetAssetHostList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListAssetHosts(pageNum, pageSize, c.Query("keyword"), uint(mustAtoi(c.Query("groupId"))), c.Query("status"), c.Query("environment"), c.Query("tag"))
+	data, err := ctl.service.ListAssetHosts(pageNum, pageSize, c.Query("keyword"), uint(mustAtoi(c.Query("groupId"))), c.Query("status"), c.Query("environment"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
@@ -744,6 +761,15 @@ func (ctl *Controller) GetAssetHostInfo(c *gin.Context) {
 	data, err := ctl.service.GetAssetHost(uint(mustAtoi(c.Query("id"))))
 	if err != nil {
 		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetAssetHostMetrics(c *gin.Context) {
+	data, err := ctl.service.GetAssetHostMetrics(uint(mustAtoi(c.Query("id"))), c.DefaultQuery("range", "1h"), c.Query("start"), c.Query("end"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
 		return
 	}
 	httpx.Success(c, data)
@@ -816,13 +842,17 @@ func (ctl *Controller) ImportAssetHosts(c *gin.Context) {
 		httpx.Failed(c, 400, "failed to read excel rows")
 		return
 	}
+	if len(rows) == 0 || len(rows[0]) < 8 {
+		httpx.Failed(c, 400, "Excel 模板格式已更新，请下载最新模板后导入")
+		return
+	}
 
 	importRows := make([]service.AssetHostImportRow, 0)
 	for index, row := range rows {
 		if index == 0 {
 			continue
 		}
-		if len(row) < 5 {
+		if len(row) < 8 {
 			continue
 		}
 		importRows = append(importRows, service.AssetHostImportRow{
@@ -831,7 +861,14 @@ func (ctl *Controller) ImportAssetHosts(c *gin.Context) {
 			SSHPort:        mustAtoi(strings.TrimSpace(row[2])),
 			SSHUser:        strings.TrimSpace(row[3]),
 			CredentialName: strings.TrimSpace(row[4]),
-			Description:    safeExcelCell(row, 5),
+			ConnectionMode: strings.TrimSpace(row[5]),
+			GatewayName:    safeExcelCell(row, 6),
+			Environment:    safeExcelCell(row, 7),
+			PrivateIP:      safeExcelCell(row, 8),
+			PublicIP:       safeExcelCell(row, 9),
+			Provider:       safeExcelCell(row, 10),
+			Region:         safeExcelCell(row, 11),
+			Description:    safeExcelCell(row, 12),
 		})
 	}
 

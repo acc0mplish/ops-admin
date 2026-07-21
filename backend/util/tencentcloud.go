@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
@@ -32,32 +33,29 @@ func NewTencentCloudService(accessKey, accessSecret string) *TencentCloudService
 	}
 }
 
-func (s *TencentCloudService) GetInstances() ([]TencentInstanceInfo, error) {
+func (s *TencentCloudService) GetInstances(regions []string) ([]TencentInstanceInfo, error) {
+	if len(regions) == 0 {
+		return nil, fmt.Errorf("at least one Tencent Cloud region is required")
+	}
 	credential := common.NewCredential(s.AccessKey, s.AccessSecret)
 	clientProfile := profile.NewClientProfile()
 	clientProfile.HttpProfile.Endpoint = "cvm.tencentcloudapi.com"
 
-	regionClient, err := cvm.NewClient(credential, "ap-guangzhou", clientProfile)
-	if err != nil {
-		return nil, fmt.Errorf("create tencent region client failed: %w", err)
-	}
-	regionResponse, err := regionClient.DescribeRegions(cvm.NewDescribeRegionsRequest())
-	if err != nil {
-		return nil, fmt.Errorf("describe tencent regions failed: %w", err)
-	}
-
 	var allInstances []TencentInstanceInfo
-	for _, regionInfo := range regionResponse.Response.RegionSet {
-		if regionInfo.Region == nil {
+	var failures []string
+	for _, configuredRegion := range regions {
+		regionName := strings.TrimSpace(configuredRegion)
+		if regionName == "" {
 			continue
 		}
-		regionName := *regionInfo.Region
 		client, err := cvm.NewClient(credential, regionName, clientProfile)
 		if err != nil {
+			failures = append(failures, regionName+": "+err.Error())
 			continue
 		}
 		response, err := client.DescribeInstances(cvm.NewDescribeInstancesRequest())
 		if err != nil {
+			failures = append(failures, regionName+": "+err.Error())
 			continue
 		}
 		for _, instance := range response.Response.InstanceSet {
@@ -95,6 +93,9 @@ func (s *TencentCloudService) GetInstances() ([]TencentInstanceInfo, error) {
 			}
 			allInstances = append(allInstances, item)
 		}
+	}
+	if len(allInstances) == 0 && len(failures) > 0 {
+		return nil, fmt.Errorf("Tencent Cloud instance query failed: %s", strings.Join(failures, "; "))
 	}
 	return allInstances, nil
 }

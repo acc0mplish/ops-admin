@@ -76,11 +76,14 @@ func (AssetCredential) TableName() string {
 }
 
 type AssetCloudAccount struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	Name        string    `json:"name" gorm:"size:128;not null"`
-	Provider    string    `json:"provider" gorm:"size:64;not null;index"`
-	AccessKey   string    `json:"accessKey" gorm:"size:255"`
-	SecretKey   string    `json:"secretKey,omitempty" gorm:"size:512"`
+	ID        uint   `json:"id" gorm:"primaryKey"`
+	Name      string `json:"name" gorm:"size:128;not null"`
+	Provider  string `json:"provider" gorm:"size:64;not null;index"`
+	AccessKey string `json:"accessKey" gorm:"size:255"`
+	SecretKey string `json:"secretKey,omitempty" gorm:"size:512"`
+	// Regions is the preferred multi-region configuration for host synchronization.
+	// Region is kept for existing records and older clients.
+	Regions     []string  `json:"regions" gorm:"serializer:json;type:text"`
 	Region      string    `json:"region" gorm:"size:128"`
 	Status      int       `json:"status" gorm:"default:1;not null"`
 	Description string    `json:"description" gorm:"size:255"`
@@ -118,13 +121,14 @@ func (AssetGateway) TableName() string {
 }
 
 type AssetHost struct {
-	ID             uint              `json:"id" gorm:"primaryKey"`
-	HostName       string            `json:"hostName" gorm:"size:128;not null;index"`
-	Alias          string            `json:"alias" gorm:"size:128"`
-	GroupID        uint              `json:"groupId" gorm:"index"`
-	Group          AssetHostGroup    `json:"group" gorm:"foreignKey:GroupID"`
-	HostGroups     []AssetHostGroup  `json:"hostGroups" gorm:"many2many:asset_host_group_rel;joinForeignKey:HostID;joinReferences:GroupID"`
-	CredentialID   uint              `json:"credentialId" gorm:"index"`
+	ID         uint             `json:"id" gorm:"primaryKey"`
+	HostName   string           `json:"hostName" gorm:"size:128;not null;index"`
+	Alias      string           `json:"alias" gorm:"size:128"`
+	GroupID    uint             `json:"groupId" gorm:"index"`
+	Group      AssetHostGroup   `json:"group" gorm:"foreignKey:GroupID"`
+	HostGroups []AssetHostGroup `json:"hostGroups" gorm:"many2many:asset_host_group_rel;joinForeignKey:HostID;joinReferences:GroupID"`
+	// CredentialID is optional: cloud discovery can register a host before SSH credentials are configured.
+	CredentialID   *uint             `json:"credentialId" gorm:"index"`
 	Credential     AssetCredential   `json:"credential" gorm:"foreignKey:CredentialID"`
 	ConnectionMode string            `json:"connectionMode" gorm:"size:32;default:direct;index"`
 	GatewayID      *uint             `json:"gatewayId" gorm:"index"`
@@ -142,21 +146,22 @@ type AssetHost struct {
 	Memory         string            `json:"memory" gorm:"size:64"`
 	Disk           string            `json:"disk" gorm:"size:64"`
 	Environment    string            `json:"environment" gorm:"size:64;index"`
-	Tags           []string          `json:"tags" gorm:"serializer:json;type:text"`
-	Provider       string            `json:"provider" gorm:"size:64"`
-	Region         string            `json:"region" gorm:"size:128"`
-	InstanceID     string            `json:"instanceId" gorm:"size:128;index"`
-	Status         int               `json:"status" gorm:"default:1;not null"`
-	AliveStatus    int               `json:"aliveStatus" gorm:"default:2;not null"`
-	AuthStatus     int               `json:"authStatus" gorm:"default:2;not null"`
-	Description    string            `json:"description" gorm:"size:255"`
-	LastCheckTime  *time.Time        `json:"lastCheckTime"`
-	CPUUsage       string            `json:"cpuUsage" gorm:"-"`
-	MemoryUsage    string            `json:"memoryUsage" gorm:"-"`
-	DiskUsage      string            `json:"diskUsage" gorm:"-"`
-	MetricsStatus  string            `json:"metricsStatus" gorm:"-"`
-	CreatedAt      time.Time         `json:"createTime"`
-	UpdatedAt      time.Time         `json:"updateTime"`
+	// Kept only for backwards-compatible database reads; host management no longer exposes tags.
+	Tags          []string   `json:"-" gorm:"serializer:json;type:text"`
+	Provider      string     `json:"provider" gorm:"size:64"`
+	Region        string     `json:"region" gorm:"size:128"`
+	InstanceID    string     `json:"instanceId" gorm:"size:128;index"`
+	Status        int        `json:"status" gorm:"default:1;not null"`
+	AliveStatus   int        `json:"aliveStatus" gorm:"default:2;not null"`
+	AuthStatus    int        `json:"authStatus" gorm:"default:2;not null"`
+	Description   string     `json:"description" gorm:"size:255"`
+	LastCheckTime *time.Time `json:"lastCheckTime"`
+	CPUUsage      string     `json:"cpuUsage" gorm:"-"`
+	MemoryUsage   string     `json:"memoryUsage" gorm:"-"`
+	DiskUsage     string     `json:"diskUsage" gorm:"-"`
+	MetricsStatus string     `json:"metricsStatus" gorm:"-"`
+	CreatedAt     time.Time  `json:"createTime"`
+	UpdatedAt     time.Time  `json:"updateTime"`
 }
 
 func (AssetHost) TableName() string {
@@ -180,6 +185,7 @@ type AssetDatabase struct {
 	Env            string       `json:"env" gorm:"size:64;index"`
 	Tags           []string     `json:"tags" gorm:"serializer:json;type:text"`
 	AccessMode     string       `json:"accessMode" gorm:"size:32;default:readwrite;index"`
+	MonitorEnabled bool         `json:"monitorEnabled" gorm:"default:false;not null"`
 	Status         int          `json:"status" gorm:"default:1;not null"`
 	ConnectStatus  int          `json:"connectStatus" gorm:"default:0;not null"`
 	Description    string       `json:"description" gorm:"size:255"`
@@ -187,6 +193,18 @@ type AssetDatabase struct {
 	CreatedAt      time.Time    `json:"createTime"`
 	UpdatedAt      time.Time    `json:"updateTime"`
 }
+
+// AssetDatabaseMetricSnapshot stores samples collected by the database
+// dashboard itself. It deliberately does not depend on an external metrics
+// system: each enabled dashboard records a lightweight native database sample.
+type AssetDatabaseMetricSnapshot struct {
+	ID         uint               `json:"id" gorm:"primaryKey"`
+	DatabaseID uint               `json:"databaseId" gorm:"not null;index:idx_db_metric_time"`
+	Metrics    map[string]float64 `json:"metrics" gorm:"serializer:json;type:text"`
+	CreatedAt  time.Time          `json:"createTime" gorm:"index:idx_db_metric_time"`
+}
+
+func (AssetDatabaseMetricSnapshot) TableName() string { return "asset_database_metric_snapshot" }
 
 func (AssetDatabase) TableName() string {
 	return "asset_database"

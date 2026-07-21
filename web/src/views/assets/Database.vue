@@ -30,8 +30,7 @@ const query = reactive({
   keyword: '',
   dbType: '',
   status: '',
-  env: '',
-  tag: ''
+  env: ''
 })
 
 const form = reactive({
@@ -48,7 +47,7 @@ const form = reactive({
   charset: 'utf8mb4',
   env: 'test',
   accessMode: 'readwrite',
-  tags: [],
+  monitorEnabled: false,
   status: 1,
   description: ''
 })
@@ -68,7 +67,7 @@ function resetForm() {
     charset: 'utf8mb4',
     env: 'test',
     accessMode: 'readwrite',
-    tags: [],
+    monitorEnabled: false,
     status: 1,
     description: ''
   })
@@ -129,7 +128,7 @@ function openCreate() {
 async function openEdit(row) {
   isEdit.value = true
   const data = await assetDatabaseInfo(row.id)
-  Object.assign(form, data, { password: '', tags: data.tags || [] })
+  Object.assign(form, data, { password: '' })
   dialogVisible.value = true
 }
 
@@ -218,9 +217,8 @@ onMounted(() => {
         <el-select v-model="query.env" clearable style="width: 160px" placeholder="全部环境" @change="loadData">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
-        <el-input v-model="query.tag" clearable placeholder="标签" style="width: 150px" @keyup.enter="loadData" />
         <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: '', status: '', env: '', tag: '' }); loadData()">重置</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: '', status: '', env: '' }); loadData()">重置</el-button>
       </div>
     </div>
 
@@ -245,12 +243,6 @@ onMounted(() => {
           <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="标签" min-width="160">
-        <template #default="{ row }">
-          <el-tag v-for="tag in row.tags || []" :key="tag" class="asset-tag" effect="plain">{{ tag }}</el-tag>
-          <span v-if="!row.tags?.length">-</span>
-        </template>
-      </el-table-column>
       <el-table-column label="连接地址" min-width="220">
         <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
       </el-table-column>
@@ -268,7 +260,6 @@ onMounted(() => {
           <el-tag :type="connectionStatusType(row)" effect="light">{{ connectionStatusText(row) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="最近检测" min-width="170"><template #default="{ row }">{{ formatDateTime(row.lastCheckTime) }}</template></el-table-column>
       <el-table-column prop="description" label="备注" min-width="180" />
       <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
@@ -321,11 +312,10 @@ onMounted(() => {
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="24">
-            <el-form-item label="资产标签">
-              <el-select v-model="form.tags" multiple filterable allow-create default-first-option style="width: 100%" placeholder="输入标签后回车，例如：核心、支付">
-                <el-option v-for="tag in form.tags" :key="tag" :label="tag" :value="tag" />
-              </el-select>
+          <el-col :span="12">
+            <el-form-item label="监控仪表盘">
+              <el-switch v-model="form.monitorEnabled" active-text="启用" inactive-text="关闭" />
+              <div class="form-tip">启用后，详情页会通过数据库原生查询采集运行指标。</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -396,8 +386,6 @@ onMounted(() => {
   gap: 18px;
 }
 
-.asset-tag { margin-right: 6px; }
-
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -427,4 +415,6 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
 }
+
+.form-tip { margin-top: 6px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.35; }
 </style>

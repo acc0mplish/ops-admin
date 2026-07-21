@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addAssetCloudAccount,
@@ -15,10 +15,23 @@ const isEdit = ref(false)
 const tableData = ref([])
 const total = ref(0)
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', provider: '' })
-const form = reactive({ id: undefined, name: '', provider: 'aliyun', accessKey: '', secretKey: '', region: '', status: 1, description: '' })
+const form = reactive({ id: undefined, name: '', provider: 'aliyun', accessKey: '', secretKey: '', regions: [], region: '', status: 1, description: '' })
+
+const regionOptions = computed(() => {
+  if (form.provider === 'tencent') return [
+    'ap-guangzhou', 'ap-shanghai', 'ap-beijing', 'ap-chengdu', 'ap-nanjing',
+    'ap-singapore', 'ap-tokyo', 'na-ashburn', 'na-siliconvalley', 'eu-frankfurt'
+  ]
+  if (form.provider === 'aliyun' || form.provider === 'alicloud') return [
+    'cn-guangzhou', 'cn-shenzhen', 'cn-hangzhou', 'cn-shanghai', 'cn-beijing',
+    'cn-chengdu', 'cn-hongkong', 'ap-southeast-1', 'ap-northeast-1',
+    'us-east-1', 'us-west-1', 'eu-central-1'
+  ]
+  return []
+})
 
 function resetForm() {
-  Object.assign(form, { id: undefined, name: '', provider: 'aliyun', accessKey: '', secretKey: '', region: '', status: 1, description: '' })
+  Object.assign(form, { id: undefined, name: '', provider: 'aliyun', accessKey: '', secretKey: '', regions: [], region: '', status: 1, description: '' })
 }
 
 async function loadData() {
@@ -41,11 +54,16 @@ function openCreate() {
 async function openEdit(row) {
   isEdit.value = true
   const data = await assetCloudAccountInfo(row.id)
-  Object.assign(form, data, { secretKey: '' })
+  Object.assign(form, data, { secretKey: '', regions: data.regions?.length ? data.regions : (data.region ? data.region.split(/[,，;；\s]+/).filter(Boolean) : []) })
   dialogVisible.value = true
 }
 
 async function submit() {
+  if (!form.regions.length) {
+    ElMessage.warning('请至少选择一个同步地域')
+    return
+  }
+  form.region = form.regions.join(',')
   if (isEdit.value) {
     await updateAssetCloudAccount(form)
     ElMessage.success('云账号已更新')
@@ -92,7 +110,14 @@ onMounted(loadData)
       <el-table-column prop="name" label="账号名称" min-width="180" />
       <el-table-column prop="provider" label="云厂商" width="120" />
       <el-table-column prop="accessKey" label="AccessKey" min-width="220" />
-      <el-table-column prop="region" label="默认区域" min-width="140" />
+      <el-table-column label="同步地域" min-width="220">
+        <template #default="{ row }">
+          <el-space wrap>
+            <el-tag v-for="region in (row.regions?.length ? row.regions : (row.region ? row.region.split(/[,，;；\s]+/).filter(Boolean) : []))" :key="region" size="small">{{ region }}</el-tag>
+            <span v-if="!row.regions?.length && !row.region">未配置</span>
+          </el-space>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'danger'">{{ row.status === 1 ? '正常' : '停用' }}</el-tag>
@@ -132,7 +157,21 @@ onMounted(loadData)
         </el-form-item>
         <el-form-item label="AccessKey"><el-input v-model="form.accessKey" /></el-form-item>
         <el-form-item label="SecretKey"><el-input v-model="form.secretKey" show-password :placeholder="isEdit ? '不填写则保持不变' : ''" /></el-form-item>
-        <el-form-item label="默认区域"><el-input v-model="form.region" placeholder="例如 cn-hangzhou" /></el-form-item>
+        <el-form-item label="同步地域">
+          <el-select
+            v-model="form.regions"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="可选择或输入多个地域，例如广州、上海、新加坡"
+            style="width: 100%"
+          >
+            <el-option v-for="region in regionOptions" :key="region" :label="region" :value="region" />
+          </el-select>
+          <div class="form-tip">必选。可配置多个地域；主机同步时仅查询这里配置的地域。</div>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">正常</el-radio>
@@ -148,3 +187,13 @@ onMounted(loadData)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.form-tip {
+  width: 100%;
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+</style>

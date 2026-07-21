@@ -151,6 +151,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/asset/overview", ctl.GetAssetOverview)
 		authGroup.GET("/asset/change-log/list", ctl.GetAssetChangeLogs)
 		authGroup.GET("/asset/host/info", ctl.GetAssetHostInfo)
+		authGroup.GET("/asset/host/metrics", ctl.GetAssetHostMetrics)
 		authGroup.GET("/asset/host/template", ctl.DownloadAssetHostTemplate)
 		authGroup.POST("/asset/host/add", ctl.CreateAssetHost)
 		authGroup.POST("/asset/host/import", ctl.ImportAssetHosts)
@@ -193,6 +194,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 		authGroup.GET("/asset/database/list", ctl.GetAssetDatabaseList)
 		authGroup.GET("/asset/database/info", ctl.GetAssetDatabaseInfo)
+		authGroup.GET("/asset/database/metrics", ctl.GetAssetDatabaseMetrics)
 		authGroup.POST("/asset/database/add", ctl.CreateAssetDatabase)
 		authGroup.PUT("/asset/database/update", ctl.UpdateAssetDatabase)
 		authGroup.DELETE("/asset/database/delete", ctl.DeleteAssetDatabase)

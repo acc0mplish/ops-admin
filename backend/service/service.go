@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -162,32 +163,31 @@ type SystemConfigPayload struct {
 }
 
 type AssetHostPayload struct {
-	ID             uint     `json:"id"`
-	HostName       string   `json:"hostName"`
-	Alias          string   `json:"alias"`
-	GroupID        uint     `json:"groupId"`
-	GroupIDs       []uint   `json:"groupIds"`
-	CredentialID   uint     `json:"credentialId"`
-	ConnectionMode string   `json:"connectionMode"`
-	GatewayID      uint     `json:"gatewayId"`
-	CloudAccountID uint     `json:"cloudAccountId"`
-	PrivateIP      string   `json:"privateIp"`
-	PublicIP       string   `json:"publicIp"`
-	SSHUser        string   `json:"sshUser"`
-	SSHIP          string   `json:"sshIp"`
-	SSHPort        int      `json:"sshPort"`
-	OS             string   `json:"os"`
-	Arch           string   `json:"arch"`
-	CPU            string   `json:"cpu"`
-	Memory         string   `json:"memory"`
-	Disk           string   `json:"disk"`
-	Environment    string   `json:"environment"`
-	Tags           []string `json:"tags"`
-	Provider       string   `json:"provider"`
-	Region         string   `json:"region"`
-	Status         int      `json:"status"`
-	Description    string   `json:"description"`
-	Operator       string   `json:"-"`
+	ID             uint   `json:"id"`
+	HostName       string `json:"hostName"`
+	Alias          string `json:"alias"`
+	GroupID        uint   `json:"groupId"`
+	GroupIDs       []uint `json:"groupIds"`
+	CredentialID   uint   `json:"credentialId"`
+	ConnectionMode string `json:"connectionMode"`
+	GatewayID      uint   `json:"gatewayId"`
+	CloudAccountID uint   `json:"cloudAccountId"`
+	PrivateIP      string `json:"privateIp"`
+	PublicIP       string `json:"publicIp"`
+	SSHUser        string `json:"sshUser"`
+	SSHIP          string `json:"sshIp"`
+	SSHPort        int    `json:"sshPort"`
+	OS             string `json:"os"`
+	Arch           string `json:"arch"`
+	CPU            string `json:"cpu"`
+	Memory         string `json:"memory"`
+	Disk           string `json:"disk"`
+	Environment    string `json:"environment"`
+	Provider       string `json:"provider"`
+	Region         string `json:"region"`
+	Status         int    `json:"status"`
+	Description    string `json:"description"`
+	Operator       string `json:"-"`
 }
 
 type AssetHostImportRow struct {
@@ -196,19 +196,31 @@ type AssetHostImportRow struct {
 	SSHPort        int    `json:"sshPort"`
 	SSHUser        string `json:"sshUser"`
 	CredentialName string `json:"credentialName"`
+	ConnectionMode string `json:"connectionMode"`
+	GatewayName    string `json:"gatewayName"`
+	Environment    string `json:"environment"`
+	PrivateIP      string `json:"privateIp"`
+	PublicIP       string `json:"publicIp"`
+	Provider       string `json:"provider"`
+	Region         string `json:"region"`
 	Description    string `json:"description"`
 }
 
 type AssetCloudSyncPayload struct {
-	GroupID            uint   `json:"groupId"`
-	Provider           string `json:"provider"`
-	Region             string `json:"region"`
-	CloudAccountID     uint   `json:"cloudAccountId"`
-	UseExistingAccount bool   `json:"useExistingAccount"`
-	AccessKey          string `json:"accessKey"`
-	SecretKey          string `json:"secretKey"`
-	AccountName        string `json:"accountName"`
-	SaveAccount        bool   `json:"saveAccount"`
+	GroupID            uint     `json:"groupId"`
+	Provider           string   `json:"provider"`
+	CredentialID       uint     `json:"credentialId"`
+	ConnectionMode     string   `json:"connectionMode"`
+	GatewayID          uint     `json:"gatewayId"`
+	Environment        string   `json:"environment"`
+	Regions            []string `json:"regions"`
+	Region             string   `json:"region"`
+	CloudAccountID     uint     `json:"cloudAccountId"`
+	UseExistingAccount bool     `json:"useExistingAccount"`
+	AccessKey          string   `json:"accessKey"`
+	SecretKey          string   `json:"secretKey"`
+	AccountName        string   `json:"accountName"`
+	SaveAccount        bool     `json:"saveAccount"`
 }
 
 type AssetHostGroupPayload struct {
@@ -234,14 +246,15 @@ type AssetCredentialPayload struct {
 }
 
 type AssetCloudAccountPayload struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	Provider    string `json:"provider"`
-	AccessKey   string `json:"accessKey"`
-	SecretKey   string `json:"secretKey"`
-	Region      string `json:"region"`
-	Status      int    `json:"status"`
-	Description string `json:"description"`
+	ID          uint     `json:"id"`
+	Name        string   `json:"name"`
+	Provider    string   `json:"provider"`
+	AccessKey   string   `json:"accessKey"`
+	SecretKey   string   `json:"secretKey"`
+	Regions     []string `json:"regions"`
+	Region      string   `json:"region"`
+	Status      int      `json:"status"`
+	Description string   `json:"description"`
 }
 
 type AssetDatabasePayload struct {
@@ -259,6 +272,7 @@ type AssetDatabasePayload struct {
 	Env            string   `json:"env"`
 	Tags           []string `json:"tags"`
 	AccessMode     string   `json:"accessMode"`
+	MonitorEnabled bool     `json:"monitorEnabled"`
 	Status         int      `json:"status"`
 	Description    string   `json:"description"`
 	Operator       string   `json:"-"`
@@ -964,7 +978,9 @@ func (s *Service) CleanOperationLogs() error {
 	return s.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.OperationLog{}).Error
 }
 
-func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID uint, status, environment, tag string) (map[string]any, error) {
+// The optional legacyTag argument keeps older callers compatible. Host tags are no
+// longer part of host management and the value is intentionally ignored.
+func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID uint, status, environment string, legacyTag ...string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -985,9 +1001,6 @@ func (s *Service) ListAssetHosts(pageNum, pageSize int, keyword string, groupID 
 	}
 	if environment != "" {
 		query = query.Where("environment = ?", normalizeEnvCode(environment))
-	}
-	if tag != "" {
-		query = query.Where("tags LIKE ?", "%\""+strings.TrimSpace(tag)+"\"%")
 	}
 	var total int64
 	if err := query.Session(&gorm.Session{}).Distinct("asset_host.id").Count(&total).Error; err != nil {
@@ -1063,6 +1076,7 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 		return nil, err
 	}
 
+	deadline := time.Now().Add(10 * time.Second)
 	now := time.Now()
 	updates := map[string]any{
 		"alive_status":    2,
@@ -1071,21 +1085,35 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	}
 
 	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
+	connectTimeout := remainingTimeout(deadline, 3*time.Second)
 	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address); err == nil {
+		if connectTimeout > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+			if conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address); err == nil {
+				_ = conn.Close()
+				cleanup()
+				updates["alive_status"] = 1
+			}
+			cancel()
+		}
+	} else if connectTimeout > 0 {
+		conn, err := net.DialTimeout("tcp", address, connectTimeout)
+		if err == nil {
 			_ = conn.Close()
-			cleanup()
 			updates["alive_status"] = 1
 		}
-		cancel()
-	} else if conn, err := net.DialTimeout("tcp", address, 3*time.Second); err == nil {
-		_ = conn.Close()
-		updates["alive_status"] = 1
 	}
 
-	client, err := s.newSSHClient(host)
+	sshTimeout := remainingTimeout(deadline, 5*time.Second)
+	if sshTimeout <= 0 {
+		_ = s.db.Model(&host).Updates(updates).Error
+		return s.GetAssetHost(id)
+	}
+	client, err := s.newSSHClientWithTimeout(host, sshTimeout)
 	if err != nil {
+		if time.Until(deadline) <= 0 {
+			updates["alive_status"] = 2
+		}
 		_ = s.db.Model(&host).Updates(updates).Error
 		return s.GetAssetHost(id)
 	}
@@ -1093,7 +1121,11 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	updates["auth_status"] = 1
 	updates["status"] = 1
 
-	if info := collectHostInfo(client); len(info) > 0 {
+	info, timedOut := collectHostInfo(client, deadline)
+	if timedOut || time.Until(deadline) <= 0 {
+		updates["alive_status"] = 2
+	}
+	if len(info) > 0 {
 		for key, value := range info {
 			if strings.TrimSpace(value) != "" {
 				updates[key] = value
@@ -1122,15 +1154,31 @@ func (s *Service) ImportAssetHosts(groupID uint, rows []AssetHostImportRow) (map
 		sshIP := Trimmed(row.SSHIP)
 		sshUser := Trimmed(row.SSHUser)
 		credentialName := Trimmed(row.CredentialName)
-		if hostName == "" || sshIP == "" || sshUser == "" || credentialName == "" {
+		environment := normalizeEnvCode(row.Environment)
+		connectionMode := normalizeConnectionMode(row.ConnectionMode)
+		if hostName == "" || sshIP == "" || sshUser == "" || credentialName == "" || environment == "" {
 			failed = append(failed, hostName+"(missing fields)")
 			continue
 		}
 
 		var credential model.AssetCredential
-		if err := s.db.Where("name = ?", credentialName).First(&credential).Error; err != nil {
+		if err := s.db.Where("name = ? AND status = ?", credentialName, 1).First(&credential).Error; err != nil {
 			failed = append(failed, hostName+"(credential not found)")
 			continue
+		}
+		var gatewayID *uint
+		if connectionMode == "gateway" {
+			gatewayName := Trimmed(row.GatewayName)
+			if gatewayName == "" {
+				failed = append(failed, hostName+"(gateway is required)")
+				continue
+			}
+			var gateway model.AssetGateway
+			if err := s.db.Where("name = ? AND status = ?", gatewayName, 1).First(&gateway).Error; err != nil {
+				failed = append(failed, hostName+"(gateway not found)")
+				continue
+			}
+			gatewayID = &gateway.ID
 		}
 
 		var existing model.AssetHost
@@ -1140,17 +1188,23 @@ func (s *Service) ImportAssetHosts(groupID uint, rows []AssetHostImportRow) (map
 		}
 
 		host := model.AssetHost{
-			HostName:     hostName,
-			GroupID:      groupID,
-			CredentialID: credential.ID,
-			SSHIP:        sshIP,
-			SSHUser:      sshUser,
-			SSHPort:      defaultSSHPort(row.SSHPort),
-			Status:       1,
-			AuthStatus:   2,
-			AliveStatus:  2,
-			Description:  Trimmed(row.Description),
-			Provider:     "自建",
+			HostName:       hostName,
+			GroupID:        groupID,
+			CredentialID:   optionalUint(credential.ID),
+			ConnectionMode: connectionMode,
+			GatewayID:      gatewayID,
+			SSHIP:          sshIP,
+			SSHUser:        sshUser,
+			SSHPort:        defaultSSHPort(row.SSHPort),
+			PrivateIP:      Trimmed(row.PrivateIP),
+			PublicIP:       Trimmed(row.PublicIP),
+			Environment:    environment,
+			Status:         1,
+			AuthStatus:     2,
+			AliveStatus:    2,
+			Description:    Trimmed(row.Description),
+			Provider:       firstNonEmpty(Trimmed(row.Provider), "自建"),
+			Region:         Trimmed(row.Region),
 		}
 		if err := s.db.Create(&host).Error; err != nil {
 			failed = append(failed, hostName+"(create failed)")
@@ -1173,10 +1227,37 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 	if payload.GroupID == 0 {
 		return nil, errors.New("groupId is required")
 	}
+	credentialID := optionalUint(payload.CredentialID)
+	if credentialID == nil {
+		return nil, errors.New("请选择认证凭据")
+	}
+	var credential model.AssetCredential
+	if err := s.db.Where("id = ? AND status = ?", *credentialID, 1).First(&credential).Error; err != nil {
+		return nil, errors.New("所选认证凭据不存在或已停用")
+	}
+	environment := normalizeEnvCode(payload.Environment)
+	if environment == "" {
+		return nil, errors.New("请选择所属环境")
+	}
+	connectionMode := normalizeConnectionMode(payload.ConnectionMode)
+	gatewayID := optionalGatewayID(connectionMode, payload.GatewayID)
+	if err := validateGatewaySelection(connectionMode, gatewayID); err != nil {
+		return nil, err
+	}
+	if gatewayID != nil {
+		var gateway model.AssetGateway
+		if err := s.db.Where("id = ? AND status = ?", *gatewayID, 1).First(&gateway).Error; err != nil {
+			return nil, errors.New("所选访问网关不存在或已停用")
+		}
+	}
+	if !payload.UseExistingAccount {
+		return nil, errors.New("cloud sync requires a configured cloud account with at least one region")
+	}
 
 	accessKey := Trimmed(payload.AccessKey)
 	secretKey := Trimmed(payload.SecretKey)
-	region := Trimmed(payload.Region)
+	regions := normalizeCloudRegions(payload.Regions, payload.Region)
+	region := strings.Join(regions, ",")
 	var accountID *uint
 
 	if payload.UseExistingAccount {
@@ -1187,28 +1268,11 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 		provider = strings.ToLower(Trimmed(account.Provider))
 		accessKey = Trimmed(account.AccessKey)
 		secretKey = Trimmed(account.SecretKey)
-		if region == "" {
-			region = Trimmed(account.Region)
+		if len(regions) == 0 {
+			regions = normalizeCloudRegions(account.Regions, account.Region)
+			region = strings.Join(regions, ",")
 		}
 		accountID = &account.ID
-	} else {
-		if accessKey == "" || secretKey == "" {
-			return nil, errors.New("accessKey and secretKey are required")
-		}
-		if payload.SaveAccount {
-			account := model.AssetCloudAccount{
-				Name:        firstNonEmpty(Trimmed(payload.AccountName), provider+"-sync"),
-				Provider:    provider,
-				AccessKey:   accessKey,
-				SecretKey:   secretKey,
-				Region:      region,
-				Status:      1,
-				Description: "created by cloud sync",
-			}
-			if err := s.db.Create(&account).Error; err == nil {
-				accountID = &account.ID
-			}
-		}
 	}
 
 	instances, err := fetchCloudInstances(provider, accessKey, secretKey, region)
@@ -1222,41 +1286,41 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 	added := 0
 	updated := 0
 	skipped := 0
+	addedHosts := make([]string, 0)
+	updatedHosts := make([]string, 0)
+	skippedHosts := make([]string, 0)
+	regionCounts := make(map[string]int)
 	for _, item := range instances {
-		sshIP := firstNonEmpty(item.PublicIP, item.PrivateIP)
+		regionCounts[firstNonEmpty(item.Region, "unknown")]++
+		// Cloud hosts should be managed on their VPC address first. A public address
+		// remains inventory metadata and is only a fallback when no private address exists.
+		sshIP := firstNonEmpty(item.PrivateIP, item.PublicIP)
 		if sshIP == "" {
 			skipped++
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, "unknown")+"：未返回公网或私网 IP")
 			continue
 		}
 
-		updates := map[string]any{
-			"host_name":        firstNonEmpty(item.HostName, item.InstanceID, sshIP),
-			"group_id":         payload.GroupID,
-			"private_ip":       item.PrivateIP,
-			"public_ip":        item.PublicIP,
-			"ssh_ip":           sshIP,
-			"ssh_user":         firstNonEmpty(item.SSHUser, "root"),
-			"ssh_port":         defaultSSHPort(item.SSHPort),
-			"os":               item.OS,
-			"cpu":              item.CPU,
-			"memory":           item.Memory,
-			"disk":             item.Disk,
-			"provider":         provider,
-			"region":           item.Region,
-			"instance_id":      item.InstanceID,
-			"status":           1,
-			"alive_status":     2,
-			"auth_status":      2,
-			"cloud_account_id": accountID,
-		}
-
 		var host model.AssetHost
-		err := s.db.Where("instance_id = ? AND instance_id <> ''", item.InstanceID).Or("ssh_ip = ?", sshIP).First(&host).Error
+		lookup := s.db.Model(&model.AssetHost{})
+		if accountID != nil && item.InstanceID != "" {
+			// A manually managed host may use the same IP. Only a record from the
+			// same cloud account with the same cloud instance ID is an idempotent match.
+			lookup = lookup.Where("cloud_account_id = ? AND instance_id = ?", *accountID, item.InstanceID)
+		} else if item.InstanceID != "" {
+			lookup = lookup.Where("provider = ? AND instance_id = ?", provider, item.InstanceID)
+		} else if accountID != nil {
+			lookup = lookup.Where("cloud_account_id = ? AND ssh_ip = ?", *accountID, sshIP)
+		} else {
+			lookup = lookup.Where("provider = ? AND ssh_ip = ?", provider, sshIP)
+		}
+		err := lookup.First(&host).Error
 		switch {
 		case err == nil:
-			if err := s.db.Model(&host).Updates(updates).Error; err == nil {
-				updated++
-			}
+			// Discovery must never overwrite an existing host. Cloud credentials,
+			// routing, environment and manually maintained host metadata stay intact.
+			skipped++
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+"：主机已存在，未覆盖")
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			newHost := model.AssetHost{
 				HostName:       firstNonEmpty(item.HostName, item.InstanceID, sshIP),
@@ -1274,25 +1338,38 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 				Region:         item.Region,
 				InstanceID:     item.InstanceID,
 				CloudAccountID: accountID,
+				CredentialID:   credentialID,
+				ConnectionMode: connectionMode,
+				GatewayID:      gatewayID,
+				Environment:    environment,
 				Status:         1,
 				AliveStatus:    2,
 				AuthStatus:     2,
 			}
-			if err := s.db.Create(&newHost).Error; err == nil {
+			if createErr := s.db.Create(&newHost).Error; createErr == nil {
 				_ = syncAssetHostGroups(s.db, newHost.ID, []uint{payload.GroupID}, payload.GroupID)
 				added++
+				addedHosts = append(addedHosts, newHost.HostName)
+			} else {
+				skipped++
+				skippedHosts = append(skippedHosts, newHost.HostName+"：新增失败："+createErr.Error())
 			}
 		default:
 			skipped++
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+"：查询已有主机失败")
 		}
 	}
 
 	return map[string]any{
-		"provider": provider,
-		"total":    len(instances),
-		"added":    added,
-		"updated":  updated,
-		"skipped":  skipped,
+		"provider":     provider,
+		"total":        len(instances),
+		"added":        added,
+		"addedHosts":   addedHosts,
+		"updated":      updated,
+		"updatedHosts": updatedHosts,
+		"skipped":      skipped,
+		"skippedHosts": skippedHosts,
+		"regionCounts": regionCounts,
 	}, nil
 }
 
@@ -1433,11 +1510,41 @@ func (s *Service) BatchSyncAssetHosts(ids []uint) (map[string]any, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("no host selected")
 	}
+	type result struct {
+		id  uint
+		err error
+	}
+	workerCount := len(ids)
+	if workerCount > 4 {
+		workerCount = 4
+	}
+	jobs := make(chan uint)
+	results := make(chan result, len(ids))
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range jobs {
+				_, err := s.SyncAssetHost(id)
+				results <- result{id: id, err: err}
+			}
+		}()
+	}
+	go func() {
+		for _, id := range ids {
+			jobs <- id
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+
 	successCount := 0
 	failed := make([]uint, 0)
-	for _, id := range ids {
-		if _, err := s.SyncAssetHost(id); err != nil {
-			failed = append(failed, id)
+	for item := range results {
+		if item.err != nil {
+			failed = append(failed, item.id)
 			continue
 		}
 		successCount++
@@ -1821,6 +1928,7 @@ func (s *Service) ListAssetCloudAccounts(pageNum, pageSize int, keyword string, 
 		return nil, err
 	}
 	for i := range list {
+		hydrateCloudAccountRegions(&list[i])
 		list[i].SecretKey = maskedSecret(list[i].SecretKey)
 	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
@@ -1830,6 +1938,7 @@ func (s *Service) ListAssetCloudAccountOptions() ([]model.AssetCloudAccount, err
 	var list []model.AssetCloudAccount
 	err := s.db.Where("status = ?", 1).Order("id desc").Find(&list).Error
 	for i := range list {
+		hydrateCloudAccountRegions(&list[i])
 		list[i].SecretKey = maskedSecret(list[i].SecretKey)
 	}
 	return list, err
@@ -1837,16 +1946,65 @@ func (s *Service) ListAssetCloudAccountOptions() ([]model.AssetCloudAccount, err
 
 func (s *Service) GetAssetCloudAccount(id uint) (*model.AssetCloudAccount, error) {
 	var item model.AssetCloudAccount
-	return &item, s.db.First(&item, id).Error
+	if err := s.db.First(&item, id).Error; err != nil {
+		return &item, err
+	}
+	hydrateCloudAccountRegions(&item)
+	return &item, nil
+}
+
+func normalizeCloudRegions(regions []string, legacy string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(regions)+1)
+	appendRegion := func(value string) {
+		for _, region := range strings.FieldsFunc(value, func(r rune) bool {
+			return r == ',' || r == '，' || r == ';' || r == '；' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+		}) {
+			region = strings.TrimSpace(region)
+			if region == "" {
+				continue
+			}
+			if _, exists := seen[region]; exists {
+				continue
+			}
+			seen[region] = struct{}{}
+			result = append(result, region)
+		}
+	}
+	for _, region := range regions {
+		appendRegion(region)
+	}
+	appendRegion(legacy)
+	return result
+}
+
+func cloudRegionsJSON(regions []string) string {
+	encoded, err := json.Marshal(regions)
+	if err != nil {
+		return "[]"
+	}
+	return string(encoded)
+}
+
+func hydrateCloudAccountRegions(account *model.AssetCloudAccount) {
+	account.Regions = normalizeCloudRegions(account.Regions, account.Region)
+	if account.Region == "" {
+		account.Region = strings.Join(account.Regions, ",")
+	}
 }
 
 func (s *Service) CreateAssetCloudAccount(payload AssetCloudAccountPayload) error {
+	regions := normalizeCloudRegions(payload.Regions, payload.Region)
+	if len(regions) == 0 {
+		return errors.New("at least one sync region is required")
+	}
 	item := model.AssetCloudAccount{
 		Name:        Trimmed(payload.Name),
 		Provider:    Trimmed(payload.Provider),
 		AccessKey:   Trimmed(payload.AccessKey),
 		SecretKey:   payload.SecretKey,
-		Region:      Trimmed(payload.Region),
+		Regions:     regions,
+		Region:      strings.Join(regions, ","),
 		Status:      payload.Status,
 		Description: Trimmed(payload.Description),
 	}
@@ -1857,11 +2015,16 @@ func (s *Service) CreateAssetCloudAccount(payload AssetCloudAccountPayload) erro
 }
 
 func (s *Service) UpdateAssetCloudAccount(payload AssetCloudAccountPayload) error {
+	regions := normalizeCloudRegions(payload.Regions, payload.Region)
+	if len(regions) == 0 {
+		return errors.New("at least one sync region is required")
+	}
 	updates := map[string]any{
 		"name":        Trimmed(payload.Name),
 		"provider":    Trimmed(payload.Provider),
 		"access_key":  Trimmed(payload.AccessKey),
-		"region":      Trimmed(payload.Region),
+		"regions":     cloudRegionsJSON(regions),
+		"region":      strings.Join(regions, ","),
 		"status":      payload.Status,
 		"description": Trimmed(payload.Description),
 	}
@@ -2201,7 +2364,7 @@ func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
 		HostName:       Trimmed(payload.HostName),
 		Alias:          Trimmed(payload.Alias),
 		GroupID:        firstGroupID(groupIDs),
-		CredentialID:   payload.CredentialID,
+		CredentialID:   optionalUint(payload.CredentialID),
 		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
 		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
 		CloudAccountID: optionalUint(payload.CloudAccountID),
@@ -2216,7 +2379,6 @@ func assetHostFromPayload(payload AssetHostPayload) model.AssetHost {
 		Memory:         Trimmed(payload.Memory),
 		Disk:           Trimmed(payload.Disk),
 		Environment:    normalizeEnvCode(payload.Environment),
-		Tags:           normalizeAssetTags(payload.Tags),
 		Provider:       Trimmed(payload.Provider),
 		Region:         Trimmed(payload.Region),
 		Status:         payload.Status,
@@ -2258,7 +2420,6 @@ func assetHostUpdates(payload AssetHostPayload) map[string]any {
 		"memory":           host.Memory,
 		"disk":             host.Disk,
 		"environment":      host.Environment,
-		"tags":             host.Tags,
 		"provider":         host.Provider,
 		"region":           host.Region,
 		"status":           host.Status,
@@ -2348,6 +2509,10 @@ func maskedSecret(value string) string {
 }
 
 func (s *Service) newSSHClient(host model.AssetHost) (*ssh.Client, error) {
+	return s.newSSHClientWithTimeout(host, 5*time.Second)
+}
+
+func (s *Service) newSSHClientWithTimeout(host model.AssetHost, timeout time.Duration) (*ssh.Client, error) {
 	if host.SSHIP == "" {
 		return nil, errors.New("主机未配置 SSH 地址")
 	}
@@ -2358,25 +2523,31 @@ func (s *Service) newSSHClient(host model.AssetHost) (*ssh.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	if timeout <= 0 {
+		return nil, errors.New("主机同步超时")
+	}
 	config := &ssh.ClientConfig{
 		User:            host.SSHUser,
 		Auth:            []ssh.AuthMethod{authMethod},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         5 * time.Second,
+		Timeout:         timeout,
 	}
 	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
 	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address)
 		cancel()
 		if err != nil {
 			return nil, err
 		}
+		_ = conn.SetDeadline(time.Now().Add(timeout))
 		clientConn, chans, reqs, err := ssh.NewClientConn(conn, address, config)
 		if err != nil {
+			_ = conn.Close()
 			cleanup()
 			return nil, err
 		}
+		_ = conn.SetDeadline(time.Time{})
 		client := ssh.NewClient(clientConn, chans, reqs)
 		go func() {
 			_ = clientConn.Wait()
@@ -2384,7 +2555,18 @@ func (s *Service) newSSHClient(host model.AssetHost) (*ssh.Client, error) {
 		}()
 		return client, nil
 	}
-	return ssh.Dial("tcp", address, config)
+	conn, err := net.DialTimeout("tcp", address, timeout)
+	if err != nil {
+		return nil, err
+	}
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	clientConn, chans, reqs, err := ssh.NewClientConn(conn, address, config)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	_ = conn.SetDeadline(time.Time{})
+	return ssh.NewClient(clientConn, chans, reqs), nil
 }
 
 func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, error) {
@@ -2409,7 +2591,18 @@ func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, err
 	}
 }
 
-func collectHostInfo(client *ssh.Client) map[string]string {
+func remainingTimeout(deadline time.Time, maximum time.Duration) time.Duration {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 0
+	}
+	if remaining < maximum {
+		return remaining
+	}
+	return maximum
+}
+
+func collectHostInfo(client *ssh.Client, deadline time.Time) (map[string]string, bool) {
 	result := map[string]string{}
 	commands := map[string]string{
 		"os":         ". /etc/os-release 2>/dev/null && printf '%s' \"$PRETTY_NAME\" || lsb_release -ds 2>/dev/null || uname -sr 2>/dev/null || true",
@@ -2421,26 +2614,52 @@ func collectHostInfo(client *ssh.Client) map[string]string {
 		"public_ip":  "curl -s --max-time 2 ifconfig.me 2>/dev/null || wget -qO- -T 2 ifconfig.me 2>/dev/null || true",
 	}
 	for field, command := range commands {
-		value := runSSHCommand(client, command)
+		timeout := remainingTimeout(deadline, 5*time.Second)
+		if timeout <= 0 {
+			return result, true
+		}
+		value, timedOut := runSSHCommandWithTimeout(client, command, timeout)
+		if timedOut {
+			return result, true
+		}
 		if field == "cpu" && value != "" {
 			value = value + "核"
 		}
 		result[field] = value
 	}
-	return result
+	return result, false
 }
 
 func runSSHCommand(client *ssh.Client, command string) string {
+	output, _ := runSSHCommandWithTimeout(client, command, 5*time.Second)
+	return output
+}
+
+func runSSHCommandWithTimeout(client *ssh.Client, command string, timeout time.Duration) (string, bool) {
 	session, err := client.NewSession()
 	if err != nil {
-		return ""
+		return "", false
 	}
 	defer session.Close()
-	output, err := session.CombinedOutput(command)
-	if err != nil {
-		return ""
+	type commandResult struct {
+		output []byte
+		err    error
 	}
-	return strings.TrimSpace(string(output))
+	done := make(chan commandResult, 1)
+	go func() {
+		output, runErr := session.CombinedOutput(command)
+		done <- commandResult{output: output, err: runErr}
+	}()
+	select {
+	case result := <-done:
+		if result.err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(string(result.output)), false
+	case <-time.After(timeout):
+		_ = session.Close()
+		return "", true
+	}
 }
 
 func lastField(value string) string {
@@ -2486,7 +2705,7 @@ func fetchCloudInstances(provider, accessKey, secretKey, region string) ([]cloud
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "tencent", "tencentcloud":
 		service := util.NewTencentCloudService(accessKey, secretKey)
-		instances, err := service.GetInstances()
+		instances, err := service.GetInstances(normalizeCloudRegions(nil, region))
 		if err != nil {
 			return nil, err
 		}
@@ -2508,7 +2727,7 @@ func fetchCloudInstances(provider, accessKey, secretKey, region string) ([]cloud
 		}
 		return result, nil
 	case "aliyun", "alicloud":
-		return nil, errors.New("aliyun sync is not wired in this module yet")
+		return fetchAliyunCloudInstances(accessKey, secretKey, region)
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider: %s", provider)
 	}

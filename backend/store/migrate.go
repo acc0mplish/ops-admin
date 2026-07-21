@@ -30,6 +30,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AssetService{},
 		&model.AssetServiceWorkload{},
 		&model.AssetDatabase{},
+		&model.AssetDatabaseMetricSnapshot{},
 		&model.AssetChangeLog{},
 		&model.DatabaseSQLHistory{},
 		&model.DatabaseTransferTask{},

@@ -5,6 +5,8 @@ import { ArrowLeft, Connection, EditPen, Monitor } from '@element-plus/icons-vue
 import { assetDatabaseInfo, assetHostInfo, queryAssetChangeLogs } from '../../api/asset'
 import { queryK8sClusterInfo } from '../../api/k8s'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
+import HostMetrics from './HostMetrics.vue'
+import DatabaseMetrics from './DatabaseMetrics.vue'
 
 const props = defineProps({ resourceType: { type: String, required: true } })
 const route = useRoute()
@@ -100,15 +102,18 @@ onMounted(loadData)
         <el-descriptions-item label="所属环境">{{ environmentName(config.env) }}</el-descriptions-item>
         <el-descriptions-item v-if="resourceType === 'host'" label="主机组">{{ groupNames }}</el-descriptions-item>
         <el-descriptions-item label="访问网关"><el-icon><Connection /></el-icon> {{ gatewayName }}</el-descriptions-item>
-        <el-descriptions-item label="最近检测">{{ formatDateTime(asset.lastCheckTime || asset.lastSyncAt) }}</el-descriptions-item>
+        <el-descriptions-item v-if="resourceType !== 'database'" label="最近检测">{{ formatDateTime(asset.lastCheckTime || asset.lastSyncAt) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateTime(asset.updateTime) }}</el-descriptions-item>
-        <el-descriptions-item label="标签" :span="3">
+        <el-descriptions-item v-if="resourceType === 'k8s'" label="标签" :span="3">
           <el-tag v-for="tag in asset.tags || []" :key="tag" class="asset-tag" effect="plain">{{ tag }}</el-tag>
           <span v-if="!asset.tags?.length">-</span>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="3">{{ asset.description || '-' }}</el-descriptions-item>
       </el-descriptions>
     </section>
+
+    <HostMetrics v-if="resourceType === 'host'" :host-id="Number(route.params.id)" />
+    <DatabaseMetrics v-if="resourceType === 'database'" :database-id="Number(route.params.id)" :enabled="Boolean(asset.monitorEnabled)" />
 
     <section class="detail-section">
       <div class="section-heading"><h3>最近变更</h3><span>记录关键资产操作，便于追溯</span></div>

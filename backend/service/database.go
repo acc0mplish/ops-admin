@@ -347,6 +347,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 		Env:            normalizeEnvCode(payload.Env),
 		Tags:           normalizeAssetTags(payload.Tags),
 		AccessMode:     normalizeDatabaseAccessMode(payload.AccessMode),
+		MonitorEnabled: payload.MonitorEnabled,
 		Status:         payload.Status,
 		Description:    Trimmed(payload.Description),
 	}
@@ -407,6 +408,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		"env":             normalizeEnvCode(payload.Env),
 		"tags":            normalizeAssetTags(payload.Tags),
 		"access_mode":     normalizeDatabaseAccessMode(payload.AccessMode),
+		"monitor_enabled": payload.MonitorEnabled,
 		"status":          payload.Status,
 		"description":     Trimmed(payload.Description),
 	}

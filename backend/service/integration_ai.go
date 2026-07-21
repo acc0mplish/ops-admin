@@ -1218,7 +1218,7 @@ func (s *Service) queryAIAssetHosts(args map[string]any) (map[string]any, error)
 			"id": host.ID, "name": host.HostName, "alias": host.Alias,
 			"privateIp": host.PrivateIP, "publicIp": host.PublicIP, "sshPort": host.SSHPort,
 			"os": host.OS, "arch": host.Arch, "cpu": host.CPU, "memory": host.Memory, "disk": host.Disk,
-			"environment": host.Environment, "tags": host.Tags, "groups": groupNames,
+			"environment": host.Environment, "groups": groupNames,
 			"enabled": host.Status == 1, "online": host.AliveStatus == 1, "lastCheckTime": host.LastCheckTime,
 		})
 	}

@@ -199,7 +199,7 @@ onMounted(async () => { await Promise.all([loadResourceOptions(), loadData()]) }
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="项目描述" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="description" label="业务功能" min-width="170" show-overflow-tooltip />
         <el-table-column prop="serviceType" label="服务类别" width="120">
           <template #default="{ row }">{{ row.serviceType || row.env || '-' }}</template>
         </el-table-column>
@@ -276,7 +276,7 @@ onMounted(async () => { await Promise.all([loadResourceOptions(), loadData()]) }
             <el-form-item label="工作目录"><el-input v-model="form.workspace" placeholder="可选，默认 uploads/apps/项目编码" /></el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="应用描述"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
+            <el-form-item label="业务功能"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="例如：提供用户登录、订单处理或游戏网关等业务能力；将展示在控制台业务拓扑图中" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="状态">

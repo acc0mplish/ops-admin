@@ -167,6 +167,17 @@ func TestAssetHostUsageMetricsProbe(t *testing.T) {
 	hosts, _ := data["list"].([]model.AssetHost)
 	for _, host := range hosts {
 		t.Logf("host=%s ip=%s metrics=%s cpu=%s memory=%s disk=%s", host.HostName, host.SSHIP, host.MetricsStatus, host.CPUUsage, host.MemoryUsage, host.DiskUsage)
+		if host.MetricsStatus != "available" {
+			continue
+		}
+		history, historyErr := (&Service{db: db}).GetAssetHostMetrics(host.ID, "1h", "", "")
+		if historyErr != nil {
+			t.Fatal(historyErr)
+		}
+		metrics, _ := history["metrics"].(map[string]any)
+		cpu, _ := metrics["cpu"].(map[string]any)
+		points, _ := cpu["points"].([]map[string]any)
+		t.Logf("host=%s range_status=%v cpu_points=%d query_errors=%v", host.HostName, history["status"], len(points), history["errors"])
 	}
 }
 
