@@ -79,6 +79,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.IntegrationAIMessage{},
 		&model.IntegrationAIToolConfig{},
 		&model.IntegrationAIToolAction{},
+		&model.IntegrationAIKnowledgeDocument{},
 		&model.IntegrationFinOpsAccount{},
 		&model.IntegrationFinOpsCostRecord{},
 		&model.IntegrationFinOpsRecommendation{},

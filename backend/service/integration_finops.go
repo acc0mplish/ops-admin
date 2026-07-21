@@ -711,9 +711,14 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, a
 		}
 		recommendations, err = s.generateFinOpsAIRecommendations(*aiModel, m, analysisData)
 		if err != nil {
-			return 0, "", err
+			// A model may occasionally ignore the JSON-only instruction. The local
+			// billing analysis is still valid, so return a deterministic report
+			// instead of failing the whole user request.
+			recommendations = defaultFinOpsRecommendations(m)
+			mode = "ai_fallback"
+		} else {
+			mode = "ai"
 		}
-		mode = "ai"
 	} else {
 		recommendations = defaultFinOpsRecommendations(m)
 	}
@@ -724,7 +729,7 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, a
 		rec.Title = finOpsRecommendationTitle(analysisScope, analysisMonth, mode)
 		// A recommendation is an account-and-billing-period analysis report, not a resource record.
 		rec.ResourceID = ""
-		if aiModel != nil {
+		if aiModel != nil && mode == "ai" {
 			rec.ModelName = aiModel.Name
 		}
 		if err := s.db.Create(&rec).Error; err != nil {
@@ -744,6 +749,8 @@ func finOpsRecommendationTitle(scope, analysisMonth, strategy string) string {
 	strategyName := "默认策略"
 	if strategy == "ai" {
 		strategyName = "AI 分析"
+	} else if strategy == "ai_fallback" {
+		strategyName = "AI 分析降级（默认策略）"
 	}
 	return fmt.Sprintf("%s｜%s｜%s优化建议", scope, analysisMonth, strategyName)
 }
@@ -803,81 +810,177 @@ func (s *Service) finOpsRecommendationAIModel(modelID uint) (*model.IntegrationA
 }
 
 func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIModel, values map[string]*finOpsRecommendationAggregate, analysisData map[string]any) ([]model.IntegrationFinOpsRecommendation, error) {
-	items := make([]map[string]any, 0, len(values))
-	for _, value := range values {
-		if value.Cost > 0 {
-			items = append(items, map[string]any{"accountId": value.AccountID, "provider": value.Provider, "resourceId": value.ResourceID, "resourceName": value.Name, "currentCost": value.Cost})
-		}
+	// Keep all numeric facts deterministic. AI is asked only for the narrative
+	// analysis, so a conversational model never needs to serialize cost data.
+	base := defaultFinOpsRecommendations(values)
+	if len(base) == 0 {
+		return nil, errors.New("没有可用于生成 AI 建议的费用记录")
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i]["currentCost"].(float64) > items[j]["currentCost"].(float64) })
-	if len(items) > 30 {
-		items = items[:30]
-	}
-	contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData, "costItems": items})
-	prompt := "根据以下云费用分析工具结果生成不超过 20 条可执行优化建议。工具结果只来自本地已同步账单数据库，绝不代表实时云端数据。必须覆盖：空闲资源、低利用率资源、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。账单没有实时监控指标时，明确说明需要核查而不得断言资源闲置。仅输出 JSON，格式为 {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。不得编造资源；saving 必须非负且不超过 currentCost。数据：" + string(contextJSON)
-	response, err := s.callOpenAICompatible(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师，只输出符合要求的 JSON。"}, {"role": "user", "content": prompt}}, nil)
+	contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData})
+	prompt := "根据以下本地已同步云账单数据，生成简洁、可执行的中文 FinOps 优化分析。不要调用云接口，也不要编造资源、金额或监控指标。请使用 Markdown 标题，覆盖：执行摘要、空闲资源核查、低利用率资源核查、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。没有实时监控数据时，必须写“建议核查”。不要输出 JSON、代码块或表格；总长度不超过 900 个中文字符。数据：" + string(contextJSON)
+	response, err := s.callOpenAICompatible(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师。只输出简洁中文 Markdown 分析报告，不输出 JSON。"}, {"role": "user", "content": prompt}}, nil)
 	if err != nil {
 		return nil, err
 	}
-	var payload struct {
-		Recommendations []struct {
-			AccountID   uint    `json:"accountId"`
-			Provider    string  `json:"provider"`
-			ResourceID  string  `json:"resourceId"`
-			Priority    string  `json:"priority"`
-			Title       string  `json:"title"`
-			Description string  `json:"description"`
-			CurrentCost float64 `json:"currentCost"`
-			Saving      float64 `json:"saving"`
-		} `json:"recommendations"`
-	}
 	content := strings.TrimSpace(response.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(strings.TrimSpace(content), "```")
-	if err := json.Unmarshal([]byte(content), &payload); err != nil {
-		return nil, errors.New("AI 返回的建议格式无效")
+	if content == "" || hasUnsupportedAIToolProtocol(content) {
+		return nil, errors.New("AI 未返回可展示的 FinOps 分析内容")
 	}
-	analysis := make([]model.IntegrationFinOpsRecommendation, 0, len(payload.Recommendations))
-	for _, item := range payload.Recommendations {
-		if item.AccountID == 0 || strings.TrimSpace(item.Title) == "" || item.CurrentCost < 0 {
-			continue
+	recommendation := base[0]
+	recommendation.Category = "ai_finops"
+	recommendation.Title = "本月云费用 AI 优化建议"
+	recommendation.Description = "## AI 分析结论\n" + truncateRunes(content, 12000)
+	return []model.IntegrationFinOpsRecommendation{recommendation}, nil
+
+	/*
+		items := make([]map[string]any, 0, len(values))
+		for _, value := range values {
+			if value.Cost > 0 {
+				items = append(items, map[string]any{"accountId": value.AccountID, "provider": value.Provider, "resourceId": value.ResourceID, "resourceName": value.Name, "currentCost": value.Cost})
+			}
 		}
-		if item.Saving < 0 {
-			item.Saving = 0
+		sort.Slice(items, func(i, j int) bool { return items[i]["currentCost"].(float64) > items[j]["currentCost"].(float64) })
+		if len(items) > 30 {
+			items = items[:30]
 		}
-		if item.Saving > item.CurrentCost {
-			item.Saving = item.CurrentCost
+		contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData, "costItems": items})
+		prompt := "根据以下云费用分析工具结果生成不超过 5 条可执行优化建议。工具结果只来自本地已同步账单数据库，绝不代表实时云端数据。必须覆盖：空闲资源、低利用率资源、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。账单没有实时监控指标时，明确说明需要核查而不得断言资源闲置。每条 description 不超过 80 个中文字符。只返回一个完整 JSON 对象：{\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。不要使用 Markdown 代码块、标题或任何 JSON 之外的文字。不得编造资源；saving 必须非负且不超过 currentCost。数据：" + string(contextJSON)
+		response, err := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师，只输出符合要求的 JSON。"}, {"role": "user", "content": prompt}})
+		if err != nil {
+			return nil, err
 		}
-		priority := item.Priority
-		if !map[string]bool{"P1": true, "P2": true, "P3": true}[priority] {
-			priority = "P2"
+		var payload struct {
+			Recommendations []struct {
+				AccountID   uint    `json:"accountId"`
+				Provider    string  `json:"provider"`
+				ResourceID  string  `json:"resourceId"`
+				Priority    string  `json:"priority"`
+				Title       string  `json:"title"`
+				Description string  `json:"description"`
+				CurrentCost float64 `json:"currentCost"`
+				Saving      float64 `json:"saving"`
+			} `json:"recommendations"`
 		}
-		analysis = append(analysis, model.IntegrationFinOpsRecommendation{AccountID: item.AccountID, Provider: strings.TrimSpace(item.Provider), Category: "ai_finops", Priority: priority, Title: strings.TrimSpace(item.Title), Description: strings.TrimSpace(item.Description), ResourceID: strings.TrimSpace(item.ResourceID), CurrentCost: item.CurrentCost, Saving: item.Saving, Status: "open"})
-		if len(analysis) >= 20 {
+		content, parseErr := extractFinOpsRecommendationJSON(response.Content)
+		if parseErr != nil {
+			repairPrompt := "将以下 FinOps 分析结果转换为一个完整 JSON 对象。只返回 JSON，不要 Markdown 或解释。格式必须是 {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。若原内容缺少字段，使用已知账号和成本的保守值，不得编造资源。原内容：\n" + truncateRunes(response.Content, 12000)
+			repaired, repairErr := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "你是严格的 JSON 修复器，只输出一个有效 JSON 对象。"}, {"role": "user", "content": repairPrompt}})
+			if repairErr == nil {
+				content, parseErr = extractFinOpsRecommendationJSON(repaired.Content)
+			}
+			if parseErr != nil {
+				return nil, parseErr
+			}
+		}
+		if err := json.Unmarshal([]byte(content), &payload); err != nil {
+			return nil, fmt.Errorf("AI 返回的建议 JSON 无法解析: %w", err)
+		}
+		fallbackAccountID, fallbackProvider := uint(0), "multi-cloud"
+		for _, value := range values {
+			if value.AccountID > 0 {
+				fallbackAccountID = value.AccountID
+				if strings.TrimSpace(value.Provider) != "" {
+					fallbackProvider = value.Provider
+				}
+				break
+			}
+		}
+		analysis := make([]model.IntegrationFinOpsRecommendation, 0, len(payload.Recommendations))
+		for _, item := range payload.Recommendations {
+			if item.AccountID == 0 {
+				item.AccountID = fallbackAccountID
+			}
+			if strings.TrimSpace(item.Provider) == "" {
+				item.Provider = fallbackProvider
+			}
+			if item.AccountID == 0 || strings.TrimSpace(item.Title) == "" || item.CurrentCost < 0 {
+				continue
+			}
+			if item.Saving < 0 {
+				item.Saving = 0
+			}
+			if item.Saving > item.CurrentCost {
+				item.Saving = item.CurrentCost
+			}
+			priority := item.Priority
+			if !map[string]bool{"P1": true, "P2": true, "P3": true}[priority] {
+				priority = "P2"
+			}
+			analysis = append(analysis, model.IntegrationFinOpsRecommendation{AccountID: item.AccountID, Provider: strings.TrimSpace(item.Provider), Category: "ai_finops", Priority: priority, Title: strings.TrimSpace(item.Title), Description: strings.TrimSpace(item.Description), ResourceID: strings.TrimSpace(item.ResourceID), CurrentCost: item.CurrentCost, Saving: item.Saving, Status: "open"})
+			if len(analysis) >= 20 {
+				break
+			}
+		}
+		if len(analysis) == 0 {
+			return nil, errors.New("AI 未生成有效的优化建议")
+		}
+		priority, total, saving := "P3", 0.0, 0.0
+		var description strings.Builder
+		description.WriteString("## 执行摘要\n以下为 AI 基于本月账单生成的综合优化建议：")
+		for index, item := range analysis {
+			total += item.CurrentCost
+			saving += item.Saving
+			if item.Priority == "P1" || (item.Priority == "P2" && priority == "P3") {
+				priority = item.Priority
+			}
+			description.WriteString(fmt.Sprintf("\n%d. %s：%s（当前成本 %.2f，预计节省 %.2f）", index+1, item.Title, item.Description, item.CurrentCost, item.Saving))
+		}
+		description.WriteString("\n\n## 空闲资源\n请优先验证停止但仍计费、无业务访问或无监控负载的资源。")
+		description.WriteString("\n\n## 低利用率资源\n结合 CPU、内存、IOPS、连接数等监控数据确认是否应降配。")
+		description.WriteString("\n\n## 计费方式优化\n评估稳定工作负载是否适合包年包月、节省计划或预留实例。")
+		description.WriteString("\n\n## 闲置磁盘/快照/IP\n清点未挂载磁盘、长期快照、未绑定 IP 和无后端服务的负载均衡。")
+		description.WriteString(fmt.Sprintf("\n\n## 预计可节省金额\n本报告覆盖成本 %.2f，AI 估算可节省金额 %.2f。", total, saving))
+		return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "ai_finops", Priority: priority, Title: "本月云费用 AI 优化建议", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}, nil
+	*/
+}
+
+// extractFinOpsRecommendationJSON accepts OpenAI-compatible models that wrap
+// their JSON in a Markdown fence or add a short preface/suffix. It deliberately
+// extracts one balanced JSON object instead of accepting arbitrary text.
+func extractFinOpsRecommendationJSON(content string) (string, error) {
+	content = strings.TrimSpace(strings.TrimPrefix(content, "\ufeff"))
+	for start := strings.IndexByte(content, '{'); start >= 0; {
+		depth := 0
+		inString := false
+		escaped := false
+		for index := start; index < len(content); index++ {
+			char := content[index]
+			if inString {
+				if escaped {
+					escaped = false
+					continue
+				}
+				if char == '\\' {
+					escaped = true
+				} else if char == '"' {
+					inString = false
+				}
+				continue
+			}
+			switch char {
+			case '"':
+				inString = true
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					candidate := content[start : index+1]
+					var document json.RawMessage
+					if json.Unmarshal([]byte(candidate), &document) == nil {
+						return candidate, nil
+					}
+					break
+				}
+			}
+		}
+		next := strings.IndexByte(content[start+1:], '{')
+		if next < 0 {
 			break
 		}
+		start += next + 1
 	}
-	if len(analysis) == 0 {
-		return nil, errors.New("AI 未生成有效的优化建议")
-	}
-	priority, total, saving := "P3", 0.0, 0.0
-	var description strings.Builder
-	description.WriteString("## 执行摘要\n以下为 AI 基于本月账单生成的综合优化建议：")
-	for index, item := range analysis {
-		total += item.CurrentCost
-		saving += item.Saving
-		if item.Priority == "P1" || (item.Priority == "P2" && priority == "P3") {
-			priority = item.Priority
-		}
-		description.WriteString(fmt.Sprintf("\n%d. %s：%s（当前成本 %.2f，预计节省 %.2f）", index+1, item.Title, item.Description, item.CurrentCost, item.Saving))
-	}
-	description.WriteString("\n\n## 空闲资源\n请优先验证停止但仍计费、无业务访问或无监控负载的资源。")
-	description.WriteString("\n\n## 低利用率资源\n结合 CPU、内存、IOPS、连接数等监控数据确认是否应降配。")
-	description.WriteString("\n\n## 计费方式优化\n评估稳定工作负载是否适合包年包月、节省计划或预留实例。")
-	description.WriteString("\n\n## 闲置磁盘/快照/IP\n清点未挂载磁盘、长期快照、未绑定 IP 和无后端服务的负载均衡。")
-	description.WriteString(fmt.Sprintf("\n\n## 预计可节省金额\n本报告覆盖成本 %.2f，AI 估算可节省金额 %.2f。", total, saving))
-	return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "ai_finops", Priority: priority, Title: "本月云费用 AI 优化建议", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}, nil
+	return "", errors.New("AI 未按约定返回完整 JSON，可能包含说明文字或因输出过长被截断")
 }
 
 func (s *Service) ListFinOpsRecommendations(status string, accountID uint, analysisMonth string) ([]model.IntegrationFinOpsRecommendation, error) {

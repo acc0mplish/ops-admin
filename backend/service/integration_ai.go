@@ -58,6 +58,15 @@ type IntegrationAIToolExecutePayload struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+type IntegrationAIKnowledgeDocumentPayload struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	FileName   string `json:"fileName"`
+	Content    string `json:"content"`
+	Status     int    `json:"status"`
+	SourceType string `json:"sourceType"`
+}
+
 type aiToolDefinition struct {
 	Key                 string
 	Name                string
@@ -69,6 +78,7 @@ type aiToolDefinition struct {
 }
 
 var integrationAIToolDefinitions = []aiToolDefinition{
+	{Key: "knowledge_base_search", Name: "知识库检索", Category: "知识库", Description: "仅检索知识库管理中已启用的本地 Markdown 文档，用于回答内部规范、运行手册和技术文档；不会访问外部文件或云服务。", Permission: "read", Parameters: knowledgeBaseToolSchema()},
 	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
 	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
 	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
@@ -119,6 +129,14 @@ func finOpsAnalysisToolSchema() map[string]any {
 	}, nil)
 }
 
+func knowledgeBaseToolSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"keyword":    stringProperty("需要检索的关键词或问题，例如：发布流程、Redis 故障处理"),
+		"documentId": integerProperty("可选，限定检索某篇知识库文档的 ID"),
+		"limit":      integerProperty("最多返回多少个匹配片段，范围 1 到 10，默认 5"),
+	}, []string{"keyword"})
+}
+
 func logQueryToolSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"datasourceId":   integerProperty("日志数据源 ID；留空则查询所有启用的 Elasticsearch 和 VictoriaLogs 数据源"),
@@ -144,6 +162,85 @@ func workloadActionSchema(withReplicas bool) map[string]any {
 		required = append(required, "replicas")
 	}
 	return objectSchema(properties, required)
+}
+
+func (s *Service) ListIntegrationAIKnowledgeDocuments(keyword string) ([]map[string]any, error) {
+	var documents []model.IntegrationAIKnowledgeDocument
+	query := s.db.Order("updated_at DESC, id DESC")
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("name LIKE ? OR file_name LIKE ?", like, like)
+	}
+	if err := query.Find(&documents).Error; err != nil {
+		return nil, err
+	}
+	result := make([]map[string]any, 0, len(documents))
+	for _, item := range documents {
+		result = append(result, map[string]any{
+			"id": item.ID, "name": item.Name, "fileName": item.FileName, "sourceType": item.SourceType,
+			"content": item.Content, "status": item.Status, "createTime": item.CreatedAt, "updateTime": item.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *Service) SaveIntegrationAIKnowledgeDocument(payload IntegrationAIKnowledgeDocumentPayload) (map[string]any, error) {
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Content = strings.TrimSpace(payload.Content)
+	if payload.Name == "" {
+		return nil, errors.New("知识库文档名称不能为空")
+	}
+	if payload.Content == "" {
+		return nil, errors.New("Markdown 内容不能为空")
+	}
+	if len([]rune(payload.Content)) > 500000 {
+		return nil, errors.New("Markdown 内容不能超过 50 万字符")
+	}
+	if payload.FileName == "" {
+		payload.FileName = payload.Name + ".md"
+	}
+	if !strings.EqualFold(filepathExt(payload.FileName), ".md") {
+		payload.FileName += ".md"
+	}
+	if payload.SourceType == "" {
+		payload.SourceType = "manual"
+	}
+	if payload.Status != 2 {
+		payload.Status = 1
+	}
+	item := model.IntegrationAIKnowledgeDocument{ID: payload.ID}
+	if payload.ID > 0 {
+		if err := s.db.First(&item, payload.ID).Error; err != nil {
+			return nil, errors.New("知识库文档不存在")
+		}
+	}
+	item.Name, item.FileName, item.Content, item.Status, item.SourceType = payload.Name, payload.FileName, payload.Content, payload.Status, payload.SourceType
+	var err error
+	if item.ID == 0 {
+		err = s.db.Create(&item).Error
+	} else {
+		err = s.db.Save(&item).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": item.ID, "name": item.Name, "fileName": item.FileName, "sourceType": item.SourceType, "status": item.Status, "updateTime": item.UpdatedAt}, nil
+}
+
+func (s *Service) DeleteIntegrationAIKnowledgeDocument(id uint) error {
+	if id == 0 {
+		return errors.New("知识库文档 ID 不能为空")
+	}
+	return s.db.Delete(&model.IntegrationAIKnowledgeDocument{}, id).Error
+}
+
+func filepathExt(name string) string {
+	idx := strings.LastIndex(name, ".")
+	if idx < 0 {
+		return ""
+	}
+	return name[idx:]
 }
 
 func (s *Service) ListIntegrationAIModels() ([]map[string]any, error) {
@@ -438,6 +535,8 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 	actions := make([]model.IntegrationAIToolAction, 0)
 	finOpsToolUsed := false
 	finOpsInstructionAdded := false
+	knowledgeBaseToolUsed := false
+	knowledgeBaseInstructionAdded := false
 	for round := 0; round < 3 && len(response.ToolCalls) > 0; round++ {
 		assistantCall := map[string]any{"role": "assistant", "content": response.Content, "tool_calls": response.RawToolCalls}
 		messages = append(messages, assistantCall)
@@ -468,6 +567,9 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 			if call.Name == "finops_cost_analysis" {
 				finOpsToolUsed = true
 			}
+			if call.Name == "knowledge_base_search" {
+				knowledgeBaseToolUsed = true
+			}
 			rawResult, _ := json.Marshal(toolResult)
 			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawResult)})
 		}
@@ -475,7 +577,18 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 			messages = append(messages, map[string]any{"role": "system", "content": finOpsChatResponseInstruction})
 			finOpsInstructionAdded = true
 		}
-		response, err = s.callOpenAICompatible(aiModel, messages, tools)
+		if knowledgeBaseToolUsed && !knowledgeBaseInstructionAdded {
+			messages = append(messages, map[string]any{"role": "system", "content": knowledgeBaseChatResponseInstruction})
+			knowledgeBaseInstructionAdded = true
+		}
+		// A knowledge-base lookup already returns the relevant local excerpt.  Do
+		// not let a tool-capable model repeatedly issue the same search instead of
+		// composing an answer from that excerpt.
+		nextTools := tools
+		if knowledgeBaseToolUsed {
+			nextTools = nil
+		}
+		response, err = s.callOpenAICompatible(aiModel, messages, nextTools)
 		if err != nil {
 			return nil, err
 		}
@@ -537,6 +650,8 @@ func sanitizeAIMessageContent(content string) string {
 
 const finOpsChatResponseInstruction = "云费用工具已返回结果。请严格使用简洁要点格式回答，不超过 8 行，不使用 Markdown 标题、表格、引用、代码块、漏斗图或长段落。普通费用问题格式：\n【账期｜账号】\n- 总费用：金额（如为当前月须注明截至日期）\n- 主要产品：仅列 Top 3，产品 + 金额 + 占比\n- 地域：一句结论\n- 关注项：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n当用户询问某产品的实例数量或每实例费用时：优先读取 resourceBreakdown，回答“实例数”和最多 5 个“实例名称/ID：费用”；若 resourceBreakdown.resourceCount 为 0，只能说明本地同步账单缺少可关联的资源 ID/名称及未关联金额，不能建议用户去云厂商控制台。不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
 
+const knowledgeBaseChatResponseInstruction = "知识库检索工具已返回本地 Markdown 片段。必须围绕用户问题重新归纳，不得把文档目录、标题或章节逐条复述，也不要以“根据知识库文档”开头。先用 1 至 2 句说明与提问最相关的结论，再按“平台定位 / 当前可直接使用的能力 / 推荐使用路径”组织，优先解释用户能获得什么价值、下一步能做什么。除非用户明确要求清单，否则最多列 5 个能力组；把相关模块合并为业务闭环，不要罗列所有菜单。明确区分“已实现/已具备”和“建议/规划”，不得把评审意见当作已实现功能。答案保持 6 至 10 行中文要点；只在用户要求来源或原文时才注明文档名或引用原文。"
+
 type openAIResponse struct {
 	Content      string
 	ToolCalls    []openAIToolCall
@@ -577,6 +692,17 @@ func parseDSMLToolCalls(content string) []openAIToolCall {
 }
 
 func (s *Service) callOpenAICompatible(item model.IntegrationAIModel, messages []map[string]any, tools []map[string]any) (*openAIResponse, error) {
+	return s.callOpenAICompatibleWithJSONMode(item, messages, tools, false)
+}
+
+// callOpenAICompatibleJSON requests JSON Object mode for model calls that must
+// be machine-parsed. The caller can decide how to degrade if a provider does
+// not support this OpenAI-compatible option.
+func (s *Service) callOpenAICompatibleJSON(item model.IntegrationAIModel, messages []map[string]any) (*openAIResponse, error) {
+	return s.callOpenAICompatibleWithJSONMode(item, messages, nil, true)
+}
+
+func (s *Service) callOpenAICompatibleWithJSONMode(item model.IntegrationAIModel, messages []map[string]any, tools []map[string]any, jsonMode bool) (*openAIResponse, error) {
 	endpoint := strings.TrimRight(item.BaseURL, "/")
 	if !strings.HasSuffix(endpoint, "/chat/completions") {
 		if !strings.HasSuffix(endpoint, "/v1") {
@@ -592,6 +718,9 @@ func (s *Service) callOpenAICompatible(item model.IntegrationAIModel, messages [
 	if len(tools) > 0 {
 		body["tools"] = tools
 		body["tool_choice"] = "auto"
+	}
+	if jsonMode {
+		body["response_format"] = map[string]string{"type": "json_object"}
 	}
 	raw, _ := json.Marshal(body)
 	request, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(raw))
@@ -750,6 +879,8 @@ func (s *Service) ExecuteIntegrationAITool(payload IntegrationAIToolExecutePaylo
 
 func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) (any, error) {
 	switch toolKey {
+	case "knowledge_base_search":
+		return s.queryAIKnowledgeBase(args)
 	case "prometheus_query":
 		query := strings.TrimSpace(anyString(args["query"]))
 		if query == "" {
@@ -790,6 +921,74 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 	default:
 		return nil, errors.New("该工具只能通过待确认动作执行")
 	}
+}
+
+func (s *Service) queryAIKnowledgeBase(args map[string]any) (map[string]any, error) {
+	keyword := strings.TrimSpace(anyString(args["keyword"]))
+	if keyword == "" {
+		return nil, errors.New("知识库检索关键词不能为空")
+	}
+	limit := int(anyUint(args["limit"]))
+	if limit == 0 {
+		limit = 5
+	}
+	if limit < 1 || limit > 10 {
+		return nil, errors.New("limit 必须在 1 到 10 之间")
+	}
+	query := s.db.Where("status = ?", 1)
+	if documentID := anyUint(args["documentId"]); documentID > 0 {
+		query = query.Where("id = ?", documentID)
+	}
+	like := "%" + keyword + "%"
+	var documents []model.IntegrationAIKnowledgeDocument
+	if err := query.Where("name LIKE ? OR content LIKE ?", like, like).Order("updated_at DESC, id DESC").Limit(limit).Find(&documents).Error; err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(documents))
+	for _, item := range documents {
+		items = append(items, map[string]any{
+			"documentId": item.ID, "name": item.Name, "fileName": item.FileName,
+			"excerpt": knowledgeExcerpt(item.Content, keyword, 560), "updatedAt": item.UpdatedAt,
+		})
+	}
+	return map[string]any{"source": "local_knowledge_base", "keyword": keyword, "total": len(items), "items": items}, nil
+}
+
+func knowledgeExcerpt(content, keyword string, maxRunes int) string {
+	runes := []rune(content)
+	needle := []rune(strings.ToLower(keyword))
+	start := 0
+	if len(needle) > 0 {
+		lower := []rune(strings.ToLower(content))
+		for i := 0; i+len(needle) <= len(lower); i++ {
+			matched := true
+			for j := range needle {
+				if lower[i+j] != needle[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				start = i - 120
+				if start < 0 {
+					start = 0
+				}
+				break
+			}
+		}
+	}
+	end := start + maxRunes
+	if end > len(runes) {
+		end = len(runes)
+	}
+	result := strings.TrimSpace(string(runes[start:end]))
+	if start > 0 {
+		result = "…" + result
+	}
+	if end < len(runes) {
+		result += "…"
+	}
+	return result
 }
 
 // queryAIFinOpsAnalysis only reads the local FinOps tables populated by the

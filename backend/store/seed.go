@@ -262,6 +262,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 			name: "资产管理", url: "/assets", value: "assets", icon: "Box",
 			children: []menuSeed{
 				{"资产概览", "/assets/overview", "assets:overview", "DataBoard"},
+				{"环境模型", "/assets/environments", "ops:environment:list", "SetUp"},
 				{"终端登录", "/assets/terminal", "assets:terminal", "Platform"},
 				{"主机管理", "/assets/server/hosts", "assets:host:list", "Monitor"},
 				{"主机组管理", "/assets/server/groups", "assets:hostgroup:list", "FolderOpened"},
@@ -288,7 +289,6 @@ func seedApplicationMenus(db *gorm.DB) error {
 			name: "标准运维", url: "/ops", value: "ops", icon: "Operation",
 			children: []menuSeed{
 				{"脚本库", "/ops/scripts/library", "ops:script:list", "Document"},
-				{"环境模型", "/ops/environments", "ops:environment:list", "SetUp"},
 				{"命令执行", "/ops/quick-exec/command", "ops:quickexec:command", "CaretRight"},
 				{"脚本执行", "/ops/quick-exec/script", "ops:quickexec:script", "EditPen"},
 				{"文件分发", "/ops/quick-exec/file-dispatch", "ops:quickexec:file", "Files"},

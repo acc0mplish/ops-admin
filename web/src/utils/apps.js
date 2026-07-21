@@ -24,6 +24,13 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '环境模型',
+        titleKey: 'opsEnvironments',
+        path: '/assets/environments',
+        icon: 'SetUp',
+        children: []
+      },
+      {
         title: '终端登录',
         path: '/assets/terminal',
         icon: 'Platform',
@@ -206,13 +213,6 @@ export const appDefinitions = [
         titleKey: 'opsScriptLibrary',
         path: '/ops/scripts/library',
         icon: 'Document',
-        children: []
-      },
-      {
-        title: '环境模型',
-        titleKey: 'opsEnvironments',
-        path: '/ops/environments',
-        icon: 'SetUp',
         children: []
       },
       {
@@ -445,6 +445,7 @@ export const appDefinitions = [
           { title: '智能对话', titleKey: 'integrationAIChat', path: '/integration/ai/chat', icon: 'ChatDotRound', children: [] },
           { title: '会话管理', titleKey: 'integrationAIConversations', path: '/integration/ai/conversations', icon: 'Clock', children: [] },
           { title: '模型管理', titleKey: 'integrationAIModels', path: '/integration/ai/models', icon: 'Cpu', children: [] },
+          { title: '知识库管理', titleKey: 'integrationAIKnowledgeBase', path: '/integration/ai/knowledge-base', icon: 'Document', children: [] },
           { title: '工具集', titleKey: 'integrationAITools', path: '/integration/ai/tools', icon: 'Operation', children: [] }
         ]
       },

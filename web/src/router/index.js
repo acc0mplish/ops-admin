@@ -72,6 +72,7 @@ import AIAssistantChat from '../views/integration/AIAssistantChat.vue'
 import AIConversations from '../views/integration/AIConversations.vue'
 import AIModels from '../views/integration/AIModels.vue'
 import AITools from '../views/integration/AITools.vue'
+import AIKnowledgeBase from '../views/integration/AIKnowledgeBase.vue'
 import FinOpsDashboard from '../views/integration/finops/FinOpsDashboard.vue'
 import FinOpsAccounts from '../views/integration/finops/FinOpsAccounts.vue'
 import FinOpsBreakdown from '../views/integration/finops/FinOpsBreakdown.vue'
@@ -117,6 +118,7 @@ const routes = [
       { path: '/integration/ai/chat', component: AIAssistantChat, meta: { title: '智能对话', app: 'integration', summary: '通过自然语言查询监控与 Kubernetes，并安全执行运维操作。' } },
       { path: '/integration/ai/conversations', component: AIConversations, meta: { title: '会话管理', app: 'integration', summary: '管理 AI 助手的多轮会话、上下文和历史记录。' } },
       { path: '/integration/ai/models', component: AIModels, meta: { title: '模型管理', app: 'integration', summary: '配置 OpenAI 兼容模型 API 和默认生成参数。' } },
+      { path: '/integration/ai/knowledge-base', component: AIKnowledgeBase, meta: { title: '知识库管理', app: 'integration', summary: '维护供 AI 助手检索的本地 Markdown 知识文档。' } },
       { path: '/integration/ai/tools', component: AITools, meta: { title: '工具集', app: 'integration', summary: '管理 PromQL、Grafana 与 Kubernetes AI 工具。' } },
       { path: '/integration/finops/dashboard', component: FinOpsDashboard, meta: { title: '费用看板', app: 'integration', summary: '集中查看多云成本总览、趋势和费用结构。' } },
       { path: '/integration/finops/accounts', component: FinOpsAccounts, meta: { title: '云账号', app: 'integration', summary: '管理 AWS、Azure、GCP、阿里云和腾讯云账单账号。' } },
@@ -240,7 +242,8 @@ const routes = [
 
       { path: '/ops', redirect: '/ops/quick-exec/command' },
       { path: '/ops/jobs', redirect: '/ops/jobs/list' },
-      { path: '/ops/environments', component: OpsEnvironment, meta: { title: '环境模型', app: 'ops' } },
+      { path: '/ops/environments', redirect: '/assets/environments' },
+      { path: '/assets/environments', component: OpsEnvironment, meta: { title: '环境模型', app: 'assets' } },
       { path: '/ops/overview', redirect: '/ops/quick-exec/command' },
       { path: '/ops/scripts', redirect: '/ops/scripts/library' },
       { path: '/ops/history', redirect: '/ops/quick-exec/history' },

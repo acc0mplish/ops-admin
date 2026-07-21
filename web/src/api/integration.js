@@ -22,6 +22,11 @@ export const saveAIConversation = (data) => http.post('/api/v1/integration/ai/co
 export const deleteAIConversation = (id) => http.delete('/api/v1/integration/ai/conversation/delete', { data: { id } })
 export const sendAIChat = (data) => http.post('/api/v1/integration/ai/chat/send', data)
 
+export const queryAIKnowledgeDocuments = (params = {}) => http.get('/api/v1/integration/ai/knowledge-base/list', { params })
+export const saveAIKnowledgeDocument = (data) => http.post('/api/v1/integration/ai/knowledge-base/save', data)
+export const uploadAIKnowledgeDocument = (data) => http.post('/api/v1/integration/ai/knowledge-base/upload', data)
+export const deleteAIKnowledgeDocument = (id) => http.delete('/api/v1/integration/ai/knowledge-base/delete', { params: { id } })
+
 export const queryAITools = () => http.get('/api/v1/integration/ai/tool/list')
 export const updateAITool = (data) => http.put('/api/v1/integration/ai/tool/update', data)
 export const executeAITool = (data) => http.post('/api/v1/integration/ai/tool/execute', data)
@@ -30,14 +35,19 @@ export const rejectAIAction = (id) => http.post('/api/v1/integration/ai/action/r
 
 export const queryFinOpsAccounts = (params = {}) => http.get('/api/v1/integration/finops/account/list', { params })
 export const saveFinOpsAccount = (data) => http.post('/api/v1/integration/finops/account/save', data)
-export const deleteFinOpsAccount = (id) => http.delete('/api/v1/integration/finops/account/delete', { data: { id } })
+// The FinOps account delete handler reads its identifier from the query string.
+export const deleteFinOpsAccount = (id) => http.delete('/api/v1/integration/finops/account/delete', { params: { id } })
 export const testFinOpsAccount = (data) => http.post('/api/v1/integration/finops/account/test', data)
 export const queryFinOpsDashboard = (params = {}) => http.get('/api/v1/integration/finops/dashboard', { params })
 export const queryFinOpsBreakdown = (params = {}) => http.get('/api/v1/integration/finops/breakdown', { params })
 export const queryFinOpsLatestBreakdownMonth = (params = {}) => http.get('/api/v1/integration/finops/breakdown/latest-month', { params })
 export const queryFinOpsResources = (params = {}) => http.get('/api/v1/integration/finops/resource/list', { params })
 export const queryFinOpsRecommendations = (params = {}) => http.get('/api/v1/integration/finops/recommendation/list', { params })
-export const generateFinOpsRecommendations = (data = {}) => http.post('/api/v1/integration/finops/recommendation/generate', data)
+// AI recommendation generation waits for the configured model response.  It must
+// not inherit the 15-second timeout used by ordinary list/query requests.
+// A JSON-repair retry may follow the initial model request.
+export const generateFinOpsRecommendations = (data = {}) =>
+  http.post('/api/v1/integration/finops/recommendation/generate', data, { timeout: 150000 })
 export const updateFinOpsRecommendation = (data) => http.put('/api/v1/integration/finops/recommendation/status', data)
 export const deleteFinOpsRecommendation = (id) => http.delete('/api/v1/integration/finops/recommendation/delete', { params: { id } })
 export const queryFinOpsSyncLogs = (params = {}) => http.get('/api/v1/integration/finops/sync/logs', { params })

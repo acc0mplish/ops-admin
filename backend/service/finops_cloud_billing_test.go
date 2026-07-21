@@ -51,6 +51,54 @@ func TestFinOpsRecordDataQuality(t *testing.T) {
 	}
 }
 
+func TestExtractFinOpsRecommendationJSON(t *testing.T) {
+	content, err := extractFinOpsRecommendationJSON("分析结果如下：\n```json\n{\"recommendations\":[{\"title\":\"检查 NAT 网关\"}]}\n```\n请确认后执行。")
+	if err != nil {
+		t.Fatalf("expected fenced JSON to be extracted: %v", err)
+	}
+	if content != `{"recommendations":[{"title":"检查 NAT 网关"}]}` {
+		t.Fatalf("unexpected extracted content: %s", content)
+	}
+	if _, err := extractFinOpsRecommendationJSON(`{"recommendations": [`); err == nil {
+		t.Fatal("expected truncated JSON to be rejected")
+	}
+}
+
+// TestFinOpsAIRecommendationProbe performs one opt-in end-to-end check against
+// the model selected in Model Management. Database writes are wrapped in a
+// rollback-only transaction, and no cloud provider API is called.
+func TestFinOpsAIRecommendationProbe(t *testing.T) {
+	if os.Getenv("AI_FINOPS_RECOMMENDATION_PROBE") != "1" {
+		t.Skip("set AI_FINOPS_RECOMMENDATION_PROBE=1 to test the configured FinOps AI model")
+	}
+	cfg, err := config.Load("../config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.NewDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	defer tx.Rollback()
+	service := &Service{db: tx}
+	month := "2026-07"
+	count, mode, err := service.GenerateFinOpsRecommendations(1, "ai", 1, month)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("AI/default fallback returned no FinOps recommendations")
+	}
+	if mode != "ai" && mode != "ai_fallback" {
+		t.Fatalf("unexpected FinOps AI generation mode: %s", mode)
+	}
+	t.Logf("FinOps AI probe passed: mode=%s recommendations=%d", mode, count)
+}
+
 func TestFinOpsAliCloudBillItemsSupportsDocumentedEnvelopes(t *testing.T) {
 	legacy, count := finOpsAliCloudBillItems(map[string]any{"Data": map[string]any{"TotalCount": "1", "Items": map[string]any{"Item": []any{map[string]any{"RecordID": "legacy"}}}}})
 	if len(legacy) != 1 || count != 1 {

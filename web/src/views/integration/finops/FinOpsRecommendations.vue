@@ -44,7 +44,13 @@ async function generate() {
   generating.value = true
   try {
     const result = await generateFinOpsRecommendations({ strategy: strategy.value, modelId: strategy.value === 'ai' ? (modelId.value || 0) : 0, account_id: analysisAccountId.value || 0, month: analysisMonth.value || '' })
-    ElMessage.success(result?.mode === 'ai' ? `已通过 AI 生成 ${result?.count || 0} 条建议` : `已按默认策略生成 ${result?.count || 0} 条建议`)
+    if (result?.mode === 'ai') {
+      ElMessage.success(`已通过 AI 生成 ${result?.count || 0} 条建议`)
+    } else if (result?.mode === 'ai_fallback') {
+      ElMessage.warning(`AI 输出不稳定，已按默认策略生成 ${result?.count || 0} 条建议`)
+    } else {
+      ElMessage.success(`已按默认策略生成 ${result?.count || 0} 条建议`)
+    }
     await load()
     strategyDialogVisible.value = false
   } finally {
@@ -69,6 +75,7 @@ function escapeHtml(value) {
 }
 
 function strategyLabel(row) {
+  if (row.strategy === 'ai_fallback') return 'AI 分析降级 · 默认策略'
   if (row.strategy === 'ai' || row.category === 'ai_finops') return `AI 分析${row.modelName ? ` · ${row.modelName}` : ''}`
   return '默认策略'
 }

@@ -79,3 +79,17 @@ type IntegrationAIToolAction struct {
 }
 
 func (IntegrationAIToolAction) TableName() string { return "integration_ai_tool_action" }
+
+// IntegrationAIKnowledgeDocument stores Markdown content locally for the AI assistant.
+type IntegrationAIKnowledgeDocument struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	Name       string    `json:"name" gorm:"size:255;not null;index"`
+	FileName   string    `json:"fileName" gorm:"size:255;not null"`
+	SourceType string    `json:"sourceType" gorm:"size:32;not null;default:manual;index"`
+	Content    string    `json:"content" gorm:"type:longtext;not null"`
+	Status     int       `json:"status" gorm:"default:1;index"`
+	CreatedAt  time.Time `json:"createTime"`
+	UpdatedAt  time.Time `json:"updateTime"`
+}
+
+func (IntegrationAIKnowledgeDocument) TableName() string { return "integration_ai_knowledge_document" }

@@ -8,8 +8,8 @@ const router = useRouter()
 const selectedKey = ref('')
 const capabilityMap = {
   console: { icon: Monitor, tone: 'blue', role: '统一入口', description: '提供统一工作台、系统配置、用户权限与操作审计入口。', capabilities: ['仪表盘与全局视图', '业务拓扑图', '用户与权限管理', '组织与菜单配置', '登录与操作审计'], consumers: ['assets', 'ops', 'applications', 'notify', 'integration', 'monitor'] },
-  assets: { icon: SetUp, tone: 'cyan', role: '资源底座', description: '统一管理主机、云账号、数据库、网关、K8s 与服务运行资源。', capabilities: ['资产概览', '主机与凭据管理', '云账号与云主机同步', '数据库管理', '网关管理', 'K8s 管理', '服务管理', '终端登录'], consumers: ['ops', 'applications', 'integration', 'monitor'] },
-  ops: { icon: Operation, tone: 'violet', role: '运维执行', description: '基于资产与环境执行脚本、命令、文件分发、作业和定时任务。', capabilities: ['环境模型', '脚本库', '快速执行', '文件分发', '定时任务', '作业编排', '人工确认', '执行历史与模板'], consumers: ['applications'] },
+  assets: { icon: SetUp, tone: 'cyan', role: '资源底座', description: '统一管理环境、主机、云账号、数据库、网关、K8s 与服务运行资源。', capabilities: ['资产概览', '环境模型', '主机与凭据管理', '云账号与云主机同步', '数据库管理', '网关管理', 'K8s 管理', '服务管理', '终端登录'], consumers: ['ops', 'applications', 'integration', 'monitor'] },
+  ops: { icon: Operation, tone: 'violet', role: '运维执行', description: '基于资产与环境执行脚本、命令、文件分发、作业和定时任务。', capabilities: ['脚本库', '快速执行', '文件分发', '定时任务', '作业编排', '人工确认', '执行历史与模板'], consumers: ['applications'] },
   applications: { icon: Connection, tone: 'green', role: '应用交付', description: '管理应用项目、构建发布流水线、应用环境绑定和资源拓扑。', capabilities: ['项目列表', '应用拓扑', '构建任务', '构建历史', 'CI/CD 流水线'], consumers: ['monitor'] },
   monitor: { icon: DataAnalysis, tone: 'orange', role: '可观测性', description: '采集并查询指标、日志与告警，形成仪表盘、告警规则和事件闭环。', capabilities: ['监控概览与仪表盘', '监控数据源', '指标查询', '日志查询', '告警规则', '告警事件与处置', '告警治理与巡检'], consumers: ['notify', 'integration'] },
   notify: { icon: Bell, tone: 'pink', role: '消息触达', description: '通过模板、渠道和通知规则将告警或运维结果触达相关人员。', capabilities: ['通知规则', '消息模板', '通知媒介', '发送日志'], consumers: ['console'] },

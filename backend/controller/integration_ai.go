@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"io"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/service"
@@ -130,6 +133,81 @@ func (ctl *Controller) SendIntegrationAIChat(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetIntegrationAIKnowledgeDocumentList(c *gin.Context) {
+	data, err := ctl.service.ListIntegrationAIKnowledgeDocuments(c.Query("keyword"))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SaveIntegrationAIKnowledgeDocument(c *gin.Context) {
+	var payload service.IntegrationAIKnowledgeDocumentPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "无效的知识库文档参数")
+		return
+	}
+	data, err := ctl.service.SaveIntegrationAIKnowledgeDocument(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) UploadIntegrationAIKnowledgeDocument(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		httpx.Failed(c, 400, "请选择 Markdown 文件")
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(file.Filename), ".md") {
+		httpx.Failed(c, 400, "仅支持上传 .md 文件")
+		return
+	}
+	source, err := file.Open()
+	if err != nil {
+		httpx.Failed(c, 400, "无法读取上传文件")
+		return
+	}
+	defer source.Close()
+	content, err := io.ReadAll(io.LimitReader(source, 2*1024*1024+1))
+	if err != nil {
+		httpx.Failed(c, 400, "读取 Markdown 文件失败")
+		return
+	}
+	if len(content) > 2*1024*1024 {
+		httpx.Failed(c, 400, "Markdown 文件不能超过 2MB")
+		return
+	}
+	name := strings.TrimSpace(c.PostForm("name"))
+	if name == "" {
+		name = strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
+	}
+	data, err := ctl.service.SaveIntegrationAIKnowledgeDocument(service.IntegrationAIKnowledgeDocumentPayload{
+		Name: name, FileName: file.Filename, SourceType: "upload", Content: strings.TrimPrefix(string(content), "\ufeff"), Status: 1,
+	})
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) DeleteIntegrationAIKnowledgeDocument(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Query("id"), 10, 64)
+	if id == 0 {
+		httpx.Failed(c, 400, "知识库文档 ID 不能为空")
+		return
+	}
+	if err := ctl.service.DeleteIntegrationAIKnowledgeDocument(uint(id)); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
 }
 
 func (ctl *Controller) GetIntegrationAIToolList(c *gin.Context) {
