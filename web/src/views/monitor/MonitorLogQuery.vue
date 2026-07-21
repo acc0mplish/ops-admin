@@ -37,6 +37,7 @@ const items = ref([])
 const histogram = ref([])
 const total = ref(0)
 const took = ref(0)
+const logView = ref('table')
 const activeLog = ref(null)
 const detailVisible = ref(false)
 const autoRefresh = ref(false)
@@ -107,7 +108,23 @@ function levelClass(level) {
 }
 
 function displayLogContent(row) {
-  return row?.message || row?.messageRaw || '-'
+	return row?.message || row?.messageRaw || '-'
+}
+
+function rawLogLine(row) {
+	const timestamp = formatRawLogTime(row?.logTime || row?.timestamp)
+	const level = String(row?.level || '-').toUpperCase().padEnd(5, ' ')
+	const processID = row?.processId || '-'
+	const thread = row?.thread || row?.container || '-'
+	const logger = row?.logger || row?.pod || row?.namespace || '-'
+	return `${timestamp}  ${level} ${processID} --- [${thread}] ${logger} : ${displayLogContent(row)}`
+}
+
+function formatRawLogTime(value) {
+	const date = new Date(value)
+	if (Number.isNaN(date.getTime())) return String(value || '-')
+	const pad = (number, size = 2) => String(number).padStart(size, '0')
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
 }
 
 function escapeLogsQLValue(value) {
@@ -300,7 +317,9 @@ onMounted(async () => {
   await search()
 })
 
-onBeforeUnmount(() => window.clearInterval(refreshTimer))
+onBeforeUnmount(() => {
+	window.clearInterval(refreshTimer)
+})
 </script>
 
 <template>
@@ -365,9 +384,9 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
         </template>
       </aside>
       <main class="log-main">
-        <div class="result-summary"><strong>原始日志</strong><span>命中 {{ total }} 条</span><span>耗时 {{ took }} ms</span></div>
+        <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">表格日志</el-radio-button><el-radio-button value="raw">原始日志</el-radio-button></el-radio-group><span>命中 {{ total }} 条</span><span>耗时 {{ took }} ms</span></div>
         <div v-if="histogram.length" class="histogram-panel"><div class="histogram"><div v-for="bucket in histogram" :key="bucket.key" class="histogram-bar-wrap" :title="`${histogramTime(bucket)} / ${bucket.doc_count}`"><div class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></div></div></div>
-        <div class="log-table-wrap">
+        <div v-if="logView === 'table'" class="log-table-wrap">
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
             <el-table-column label="时间" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
             <el-table-column label="级别" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
@@ -377,6 +396,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
             <el-table-column label="操作" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
           </el-table>
         </div>
+        <div v-else v-loading="loading" class="raw-log-view"><div v-if="!items.length" class="raw-log-empty">当前查询条件下没有日志</div><div v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" class="raw-log-item"><span class="raw-log-index">{{ String(index + 1).padStart(3, '0') }}</span><code>{{ rawLogLine(row) }}</code><el-button class="raw-log-detail" link type="primary" @click="showDetail(row)">详情</el-button></div></div>
       </main>
     </section>
 
@@ -415,6 +435,6 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
 </template>
 
 <style scoped>
-.log-page{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 115px);padding:24px;background:#f6f8fc;color:#24364e}.log-search-panel,.log-workspace{border:1px solid #e0e8f4;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(49,78,125,.06)}.source-line,.query-line,.shortcut-line{display:flex;align-items:center;gap:12px}.log-search-panel{padding:16px}.query-line,.shortcut-line{margin-top:12px}.source-line label,.shortcut-line>span{color:#51627f;font-weight:600;white-space:nowrap}.source-status{overflow:hidden;color:#8491a7;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.search-actions{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap}.query-input{flex:1}.shortcut-line{flex-wrap:wrap}.shortcut-button{border-color:#d9e3f3;color:#4f6384;background:#f7f9fd}.index-option,.stream-option{display:flex;justify-content:space-between;gap:16px}.index-option small,.stream-option small{color:#8491a7}.stream-option{width:100%;min-width:0}.stream-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.log-workspace{display:grid;grid-template-columns:230px minmax(0,1fr);overflow:hidden}.field-panel{display:flex;flex-direction:column;gap:8px;padding:14px;border-right:1px solid #e5ebf4;background:#fbfcff}.panel-title{display:flex;justify-content:space-between;color:#263a59}.panel-title span{color:#8291aa}.field-item{display:flex;justify-content:space-between;width:100%;padding:9px 8px;border:0;border-radius:5px;color:#536784;background:transparent;text-align:left;cursor:pointer}.field-item:hover{color:#3567d6;background:#eef4ff}.log-main{min-width:0}.result-summary{display:flex;align-items:center;gap:18px;padding:13px 16px;border-bottom:1px solid #e5ebf4;color:#71809b;font-size:13px}.result-summary strong{color:#203759;font-size:15px}.histogram-panel{height:150px;padding:12px 16px;border-bottom:1px solid #e5ebf4}.histogram{display:flex;align-items:flex-end;gap:4px;height:100%}.histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-bar{width:100%;min-height:2px;border-radius:2px 2px 0 0;background:#5a6df1;opacity:.88}.log-message{font-family:Consolas,Monaco,monospace;color:#3b4e6b}.detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:#73849a;font-size:13px}.detail-meta span{padding:4px 8px;border-radius:4px;background:#f2f5f9}.message-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.message-fields>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e5ebf3;border-radius:6px}.message-fields small{color:#8491a7}.message-fields strong{overflow:hidden;color:#24364e;text-overflow:ellipsis;white-space:nowrap}.detail-message,.detail-json{overflow:auto;padding:14px;border-radius:6px;color:#dce6f5;background:#111827;font:12px/1.65 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.raw-log-line{margin:14px 0;color:#60748d}.raw-log-line summary{cursor:pointer}.raw-log-line pre{overflow:auto;max-height:180px;padding:12px;border-radius:6px;color:#c9d4e3;background:#202936;font:12px/1.6 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.level{display:inline-flex;min-width:48px;justify-content:center;padding:3px 5px;border-radius:3px;font-size:11px;font-weight:700}.level-error{color:#d94c5b;background:#fff0f1}.level-warn{color:#bd7c11;background:#fff7e8}.level-info{color:#3978c6;background:#eef6ff}.level-debug{color:#6c7788;background:#f1f4f7}:deep(.el-table){--el-table-header-bg-color:#f6f8fc;--el-table-header-text-color:#71809b;--el-table-row-hover-bg-color:#f4f7fc;--el-table-border-color:#e7edf6}@media(max-width:1000px){.log-workspace{grid-template-columns:1fr}.field-panel{display:none}.source-line,.query-line{align-items:stretch;flex-wrap:wrap}.search-actions{margin-left:0}.query-input{flex-basis:100%}.message-fields{grid-template-columns:1fr}}
+.log-page{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 115px);padding:24px;background:#f6f8fc;color:#24364e}.log-search-panel,.log-workspace{border:1px solid #e0e8f4;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(49,78,125,.06)}.source-line,.query-line,.shortcut-line{display:flex;align-items:center;gap:12px}.log-search-panel{padding:16px}.query-line,.shortcut-line{margin-top:12px}.source-line label,.shortcut-line>span{color:#51627f;font-weight:600;white-space:nowrap}.source-status{overflow:hidden;color:#8491a7;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.search-actions{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap}.query-input{flex:1}.shortcut-line{flex-wrap:wrap}.shortcut-button{border-color:#d9e3f3;color:#4f6384;background:#f7f9fd}.index-option,.stream-option{display:flex;justify-content:space-between;gap:16px}.index-option small,.stream-option small{color:#8491a7}.stream-option{width:100%;min-width:0}.stream-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.log-workspace{display:grid;grid-template-columns:230px minmax(0,1fr);overflow:hidden}.field-panel{display:flex;flex-direction:column;gap:8px;padding:14px;border-right:1px solid #e5ebf4;background:#fbfcff}.panel-title{display:flex;justify-content:space-between;color:#263a59}.panel-title span{color:#8291aa}.field-item{display:flex;justify-content:space-between;width:100%;padding:9px 8px;border:0;border-radius:5px;color:#536784;background:transparent;text-align:left;cursor:pointer}.field-item:hover{color:#3567d6;background:#eef4ff}.log-main{min-width:0}.result-summary{display:flex;align-items:center;gap:16px;min-height:55px;padding:10px 16px;border-bottom:1px solid #e5ebf4;color:#71809b;font-size:13px}.result-summary :deep(.el-radio-button__inner){padding:6px 12px;color:#62738d;font-size:13px}.result-summary :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner){color:#fff;background:#4298f6;border-color:#4298f6;box-shadow:-1px 0 0 0 #4298f6}.histogram-panel{height:150px;padding:12px 16px;border-bottom:1px solid #e5ebf4}.histogram{display:flex;align-items:flex-end;gap:4px;height:100%}.histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-bar{width:100%;min-height:2px;border-radius:2px 2px 0 0;background:#5a6df1;opacity:.88}.log-message{font-family:Consolas,Monaco,monospace;color:#3b4e6b}.raw-log-view{height:540px;overflow:auto;padding:8px 0;background:#fff;border-top:1px solid #e8eef7}.raw-log-item{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:start;gap:13px;width:100%;padding:5px 18px;border:0;color:#213b5c;background:transparent;text-align:left;cursor:pointer}.raw-log-item:hover{background:#f3f7fd}.raw-log-index{color:#8293aa;font:12px/1.75 Consolas,Monaco,monospace;text-align:right}.raw-log-item code{display:-webkit-box;overflow:hidden;color:#182d47;font:12px/1.75 Consolas,Monaco,monospace;letter-spacing:.05px;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:3}.raw-log-detail{align-self:center;margin-top:2px}.raw-log-empty{padding:28px;color:#93a5bf;text-align:center}.detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:#73849a;font-size:13px}.detail-meta span{padding:4px 8px;border-radius:4px;background:#f2f5f9}.message-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.message-fields>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e5ebf3;border-radius:6px}.message-fields small{color:#8491a7}.message-fields strong{overflow:hidden;color:#24364e;text-overflow:ellipsis;white-space:nowrap}.detail-message,.detail-json{overflow:auto;padding:14px;border-radius:6px;color:#dce6f5;background:#111827;font:12px/1.65 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.raw-log-line{margin:14px 0;color:#60748d}.raw-log-line summary{cursor:pointer}.raw-log-line pre{overflow:auto;max-height:180px;padding:12px;border-radius:6px;color:#c9d4e3;background:#202936;font:12px/1.6 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.level{display:inline-flex;min-width:48px;justify-content:center;padding:3px 5px;border-radius:3px;font-size:11px;font-weight:700}.level-error{color:#d94c5b;background:#fff0f1}.level-warn{color:#bd7c11;background:#fff7e8}.level-info{color:#3978c6;background:#eef6ff}.level-debug{color:#6c7788;background:#f1f4f7}:deep(.el-table){--el-table-header-bg-color:#f6f8fc;--el-table-header-text-color:#71809b;--el-table-row-hover-bg-color:#f4f7fc;--el-table-border-color:#e7edf6}@media(max-width:1000px){.log-workspace{grid-template-columns:1fr}.field-panel{display:none}.source-line,.query-line{align-items:stretch;flex-wrap:wrap}.search-actions{margin-left:0}.query-input{flex-basis:100%}.message-fields{grid-template-columns:1fr}}
 .log-workspace.fields-collapsed{grid-template-columns:44px minmax(0,1fr)}.field-panel{min-width:0}.panel-title{align-items:center;gap:4px}.collapse-button{margin-left:auto;font-size:18px}.field-list{display:flex;min-height:80px;flex-direction:column;gap:3px}.field-item{gap:6px;min-width:0}.field-item span{overflow:hidden;flex:1;text-overflow:ellipsis;white-space:nowrap}.field-item small{flex:0 0 auto;color:#8b98aa;font-size:10px}.field-item b{flex:0 0 auto;color:#5c75a1;font-weight:500}.fields-collapsed .field-panel{padding:14px 8px}.fields-collapsed .collapse-button{margin:auto}.field-value-tip{margin:0 0 12px;color:#7282a0;font-size:13px}.field-value-list{display:flex;flex-direction:column;gap:4px;min-height:100px;max-height:420px;margin-top:12px;overflow:auto}.field-value-item{display:flex;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:1px solid #e3e9f4;border-radius:6px;background:#fff;color:#354864;text-align:left;cursor:pointer}.field-value-item:hover{border-color:#9db8f4;background:#f3f7ff;color:#3567d6}.field-value-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.field-value-item small{flex:0 0 auto;color:#8291aa}
 </style>
