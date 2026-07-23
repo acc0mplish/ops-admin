@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -151,7 +152,9 @@ type kubeMetadata struct {
 type kubeNode struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		Unschedulable bool `json:"unschedulable"`
+		Unschedulable bool     `json:"unschedulable"`
+		PodCIDR       string   `json:"podCIDR"`
+		PodCIDRs      []string `json:"podCIDRs"`
 	} `json:"spec"`
 	Status struct {
 		NodeInfo struct {
@@ -174,10 +177,18 @@ type kubeNode struct {
 	} `json:"status"`
 }
 
+type kubeEnvVar struct {
+	Name      string         `json:"name"`
+	Value     string         `json:"value"`
+	ValueFrom map[string]any `json:"valueFrom"`
+}
+
 type kubeContainer struct {
-	Name      string `json:"name"`
-	Image     string `json:"image"`
-	Resources struct {
+	Name            string       `json:"name"`
+	Image           string       `json:"image"`
+	ImagePullPolicy string       `json:"imagePullPolicy"`
+	Env             []kubeEnvVar `json:"env"`
+	Resources       struct {
 		Requests map[string]string `json:"requests"`
 		Limits   map[string]string `json:"limits"`
 	} `json:"resources"`
@@ -784,7 +795,7 @@ func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, e
 			PodUsage:     fmt.Sprintf("%d Pods", len(data.Pods)),
 			RequestRate:  fmt.Sprintf("%d Workloads", len(workloads)),
 			AlertCount:   metrics.AlertCount,
-			Distribution: buildOverviewDistribution(detailCluster),
+			Distribution: buildOverviewDistribution(detailCluster, data.Nodes, data.ConfigMaps),
 			Certificates: buildOverviewCertificates(runtime),
 		},
 		Nodes:      buildNodeItems(data.Nodes, data.Pods),
@@ -849,6 +860,38 @@ func (s *Service) GetK8sNodePods(clusterID uint, nodeName string) ([]model.K8sPo
 	return buildPodItems(pods), nil
 }
 
+// UpdateK8sNodeLabels applies the submitted label set to a Kubernetes node.
+// Existing labels not included in the set are explicitly removed via a merge patch.
+func (s *Service) UpdateK8sNodeLabels(payload model.K8sNodeLabelsPayload) error {
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return err
+	}
+	var node kubeNode
+	if err := k8sGetJSON(client, runtime, "/api/v1/nodes/"+url.PathEscape(payload.NodeName), &node); err != nil {
+		return errors.New(k8sClusterConnectError)
+	}
+	labelsPatch := make(map[string]any, len(node.Metadata.Labels)+len(payload.Labels))
+	for key := range node.Metadata.Labels {
+		if _, keep := payload.Labels[key]; !keep {
+			labelsPatch[key] = nil
+		}
+	}
+	for key, value := range payload.Labels {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return errors.New("节点标签键不能为空")
+		}
+		labelsPatch[key] = strings.TrimSpace(value)
+	}
+	if err := k8sPatchJSON(client, runtime, "/api/v1/nodes/"+url.PathEscape(payload.NodeName), map[string]any{
+		"metadata": map[string]any{"labels": labelsPatch},
+	}, "application/merge-patch+json", nil); err != nil {
+		return errors.New(k8sClusterConnectError)
+	}
+	return nil
+}
+
 func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName string) (model.K8sPodDetail, error) {
 	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
@@ -874,10 +917,16 @@ func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName stri
 	for _, container := range pod.Spec.Containers {
 		containerStatus := statusMap[container.Name]
 		containers = append(containers, model.K8sContainerItem{
-			Name:    container.Name,
-			Image:   container.Image,
-			Ready:   containerStatus.ready,
-			Restart: containerStatus.restart,
+			Name:            container.Name,
+			Image:           container.Image,
+			Ready:           containerStatus.ready,
+			Restart:         containerStatus.restart,
+			RequestCPU:      container.Resources.Requests["cpu"],
+			LimitCPU:        container.Resources.Limits["cpu"],
+			RequestMemory:   container.Resources.Requests["memory"],
+			LimitMemory:     container.Resources.Limits["memory"],
+			ImagePullPolicy: container.ImagePullPolicy,
+			Env:             buildContainerEnvItems(container.Env),
 		})
 	}
 
@@ -1425,6 +1474,90 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 		"version": payload.Version,
 		"count":   len(updated),
 		"items":   updated,
+	}, nil
+}
+
+// UpdateK8sWorkloadResources updates the editable pod-template settings while preserving
+// container image and command configuration: CPU/memory resources, environment variables
+// and image pull policy.
+func (s *Service) UpdateK8sWorkloadResources(payload model.K8sWorkloadResourcesPayload) (map[string]any, error) {
+	if payload.ClusterID == 0 || strings.TrimSpace(payload.Namespace) == "" || strings.TrimSpace(payload.WorkloadType) == "" || strings.TrimSpace(payload.WorkloadName) == "" || len(payload.Containers) == 0 {
+		return nil, errors.New("invalid workload resource payload")
+	}
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+	path, err := k8sWorkloadResourcePath(payload.Namespace, payload.WorkloadType, payload.WorkloadName)
+	if err != nil {
+		return nil, err
+	}
+	resource := map[string]any{}
+	if err := k8sGetJSON(client, runtime, path, &resource); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	existingContainers, err := extractWorkloadContainers(resource)
+	if err != nil {
+		return nil, err
+	}
+	existingByName := make(map[string]map[string]any, len(existingContainers))
+	for _, container := range existingContainers {
+		if name, ok := container["name"].(string); ok && strings.TrimSpace(name) != "" {
+			existingByName[name] = container
+		}
+	}
+	containers := make([]map[string]any, 0, len(payload.Containers))
+	for _, item := range payload.Containers {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			return nil, errors.New("container name is required")
+		}
+		existing, ok := existingByName[name]
+		if !ok {
+			return nil, fmt.Errorf("container %s was not found in workload", name)
+		}
+		requests := map[string]any{}
+		limits := map[string]any{}
+		if value := strings.TrimSpace(item.RequestCPU); value != "" {
+			requests["cpu"] = value
+		}
+		if value := strings.TrimSpace(item.RequestMemory); value != "" {
+			requests["memory"] = value
+		}
+		if value := strings.TrimSpace(item.LimitCPU); value != "" {
+			limits["cpu"] = value
+		}
+		if value := strings.TrimSpace(item.LimitMemory); value != "" {
+			limits["memory"] = value
+		}
+		resources := map[string]any{}
+		if len(requests) > 0 {
+			resources["requests"] = requests
+		}
+		if len(limits) > 0 {
+			resources["limits"] = limits
+		}
+		containerPatch := map[string]any{"name": name, "resources": resources}
+		if policy := strings.TrimSpace(item.ImagePullPolicy); policy != "" {
+			if policy != "Always" && policy != "IfNotPresent" && policy != "Never" {
+				return nil, errors.New("invalid image pull policy")
+			}
+			containerPatch["imagePullPolicy"] = policy
+		}
+		envPatch, err := buildWorkloadEnvPatch(existing, item.Env)
+		if err != nil {
+			return nil, err
+		}
+		containerPatch["env"] = envPatch
+		containers = append(containers, containerPatch)
+	}
+	patchBody := buildWorkloadContainerPatchBody(payload.WorkloadType, containers)
+	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/strategic-merge-patch+json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	return map[string]any{
+		"namespace": payload.Namespace, "workloadType": payload.WorkloadType,
+		"workloadName": payload.WorkloadName, "containers": len(containers),
 	}, nil
 }
 
@@ -2115,8 +2248,14 @@ func buildContainerItems(containers []kubeContainer) []model.K8sContainerItem {
 	items := make([]model.K8sContainerItem, 0, len(containers))
 	for _, container := range containers {
 		items = append(items, model.K8sContainerItem{
-			Name:  container.Name,
-			Image: container.Image,
+			Name:            container.Name,
+			Image:           container.Image,
+			RequestCPU:      container.Resources.Requests["cpu"],
+			LimitCPU:        container.Resources.Limits["cpu"],
+			RequestMemory:   container.Resources.Requests["memory"],
+			LimitMemory:     container.Resources.Limits["memory"],
+			ImagePullPolicy: container.ImagePullPolicy,
+			Env:             buildContainerEnvItems(container.Env),
 		})
 	}
 	return items
@@ -2260,12 +2399,72 @@ func buildCronJobDetail(client *http.Client, runtime kubeClusterRuntime, item ku
 	}
 }
 
-func buildOverviewDistribution(cluster model.K8sClusterView) []model.K8sKVTextItem {
+func buildOverviewDistribution(cluster model.K8sClusterView, nodes []kubeNode, configMaps []kubeConfigMap) []model.K8sKVTextItem {
+	serviceCIDR, podCIDR := resolveK8sNetworkCIDRs(nodes, configMaps)
 	return []model.K8sKVTextItem{
 		{Label: "集群状态", Value: cluster.StatusText},
 		{Label: "集群版本", Value: fallbackText(cluster.Version)},
 		{Label: "节点数量", Value: intLabel(cluster.NodeCount, " 个")},
+		{Label: "Service IP 段", Value: serviceCIDR},
+		{Label: "容器网络", Value: podCIDR},
 	}
+}
+
+// resolveK8sNetworkCIDRs reads the cluster-level CIDRs from kubeadm's ConfigMap
+// when it is available, then falls back to the Pod CIDRs assigned to nodes.
+// Kubernetes does not expose the Service CIDR from a stable core API, so an
+// unavailable value is intentionally reported as unavailable instead of guessed.
+func resolveK8sNetworkCIDRs(nodes []kubeNode, configMaps []kubeConfigMap) (string, string) {
+	serviceCIDR, podCIDR := "未识别", "未识别"
+	for _, configMap := range configMaps {
+		if configMap.Metadata.Namespace != "kube-system" || configMap.Metadata.Name != "kubeadm-config" {
+			continue
+		}
+		for _, content := range configMap.Data {
+			for _, line := range strings.Split(content, "\n") {
+				key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+				if !ok {
+					continue
+				}
+				value = strings.Trim(strings.TrimSpace(strings.Split(value, "#")[0]), "\"'")
+				switch strings.TrimSpace(key) {
+				case "serviceSubnet":
+					if value != "" {
+						serviceCIDR = value
+					}
+				case "podSubnet":
+					if value != "" {
+						podCIDR = value
+					}
+				}
+			}
+		}
+	}
+	if podCIDR == "未识别" {
+		cidrs := make([]string, 0)
+		seen := map[string]struct{}{}
+		for _, node := range nodes {
+			values := append([]string{}, node.Spec.PodCIDRs...)
+			if node.Spec.PodCIDR != "" {
+				values = append(values, node.Spec.PodCIDR)
+			}
+			for _, cidr := range values {
+				cidr = strings.TrimSpace(cidr)
+				if cidr == "" {
+					continue
+				}
+				if _, exists := seen[cidr]; !exists {
+					seen[cidr] = struct{}{}
+					cidrs = append(cidrs, cidr)
+				}
+			}
+		}
+		if len(cidrs) > 0 {
+			sort.Strings(cidrs)
+			podCIDR = strings.Join(cidrs, "、")
+		}
+	}
+	return serviceCIDR, podCIDR
 }
 
 func buildOverviewCertificates(runtime kubeClusterRuntime) []model.K8sCertificate {
@@ -2359,8 +2558,9 @@ func buildNodeItems(nodes []kubeNode, pods []kubePod) []model.K8sNodeItem {
 			Status:     nodeReadyStatus(node),
 			Version:    fallbackText(node.Status.NodeInfo.KubeletVersion),
 			InternalIP: internalIP,
+			OS:         fallbackText(node.Status.NodeInfo.OSImage),
 			CPU:        fallbackText(node.Status.Allocatable["cpu"]),
-			Memory:     fallbackText(node.Status.Allocatable["memory"]),
+			Memory:     formatMemoryMB(node.Status.Allocatable["memory"]),
 			Pods:       fmt.Sprintf("%d/%s", podCountByNode[node.Metadata.Name], fallbackText(node.Status.Capacity["pods"])),
 		})
 	}
@@ -2450,6 +2650,7 @@ func buildPodItems(pods []kubePod) []model.K8sPodItem {
 			Namespace: pod.Metadata.Namespace,
 			Status:    fallbackText(pod.Status.Phase),
 			Node:      fallbackText(pod.Spec.NodeName),
+			NodeIP:    fallbackText(pod.Status.HostIP),
 			Restarts:  restarts,
 			Age:       humanizeAge(pod.Metadata.CreationTimestamp),
 			IP:        fallbackText(pod.Status.PodIP),
@@ -2478,6 +2679,8 @@ func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
 			Updated:   item.Status.UpdatedReplicas,
 			Available: item.Status.AvailableReplicas,
 			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+			Requests:  formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, true),
+			Limits:    formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, false),
 		})
 	}
 
@@ -2491,6 +2694,8 @@ func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
 			Updated:   item.Status.UpdatedReplicas,
 			Available: item.Status.AvailableReplicas,
 			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+			Requests:  formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, true),
+			Limits:    formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, false),
 		})
 	}
 
@@ -2503,6 +2708,8 @@ func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
 			Updated:   item.Status.UpdatedNumberScheduled,
 			Available: item.Status.NumberAvailable,
 			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+			Requests:  formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, true),
+			Limits:    formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, false),
 		})
 	}
 
@@ -2519,6 +2726,8 @@ func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
 			Updated:   item.Status.Active,
 			Available: item.Status.Succeeded,
 			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+			Requests:  formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, true),
+			Limits:    formatWorkloadResourceSummary(item.Spec.Template.Spec.Containers, false),
 		})
 	}
 
@@ -2532,6 +2741,8 @@ func buildWorkloadItems(data k8sFetchedData) []model.K8sWorkloadItem {
 			Updated:   active,
 			Available: active,
 			Age:       humanizeAge(item.Metadata.CreationTimestamp),
+			Requests:  formatWorkloadResourceSummary(item.Spec.JobTemplate.Spec.Template.Spec.Containers, true),
+			Limits:    formatWorkloadResourceSummary(item.Spec.JobTemplate.Spec.Template.Spec.Containers, false),
 		})
 	}
 
@@ -2615,7 +2826,18 @@ func extractWorkloadContainers(resource map[string]any) ([]map[string]any, error
 	}
 	template, ok := spec["template"].(map[string]any)
 	if !ok {
-		return nil, errors.New("invalid workload template")
+		jobTemplate, jobTemplateOK := spec["jobTemplate"].(map[string]any)
+		if !jobTemplateOK {
+			return nil, errors.New("invalid workload template")
+		}
+		jobSpec, jobSpecOK := jobTemplate["spec"].(map[string]any)
+		if !jobSpecOK {
+			return nil, errors.New("invalid cronjob template")
+		}
+		template, ok = jobSpec["template"].(map[string]any)
+		if !ok {
+			return nil, errors.New("invalid cronjob pod template")
+		}
 	}
 	templateSpec, ok := template["spec"].(map[string]any)
 	if !ok {
@@ -2635,6 +2857,77 @@ func extractWorkloadContainers(resource map[string]any) ([]map[string]any, error
 	return containers, nil
 }
 
+func buildWorkloadEnvPatch(existing map[string]any, envItems []model.K8sEnvVarItem) ([]map[string]any, error) {
+	desired := make(map[string]struct{}, len(envItems))
+	patch := make([]map[string]any, 0, len(envItems))
+	for _, item := range envItems {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			return nil, errors.New("environment variable name is required")
+		}
+		if _, exists := desired[name]; exists {
+			return nil, fmt.Errorf("duplicate environment variable: %s", name)
+		}
+		desired[name] = struct{}{}
+		entry := map[string]any{"name": name}
+		if len(item.ValueFrom) > 0 {
+			entry["valueFrom"] = item.ValueFrom
+		} else {
+			entry["value"] = item.Value
+		}
+		patch = append(patch, entry)
+	}
+	if existingEnv, ok := existing["env"].([]any); ok {
+		for _, raw := range existingEnv {
+			env, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := env["name"].(string)
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if _, keep := desired[name]; !keep {
+				patch = append(patch, map[string]any{"name": name, "$patch": "delete"})
+			}
+		}
+	}
+	return patch, nil
+}
+
+func buildContainerEnvItems(envs []kubeEnvVar) []model.K8sEnvVarItem {
+	items := make([]model.K8sEnvVarItem, 0, len(envs))
+	for _, env := range envs {
+		item := model.K8sEnvVarItem{Name: env.Name, Value: env.Value, ValueFrom: env.ValueFrom}
+		item.Source = formatK8sEnvSource(env.ValueFrom)
+		items = append(items, item)
+	}
+	return items
+}
+
+func formatK8sEnvSource(valueFrom map[string]any) string {
+	if len(valueFrom) == 0 {
+		return ""
+	}
+	for sourceType, raw := range valueFrom {
+		source, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := source["name"].(string)
+		key, _ := source["key"].(string)
+		if name != "" && key != "" {
+			return fmt.Sprintf("%s: %s/%s", sourceType, name, key)
+		}
+		if name != "" {
+			return fmt.Sprintf("%s: %s", sourceType, name)
+		}
+		return sourceType
+	}
+	return "由 Kubernetes 引用提供"
+}
+
 func buildWorkloadImagePatchBody(containers []map[string]any) map[string]any {
 	return map[string]any{
 		"spec": map[string]any{
@@ -2645,6 +2938,58 @@ func buildWorkloadImagePatchBody(containers []map[string]any) map[string]any {
 			},
 		},
 	}
+}
+
+func buildWorkloadContainerPatchBody(workloadType string, containers []map[string]any) map[string]any {
+	template := map[string]any{"spec": map[string]any{"containers": containers}}
+	if strings.EqualFold(strings.TrimSpace(workloadType), "cronjob") {
+		return map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{"spec": template}}}
+	}
+	return map[string]any{"spec": template}
+}
+
+func formatWorkloadResourceSummary(containers []kubeContainer, requests bool) string {
+	var cpuMilli, memoryBytes int64
+	hasCPU, hasMemory := false, false
+	for _, container := range containers {
+		values := container.Resources.Limits
+		if requests {
+			values = container.Resources.Requests
+		}
+		if value := strings.TrimSpace(values["cpu"]); value != "" {
+			cpuMilli += parseCPUToMilli(value)
+			hasCPU = true
+		}
+		if value := strings.TrimSpace(values["memory"]); value != "" {
+			memoryBytes += parseBytesQuantity(value)
+			hasMemory = true
+		}
+	}
+	parts := make([]string, 0, 2)
+	if hasCPU {
+		parts = append(parts, formatCPUMilli(cpuMilli))
+	}
+	if hasMemory {
+		parts = append(parts, formatMemoryBytes(memoryBytes))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " / ")
+}
+
+func formatCPUMilli(value int64) string {
+	if value >= 1000 && value%1000 == 0 {
+		return fmt.Sprintf("%d核", value/1000)
+	}
+	return fmt.Sprintf("%dm", value)
+}
+
+func formatMemoryBytes(value int64) string {
+	if value >= 1024*1024*1024 {
+		return fmt.Sprintf("%.1fGi", float64(value)/(1024*1024*1024))
+	}
+	return fmt.Sprintf("%.0fMi", float64(value)/(1024*1024))
 }
 
 func replaceImageVersion(image string, version string) string {
@@ -3964,6 +4309,14 @@ func parseBytesQuantity(value string) int64 {
 	return int64(parsed)
 }
 
+func formatMemoryMB(value string) string {
+	bytes := parseBytesQuantity(value)
+	if bytes <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d MB", int64(math.Round(float64(bytes)/1000/1000)))
+}
+
 func humanizeAge(timestamp string) string {
 	createdAt, err := time.Parse(time.RFC3339, strings.TrimSpace(timestamp))
 	if err != nil {
@@ -3972,7 +4325,7 @@ func humanizeAge(timestamp string) string {
 
 	duration := time.Since(createdAt)
 	if duration < time.Minute {
-		return "鍒氬垰"
+		return "刚刚"
 	}
 	if duration < time.Hour {
 		return fmt.Sprintf("%dm", int(duration.Minutes()))

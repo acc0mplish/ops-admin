@@ -57,6 +57,24 @@ type K8sWorkloadImageBatchPayload struct {
 	Items     []K8sWorkloadImageUpdateItem `json:"items"`
 }
 
+type K8sWorkloadContainerResources struct {
+	Name            string          `json:"name"`
+	RequestCPU      string          `json:"requestCPU"`
+	LimitCPU        string          `json:"limitCPU"`
+	RequestMemory   string          `json:"requestMemory"`
+	LimitMemory     string          `json:"limitMemory"`
+	ImagePullPolicy string          `json:"imagePullPolicy"`
+	Env             []K8sEnvVarItem `json:"env"`
+}
+
+type K8sWorkloadResourcesPayload struct {
+	ClusterID    uint                            `json:"clusterId"`
+	Namespace    string                          `json:"namespace"`
+	WorkloadType string                          `json:"workloadType"`
+	WorkloadName string                          `json:"workloadName"`
+	Containers   []K8sWorkloadContainerResources `json:"containers"`
+}
+
 type K8sResourceYAMLPayload struct {
 	ClusterID    uint   `json:"clusterId"`
 	ResourceType string `json:"resourceType"`
@@ -143,9 +161,16 @@ type K8sNodeItem struct {
 	Status     string `json:"status"`
 	Version    string `json:"version"`
 	InternalIP string `json:"internalIP"`
+	OS         string `json:"os"`
 	CPU        string `json:"cpu"`
 	Memory     string `json:"memory"`
 	Pods       string `json:"pods"`
+}
+
+type K8sNodeLabelsPayload struct {
+	ClusterID uint              `json:"clusterId"`
+	NodeName  string            `json:"nodeName"`
+	Labels    map[string]string `json:"labels"`
 }
 
 type K8sNamespaceItem struct {
@@ -162,16 +187,30 @@ type K8sPodItem struct {
 	Namespace string `json:"namespace"`
 	Status    string `json:"status"`
 	Node      string `json:"node"`
+	NodeIP    string `json:"nodeIP"`
 	Restarts  int    `json:"restarts"`
 	Age       string `json:"age"`
 	IP        string `json:"ip"`
 }
 
+type K8sEnvVarItem struct {
+	Name      string         `json:"name"`
+	Value     string         `json:"value"`
+	ValueFrom map[string]any `json:"valueFrom,omitempty"`
+	Source    string         `json:"source,omitempty"`
+}
+
 type K8sContainerItem struct {
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	Ready   bool   `json:"ready"`
-	Restart int    `json:"restart"`
+	Name            string          `json:"name"`
+	Image           string          `json:"image"`
+	Ready           bool            `json:"ready"`
+	Restart         int             `json:"restart"`
+	RequestCPU      string          `json:"requestCPU"`
+	LimitCPU        string          `json:"limitCPU"`
+	RequestMemory   string          `json:"requestMemory"`
+	LimitMemory     string          `json:"limitMemory"`
+	ImagePullPolicy string          `json:"imagePullPolicy"`
+	Env             []K8sEnvVarItem `json:"env"`
 }
 
 type K8sNodeDetail struct {
@@ -239,6 +278,8 @@ type K8sWorkloadItem struct {
 	Updated   int    `json:"updated"`
 	Available int    `json:"available"`
 	Age       string `json:"age"`
+	Requests  string `json:"requests"`
+	Limits    string `json:"limits"`
 }
 
 type K8sWorkloadDetail struct {

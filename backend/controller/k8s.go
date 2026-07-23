@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 
 	"ops-admin/backend/auth"
 	"ops-admin/backend/httpx"
@@ -128,6 +129,19 @@ func (ctl *Controller) GetK8sNodePods(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, data)
+}
+
+func (ctl *Controller) UpdateK8sNodeLabels(c *gin.Context) {
+	var payload model.K8sNodeLabelsPayload
+	if err := c.ShouldBindJSON(&payload); err != nil || payload.ClusterID == 0 || strings.TrimSpace(payload.NodeName) == "" {
+		httpx.Failed(c, http.StatusBadRequest, "invalid node labels payload")
+		return
+	}
+	if err := ctl.service.UpdateK8sNodeLabels(payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, true)
 }
 
 func (ctl *Controller) GetK8sPodDetail(c *gin.Context) {
@@ -412,6 +426,20 @@ func (ctl *Controller) UpdateK8sWorkloadImages(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.UpdateK8sWorkloadImages(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) UpdateK8sWorkloadResources(c *gin.Context) {
+	var payload model.K8sWorkloadResourcesPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid workload resource payload")
+		return
+	}
+	data, err := ctl.service.UpdateK8sWorkloadResources(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return

@@ -106,6 +106,8 @@ func normalizeNotifyScope(value string) string {
 		return "schedule"
 	case "job":
 		return "job"
+	case "pipeline", "cicd", "ci/cd":
+		return "pipeline"
 	case "monitor", "alert":
 		return "monitor"
 	default:
@@ -159,6 +161,8 @@ func normalizeNotifyEvents(events []string, scope string) []string {
 		return []string{"firing", "recovered"}
 	case "job":
 		return []string{"failed", "waiting_approval", "rejected"}
+	case "pipeline":
+		return []string{"success", "failed", "waiting_approval", "rejected"}
 	default:
 		return []string{"success", "failed"}
 	}
@@ -643,6 +647,8 @@ func notifyScopeLabel(scope string) string {
 		return "定时任务"
 	case "job":
 		return "作业编排"
+	case "pipeline":
+		return "CI/CD 流水线"
 	default:
 		return "全部场景"
 	}
@@ -853,6 +859,21 @@ func notifyStatusLabel(scope, status string) string {
 		case "rejected":
 			return "已拒绝"
 		}
+	case "pipeline":
+		switch value {
+		case "notice", "notify":
+			return "通知"
+		case "success", "completed":
+			return "成功"
+		case "failed", "error":
+			return "失败"
+		case "running":
+			return "执行中"
+		case "waiting_approval":
+			return "等待人工确认"
+		case "rejected":
+			return "已拒绝"
+		}
 	case "schedule":
 		return scheduleNotifyStatusLabel(status)
 	}
@@ -861,7 +882,7 @@ func notifyStatusLabel(scope, status string) string {
 
 func normalizeNotifyTemplateForEvent(title, content string, event NotifyEvent) (string, string) {
 	scope := normalizeNotifyScope(event.Scope)
-	if scope != "job" && scope != "schedule" {
+	if scope != "job" && scope != "schedule" && scope != "pipeline" {
 		return title, content
 	}
 	monitorTokens := []string{"{{severity}}", "{{alertName}}", "{{datasourceName}}", "{{instance}}", "{{value}}", "{{threshold}}"}
@@ -878,6 +899,9 @@ func normalizeNotifyTemplateForEvent(title, content string, event NotifyEvent) (
 	}
 	if scope == "schedule" {
 		return "【定时任务】{{taskName}} · {{status}}", "**执行状态：** {{status}}\n\n**任务名称：** {{taskName}}\n**任务类型：** {{taskType}}\n**触发方式：** {{triggerType}}\n**Cron：** {{cronExpr}}\n**执行耗时：** {{duration}}\n**完成时间：** {{finishedAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}"
+	}
+	if scope == "pipeline" {
+		return "【流水线通知】{{pipelineName}} · {{stageName}}", "**执行状态：** {{status}}\n\n**流水线：** {{pipelineName}}\n**执行编号：** #{{pipelineRunId}}\n**应用：** {{appName}}\n**环境：** {{env}}\n**分支：** {{branch}}\n**镜像版本：** {{imageTag}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}"
 	}
 	return "【作业通知】{{jobName}} · {{stepName}}", "**通知类型：** {{status}}\n\n**作业名称：** {{jobName}}\n**执行编号：** #{{jobHistoryId}}\n**当前步骤：** {{stepName}}\n**触发方式：** {{triggerType}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**通知摘要**\n{{summary}}\n\n{{detail}}"
 }

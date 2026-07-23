@@ -391,19 +391,39 @@ type OpsAppArtifact struct {
 
 func (OpsAppArtifact) TableName() string { return "ops_app_artifact" }
 
+// OpsImageRegistry stores the destination used by CI/CD image build and push stages.
+// Password is intentionally excluded from API responses.
+type OpsImageRegistry struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"size:128;not null;index"`
+	Address     string    `json:"address" gorm:"size:512;not null"`
+	Namespace   string    `json:"namespace" gorm:"size:255"`
+	Username    string    `json:"username" gorm:"size:255"`
+	Password    string    `json:"-" gorm:"type:text"`
+	Status      int       `json:"status" gorm:"default:1;index"`
+	Description string    `json:"description" gorm:"size:255"`
+	CreatedAt   time.Time `json:"createTime"`
+	UpdatedAt   time.Time `json:"updateTime"`
+}
+
+func (OpsImageRegistry) TableName() string { return "ops_image_registry" }
+
 type OpsAppPipeline struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
-	Name           string     `json:"name" gorm:"size:128;not null;index"`
-	AppID          uint       `json:"appId" gorm:"index;not null"`
-	AppName        string     `json:"appName" gorm:"size:128;index"`
-	AppCode        string     `json:"appCode" gorm:"size:128;index"`
-	RepoType       string     `json:"repoType" gorm:"size:16;index"`
-	RepoURL        string     `json:"repoUrl" gorm:"size:1024"`
-	DefaultBranch  string     `json:"defaultBranch" gorm:"size:128"`
-	Env            string     `json:"env" gorm:"size:64;index"`
-	TechStack      string     `json:"techStack" gorm:"size:64;index"`
-	TemplateID     uint       `json:"templateId" gorm:"index"`
-	BuildTaskID    uint       `json:"buildTaskId" gorm:"index"`
+	ID            uint   `json:"id" gorm:"primaryKey"`
+	Name          string `json:"name" gorm:"size:128;not null;index"`
+	AppID         uint   `json:"appId" gorm:"index;not null"`
+	AppName       string `json:"appName" gorm:"size:128;index"`
+	AppCode       string `json:"appCode" gorm:"size:128;index"`
+	RepoType      string `json:"repoType" gorm:"size:16;index"`
+	RepoURL       string `json:"repoUrl" gorm:"size:1024"`
+	DefaultBranch string `json:"defaultBranch" gorm:"size:128"`
+	Env           string `json:"env" gorm:"size:64;index"`
+	TechStack     string `json:"techStack" gorm:"size:64;index"`
+	TemplateID    uint   `json:"templateId" gorm:"index"`
+	BuildTaskID   uint   `json:"buildTaskId" gorm:"index"`
+	// ExecutorHostID is the SSH host used to execute checkout/build/image/deploy commands.
+	// Pipelines must never silently execute these commands inside the Ops Admin container.
+	ExecutorHostID uint       `json:"executorHostId" gorm:"index"`
 	StageCount     int        `json:"stageCount" gorm:"default:0"`
 	Status         int        `json:"status" gorm:"default:1;index"`
 	Description    string     `json:"description" gorm:"size:255"`
@@ -430,6 +450,7 @@ type OpsAppPipelineRun struct {
 	Branch         string     `json:"branch" gorm:"size:128"`
 	ImageTag       string     `json:"imageTag" gorm:"size:128;index"`
 	ArtifactID     uint       `json:"artifactId" gorm:"index"`
+	ExecutorHostID uint       `json:"executorHostId" gorm:"index"`
 	ApprovalStatus string     `json:"approvalStatus" gorm:"size:32;default:not_required;index"`
 	Approver       string     `json:"approver" gorm:"size:128"`
 	ApprovalNote   string     `json:"approvalNote" gorm:"type:text"`

@@ -28,7 +28,7 @@ const iconMap = {
         <div class="kuboard-head-main">
           <div class="kuboard-head-title">
             <h2>{{ page.currentSection.title }}</h2>
-            <p>{{ page.currentSection.description }}</p>
+            <p v-if="page.currentTab !== 'workloads'">{{ page.currentSection.description }}</p>
           </div>
 
           <div class="kuboard-head-tools">
@@ -61,7 +61,7 @@ const iconMap = {
           </div>
         </div>
 
-        <div v-if="page.hasCluster && page.shouldShowNamespaceFilter(page.currentTab)" class="kuboard-global-toolbar">
+        <div v-if="page.hasCluster && page.currentTab !== 'workloads' && page.shouldShowNamespaceFilter(page.currentTab)" class="kuboard-global-toolbar">
           <el-select
             :model-value="page.namespaceFilter"
             filterable

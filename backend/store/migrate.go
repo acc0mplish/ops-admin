@@ -54,6 +54,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.OpsAppBuildTask{},
 		&model.OpsAppRelease{},
 		&model.OpsAppArtifact{},
+		&model.OpsImageRegistry{},
 		&model.OpsAppPipeline{},
 		&model.OpsAppPipelineRun{},
 		&model.OpsAppPipelineRunStage{},

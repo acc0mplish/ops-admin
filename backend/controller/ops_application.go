@@ -196,6 +196,41 @@ func (ctl *Controller) GetOpsAppArtifactList(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetOpsImageRegistryList(c *gin.Context) {
+	data, err := ctl.service.ListOpsImageRegistries(c.Query("enabledOnly") == "1")
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SaveOpsImageRegistry(c *gin.Context) {
+	var payload service.OpsImageRegistryPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid image registry payload")
+		return
+	}
+	if err := ctl.service.SaveOpsImageRegistry(payload); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) DeleteOpsImageRegistry(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid image registry delete payload")
+		return
+	}
+	if err := ctl.service.DeleteOpsImageRegistry(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
 func (ctl *Controller) GetOpsAppPipelineTemplateList(c *gin.Context) {
 	data, err := ctl.service.ListOpsAppPipelineTemplates(c.Query("category"))
 	if err != nil {

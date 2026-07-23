@@ -36,7 +36,7 @@ const channelTypeMap = {
   webhook: '自定义 Webhook'
 }
 
-const scopeMap = { all: '全部', job: '作业编排', schedule: '定时任务', monitor: '监控告警' }
+const scopeMap = { all: '全部', job: '作业编排', pipeline: 'CI/CD 流水线', schedule: '定时任务', monitor: '监控告警' }
 const eventMap = {
   notify: '测试通知', success: '成功', failed: '失败', waiting_approval: '等待确认',
   rejected: '已拒绝', firing: '告警触发', recovered: '告警恢复'

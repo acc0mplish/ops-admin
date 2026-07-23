@@ -373,8 +373,14 @@ export const appDefinitions = [
             path: '/applications/build-history',
             icon: 'Document',
             children: []
-          }
+          },
         ]
+      },
+      {
+        title: '镜像仓库',
+        path: '/applications/image-registries',
+        icon: 'Box',
+        children: []
       },
       {
         title: 'CI/CD 流水线',

@@ -28,7 +28,8 @@ const scopeOptions = [
   { label: '通用场景', value: 'all' },
   { label: '监控告警', value: 'monitor' },
   { label: '定时任务', value: 'schedule' },
-  { label: '作业编排', value: 'job' }
+  { label: '作业编排', value: 'job' },
+  { label: 'CI/CD 流水线', value: 'pipeline' }
 ]
 
 const channelTypes = [
@@ -62,7 +63,8 @@ const scopeVariables = {
   all: ['scope', 'event', 'targetName', 'status', 'summary', 'detail', 'startedAt', 'finishedAt'],
   monitor: ['alertName', 'severity', 'datasourceName', 'instance', 'value', 'threshold'],
   schedule: ['taskName', 'taskType', 'cronExpr', 'duration', 'triggerType'],
-  job: ['jobName', 'jobHistoryId', 'stepName', 'stepMessage', 'triggerType', 'notifyAt']
+  job: ['jobName', 'jobHistoryId', 'stepName', 'stepMessage', 'triggerType', 'notifyAt'],
+  pipeline: ['pipelineName', 'pipelineRunId', 'appName', 'env', 'branch', 'imageTag', 'stageName', 'notifyAt']
 }
 const availableVariables = computed(() => [...scopeVariables.all, ...(scopeVariables[form.scope] || [])])
 
@@ -130,6 +132,15 @@ async function preparePreview() {
       startedAt: '2026-07-15 10:58:10', finishedAt: '2026-07-15 11:05:35', jobName: '生产服务滚动发布',
       jobHistoryId: '1024', stepName: '发布结果通知', stepMessage: '所有发布步骤已执行完成', triggerType: '手动执行',
       notifyAt: '2026-07-15 11:05:35', statusColor: '#3370FF', statusTone: 'info'
+    })
+    return
+  }
+  if (form.scope === 'pipeline') {
+    Object.assign(previewContext, {
+      scope: 'pipeline', event: 'notify', targetName: '生产发布流水线', status: '通知',
+      summary: '流水线已执行到消息通知阶段。', detail: '请到流水线执行记录核对阶段执行情况。',
+      startedAt: '2026-07-21 10:00:00', finishedAt: '2026-07-21 10:05:35',
+      pipelineName: '生产发布流水线', pipelineRunId: '1024', appName: '订单服务', env: 'prod', branch: 'main', imageTag: 'v20260721.1', stageName: '发布结果通知', notifyAt: '2026-07-21 10:05:35', statusColor: '#3370FF', statusTone: 'info'
     })
     return
   }

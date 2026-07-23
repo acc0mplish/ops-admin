@@ -51,6 +51,7 @@ import AppProjectList from '../views/applications/AppProjectList.vue'
 import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
 import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
 import AppPipelineCenter from '../views/applications/AppPipelineCenter.vue'
+import AppImageRegistry from '../views/applications/AppImageRegistry.vue'
 import AppTopology from '../views/applications/AppTopology.vue'
 import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
@@ -394,6 +395,11 @@ const routes = [
         path: '/applications/build-history',
         component: AppBuildHistory,
         meta: { title: '构建历史', app: 'applications', summary: '查看构建记录、阶段结果和完整构建日志。' }
+      },
+      {
+        path: '/applications/image-registries',
+        component: AppImageRegistry,
+        meta: { title: '镜像仓库', app: 'applications', summary: '维护 Docker 镜像仓库地址与登录凭据，供 CI/CD 流水线构建和推送镜像使用。' }
       },
       {
         path: '/applications/pipelines',

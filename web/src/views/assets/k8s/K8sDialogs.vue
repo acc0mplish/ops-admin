@@ -101,6 +101,19 @@ defineProps({
     </template>
   </el-dialog>
 
+  <el-dialog v-model="page.namespaceCreateVisible" :title="page.t('k8sCreateNamespace')" width="480px" destroy-on-close>
+    <el-form label-position="top">
+      <el-form-item :label="page.t('k8sNamespaceName')" required>
+        <el-input v-model="page.namespaceCreateForm.name" maxlength="63" show-word-limit placeholder="例如 game-prod" />
+      </el-form-item>
+      <div class="dialog-tip">{{ page.t('k8sCreateNamespaceHint') }}</div>
+    </el-form>
+    <template #footer>
+      <el-button @click="page.namespaceCreateVisible = false">{{ page.t('cancel') }}</el-button>
+      <el-button type="primary" :loading="page.namespaceCreateSaving" @click="page.submitNamespaceCreate">{{ page.t('k8sCreate') }}</el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="page.scaleDialogVisible" :title="page.t('k8sScaleWorkload')" width="420px">
     <el-form label-width="90px">
       <el-form-item :label="page.t('k8sNamespace')">
@@ -116,6 +129,55 @@ defineProps({
     <template #footer>
       <el-button @click="page.scaleDialogVisible = false">{{ page.t('cancel') }}</el-button>
       <el-button type="primary" :loading="page.scaleLoading" @click="page.submitScale">{{ page.t('save') }}</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="page.workloadResourceDialogVisible" title="更新 Pod 设置" width="920px" class="workload-resource-dialog-wrap" destroy-on-close>
+    <div class="workload-resource-dialog">
+      <div class="workload-resource-summary">
+        <div><span>命名空间</span><strong>{{ page.workloadResourceForm.namespace }}</strong></div>
+        <div><span>工作负载</span><strong>{{ page.workloadResourceForm.workloadName }} · {{ page.workloadResourceForm.workloadType }}</strong></div>
+      </div>
+      <p class="dialog-tip">可维护每个容器的资源 Request / Limit、镜像拉取策略与环境变量；保存后将更新 Pod 模板并触发工作负载滚动更新。</p>
+      <section v-for="container in page.workloadResourceForm.containers" :key="container.name" class="container-resource-card">
+        <div class="container-resource-head">
+          <strong>{{ container.name }}</strong>
+          <span>容器配置</span>
+        </div>
+        <el-row :gutter="14" class="container-basic-row">
+          <el-col :span="15"><el-form-item label="镜像"><el-input :model-value="container.image || '-'" readonly /></el-form-item></el-col>
+          <el-col :span="9"><el-form-item label="镜像拉取策略" class="image-pull-policy-field">
+            <el-select v-model="container.imagePullPolicy" class="image-pull-policy-select">
+              <el-option label="Always（始终拉取）" value="Always" />
+              <el-option label="IfNotPresent（本地优先）" value="IfNotPresent" />
+              <el-option label="Never（仅本地镜像）" value="Never" />
+            </el-select>
+          </el-form-item></el-col>
+        </el-row>
+        <div class="resource-setting-title">CPU / 内存 Request 与 Limit</div>
+        <el-row :gutter="14">
+          <el-col :span="6"><el-form-item label="CPU Request"><el-input v-model="container.requestCPU" placeholder="100m" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="CPU Limit"><el-input v-model="container.limitCPU" placeholder="1" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="内存 Request"><el-input v-model="container.requestMemory" placeholder="256Mi" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="内存 Limit"><el-input v-model="container.limitMemory" placeholder="1Gi" /></el-form-item></el-col>
+        </el-row>
+        <div class="resource-setting-title env-setting-title">环境变量</div>
+        <div v-if="container.env?.length" class="workload-env-head"><span>变量名</span><span>变量值</span><span>类型</span><span>操作</span></div>
+        <div v-if="container.env?.length" class="workload-env-list">
+          <div v-for="(env, envIndex) in container.env" :key="`${container.name}-${envIndex}`" class="workload-env-row">
+            <el-input v-model="env.name" placeholder="变量名，例如 VECTOR_LOG" />
+            <el-input :model-value="env.valueFrom ? (env.source || 'Kubernetes 引用变量') : env.value" :readonly="Boolean(env.valueFrom)" placeholder="变量值" @update:model-value="env.value = $event" />
+            <el-tag v-if="env.valueFrom" type="info" effect="plain">引用变量</el-tag>
+            <span v-else class="workload-env-type">普通变量</span>
+            <el-button link type="danger" @click="page.removeWorkloadEnvironment(container, envIndex)">删除</el-button>
+          </div>
+        </div>
+        <el-button link type="primary" class="add-env-button" @click="page.addWorkloadEnvironment(container)">+ 新增环境变量</el-button>
+      </section>
+    </div>
+    <template #footer>
+      <el-button @click="page.workloadResourceDialogVisible = false">{{ page.t('cancel') }}</el-button>
+      <el-button type="primary" :loading="page.workloadResourceSaving" @click="page.submitWorkloadResourceSettings">保存设置</el-button>
     </template>
   </el-dialog>
 

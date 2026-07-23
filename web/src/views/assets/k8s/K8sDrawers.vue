@@ -48,6 +48,35 @@ defineProps({
     </div>
   </el-drawer>
 
+  <el-dialog v-model="page.nodeLabelsVisible" width="720px" destroy-on-close class="node-label-dialog">
+    <template #header>
+      <div class="node-label-dialog-title">
+        <div>
+          <strong>节点标签管理</strong>
+          <span>{{ page.nodeLabelTarget?.name || '-' }}</span>
+        </div>
+      </div>
+    </template>
+    <div class="node-label-intro">
+      标签会直接更新到 Kubernetes Node，可用于节点筛选、工作负载调度与环境标识。保存前请确认系统标签是否仍需保留。
+    </div>
+    <div class="node-label-grid-head">
+      <span>标签键</span>
+      <span>标签值</span>
+      <span>操作</span>
+    </div>
+    <div v-for="(item, index) in page.nodeLabelItems" :key="`${item.key}-${index}`" class="node-label-row">
+      <el-input v-model="item.key" placeholder="例如 workload.example.com/tier" />
+      <el-input v-model="item.value" placeholder="可留空" />
+      <el-button link type="danger" @click="page.removeNodeLabel(index)">删除</el-button>
+    </div>
+    <el-button link type="primary" @click="page.addNodeLabel">+ 添加标签</el-button>
+    <template #footer>
+      <el-button @click="page.nodeLabelsVisible = false">取消</el-button>
+      <el-button type="primary" :loading="page.nodeLabelsSaving" @click="page.saveNodeLabels">保存标签</el-button>
+    </template>
+  </el-dialog>
+
   <el-drawer v-model="page.namespaceDrawerVisible" :title="page.t('k8sNamespaceDetailTitle')" size="56%">
     <div v-loading="page.namespaceDrawerLoading" class="drawer-content">
       <template v-if="page.namespaceDetail">
@@ -122,6 +151,12 @@ defineProps({
           <el-table :data="page.workloadDetail.containers || []" class="data-table">
             <el-table-column prop="name" :label="page.t('k8sContainer')" min-width="180" />
             <el-table-column prop="image" :label="page.t('k8sImage')" min-width="280" />
+            <el-table-column label="CPU Request / Limit" min-width="170">
+              <template #default="{ row }">{{ row.requestCPU || '-' }} / {{ row.limitCPU || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="内存 Request / Limit" min-width="190">
+              <template #default="{ row }">{{ row.requestMemory || '-' }} / {{ row.limitMemory || '-' }}</template>
+            </el-table-column>
           </el-table>
         </div>
 
@@ -329,22 +364,6 @@ defineProps({
         </div>
 
         <div class="drawer-section">
-          <div class="section-head">
-            <strong>{{ page.t('k8sLogs') }}</strong>
-            <el-select
-              v-if="page.podContainerOptions.length"
-              v-model="page.selectedContainer"
-              :placeholder="page.t('k8sSelectContainer')"
-              class="container-select"
-              @change="page.refreshPodLogs"
-            >
-              <el-option v-for="item in page.podContainerOptions" :key="item" :label="item" :value="item" />
-            </el-select>
-          </div>
-          <pre class="log-panel">{{ page.podLogs || page.t('k8sNoLogsAvailable') }}</pre>
-        </div>
-
-        <div class="drawer-section">
           <strong>{{ page.t('k8sEvents') }}</strong>
           <el-table :data="page.podEvents" class="data-table">
             <el-table-column prop="type" :label="page.t('k8sType')" width="100" />
@@ -355,6 +374,43 @@ defineProps({
           </el-table>
         </div>
       </template>
+    </div>
+  </el-drawer>
+
+  <el-drawer v-model="page.podLogDrawerVisible" title="Pod 日志" size="70%" class="pod-log-drawer">
+    <div v-loading="page.podLogLoading" class="drawer-content pod-log-drawer-content">
+      <div class="pod-log-overview">
+        <div>
+          <span>Pod</span>
+          <strong>{{ page.currentPodQuery.podName || '-' }}</strong>
+        </div>
+        <div>
+          <span>命名空间</span>
+          <strong>{{ page.currentPodQuery.namespace || '-' }}</strong>
+        </div>
+      </div>
+      <div class="pod-log-toolbar">
+        <el-select v-model="page.selectedContainer" class="pod-log-container-select" placeholder="选择容器" @change="page.refreshPodLogs">
+          <el-option v-for="item in page.podContainerOptions" :key="item" :label="item" :value="item" />
+        </el-select>
+        <el-select v-model="page.podLogTailLines" class="pod-log-tail-select" @change="page.refreshPodLogs">
+          <el-option :value="100" label="最近 100 条" />
+          <el-option :value="200" label="最近 200 条" />
+          <el-option :value="500" label="最近 500 条" />
+          <el-option :value="1000" label="最近 1000 条" />
+        </el-select>
+        <el-button :loading="page.podLogLoading" @click="page.refreshPodLogs">刷新日志</el-button>
+      </div>
+      <div class="pod-log-meta">显示容器标准输出 / 错误输出，默认最近 200 条。</div>
+      <div class="pod-log-console">
+        <template v-if="page.podLogLines.length">
+          <div v-for="(line, index) in page.podLogLines" :key="`${index}-${line}`" class="pod-log-line">
+            <span class="pod-log-line-number">{{ String(index + 1).padStart(3, '0') }}</span>
+            <span class="pod-log-line-content">{{ line }}</span>
+          </div>
+        </template>
+        <div v-else class="pod-log-empty">{{ page.t('k8sNoLogsAvailable') }}</div>
+      </div>
     </div>
   </el-drawer>
 </template>

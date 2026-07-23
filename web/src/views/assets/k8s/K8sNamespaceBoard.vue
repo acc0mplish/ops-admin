@@ -14,7 +14,10 @@ defineProps({
         <h3>{{ page.t('k8sNamespaces') }}</h3>
         <p>{{ page.t('k8sNamespacesHint') }}</p>
       </div>
-      <el-button plain @click="page.refreshCurrentClusterData">{{ page.t('k8sRefresh') }}</el-button>
+      <div class="kuboard-head-actions">
+        <el-button plain @click="page.refreshCurrentClusterData">{{ page.t('k8sRefresh') }}</el-button>
+        <el-button type="primary" @click="page.openNamespaceCreate">{{ page.t('k8sCreateNamespace') }}</el-button>
+      </div>
     </div>
 
     <div class="kuboard-stat-row">

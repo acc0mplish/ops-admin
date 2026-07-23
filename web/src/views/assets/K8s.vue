@@ -15,6 +15,7 @@ import {
   queryK8sNamespaceEvents,
   queryK8sNodeDetail,
   queryK8sNodePods,
+  updateK8sNodeLabels,
   queryK8sPodDetail,
   queryK8sPodContainers,
   queryK8sPodEvents,
@@ -29,6 +30,7 @@ import {
   scaleK8sWorkload,
   restartK8sWorkload,
   updateK8sWorkloadImages,
+	updateK8sWorkloadResources,
   updateK8sIstioTraffic,
   updateK8sHTTPRouteTraffic,
   createK8sResourceYAML,
@@ -95,22 +97,37 @@ const nodeDrawerVisible = ref(false)
 const nodeDrawerLoading = ref(false)
 const nodeDetail = ref(null)
 const nodePods = ref([])
+const nodeLabelsVisible = ref(false)
+const nodeLabelsSaving = ref(false)
+const nodeLabelTarget = ref(null)
+const nodeLabelItems = ref([])
 
 const namespaceDrawerVisible = ref(false)
 const namespaceDrawerLoading = ref(false)
 const namespaceDetail = ref(null)
 const namespaceEvents = ref([])
+const namespaceCreateVisible = ref(false)
+const namespaceCreateSaving = ref(false)
+const namespaceCreateForm = reactive({
+  name: ''
+})
 
 const workloadDrawerVisible = ref(false)
 const workloadDrawerLoading = ref(false)
 const workloadDetail = ref(null)
+const workloadResourceDialogVisible = ref(false)
+const workloadResourceSaving = ref(false)
+const workloadResourceForm = reactive({ namespace: '', workloadType: '', workloadName: '', containers: [] })
 
 const podDrawerVisible = ref(false)
 const podDrawerLoading = ref(false)
 const podDetail = ref(null)
 const podEvents = ref([])
+const podLogDrawerVisible = ref(false)
+const podLogLoading = ref(false)
 const podLogs = ref('')
 const selectedContainer = ref('')
+const podLogTailLines = ref(200)
 const currentPodQuery = reactive({
   namespace: '',
   podName: ''
@@ -242,6 +259,7 @@ const podContainerOptions = computed(() => {
   if (!podDetail.value?.containers) return []
   return podDetail.value.containers.map((item) => item.name)
 })
+const podLogLines = computed(() => String(podLogs.value || '').split('\n').filter((line, index, list) => line || index < list.length - 1))
 
 const namespaceOptions = computed(() => {
   const options = [{ label: t('k8sAllNamespaces'), value: '__all__' }]
@@ -1030,10 +1048,6 @@ async function openPodDetail(row) {
   podDrawerLoading.value = true
   podDetail.value = null
   podEvents.value = []
-  podLogs.value = ''
-  selectedContainer.value = ''
-  currentPodQuery.namespace = row.namespace
-  currentPodQuery.podName = row.name
   try {
     const [detail, events] = await Promise.all([
       queryK8sPodDetail(cluster.value.id, row.namespace, row.name),
@@ -1041,10 +1055,26 @@ async function openPodDetail(row) {
     ])
     podDetail.value = detail
     podEvents.value = events || []
-    selectedContainer.value = detail.containers?.[0]?.name || ''
-    await refreshPodLogs()
   } finally {
     podDrawerLoading.value = false
+  }
+}
+
+async function openPodLogs(row) {
+  if (!cluster.value?.id || !row?.namespace || !row?.name) return
+  podLogDrawerVisible.value = true
+  podLogLoading.value = true
+  podLogs.value = ''
+  selectedContainer.value = ''
+  podLogTailLines.value = 200
+  currentPodQuery.namespace = row.namespace
+  currentPodQuery.podName = row.name
+  try {
+    const containers = await queryK8sPodContainers(cluster.value.id, row.namespace, row.name)
+    selectedContainer.value = containers?.[0] || ''
+    await refreshPodLogs()
+  } finally {
+    podLogLoading.value = false
   }
 }
 
@@ -1066,7 +1096,8 @@ async function refreshPodLogs() {
     cluster.value.id,
     currentPodQuery.namespace,
     currentPodQuery.podName,
-    selectedContainer.value
+    selectedContainer.value,
+    podLogTailLines.value
   )
   podLogs.value = data.content || ''
 }
@@ -1137,6 +1168,146 @@ async function openIngressYAML(row) {
     name: detail.name,
     yaml: detail.yaml
   })
+}
+
+async function openWorkloadResourceSettings(row) {
+  if (!cluster.value?.id) return
+  const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
+  workloadResourceForm.namespace = detail.namespace
+  workloadResourceForm.workloadType = detail.type
+  workloadResourceForm.workloadName = detail.name
+  workloadResourceForm.containers = (detail.containers || []).map((item) => ({
+    name: item.name,
+    image: item.image || '',
+    requestCPU: item.requestCPU || '',
+    limitCPU: item.limitCPU || '',
+    requestMemory: item.requestMemory || '',
+    limitMemory: item.limitMemory || '',
+    imagePullPolicy: item.imagePullPolicy || 'IfNotPresent',
+    env: (item.env || []).map((env) => ({
+      name: env.name || '',
+      value: env.value || '',
+      valueFrom: env.valueFrom || null,
+      source: env.source || ''
+    }))
+  }))
+  workloadResourceDialogVisible.value = true
+}
+
+function addWorkloadEnvironment(container) {
+  if (!Array.isArray(container.env)) container.env = []
+  container.env.push({ name: '', value: '', valueFrom: null, source: '' })
+}
+
+function removeWorkloadEnvironment(container, index) {
+  if (Array.isArray(container.env)) container.env.splice(index, 1)
+}
+
+async function submitWorkloadResourceSettings() {
+  if (!cluster.value?.id || !workloadResourceForm.containers.length) return
+  workloadResourceSaving.value = true
+  try {
+    await updateK8sWorkloadResources({ clusterId: cluster.value.id, ...workloadResourceForm })
+    ElMessage.success('Pod 资源设置已更新')
+    workloadResourceDialogVisible.value = false
+    await refreshCurrentClusterData()
+    if (workloadDrawerVisible.value && workloadDetail.value?.name === workloadResourceForm.workloadName) {
+      workloadDetail.value = await queryK8sWorkloadDetail(cluster.value.id, workloadResourceForm.namespace, workloadResourceForm.workloadType, workloadResourceForm.workloadName)
+    }
+  } finally {
+    workloadResourceSaving.value = false
+  }
+}
+
+function openNamespaceCreate() {
+  namespaceCreateForm.name = ''
+  namespaceCreateVisible.value = true
+}
+
+async function submitNamespaceCreate() {
+  if (!cluster.value?.id) return
+  const name = String(namespaceCreateForm.name || '').trim().toLowerCase()
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name) || name.length > 63) {
+    ElMessage.warning(t('k8sNamespaceNameInvalid'))
+    return
+  }
+  namespaceCreateSaving.value = true
+  try {
+    await createK8sResourceYAML({
+      clusterId: cluster.value.id,
+      resourceType: 'namespace',
+      name,
+      yaml: `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ${name}\n`
+    })
+    ElMessage.success(t('k8sNamespaceCreatedSuccess'))
+    namespaceCreateVisible.value = false
+    await refreshCurrentClusterData()
+  } finally {
+    namespaceCreateSaving.value = false
+  }
+}
+
+function nodePodPercent(pods) {
+  const [used, total] = String(pods || '').split('/').map((item) => Number(item))
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return 0
+  return Math.min(100, Math.round((used / total) * 100))
+}
+
+function podStatusTagType(status) {
+  const value = String(status || '').toLowerCase()
+  if (['running', 'succeeded', 'completed'].includes(value)) return 'success'
+  if (['pending', 'terminating', 'containercreating'].includes(value)) return 'warning'
+  if (['failed', 'error', 'unknown', 'crashloopbackoff', 'imagepullbackoff'].includes(value)) return 'danger'
+  return 'info'
+}
+
+async function openNodeLabels(row) {
+  if (!cluster.value?.id || !row?.name) return
+  nodeLabelTarget.value = { name: row.name }
+  nodeLabelsVisible.value = true
+  try {
+    const detail = await queryK8sNodeDetail(cluster.value.id, row.name)
+    nodeLabelItems.value = Object.entries(detail?.labels || {}).map(([key, value]) => ({ key, value }))
+  } catch (error) {
+    nodeLabelsVisible.value = false
+  }
+}
+
+function addNodeLabel() {
+  nodeLabelItems.value.push({ key: '', value: '' })
+}
+
+function removeNodeLabel(index) {
+  nodeLabelItems.value.splice(index, 1)
+}
+
+async function saveNodeLabels() {
+  if (!cluster.value?.id || !nodeLabelTarget.value?.name) return
+  const labels = {}
+  for (const item of nodeLabelItems.value) {
+    const key = String(item.key || '').trim()
+    if (!key) {
+      ElMessage.warning('标签键不能为空')
+      return
+    }
+    if (Object.prototype.hasOwnProperty.call(labels, key)) {
+      ElMessage.warning(`标签键重复：${key}`)
+      return
+    }
+    labels[key] = String(item.value ?? '').trim()
+  }
+  nodeLabelsSaving.value = true
+  try {
+    await updateK8sNodeLabels({ clusterId: cluster.value.id, nodeName: nodeLabelTarget.value.name, labels })
+    ElMessage.success('节点标签已更新')
+    nodeLabelsVisible.value = false
+    await refreshCurrentClusterData()
+    if (nodeDetail.value?.name === nodeLabelTarget.value.name) {
+      nodeDetail.value = await queryK8sNodeDetail(cluster.value.id, nodeLabelTarget.value.name)
+    }
+  } finally {
+    nodeLabelsSaving.value = false
+  }
 }
 
 function formatAgeFromTimestamp(value) {
@@ -1612,20 +1783,33 @@ const page = reactive({
   nodeDrawerLoading,
   nodeDetail,
   nodePods,
+  nodeLabelsVisible,
+  nodeLabelsSaving,
+  nodeLabelTarget,
+  nodeLabelItems,
   namespaceDrawerVisible,
   namespaceDrawerLoading,
   namespaceDetail,
   namespaceEvents,
+  namespaceCreateVisible,
+  namespaceCreateSaving,
+  namespaceCreateForm,
   workloadDrawerVisible,
   workloadDrawerLoading,
   workloadDetail,
+	workloadResourceDialogVisible,
+	workloadResourceSaving,
+	workloadResourceForm,
   selectedWorkloads,
   podDrawerVisible,
   podDrawerLoading,
   podDetail,
   podEvents,
+  podLogDrawerVisible,
+  podLogLoading,
   podLogs,
   selectedContainer,
+  podLogTailLines,
   currentPodQuery,
   serviceDrawerVisible,
   serviceDrawerLoading,
@@ -1685,6 +1869,7 @@ const page = reactive({
   yamlCurrentLineOffset,
   trafficTotalWeight,
   podContainerOptions,
+  podLogLines,
   sectionTabs,
   clusterStatusText,
   certificateStatusType,
@@ -1702,10 +1887,22 @@ const page = reactive({
   handleWorkloadTypeChange,
   refreshCurrentClusterData,
   openNodeDetail,
+  openNodeLabels,
+  addNodeLabel,
+  removeNodeLabel,
+  saveNodeLabels,
+  nodePodPercent,
+  podStatusTagType,
   openNamespaceDetail,
   openNamespaceYAML,
+  openNamespaceCreate,
+  submitNamespaceCreate,
   openWorkloadDetail,
-  openWorkloadYAML,
+	openWorkloadResourceSettings,
+	submitWorkloadResourceSettings,
+	addWorkloadEnvironment,
+	removeWorkloadEnvironment,
+	openWorkloadYAML,
   handleWorkloadSelectionChange,
   supportsScale,
   supportsRestart,
@@ -1714,6 +1911,7 @@ const page = reactive({
   handleRestartWorkload,
   submitWorkloadImageVersionUpdate,
   openPodDetail,
+  openPodLogs,
   openPodYAML,
   openPodTerminal,
   refreshPodLogs,

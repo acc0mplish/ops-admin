@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -112,6 +113,7 @@ type OpsAppPipelinePayload struct {
 	TechStack      string `json:"techStack"`
 	TemplateID     uint   `json:"templateId"`
 	BuildTaskID    uint   `json:"buildTaskId"`
+	ExecutorHostID uint   `json:"executorHostId"`
 	Status         int    `json:"status"`
 	Description    string `json:"description"`
 	DefinitionJSON string `json:"definitionJson"`
@@ -129,6 +131,17 @@ type OpsAppPipelineRunPayload struct {
 	ImageTag   string            `json:"imageTag"`
 	ArtifactID uint              `json:"artifactId"`
 	Params     map[string]string `json:"params"`
+}
+
+type OpsImageRegistryPayload struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Address     string `json:"address"`
+	Namespace   string `json:"namespace"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	Status      int    `json:"status"`
+	Description string `json:"description"`
 }
 
 type OpsAppPipelineApprovalPayload struct {
@@ -168,16 +181,17 @@ type opsBuildExecution struct {
 }
 
 type opsPipelineExecution struct {
-	RunID      uint
-	PipelineID uint
-	App        model.OpsApplication
-	Branch     string
-	Env        string
-	ImageTag   string
-	Workspace  string
-	Params     map[string]string
-	Stages     []OpsAppPipelineStageDefinition
-	StartedAt  time.Time
+	RunID        uint
+	PipelineID   uint
+	App          model.OpsApplication
+	Branch       string
+	Env          string
+	ImageTag     string
+	Workspace    string
+	ExecutorHost model.AssetHost
+	Params       map[string]string
+	Stages       []OpsAppPipelineStageDefinition
+	StartedAt    time.Time
 }
 
 func normalizeOpsRepoType(value string) string {
@@ -756,6 +770,59 @@ func (s *Service) ListOpsAppArtifacts(appID uint, env, status string) ([]model.O
 	return list, err
 }
 
+func normalizeOpsImageRegistryAddress(value string) string {
+	return strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(value, "https://"), "http://")), "/")
+}
+
+func mapOpsImageRegistry(item model.OpsImageRegistry) map[string]any {
+	return map[string]any{"id": item.ID, "name": item.Name, "address": item.Address, "namespace": item.Namespace, "username": item.Username, "hasPassword": strings.TrimSpace(item.Password) != "", "status": item.Status, "description": item.Description, "createTime": item.CreatedAt, "updateTime": item.UpdatedAt}
+}
+
+func (s *Service) ListOpsImageRegistries(enabledOnly bool) ([]map[string]any, error) {
+	query := s.db.Model(&model.OpsImageRegistry{})
+	if enabledOnly {
+		query = query.Where("status = ?", 1)
+	}
+	var list []model.OpsImageRegistry
+	if err := query.Order("id DESC").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, mapOpsImageRegistry(item))
+	}
+	return result, nil
+}
+
+func (s *Service) SaveOpsImageRegistry(payload OpsImageRegistryPayload) error {
+	name, address := Trimmed(payload.Name), normalizeOpsImageRegistryAddress(payload.Address)
+	if name == "" || address == "" {
+		return errors.New("镜像仓库名称和地址不能为空")
+	}
+	status := 1
+	if payload.Status == 2 {
+		status = 2
+	}
+	updates := map[string]any{"name": name, "address": address, "namespace": strings.Trim(strings.TrimSpace(payload.Namespace), "/"), "username": Trimmed(payload.Username), "status": status, "description": Trimmed(payload.Description)}
+	if strings.TrimSpace(payload.Password) != "" {
+		updates["password"] = payload.Password
+	}
+	if payload.ID > 0 {
+		return s.db.Model(&model.OpsImageRegistry{}).Where("id = ?", payload.ID).Updates(updates).Error
+	}
+	if _, ok := updates["password"]; !ok {
+		updates["password"] = ""
+	}
+	return s.db.Create(&model.OpsImageRegistry{Name: name, Address: address, Namespace: updates["namespace"].(string), Username: updates["username"].(string), Password: updates["password"].(string), Status: updates["status"].(int), Description: updates["description"].(string)}).Error
+}
+
+func (s *Service) DeleteOpsImageRegistry(id uint) error {
+	if id == 0 {
+		return errors.New("镜像仓库 ID 不能为空")
+	}
+	return s.db.Delete(&model.OpsImageRegistry{}, id).Error
+}
+
 func builtinOpsAppPipelineTemplates() []map[string]any {
 	templates := []struct {
 		ID          uint
@@ -863,6 +930,79 @@ func normalizeOpsPipelineStages(definitionJSON string) ([]OpsAppPipelineStageDef
 	return wrapper.Stages, string(normalized), nil
 }
 
+func validateOpsPipelineStages(stages []OpsAppPipelineStageDefinition, validateDeployTarget bool) error {
+	if len(stages) == 0 {
+		return errors.New("流水线至少需要配置一个执行阶段")
+	}
+	allowedTypes := map[string]bool{
+		"checkout": true, "command": true, "test": true, "build": true,
+		"dockerBuild": true, "dockerPush": true, "k8sDeploy": true,
+		"manual": true, "notify": true,
+	}
+	stageIDs := map[string]bool{}
+	buildRegistryByStageID := map[string]uint{}
+	buildStageByRegistryID := map[uint]string{}
+	for index, stage := range stages {
+		if !allowedTypes[stage.Type] {
+			return fmt.Errorf("第 %d 个阶段的类型不受支持：%s", index+1, stage.Type)
+		}
+		if strings.TrimSpace(stage.ID) == "" || stageIDs[stage.ID] {
+			return fmt.Errorf("第 %d 个阶段标识为空或重复", index+1)
+		}
+		stageIDs[stage.ID] = true
+		if strings.TrimSpace(stage.Name) == "" {
+			return fmt.Errorf("请填写第 %d 个阶段名称", index+1)
+		}
+		if (stage.Type == "command" || stage.Type == "test" || stage.Type == "build") && strings.TrimSpace(opsPipelineConfigString(stage.Config, "script")) == "" {
+			return fmt.Errorf("阶段「%s」缺少执行命令", stage.Name)
+		}
+		if stage.Type == "notify" && opsPipelineConfigUint(stage.Config, "notifyRuleId") == 0 {
+			return fmt.Errorf("消息通知阶段「%s」需要选择通知规则", stage.Name)
+		}
+		if stage.Type == "dockerBuild" {
+			registryID := opsPipelineConfigUint(stage.Config, "registryId")
+			if registryID == 0 {
+				return fmt.Errorf("镜像构建阶段「%s」需要选择镜像仓库", stage.Name)
+			}
+			buildRegistryByStageID[stage.ID] = registryID
+			if _, exists := buildStageByRegistryID[registryID]; !exists {
+				buildStageByRegistryID[registryID] = stage.ID
+			}
+		}
+		if validateDeployTarget && stage.Type == "k8sDeploy" {
+			if opsPipelineConfigUint(stage.Config, "clusterId") == 0 || opsPipelineConfigString(stage.Config, "namespace") == "" || opsPipelineConfigString(stage.Config, "workload") == "" || opsPipelineConfigString(stage.Config, "container") == "" {
+				return fmt.Errorf("K8s 发布阶段「%s」缺少集群、命名空间、工作负载或容器配置", stage.Name)
+			}
+		}
+	}
+	for index := range stages {
+		stage := &stages[index]
+		if stage.Type != "dockerPush" {
+			continue
+		}
+		if stage.Config == nil {
+			stage.Config = map[string]any{}
+		}
+		sourceStageID := opsPipelineConfigString(stage.Config, "sourceStageId")
+		if sourceStageID == "" {
+			// Compatibility for existing pipelines that selected the same registry in
+			// both stages before source-stage binding was introduced.
+			sourceStageID = buildStageByRegistryID[opsPipelineConfigUint(stage.Config, "registryId")]
+			if sourceStageID != "" {
+				stage.Config["sourceStageId"] = sourceStageID
+			}
+		}
+		registryID := buildRegistryByStageID[sourceStageID]
+		if sourceStageID == "" || registryID == 0 {
+			return fmt.Errorf("上传镜像阶段「%s」需要引用前面的镜像构建阶段", stage.Name)
+		}
+		// Persist the resolved registry ID in the execution definition. This makes the
+		// pushed tag exactly the image produced by the selected build stage.
+		stage.Config["registryId"] = registryID
+	}
+	return nil
+}
+
 func (s *Service) ListOpsAppPipelines(pageNum, pageSize int, appID uint, keyword, env, status, techStack string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
@@ -928,6 +1068,17 @@ func (s *Service) SaveOpsAppPipeline(payload OpsAppPipelinePayload) error {
 	if err != nil {
 		return err
 	}
+	if err := validateOpsPipelineStages(stages, false); err != nil {
+		return err
+	}
+	definition, _ := json.Marshal(map[string]any{"stages": stages})
+	normalizedDefinition = string(definition)
+	if payload.ExecutorHostID == 0 {
+		return errors.New("请选择流水线执行节点，流水线命令不会在 Ops Admin 容器内执行")
+	}
+	if _, err := s.getOpsPipelineExecutorHost(payload.ExecutorHostID); err != nil {
+		return err
+	}
 	item := model.OpsAppPipeline{
 		Name:           Trimmed(payload.Name),
 		AppID:          app.ID,
@@ -940,6 +1091,7 @@ func (s *Service) SaveOpsAppPipeline(payload OpsAppPipelinePayload) error {
 		TechStack:      Trimmed(payload.TechStack),
 		TemplateID:     payload.TemplateID,
 		BuildTaskID:    payload.BuildTaskID,
+		ExecutorHostID: payload.ExecutorHostID,
 		StageCount:     len(stages),
 		Status:         normalizeOpsAppStatus(payload.Status),
 		Description:    Trimmed(payload.Description),
@@ -969,7 +1121,7 @@ func (s *Service) SaveOpsAppPipeline(payload OpsAppPipelinePayload) error {
 	return s.db.Model(&model.OpsAppPipeline{}).Where("id = ?", payload.ID).Updates(map[string]any{
 		"name": item.Name, "app_id": item.AppID, "app_name": item.AppName, "app_code": item.AppCode,
 		"repo_type": item.RepoType, "repo_url": item.RepoURL, "default_branch": item.DefaultBranch,
-		"env": item.Env, "tech_stack": item.TechStack, "template_id": item.TemplateID, "build_task_id": item.BuildTaskID,
+		"env": item.Env, "tech_stack": item.TechStack, "template_id": item.TemplateID, "build_task_id": item.BuildTaskID, "executor_host_id": item.ExecutorHostID,
 		"stage_count": item.StageCount, "status": item.Status, "description": item.Description,
 		"definition_json": item.DefinitionJSON,
 	}).Error
@@ -1016,6 +1168,23 @@ func (s *Service) CopyOpsAppPipeline(id uint) (map[string]any, error) {
 	return map[string]any{"id": item.ID}, nil
 }
 
+func (s *Service) getOpsPipelineExecutorHost(id uint) (model.AssetHost, error) {
+	if id == 0 {
+		return model.AssetHost{}, errors.New("请选择流水线执行节点")
+	}
+	var host model.AssetHost
+	if err := s.db.Preload("Group").Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, id).Error; err != nil {
+		return model.AssetHost{}, errors.New("流水线执行节点不存在")
+	}
+	if host.Status != 1 {
+		return model.AssetHost{}, errors.New("所选流水线执行节点已停用")
+	}
+	if host.CredentialID == nil || *host.CredentialID == 0 {
+		return model.AssetHost{}, errors.New("所选流水线执行节点未配置 SSH 认证凭据")
+	}
+	return host, nil
+}
+
 func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[string]any, error) {
 	var pipeline model.OpsAppPipeline
 	if err := s.db.First(&pipeline, payload.PipelineID).Error; err != nil {
@@ -1023,6 +1192,10 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	}
 	if pipeline.Status != 1 {
 		return nil, errors.New("当前流水线已禁用，无法执行")
+	}
+	executorHost, err := s.getOpsPipelineExecutorHost(pipeline.ExecutorHostID)
+	if err != nil {
+		return nil, err
 	}
 	app, err := s.GetOpsApplication(pipeline.AppID)
 	if err != nil {
@@ -1070,6 +1243,11 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 		definition, _ := json.Marshal(map[string]any{"stages": stages})
 		normalizedDefinition = string(definition)
 	}
+	if err := validateOpsPipelineStages(stages, true); err != nil {
+		return nil, err
+	}
+	definition, _ := json.Marshal(map[string]any{"stages": stages})
+	normalizedDefinition = string(definition)
 	if strings.EqualFold(env, "prod") || strings.Contains(env, "生产") {
 		hasApproval := false
 		for _, stage := range stages {
@@ -1103,7 +1281,7 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 		}
 	}
 	if imageTag == "" {
-		imageTag = time.Now().Format("20060102150405")
+		imageTag = opsPipelineImageTag(branch, time.Now())
 	}
 	workspace := s.resolveOpsAppWorkspace(*app)
 	paramsJSON, _ := json.Marshal(payload.Params)
@@ -1111,7 +1289,7 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	run := model.OpsAppPipelineRun{
 		PipelineID: pipeline.ID, PipelineName: pipeline.Name, AppID: pipeline.AppID, AppName: pipeline.AppName,
 		AppCode: pipeline.AppCode, Env: env, Branch: branch, ImageTag: imageTag, ArtifactID: payload.ArtifactID, TriggerType: "manual",
-		TriggerUser: "系统管理员", Status: "running", Summary: "流水线已创建，等待阶段执行",
+		ExecutorHostID: pipeline.ExecutorHostID, TriggerUser: "系统管理员", Status: "running", Summary: "流水线已创建，等待阶段执行",
 		ParamsJSON: string(paramsJSON), DefinitionJSON: normalizedDefinition, StartedAt: &now,
 	}
 	if err := s.db.Create(&run).Error; err != nil {
@@ -1128,7 +1306,7 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 	})
 	go s.runOpsAppPipeline(opsPipelineExecution{
 		RunID: run.ID, PipelineID: pipeline.ID, App: *app, Branch: branch, Env: env,
-		ImageTag: imageTag, Workspace: workspace, Params: payload.Params, Stages: stages, StartedAt: now,
+		ImageTag: imageTag, Workspace: workspace, ExecutorHost: executorHost, Params: payload.Params, Stages: stages, StartedAt: now,
 	})
 	return map[string]any{"runId": run.ID, "status": run.Status, "summary": run.Summary}, nil
 }
@@ -1275,6 +1453,10 @@ func (s *Service) ApproveOpsAppPipelineRun(payload OpsAppPipelineApprovalPayload
 	if err := s.db.First(&app, run.AppID).Error; err != nil {
 		return err
 	}
+	executorHost, err := s.getOpsPipelineExecutorHost(run.ExecutorHostID)
+	if err != nil {
+		return err
+	}
 	stages, _, err := normalizeOpsPipelineStages(run.DefinitionJSON)
 	if err != nil {
 		return err
@@ -1287,7 +1469,7 @@ func (s *Service) ApproveOpsAppPipelineRun(payload OpsAppPipelineApprovalPayload
 	}
 	go s.runOpsAppPipeline(opsPipelineExecution{
 		RunID: run.ID, PipelineID: run.PipelineID, App: app, Branch: run.Branch, Env: run.Env,
-		ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), Params: params, Stages: stages, StartedAt: started,
+		ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), ExecutorHost: executorHost, Params: params, Stages: stages, StartedAt: started,
 	})
 	return nil
 }
@@ -1295,6 +1477,10 @@ func (s *Service) ApproveOpsAppPipelineRun(payload OpsAppPipelineApprovalPayload
 func (s *Service) RollbackOpsAppPipelineRun(runID uint, operator string) (map[string]any, error) {
 	var current model.OpsAppPipelineRun
 	if err := s.db.First(&current, runID).Error; err != nil {
+		return nil, err
+	}
+	executorHost, err := s.getOpsPipelineExecutorHost(current.ExecutorHostID)
+	if err != nil {
 		return nil, err
 	}
 	var previous model.OpsAppPipelineRun
@@ -1319,7 +1505,7 @@ func (s *Service) RollbackOpsAppPipelineRun(runID uint, operator string) (map[st
 	run := model.OpsAppPipelineRun{
 		PipelineID: current.PipelineID, PipelineName: current.PipelineName, AppID: current.AppID, AppName: current.AppName,
 		AppCode: current.AppCode, Env: current.Env, Branch: previous.Branch, ImageTag: previous.ImageTag,
-		ArtifactID: previous.ArtifactID, TriggerType: "rollback", TriggerUser: firstNonEmpty(operator, "系统管理员"),
+		ArtifactID: previous.ArtifactID, ExecutorHostID: current.ExecutorHostID, TriggerType: "rollback", TriggerUser: firstNonEmpty(operator, "系统管理员"),
 		Status: "running", Summary: fmt.Sprintf("正在回滚到执行 #%d / %s", previous.ID, previous.ImageTag),
 		DefinitionJSON: string(normalized), StartedAt: &now,
 	}
@@ -1333,14 +1519,20 @@ func (s *Service) RollbackOpsAppPipelineRun(runID uint, operator string) (map[st
 	if err := s.db.First(&app, run.AppID).Error; err != nil {
 		return nil, err
 	}
-	go s.runOpsAppPipeline(opsPipelineExecution{RunID: run.ID, PipelineID: run.PipelineID, App: app, Branch: run.Branch, Env: run.Env, ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), Stages: stages, StartedAt: now})
+	go s.runOpsAppPipeline(opsPipelineExecution{RunID: run.ID, PipelineID: run.PipelineID, App: app, Branch: run.Branch, Env: run.Env, ImageTag: run.ImageTag, Workspace: s.resolveOpsAppWorkspace(app), ExecutorHost: executorHost, Stages: stages, StartedAt: now})
 	return map[string]any{"runId": run.ID, "rollbackFromRunId": current.ID, "rollbackToRunId": previous.ID, "imageTag": previous.ImageTag}, nil
 }
 
 func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stage OpsAppPipelineStageDefinition) (string, error) {
-	header := fmt.Sprintf("[%s] 阶段开始：%s\n阶段类型：%s\n执行策略：%s\n工作目录：%s\n\n",
-		time.Now().Format("2006-01-02 15:04:05"), stage.Name, stage.Type, stage.FailurePolicy, execInfo.Workspace)
+	header := fmt.Sprintf("[%s] 阶段开始：%s\n阶段类型：%s\n执行策略：%s\n执行节点：%s (%s)\n工作目录：%s\n\n",
+		time.Now().Format("2006-01-02 15:04:05"), stage.Name, stage.Type, stage.FailurePolicy, execInfo.ExecutorHost.HostName, execInfo.ExecutorHost.SSHIP, execInfo.Workspace)
 	timeout := time.Duration(normalizeOpsBuildTimeout(stage.TimeoutSeconds)) * time.Second
+	// Commands, checkout, Docker and Kubernetes deployment intentionally execute through
+	// the selected SSH host. This prevents an Ops Admin container from becoming an
+	// accidental CI runner.
+	if stage.Type != "manual" && stage.Type != "notify" {
+		return s.executeOpsAppPipelineRemoteStage(execInfo, stage, header, timeout)
+	}
 	switch stage.Type {
 	case "checkout":
 		if err := os.MkdirAll(filepath.Dir(execInfo.Workspace), 0o755); err != nil {
@@ -1362,19 +1554,33 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 		if err := ensureOpsAppPipelineWorkspace(execInfo.Workspace); err != nil {
 			return header, err
 		}
-		image := opsPipelineImageName(stage.Config, execInfo)
+		image, imageErr := s.opsPipelineImageName(stage.Config, execInfo)
+		if imageErr != nil {
+			return header, imageErr
+		}
+		loginOutput, loginErr := s.loginOpsPipelineRegistry(stage.Config, execInfo.Workspace, timeout)
+		if loginErr != nil {
+			return header + sectionLog("镜像仓库登录", loginOutput), loginErr
+		}
 		dockerfile := opsPipelineConfigStringDefault(stage.Config, "dockerfile", "Dockerfile")
 		contextDir := opsPipelineConfigStringDefault(stage.Config, "context", ".")
 		args := []string{"build", "-t", image, "-f", dockerfile, contextDir}
 		output, err := runOpsAppCommand(execInfo.Workspace, timeout, "docker", args...)
-		return header + sectionLog("Docker Build: "+image, appendOpsAppCommandError(output, err)), err
+		return header + sectionLog("镜像仓库登录", loginOutput) + sectionLog("Docker Build: "+image, appendOpsAppCommandError(output, err)), err
 	case "dockerPush":
 		if err := ensureOpsAppPipelineWorkspace(execInfo.Workspace); err != nil {
 			return header, err
 		}
-		image := opsPipelineImageName(stage.Config, execInfo)
+		image, imageErr := s.opsPipelineImageName(stage.Config, execInfo)
+		if imageErr != nil {
+			return header, imageErr
+		}
+		loginOutput, loginErr := s.loginOpsPipelineRegistry(stage.Config, execInfo.Workspace, timeout)
+		if loginErr != nil {
+			return header + sectionLog("镜像仓库登录", loginOutput), loginErr
+		}
 		output, err := runOpsAppCommand(execInfo.Workspace, timeout, "docker", "push", image)
-		return header + sectionLog("上传镜像仓库: "+image, appendOpsAppCommandError(output, err)), err
+		return header + sectionLog("镜像仓库登录", loginOutput) + sectionLog("上传镜像仓库: "+image, appendOpsAppCommandError(output, err)), err
 	case "k8sDeploy":
 		clusterID := opsPipelineConfigUint(stage.Config, "clusterId")
 		if clusterID == 0 {
@@ -1406,7 +1612,10 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 		if container == "" {
 			container = execInfo.App.Code
 		}
-		image := opsPipelineImageName(stage.Config, execInfo)
+		image, imageErr := s.opsPipelineImageName(stage.Config, execInfo)
+		if imageErr != nil {
+			return header, imageErr
+		}
 		target := workloadType + "/" + workload
 		output, err := runOpsAppCommand(".", timeout, "kubectl", "--kubeconfig", kubeconfigPath, "-n", namespace, "set", "image", target, container+"="+image)
 		if err != nil {
@@ -1424,12 +1633,157 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 		healthOutput, healthErr := runOpsAppHealthCheck(healthURL, timeout)
 		return logText + sectionLog("发布后健康检查: "+healthURL, appendOpsAppCommandError(healthOutput, healthErr)), healthErr
 	case "manual":
-		return header + "当前版本的流水线人工确认阶段以记录方式通过，后续可接入审批中心。\n", nil
+		return header + "人工确认阶段由流水线调度器处理：执行会暂停，待审批通过后继续。\n", nil
 	case "notify":
-		return header + "当前版本的流水线消息通知阶段以记录方式通过，后续可接入消息通知规则。\n", nil
+		ruleID := opsPipelineConfigUint(stage.Config, "notifyRuleId")
+		now := time.Now()
+		queued, err := s.enqueueNotifyRule(ruleID, NotifyEvent{
+			Scope: "pipeline", Event: "notify", TargetID: execInfo.RunID,
+			TargetName: execInfo.App.Name + " / " + stage.Name,
+			Status:     "notify",
+			Summary:    fmt.Sprintf("流水线 #%d 已执行到通知阶段「%s」", execInfo.RunID, stage.Name),
+			Detail:     fmt.Sprintf("应用：%s\n环境：%s\n分支：%s\n镜像版本：%s", execInfo.App.Name, execInfo.Env, execInfo.Branch, execInfo.ImageTag),
+			StartedAt:  &now, FinishedAt: &now,
+			Extra: map[string]string{
+				"pipelineName": fmt.Sprintf("流水线 #%d", execInfo.PipelineID), "pipelineRunId": fmt.Sprintf("%d", execInfo.RunID),
+				"appName": execInfo.App.Name, "env": execInfo.Env, "branch": execInfo.Branch, "imageTag": execInfo.ImageTag,
+				"stageName": stage.Name, "notifyAt": now.Format("2006-01-02 15:04:05"),
+			},
+		}, false)
+		if err != nil {
+			return header, fmt.Errorf("发送消息通知失败: %w", err)
+		}
+		if queued == 0 {
+			return header, errors.New("所选通知规则未产生有效投递，请检查规则、模板和通知媒介状态")
+		}
+		return header + fmt.Sprintf("已通过通知规则 #%d 创建 %d 条投递任务，实际发送结果请在消息通知 / 发送日志查看。\n", ruleID, queued), nil
 	default:
 		return header, fmt.Errorf("不支持的阶段类型：%s", stage.Type)
 	}
+}
+
+func (s *Service) executeOpsAppPipelineRemoteStage(execInfo opsPipelineExecution, stage OpsAppPipelineStageDefinition, header string, timeout time.Duration) (string, error) {
+	if execInfo.ExecutorHost.ID == 0 {
+		return header, errors.New("流水线未配置执行节点")
+	}
+	seconds := normalizeOpsBuildTimeout(stage.TimeoutSeconds)
+	run := func(name, command string) (string, error) {
+		result := s.execCommandOnHost(execInfo.ExecutorHost, command, seconds)
+		output := strings.TrimSpace(result.Stdout + "\n" + result.Stderr)
+		return sectionLog(name, output), func() error {
+			if result.Status == "success" {
+				return nil
+			}
+			return errors.New(firstNonEmpty(result.ErrorText, "远程执行失败"))
+		}()
+	}
+	workspace := filepath.ToSlash(execInfo.Workspace)
+	switch stage.Type {
+	case "checkout":
+		output, err := run("远程代码拉取", s.remoteOpsAppCheckoutCommand(execInfo.App, workspace, execInfo.Branch))
+		return header + output, err
+	case "command", "test", "build":
+		script := opsPipelineConfigString(stage.Config, "script")
+		if script == "" {
+			return header, errors.New("阶段脚本不能为空")
+		}
+		output, err := run("远程执行脚本", remoteOpsPipelineScriptCommand(workspace, script, execInfo))
+		return header + sectionLog("执行脚本", script) + output, err
+	case "dockerBuild":
+		image, err := s.opsPipelineImageName(stage.Config, execInfo)
+		if err != nil {
+			return header, err
+		}
+		login, err := s.opsPipelineRegistryLoginCommand(stage.Config)
+		if err != nil {
+			return header, err
+		}
+		dockerfile := opsPipelineConfigStringDefault(stage.Config, "dockerfile", "Dockerfile")
+		contextDir := opsPipelineConfigStringDefault(stage.Config, "context", ".")
+		command := "cd " + shellQuote(workspace) + " && " + login + " && docker build -t " + shellQuote(image) + " -f " + shellQuote(dockerfile) + " " + shellQuote(contextDir)
+		output, runErr := run("远程 Docker Build: "+image, command)
+		return header + output, runErr
+	case "dockerPush":
+		image, err := s.opsPipelineImageName(stage.Config, execInfo)
+		if err != nil {
+			return header, err
+		}
+		login, err := s.opsPipelineRegistryLoginCommand(stage.Config)
+		if err != nil {
+			return header, err
+		}
+		output, runErr := run("远程上传镜像仓库: "+image, "cd "+shellQuote(workspace)+" && "+login+" && docker push "+shellQuote(image))
+		return header + output, runErr
+	case "k8sDeploy":
+		clusterID := opsPipelineConfigUint(stage.Config, "clusterId")
+		if clusterID == 0 {
+			return header, errors.New("K8s 发布需要选择目标集群")
+		}
+		kubeconfigPath, cleanup, err := s.opsPipelineKubeconfigFile(clusterID)
+		if err != nil {
+			return header, err
+		}
+		defer cleanup()
+		kubeconfig, err := os.ReadFile(kubeconfigPath)
+		if err != nil {
+			return header, err
+		}
+		namespace := firstNonEmpty(opsPipelineConfigString(stage.Config, "namespace"), execInfo.Env, "default")
+		workloadType := strings.ToLower(opsPipelineConfigStringDefault(stage.Config, "workloadType", "deployment"))
+		if workloadType != "deployment" && workloadType != "statefulset" && workloadType != "daemonset" {
+			return header, fmt.Errorf("不支持的 K8s 工作负载类型：%s", workloadType)
+		}
+		workload := firstNonEmpty(opsPipelineConfigString(stage.Config, "workload"), execInfo.App.Code)
+		container := firstNonEmpty(opsPipelineConfigString(stage.Config, "container"), execInfo.App.Code)
+		image, err := s.opsPipelineImageName(stage.Config, execInfo)
+		if err != nil {
+			return header, err
+		}
+		target := workloadType + "/" + workload
+		encoded := base64.StdEncoding.EncodeToString(kubeconfig)
+		command := "kcfg=$(mktemp) && trap 'rm -f \"$kcfg\"' EXIT && base64 -d <<'__OPS_KUBECONFIG__' > \"$kcfg\"\n" + encoded + "\n__OPS_KUBECONFIG__\nkubectl --kubeconfig \"$kcfg\" -n " + shellQuote(namespace) + " set image " + shellQuote(target) + " " + shellQuote(container+"="+image) + " && kubectl --kubeconfig \"$kcfg\" -n " + shellQuote(namespace) + " rollout status " + shellQuote(target) + " --timeout=" + fmt.Sprintf("%ds", seconds)
+		output, runErr := run("远程 kubectl 发布: "+target, command)
+		if runErr != nil {
+			return header + output, runErr
+		}
+		healthURL := opsPipelineConfigString(stage.Config, "healthUrl")
+		if healthURL == "" {
+			return header + output, nil
+		}
+		healthOutput, healthErr := run("远程发布后健康检查: "+healthURL, "curl -fsS --max-time "+strconv.Itoa(seconds)+" "+shellQuote(healthURL))
+		return header + output + healthOutput, healthErr
+	default:
+		return header, fmt.Errorf("不支持的阶段类型：%s", stage.Type)
+	}
+}
+
+func remoteOpsPipelineScriptCommand(workspace, script string, execInfo opsPipelineExecution) string {
+	variables := map[string]string{"BRANCH": execInfo.Branch, "ENVIRONMENT": execInfo.Env, "IMAGE_TAG": execInfo.ImageTag, "PROJECT_NAME": execInfo.App.Name, "PROJECT_CODE": execInfo.App.Code, "PIPELINE_RUN_ID": strconv.FormatUint(uint64(execInfo.RunID), 10)}
+	for key, value := range execInfo.Params {
+		variables[key] = value
+	}
+	return remoteOpsAppScriptCommand(workspace, script, variables)
+}
+
+func (s *Service) opsPipelineRegistryLoginCommand(config map[string]any) (string, error) {
+	registryID := opsPipelineConfigUint(config, "registryId")
+	if registryID == 0 {
+		return "", errors.New("请选择镜像仓库")
+	}
+	var registry model.OpsImageRegistry
+	if err := s.db.First(&registry, registryID).Error; err != nil {
+		return "", errors.New("所选镜像仓库不存在")
+	}
+	if registry.Status != 1 {
+		return "", errors.New("所选镜像仓库已停用")
+	}
+	if strings.EqualFold(opsPipelineConfigString(config, "loginMode"), "executor") {
+		return "echo '使用执行节点已有的 Docker 登录会话'", nil
+	}
+	if strings.TrimSpace(registry.Username) == "" || strings.TrimSpace(registry.Password) == "" {
+		return "", errors.New("镜像仓库未配置登录账号或密码；请改用“执行节点已有登录会话”，或在镜像仓库中补充凭据")
+	}
+	return "printf %s " + shellQuote(registry.Password) + " | docker login " + shellQuote(registry.Address) + " --username " + shellQuote(registry.Username) + " --password-stdin", nil
 }
 
 func (s *Service) opsPipelineKubeconfigFile(clusterID uint) (string, func(), error) {
@@ -1563,10 +1917,33 @@ func opsPipelineConfigUint(config map[string]any, key string) uint {
 	return uint(parsed)
 }
 
-func opsPipelineImageName(config map[string]any, execInfo opsPipelineExecution) string {
+func opsPipelineImageTag(branch string, now time.Time) string {
+	branch = strings.ToLower(strings.TrimSpace(branch))
+	branch = strings.NewReplacer("/", "-", "_", "-", " ", "-", ":", "-").Replace(branch)
+	branch = strings.Trim(branch, "-.")
+	if branch == "" {
+		branch = "main"
+	}
+	return branch + "-" + now.Format("20060102150405")
+}
+
+func (s *Service) opsPipelineImageName(config map[string]any, execInfo opsPipelineExecution) (string, error) {
 	image := opsPipelineConfigString(config, "image")
 	if image != "" {
-		return opsPipelineReplaceVars(image, execInfo)
+		return opsPipelineReplaceVars(image, execInfo), nil
+	}
+	registryID := opsPipelineConfigUint(config, "registryId")
+	if registryID > 0 {
+		var registry model.OpsImageRegistry
+		if err := s.db.Where("id = ? AND status = ?", registryID, 1).First(&registry).Error; err != nil {
+			return "", errors.New("所选镜像仓库不存在或已禁用")
+		}
+		parts := []string{strings.Trim(registry.Address, "/")}
+		if namespace := strings.Trim(registry.Namespace, "/"); namespace != "" {
+			parts = append(parts, namespace)
+		}
+		parts = append(parts, execInfo.App.Code)
+		return strings.Join(parts, "/") + ":" + execInfo.ImageTag, nil
 	}
 	repository := opsPipelineConfigString(config, "repository")
 	if repository == "" {
@@ -1576,7 +1953,31 @@ func opsPipelineImageName(config map[string]any, execInfo opsPipelineExecution) 
 	if !strings.Contains(repository, ":") {
 		repository += ":" + execInfo.ImageTag
 	}
-	return repository
+	return repository, nil
+}
+
+func (s *Service) loginOpsPipelineRegistry(config map[string]any, workspace string, timeout time.Duration) (string, error) {
+	registryID := opsPipelineConfigUint(config, "registryId")
+	if registryID == 0 {
+		return "未配置镜像仓库登录凭据，跳过 docker login。\n", nil
+	}
+	var registry model.OpsImageRegistry
+	if err := s.db.Where("id = ? AND status = ?", registryID, 1).First(&registry).Error; err != nil {
+		return "", errors.New("所选镜像仓库不存在或已禁用")
+	}
+	if strings.TrimSpace(registry.Username) == "" || strings.TrimSpace(registry.Password) == "" {
+		return "未配置仓库登录凭据，使用当前 Docker 客户端会话。\n", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "login", registry.Address, "--username", registry.Username, "--password-stdin")
+	cmd.Dir = workspace
+	cmd.Stdin = strings.NewReader(registry.Password)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(output), fmt.Errorf("docker login 超时（%s）", timeout)
+	}
+	return string(output), err
 }
 
 func opsPipelineReplaceVars(value string, execInfo opsPipelineExecution) string {

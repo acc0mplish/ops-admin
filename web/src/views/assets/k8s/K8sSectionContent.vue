@@ -81,40 +81,65 @@ defineProps({
   </section>
 
   <section v-if="page.hasCluster && page.currentTab === 'nodes'" class="section-body">
-    <el-table v-if="page.hasItems(page.nodes)" :data="page.nodes" class="data-table">
-      <el-table-column prop="name" :label="page.t('k8sName')" min-width="180" />
-      <el-table-column prop="role" :label="page.t('k8sRole')" width="140" />
-      <el-table-column prop="status" :label="page.t('k8sStatus')" width="120" />
-      <el-table-column prop="version" :label="page.t('k8sVersion')" width="120" />
-      <el-table-column prop="internalIP" :label="page.t('k8sInternalIp')" min-width="150" />
-      <el-table-column prop="cpu" :label="page.t('k8sCpu')" width="100" />
-      <el-table-column prop="memory" :label="page.t('k8sMemory')" width="120" />
-      <el-table-column prop="pods" :label="page.t('k8sPodAllocation')" width="120" />
-      <el-table-column :label="page.t('k8sActions')" width="120" fixed="right">
+    <div v-if="page.hasItems(page.nodes)" class="node-management-card">
+      <div class="node-management-intro">
+        <div><strong>节点运行概览</strong><span>查看节点角色、容量与 Pod 分配；标签管理会直接写入 Kubernetes Node。</span></div>
+        <el-tag type="info" effect="plain">{{ page.nodes.length }} 个节点</el-tag>
+      </div>
+      <el-table :data="page.nodes" class="data-table node-table">
+      <el-table-column :label="page.t('k8sName')" min-width="210">
+        <template #default="{ row }"><div class="node-name-cell"><i></i><div><strong>{{ row.name }}</strong><small>{{ row.internalIP }}</small></div></div></template>
+      </el-table-column>
+      <el-table-column :label="page.t('k8sRole')" min-width="140"><template #default="{ row }"><el-tag effect="plain" type="info">{{ row.role || '-' }}</el-tag></template></el-table-column>
+      <el-table-column :label="page.t('k8sStatus')" width="120"><template #default="{ row }"><el-tag :type="row.status === 'Ready' ? 'success' : 'danger'" effect="light">{{ row.status }}</el-tag></template></el-table-column>
+      <el-table-column prop="version" :label="page.t('k8sVersion')" width="130" />
+      <el-table-column prop="os" :label="page.t('k8sOs')" min-width="180" show-overflow-tooltip />
+      <el-table-column :label="page.t('k8sCpu')" width="118"><template #default="{ row }"><div class="resource-cell"><b>{{ row.cpu }}</b><span>核</span></div></template></el-table-column>
+      <el-table-column :label="page.t('k8sMemory')" min-width="145"><template #default="{ row }"><div class="resource-cell"><b>{{ row.memory }}</b></div></template></el-table-column>
+      <el-table-column :label="page.t('k8sPodAllocation')" width="138"><template #default="{ row }"><div class="pod-allocation"><b>{{ row.pods }}</b><el-progress :percentage="page.nodePodPercent(row.pods)" :show-text="false" :stroke-width="5" /></div></template></el-table-column>
+      <el-table-column :label="page.t('k8sActions')" width="180" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="page.openNodeLabels(row)">标签管理</el-button>
           <el-button link type="primary" @click="page.openNodeDetail(row)">{{ page.t('k8sDetail') }}</el-button>
         </template>
       </el-table-column>
-    </el-table>
+      </el-table>
+    </div>
     <el-empty v-else :description="page.t('k8sNoRealtimeNodeData')" />
   </section>
 
   <K8sNamespaceBoard v-if="page.hasCluster && page.currentTab === 'namespaces'" :page="page" />
 
   <section v-if="page.hasCluster && page.currentTab === 'pods'" class="section-body">
-    <el-table v-if="page.hasItems(page.filteredPods)" :data="page.filteredPods" class="data-table">
-      <el-table-column prop="name" :label="page.t('k8sPodName')" min-width="240" />
-      <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="140" />
-      <el-table-column prop="status" :label="page.t('k8sStatus')" width="150" />
-      <el-table-column prop="node" :label="page.t('k8sNode')" min-width="160" />
-      <el-table-column prop="restarts" :label="page.t('k8sRestarts')" width="100" />
-      <el-table-column prop="age" :label="page.t('k8sAge')" width="100" />
-      <el-table-column prop="ip" :label="page.t('k8sPodIp')" min-width="120" />
-      <el-table-column :label="page.t('k8sActions')" width="220" fixed="right">
+    <el-table v-if="page.hasItems(page.filteredPods)" :data="page.filteredPods" :fit="false" class="data-table pod-management-table">
+      <el-table-column prop="name" :label="page.t('k8sPodName')" width="470" />
+      <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="175" />
+      <el-table-column :label="page.t('k8sStatus')" width="150">
         <template #default="{ row }">
-          <el-button link type="primary" @click="page.openPodDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-          <el-button link type="primary" @click="page.openPodYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-          <el-button link type="primary" @click="page.openPodTerminal(row)">{{ page.t('k8sTerminal') }}</el-button>
+          <el-tag :type="page.podStatusTagType(row.status)" effect="light" round>{{ row.status || '-' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column :label="page.t('k8sNode')" width="230">
+        <template #default="{ row }">
+          <div class="pod-node-cell">
+            <span>节点：{{ row.node || '-' }}</span>
+            <small>节点 IP：{{ row.nodeIP || '-' }}</small>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column :label="page.t('k8sPodIp')" width="155">
+        <template #default="{ row }">{{ row.ip || '-' }}</template>
+      </el-table-column>
+      <el-table-column prop="restarts" :label="page.t('k8sRestarts')" width="120" />
+      <el-table-column prop="age" :label="page.t('k8sAge')" width="150" />
+      <el-table-column :label="page.t('k8sActions')" width="300" fixed="right">
+        <template #default="{ row }">
+          <div class="pod-row-actions">
+            <el-button link type="primary" @click="page.openPodDetail(row)">{{ page.t('k8sDetail') }}</el-button>
+            <el-button link type="primary" @click="page.openPodLogs(row)">日志</el-button>
+            <el-button link type="primary" @click="page.openPodYAML(row)">{{ page.t('k8sYaml') }}</el-button>
+            <el-button link type="primary" @click="page.openPodTerminal(row)">{{ page.t('k8sTerminal') }}</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>

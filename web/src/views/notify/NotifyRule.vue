@@ -36,6 +36,7 @@ const form = reactive({
 const scopeOptions = [
   { label: '全部场景', value: 'all' },
   { label: '作业编排', value: 'job' },
+  { label: 'CI/CD 流水线', value: 'pipeline' },
   { label: '定时任务', value: 'schedule' },
   { label: '监控告警', value: 'monitor' }
 ]
@@ -95,6 +96,7 @@ function typeLabel(value) {
 function defaultEventsForScope(scope) {
   if (scope === 'monitor') return ['firing', 'recovered']
   if (scope === 'job') return ['failed', 'waiting_approval', 'rejected']
+  if (scope === 'pipeline') return ['success', 'failed', 'waiting_approval', 'rejected']
   return ['success', 'failed']
 }
 

@@ -10,15 +10,16 @@ import {
   queryOpsAppPipelineList,
   queryOpsAppPipelineRunList,
   queryOpsAppPipelineTemplates,
-  queryOpsAppArtifactList,
-  queryOpsAppBuildTaskList,
   queryOpsApplicationOptions,
+  queryOpsImageRegistryList,
+  queryNotifyRuleOptions,
   runOpsAppPipeline,
   rollbackOpsAppPipelineRun,
   saveOpsAppPipeline,
   updateOpsAppPipelineStatus
 } from '../../api/ops'
 import { queryK8sClusterList } from '../../api/k8s'
+import { queryAssetHostList } from '../../api/asset'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -27,8 +28,9 @@ const total = ref(0)
 const stats = ref({ total: 0, enabled: 0, failed: 0 })
 const appOptions = ref([])
 const k8sClusterOptions = ref([])
-const buildTaskOptions = ref([])
-const artifactOptions = ref([])
+const notifyRuleOptions = ref([])
+const imageRegistryOptions = ref([])
+const executorHostOptions = ref([])
 const templates = ref([])
 const templateVisible = ref(false)
 const editorVisible = ref(false)
@@ -39,6 +41,7 @@ const runTotal = ref(0)
 const selectedCategory = ref('全部模板')
 const selectedTemplate = ref(null)
 const activeTab = ref('pipelines')
+const activeRunStageId = ref('')
 const logBodyRef = ref()
 const runRefreshTimer = ref()
 
@@ -72,7 +75,7 @@ const form = reactive({
   env: 'test',
   techStack: 'custom',
   templateId: 0,
-  buildTaskId: undefined,
+  executorHostId: undefined,
   status: 1,
   description: '',
   stages: []
@@ -84,7 +87,6 @@ const runForm = reactive({
   branch: '',
   env: 'test',
   imageTag: '',
-  artifactId: undefined,
   paramsText: ''
 })
 
@@ -106,7 +108,7 @@ function resetForm() {
     env: 'test',
     techStack: 'custom',
     templateId: 0,
-    buildTaskId: undefined,
+    executorHostId: undefined,
     status: 1,
     description: '',
     stages: []
@@ -162,18 +164,37 @@ function defaultStage(type = 'command') {
   return stage
 }
 
+function stageHint(type) {
+  return {
+    checkout: '使用应用的 Git / SVN 仓库和执行分支拉取代码',
+    command: '在执行节点的工作目录中执行自定义 Shell 命令',
+    test: '执行自动化测试；失败时可按策略停止或继续',
+    build: '执行编译、打包等构建命令',
+    dockerBuild: '定义镜像目标并在执行节点执行 docker build',
+    dockerPush: '推送前面构建出的同一镜像与版本',
+    k8sDeploy: '通过执行节点的 kubectl 更新目标工作负载',
+    manual: '暂停流水线，等待人工确认后继续',
+    notify: '调用消息通知规则创建投递任务'
+  }[type] || '配置当前阶段'
+}
+
+function stageTone(type) {
+  return { checkout: 'source', command: 'command', test: 'test', build: 'build', dockerBuild: 'image', dockerPush: 'push', k8sDeploy: 'deploy', manual: 'manual', notify: 'notify' }[type] || 'command'
+}
+
 function normalizeStageConfig(stage) {
   if (!stage.config || typeof stage.config !== 'object') stage.config = {}
   if (['command', 'test', 'build'].includes(stage.type) && stage.config.script === undefined) {
     stage.config.script = ''
   }
   if (stage.type === 'dockerBuild') {
-    if (!stage.config.repository) stage.config.repository = ''
+    if (!stage.config.registryId) stage.config.registryId = undefined
     if (!stage.config.dockerfile) stage.config.dockerfile = 'Dockerfile'
     if (!stage.config.context) stage.config.context = '.'
   }
-  if (stage.type === 'dockerPush' && !stage.config.repository) {
-    stage.config.repository = ''
+  if (stage.type === 'dockerPush') {
+    if (!stage.config.sourceStageId) stage.config.sourceStageId = undefined
+    if (!stage.config.loginMode) stage.config.loginMode = 'registry'
   }
   if (stage.type === 'k8sDeploy') {
     if (!stage.config.clusterId) stage.config.clusterId = undefined
@@ -184,6 +205,18 @@ function normalizeStageConfig(stage) {
     if (!stage.config.repository) stage.config.repository = ''
     if (!stage.config.healthUrl) stage.config.healthUrl = ''
   }
+  if (stage.type === 'notify' && !stage.config.notifyRuleId) {
+    stage.config.notifyRuleId = undefined
+  }
+}
+
+function dockerBuildStages(excludeId) {
+  return form.stages.filter((item) => item.type === 'dockerBuild' && item.id !== excludeId)
+}
+
+function registryName(id) {
+  const registry = imageRegistryOptions.value.find((item) => Number(item.id) === Number(id))
+  return registry ? `${registry.name} · ${registry.address}${registry.namespace ? `/${registry.namespace}` : ''}` : '请选择镜像仓库'
 }
 
 async function loadApps() {
@@ -198,10 +231,29 @@ async function loadK8sClusters() {
   k8sClusterOptions.value = await queryK8sClusterList()
 }
 
-async function loadBuildTasks() {
-  const data = await queryOpsAppBuildTaskList({ pageNum: 1, pageSize: 1000 })
-  buildTaskOptions.value = data.list || []
+async function loadNotifyRules() {
+  notifyRuleOptions.value = await queryNotifyRuleOptions({ scope: 'pipeline' })
 }
+
+async function loadImageRegistries() {
+  imageRegistryOptions.value = await queryOpsImageRegistryList({ enabledOnly: 1 })
+}
+
+async function loadExecutorHosts() {
+  const data = await queryAssetHostList({ pageNum: 1, pageSize: 1000 })
+  executorHostOptions.value = data.list || []
+}
+
+function executorHostLabel(host) {
+  const address = host.sshIp || host.privateIp || host.publicIp || '-'
+  return `${host.hostName || `主机 #${host.id}`}（${address}）`
+}
+
+function executorHostName(id) {
+  const host = executorHostOptions.value.find((item) => Number(item.id) === Number(id))
+  return host ? executorHostLabel(host) : (id ? `资产主机 #${id}` : '未配置')
+}
+
 
 async function loadData() {
   loading.value = true
@@ -269,7 +321,7 @@ async function openEdit(row) {
     env: item.env || 'test',
     techStack: item.techStack || 'custom',
     templateId: item.templateId || 0,
-    buildTaskId: item.buildTaskId || undefined,
+    executorHostId: item.executorHostId || undefined,
     status: item.status || 1,
     description: item.description || '',
     stages: detail.stages || parseStages(item.definitionJson)
@@ -291,11 +343,35 @@ function removeStage(index) {
   form.stages.splice(index, 1)
 }
 
+function moveStage(index, direction) {
+  const target = index + direction
+  if (target < 0 || target >= form.stages.length) return
+  const [stage] = form.stages.splice(index, 1)
+  form.stages.splice(target, 0, stage)
+}
+
+function validateStages(stages = form.stages, executorHostId = form.executorHostId) {
+  if (!stages.length) return '请至少配置一个执行阶段'
+  const ids = new Set()
+  for (let index = 0; index < stages.length; index += 1) {
+    const stage = stages[index]
+    if (!stage.id || ids.has(stage.id)) return `阶段 ${index + 1} 的标识重复，请删除后重新添加该阶段`
+    ids.add(stage.id)
+    if (!String(stage.name || '').trim()) return `请填写第 ${index + 1} 个阶段名称`
+    if (['command', 'test', 'build'].includes(stage.type) && !String(stage.config?.script || '').trim()) return `请填写「${stage.name}」的执行命令`
+    if (stage.type === 'notify' && !stage.config?.notifyRuleId) return `请选择「${stage.name}」使用的通知规则`
+  }
+  if (!executorHostId) return '请选择流水线执行节点；代码、构建、镜像和发布不会在 Ops Admin 容器内执行'
+  return ''
+}
+
 async function submitPipeline() {
   if (!form.name || !form.appId) {
     ElMessage.warning('请填写流水线名称并选择所属应用')
     return
   }
+  const stageError = validateStages()
+  if (stageError) return ElMessage.warning(stageError)
   saving.value = true
   try {
     await saveOpsAppPipeline({
@@ -306,7 +382,7 @@ async function submitPipeline() {
       env: form.env,
       techStack: form.techStack,
       templateId: form.templateId,
-      buildTaskId: form.buildTaskId,
+      executorHostId: form.executorHostId,
       status: form.status,
       description: form.description,
       definitionJson: stringifyDefinition()
@@ -320,25 +396,18 @@ async function submitPipeline() {
 }
 
 async function openRun(row) {
-  artifactOptions.value = await queryOpsAppArtifactList({ appId: row.appId, env: row.env || '', status: 'ready' })
+  const detail = await opsAppPipelineInfo(row.id)
+  const stageError = validateStages(detail.stages || [], detail.pipeline?.executorHostId || row.executorHostId)
+  if (stageError) return ElMessage.warning(`无法执行：${stageError}`)
   Object.assign(runForm, {
     pipelineId: row.id,
     pipelineName: row.name,
     branch: row.defaultBranch || 'master',
     env: row.env || 'test',
     imageTag: '',
-    artifactId: undefined,
     paramsText: ''
   })
   runVisible.value = true
-}
-
-async function refreshRunArtifacts() {
-  if (!runForm.pipelineId) return
-  const pipeline = tableData.value.find((item) => item.id === runForm.pipelineId)
-  if (!pipeline) return
-  artifactOptions.value = await queryOpsAppArtifactList({ appId: pipeline.appId, env: runForm.env || '', status: 'ready' })
-  if (runForm.artifactId && !artifactOptions.value.some((item) => item.id === runForm.artifactId)) runForm.artifactId = undefined
 }
 
 async function submitRun() {
@@ -356,7 +425,6 @@ async function submitRun() {
     branch: runForm.branch,
     env: runForm.env,
     imageTag: runForm.imageTag,
-    artifactId: runForm.artifactId,
     params
   })
   ElMessage.success(`流水线已开始执行：#${data.runId}`)
@@ -383,6 +451,8 @@ async function rollbackCurrentRun() {
 async function openRunDetail(id) {
   const data = await opsAppPipelineRunInfo(id)
   currentRun.value = { run: data.run || {}, stages: data.stages || [] }
+  const preferredStage = currentRun.value.stages.find((stage) => ['failed', 'running', 'waiting_approval'].includes(stage.status)) || currentRun.value.stages[0]
+  activeRunStageId.value = preferredStage?.id || ''
   runDetailVisible.value = true
   startRunRefresh()
   await nextTick()
@@ -469,6 +539,20 @@ const combinedLog = computed(() => {
     .join('\n\n')
 })
 
+const activeRunStage = computed(() => {
+  const stages = currentRun.value.stages || []
+  return stages.find((stage) => String(stage.id) === String(activeRunStageId.value)) || stages[0] || {}
+})
+
+const activeRunLog = computed(() => activeRunStage.value.log || activeRunStage.value.summary || '该阶段暂未产生执行日志。')
+
+function selectRunStage(stage) {
+  activeRunStageId.value = stage.id
+  nextTick(() => {
+    if (logBodyRef.value) logBodyRef.value.scrollTop = 0
+  })
+}
+
 function downloadRunLog() {
   const name = `${currentRun.value.run.pipelineName || 'pipeline'}-${currentRun.value.run.id || 'run'}.log`.replace(/[\\/:*?"<>|]/g, '_')
   const blob = new Blob([combinedLog.value], { type: 'text/plain;charset=utf-8' })
@@ -485,7 +569,7 @@ watch(runDetailVisible, (visible) => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadApps(), loadTemplates(), loadK8sClusters(), loadBuildTasks()])
+  await Promise.all([loadApps(), loadTemplates(), loadK8sClusters(), loadImageRegistries(), loadNotifyRules(), loadExecutorHosts()])
   await loadData()
 })
 
@@ -555,6 +639,7 @@ onBeforeUnmount(stopRunRefresh)
           <el-table-column prop="repoUrl" label="仓库地址" min-width="260" show-overflow-tooltip />
           <el-table-column prop="env" label="环境" width="100" />
           <el-table-column prop="techStack" label="技术栈" width="120" />
+          <el-table-column label="执行节点" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ executorHostName(row.executorHostId) }}</template></el-table-column>
           <el-table-column prop="stageCount" label="阶段数" width="90" />
           <el-table-column label="状态" width="100">
             <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
@@ -685,11 +770,6 @@ onBeforeUnmount(stopRunRefresh)
             </el-select>
           </el-form-item>
           <el-form-item label="默认分支"><el-input v-model="form.defaultBranch" placeholder="默认使用应用分支" /></el-form-item>
-          <el-form-item label="构建任务">
-            <el-select v-model="form.buildTaskId" clearable filterable placeholder="可选，绑定后运行时必须选择成功制品">
-              <el-option v-for="item in buildTaskOptions.filter((task) => !form.appId || Number(task.appId) === Number(form.appId))" :key="item.id" :label="`${item.name} / ${item.env}`" :value="item.id" />
-            </el-select>
-          </el-form-item>
           <el-form-item label="默认环境">
             <el-select v-model="form.env">
               <el-option label="dev" value="dev" />
@@ -706,6 +786,11 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="自定义" value="custom" />
             </el-select>
           </el-form-item>
+          <el-form-item label="执行节点" required>
+            <el-select v-model="form.executorHostId" filterable placeholder="请选择执行代码、构建、镜像与发布的主机">
+              <el-option v-for="host in executorHostOptions" :key="host.id" :label="executorHostLabel(host)" :value="host.id" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="状态">
             <el-radio-group v-model="form.status">
               <el-radio :value="1">启用</el-radio>
@@ -713,6 +798,7 @@ onBeforeUnmount(stopRunRefresh)
             </el-radio-group>
           </el-form-item>
         </div>
+        <el-alert type="warning" :closable="false" show-icon title="流水线阶段会通过 SSH 在所选资产主机上执行；请确保该主机已配置认证凭据，并安装 Git/SVN、Docker、kubectl 等所需工具。" />
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="说明流水线用途、环境和风险提示" /></el-form-item>
       </el-form>
 
@@ -721,6 +807,8 @@ onBeforeUnmount(stopRunRefresh)
         <div>
           <el-button size="small" @click="addStage('checkout')">代码拉取</el-button>
           <el-button size="small" @click="addStage('command')">命令</el-button>
+          <el-button size="small" @click="addStage('test')">测试</el-button>
+          <el-button size="small" @click="addStage('build')">构建</el-button>
           <el-button size="small" @click="addStage('dockerBuild')">镜像构建</el-button>
           <el-button size="small" @click="addStage('dockerPush')">上传镜像仓库</el-button>
           <el-button size="small" @click="addStage('k8sDeploy')">K8s 发布</el-button>
@@ -731,10 +819,20 @@ onBeforeUnmount(stopRunRefresh)
       <div class="stage-editor">
         <el-empty v-if="!form.stages.length" description="当前为空白流水线，请添加阶段" />
         <div v-for="(stage, index) in form.stages" :key="stage.id" class="stage-config-card">
-          <div class="stage-index">{{ index + 1 }}</div>
-          <div class="stage-fields">
-            <el-input v-model="stage.name" placeholder="阶段名称" />
-            <el-select v-model="stage.type" @change="normalizeStageConfig(stage)">
+          <div class="stage-card-heading">
+            <span class="stage-type-badge" :class="stageTone(stage.type)">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div>
+              <strong>{{ stageTypeText(stage.type) }}</strong>
+              <small>{{ stageHint(stage.type) }}</small>
+            </div>
+          </div>
+          <div class="stage-order-actions">
+            <el-tooltip content="上移阶段"><el-button circle size="small" :disabled="index === 0" @click="moveStage(index, -1)">↑</el-button></el-tooltip>
+            <el-tooltip content="下移阶段"><el-button circle size="small" :disabled="index === form.stages.length - 1" @click="moveStage(index, 1)">↓</el-button></el-tooltip>
+          </div>
+          <div class="stage-fields stage-main-fields">
+            <label><span>阶段名称</span><el-input v-model="stage.name" placeholder="例如：构建应用镜像" /></label>
+            <label><span>阶段类型</span><el-select v-model="stage.type" @change="normalizeStageConfig(stage)">
               <el-option label="代码拉取" value="checkout" />
               <el-option label="命令" value="command" />
               <el-option label="测试" value="test" />
@@ -744,64 +842,69 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="K8s 发布" value="k8sDeploy" />
               <el-option label="人工确认" value="manual" />
               <el-option label="消息通知" value="notify" />
-            </el-select>
-            <el-input-number v-model="stage.timeoutSeconds" :min="10" :max="7200" controls-position="right" />
-            <el-select v-model="stage.failurePolicy">
+            </el-select></label>
+            <label><span>超时时间</span><div class="stage-timeout"><el-input-number v-model="stage.timeoutSeconds" :min="10" :max="7200" controls-position="right" /><em>秒</em></div></label>
+            <label><span>失败策略</span><el-select v-model="stage.failurePolicy">
               <el-option label="失败终止" value="stop" />
               <el-option label="忽略继续" value="ignore" />
-              <el-option label="人工确认" value="manual" />
-            </el-select>
+            </el-select></label>
           </div>
-          <el-input
-            v-if="['command', 'test', 'build'].includes(stage.type)"
-            v-model="stage.config.script"
-            type="textarea"
-            :rows="4"
-            placeholder="请输入要执行的 Shell 命令，例如 npm run build / go test ./..."
-          />
-          <div v-else-if="stage.type === 'dockerBuild'" class="stage-config-grid">
-            <el-input v-model="stage.config.repository" placeholder="镜像名，例如 registry.example.com/app/{{appCode}}，Tag 默认使用执行参数" />
-            <el-input v-model="stage.config.dockerfile" placeholder="Dockerfile 路径，默认 Dockerfile" />
-            <el-input v-model="stage.config.context" placeholder="构建上下文，默认 ." />
+          <div v-if="['command', 'test', 'build'].includes(stage.type)" class="script-stage-config">
+            <div class="script-stage-title"><b>执行脚本</b><span>在执行节点的工作目录内以 Shell 方式执行</span></div>
+            <el-input v-model="stage.config.script" type="textarea" :rows="5" placeholder="请输入要执行的 Shell 命令，例如 npm run build / go test ./..." />
           </div>
-          <div v-else-if="stage.type === 'dockerPush'" class="stage-config-grid">
-            <el-input v-model="stage.config.repository" placeholder="镜像仓库地址，例如 registry.example.com/app/{{appCode}}，Tag 默认使用执行参数" />
+          <div v-else-if="stage.type === 'dockerBuild'" class="image-stage-config">
+            <div class="image-stage-title"><span class="image-stage-badge build">01</span><div><strong>定义镜像产物</strong><small>构建会自动标记为：仓库地址 / 命名空间 / 应用编码 : 分支-时间</small></div></div>
+            <div class="image-stage-fields build-fields">
+              <label><span>目标镜像仓库</span><el-select v-model="stage.config.registryId" filterable placeholder="选择构建后的镜像仓库"><el-option v-for="registry in imageRegistryOptions" :key="registry.id" :label="`${registry.name}（${registry.address}${registry.namespace ? '/' + registry.namespace : ''}）`" :value="registry.id" /></el-select></label>
+              <label><span>Dockerfile</span><el-input v-model="stage.config.dockerfile" placeholder="Dockerfile" /></label>
+              <label><span>构建上下文</span><el-input v-model="stage.config.context" placeholder="." /></label>
+            </div>
+            <div class="image-stage-preview"><span>将构建为</span><code>{{ registryName(stage.config.registryId) }} / {{ currentApp?.code || '<应用编码>' }} : {{ form.defaultBranch || '<分支>' }}-{{ '{时间}' }}</code></div>
           </div>
-          <div v-else-if="stage.type === 'k8sDeploy'" class="stage-config-grid">
-            <el-select v-model="stage.config.clusterId" filterable placeholder="选择 K8s 集群">
+          <div v-else-if="stage.type === 'dockerPush'" class="image-stage-config">
+            <div class="image-stage-title"><span class="image-stage-badge push">02</span><div><strong>推送已构建镜像</strong><small>引用镜像构建阶段，确保镜像地址和版本完全一致。</small></div></div>
+            <div class="image-stage-fields push-fields">
+              <label><span>镜像来源</span><el-select v-model="stage.config.sourceStageId" filterable placeholder="选择前面的镜像构建阶段"><el-option v-for="buildStage in dockerBuildStages(stage.id)" :key="buildStage.id" :label="`${buildStage.name} · ${registryName(buildStage.config.registryId)}`" :value="buildStage.id" /></el-select></label>
+              <label><span>登录方式</span><el-radio-group v-model="stage.config.loginMode" class="login-mode-group"><el-radio-button value="registry">镜像仓库凭据</el-radio-button><el-radio-button value="executor">执行节点已登录</el-radio-button></el-radio-group></label>
+            </div>
+            <div class="image-stage-tip"><span>✓</span><p><b>推荐使用镜像仓库凭据</b>：从“镜像仓库”页面读取账号和密码；选择“执行节点已登录”时，平台不会执行 docker login。</p></div>
+          </div>
+          <div v-else-if="stage.type === 'k8sDeploy'" class="delivery-stage-config">
+            <div class="delivery-stage-title"><b>发布目标</b><span>使用执行节点上的 kubectl 完成工作负载镜像更新与健康检查</span></div>
+            <div class="stage-config-grid">
+            <label><span>K8s 集群</span><el-select v-model="stage.config.clusterId" filterable placeholder="选择 K8s 集群">
               <el-option
                 v-for="cluster in k8sClusterOptions"
                 :key="cluster.id"
                 :label="`${cluster.name}（${cluster.statusText || cluster.status || '-'} / ${cluster.version || '-'}）`"
                 :value="cluster.id"
               />
-            </el-select>
-            <el-select v-model="stage.config.workloadType" placeholder="工作负载类型">
+            </el-select></label>
+            <label><span>工作负载类型</span><el-select v-model="stage.config.workloadType" placeholder="工作负载类型">
               <el-option label="Deployment" value="deployment" />
               <el-option label="StatefulSet" value="statefulset" />
               <el-option label="DaemonSet" value="daemonset" />
-            </el-select>
-            <el-input v-model="stage.config.namespace" placeholder="命名空间，例如 default" />
-            <el-input v-model="stage.config.workload" placeholder="工作负载名称，默认应用编码" />
-            <el-input v-model="stage.config.container" placeholder="容器名称" />
-            <el-input v-model="stage.config.repository" placeholder="镜像名，例如 registry.example.com/app/{{appCode}}" />
-            <el-input v-model="stage.config.healthUrl" placeholder="发布后健康检查 URL（可选），例如 https://service/health" />
+            </el-select></label>
+            <label><span>命名空间</span><el-input v-model="stage.config.namespace" placeholder="例如 default" /></label>
+            <label><span>工作负载名称</span><el-input v-model="stage.config.workload" placeholder="默认使用应用编码" /></label>
+            <label><span>容器名称</span><el-input v-model="stage.config.container" placeholder="需要替换镜像的容器" /></label>
+            <label><span>镜像仓库地址</span><el-input v-model="stage.config.repository" placeholder="例如 registry.example.com/app/{{appCode}}" /></label>
+            <label class="wide"><span>健康检查 URL（可选）</span><el-input v-model="stage.config.healthUrl" placeholder="例如 https://service/health" /></label>
+            </div>
           </div>
-          <el-alert
-            v-else-if="stage.type === 'checkout'"
-            type="info"
-            show-icon
-            :closable="false"
-            title="代码拉取会使用所属应用的 Git/SVN 仓库地址和执行时选择的分支。"
-          />
-          <el-alert
-            v-else
-            type="info"
-            show-icon
-            :closable="false"
-            title="该阶段当前会记录执行结果，后续可接入审批中心或消息通知规则。"
-          />
-          <el-button link type="danger" @click="removeStage(index)">删除阶段</el-button>
+          <div v-else-if="stage.type === 'checkout'" class="stage-note source-note"><b>代码来源</b><p>自动使用所属应用配置的 Git / SVN 仓库地址，并按本次执行选择的分支或 Tag 拉取代码。</p></div>
+          <div v-else-if="stage.type === 'manual'" class="stage-note manual-note"><b>人工确认关卡</b><p>流水线会暂停并等待审批人选择“通过”或“拒绝”；通过后才会继续后续阶段。</p></div>
+          <div v-else-if="stage.type === 'notify'" class="stage-notify-config">
+            <div class="stage-note notify-note"><b>发送流水线通知</b><p>按所选规则创建投递任务，发送结果可在“消息通知 / 发送日志”中查看。</p></div>
+            <label><span>通知规则</span><el-select v-model="stage.config.notifyRuleId" filterable placeholder="选择 CI/CD 流水线通知规则">
+              <el-option v-for="rule in notifyRuleOptions" :key="rule.id" :label="`${rule.name}（${rule.channelIds?.length || 0} 个媒介）`" :value="rule.id" />
+            </el-select></label>
+          </div>
+          <div class="stage-card-footer">
+            <span>顺序 {{ index + 1 }} / {{ form.stages.length }}</span>
+            <el-button link type="danger" @click="removeStage(index)">删除阶段</el-button>
+          </div>
         </div>
       </div>
       <template #footer>
@@ -814,7 +917,7 @@ onBeforeUnmount(stopRunRefresh)
       <el-form label-width="100px">
         <el-form-item label="流水线"><el-input v-model="runForm.pipelineName" disabled /></el-form-item>
         <el-form-item label="执行环境">
-          <el-select v-model="runForm.env" @change="refreshRunArtifacts">
+          <el-select v-model="runForm.env">
             <el-option label="dev" value="dev" />
             <el-option label="test" value="test" />
             <el-option label="staging" value="staging" />
@@ -822,12 +925,7 @@ onBeforeUnmount(stopRunRefresh)
           </el-select>
         </el-form-item>
         <el-form-item label="分支/Tag"><el-input v-model="runForm.branch" /></el-form-item>
-        <el-form-item label="镜像 Tag"><el-input v-model="runForm.imageTag" placeholder="默认自动生成时间戳" /></el-form-item>
-        <el-form-item label="发布制品">
-          <el-select v-model="runForm.artifactId" clearable filterable placeholder="选择构建任务生成的成功制品">
-            <el-option v-for="item in artifactOptions" :key="item.id" :label="`${item.version} / ${item.type} / ${item.commitId || '-'}`" :value="item.id" />
-          </el-select>
-        </el-form-item>
+        <el-form-item label="镜像版本"><el-input :model-value="'自动生成：' + (runForm.branch || 'main').replace(/[^a-zA-Z0-9_.-]+/g, '-') + '-YYYYMMDDHHmmss'" disabled /></el-form-item>
         <el-form-item label="自定义参数"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" placeholder='例如：{"version":"1.0.0"}' /></el-form-item>
       </el-form>
       <template #footer>
@@ -850,17 +948,25 @@ onBeforeUnmount(stopRunRefresh)
         <el-button v-if="currentRun.run.status === 'waiting_approval'" type="danger" @click="approveCurrentRun('reject')">审批拒绝</el-button>
         <el-button v-if="currentRun.run.status === 'success'" type="warning" @click="rollbackCurrentRun">回滚上一版本</el-button>
       </div>
-      <div class="run-detail-grid">
-        <div class="run-stages">
-          <div v-for="stage in currentRun.stages" :key="stage.id" class="run-stage" :class="stage.status">
-            <span></span>
-            <div>
-              <strong>{{ stage.stageName }}</strong>
-              <p>{{ stageTypeText(stage.stageType) }} / {{ statusText(stage.status) }} / {{ durationText(stage.durationMs) }}</p>
-            </div>
-          </div>
+      <div class="run-timeline" aria-label="流水线阶段时间线">
+        <button
+          v-for="(stage, index) in currentRun.stages"
+          :key="stage.id"
+          class="run-timeline-stage"
+          :class="[stage.status, { active: String(stage.id) === String(activeRunStageId) }]"
+          @click="selectRunStage(stage)"
+        >
+          <span class="timeline-order">{{ index + 1 }}</span>
+          <span class="timeline-content"><strong>{{ stage.stageName }}</strong><small>{{ stageTypeText(stage.stageType) }} · {{ durationText(stage.durationMs) }}</small></span>
+          <el-tag size="small" :type="statusType(stage.status)">{{ statusText(stage.status) }}</el-tag>
+        </button>
+      </div>
+      <div class="stage-log-panel">
+        <div class="stage-log-heading">
+          <div><span>当前阶段</span><strong>{{ activeRunStage.stageName || '-' }}</strong><small>{{ stageTypeText(activeRunStage.stageType) }} · {{ statusText(activeRunStage.status) }}</small></div>
+          <el-button type="primary" link @click="downloadRunLog">下载全部日志</el-button>
         </div>
-        <pre ref="logBodyRef" class="run-log">{{ combinedLog }}</pre>
+        <pre ref="logBodyRef" class="run-log">{{ activeRunLog }}</pre>
       </div>
     </el-dialog>
   </div>
@@ -898,24 +1004,67 @@ onBeforeUnmount(stopRunRefresh)
 .template-card p, .blank-template p { color: #6b7c9b; }
 .template-card span { color: #1677ff; font-weight: 700; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); column-gap: 28px; }
-.stage-toolbar { display: flex; align-items: center; justify-content: space-between; margin: 16px 0; padding-top: 14px; border-top: 1px solid #edf2f9; }
-.stage-editor { max-height: 460px; overflow: auto; padding-right: 6px; }
-.stage-config-card { position: relative; margin-bottom: 12px; padding: 16px 16px 16px 54px; border: 1px solid #e3ebf7; border-radius: 10px; background: #fbfdff; }
-.stage-index { position: absolute; left: 16px; top: 16px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #2f6be6; color: #fff; font-weight: 700; }
-.stage-fields { display: grid; grid-template-columns: 1.4fr 1fr 140px 130px; gap: 10px; margin-bottom: 10px; }
-.stage-config-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 10px; }
+.stage-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 12px; padding: 16px; border: 1px solid #e5edf9; border-radius: 12px; background: #f8fbff; }
+.stage-toolbar strong { color: #1b3760; font-size: 15px; }
+.stage-toolbar > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.stage-editor { max-height: 520px; overflow: auto; padding: 2px 6px 2px 0; }
+.stage-config-card { position: relative; margin-bottom: 14px; padding: 16px 18px; border: 1px solid #dfe9f8; border-radius: 12px; background: linear-gradient(135deg, #fff 0%, #f9fbff 100%); box-shadow: 0 4px 14px rgba(48, 76, 122, .035); }
+.stage-card-heading { display: flex; align-items: center; gap: 10px; min-height: 34px; margin-bottom: 14px; padding-right: 88px; }
+.stage-card-heading strong { display: block; color: #18355d; font-size: 14px; }
+.stage-card-heading small { display: block; margin-top: 3px; color: #8291a8; font-size: 12px; }
+.stage-type-badge { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 4px 10px rgba(52, 95, 180, .2); }
+.stage-type-badge.source { background: linear-gradient(135deg, #2d83ee, #4f68e9); }.stage-type-badge.command { background: linear-gradient(135deg, #5a6fe8, #7c5ce5); }.stage-type-badge.test { background: linear-gradient(135deg, #21aa91, #3bc28d); }.stage-type-badge.build { background: linear-gradient(135deg, #e09a37, #f3b646); }.stage-type-badge.image { background: linear-gradient(135deg, #3a72ed, #5d5fe9); }.stage-type-badge.push { background: linear-gradient(135deg, #16a582, #2abb91); }.stage-type-badge.deploy { background: linear-gradient(135deg, #2b9ce9, #1bb6be); }.stage-type-badge.manual { background: linear-gradient(135deg, #9664de, #c46bf0); }.stage-type-badge.notify { background: linear-gradient(135deg, #e9796c, #ed9a5a); }
+.stage-order-actions { position: absolute; top: 16px; right: 16px; display: flex; gap: 5px; }
+.stage-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px dashed #e2eaf5; color: #8a9ab3; font-size: 12px; }
+.stage-fields { display: grid; gap: 12px; margin-bottom: 12px; }
+.stage-main-fields { grid-template-columns: 1.35fr 1fr 160px 150px; }
+.stage-fields label, .stage-config-grid label, .stage-notify-config label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #637895; font-size: 12px; font-weight: 600; }
+.stage-fields :deep(.el-select), .stage-config-grid :deep(.el-select), .stage-notify-config :deep(.el-select) { width: 100%; }
+.stage-timeout { display: flex; align-items: center; gap: 8px; }.stage-timeout :deep(.el-input-number) { width: 118px; }.stage-timeout em { color: #8796ac; font-style: normal; font-weight: 400; }
+.script-stage-config, .delivery-stage-config, .stage-notify-config { padding: 13px 15px; border: 1px solid #e1eaf7; border-radius: 10px; background: #fff; }
+.script-stage-title, .delivery-stage-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }.script-stage-title b, .delivery-stage-title b { color: #25436b; font-size: 13px; }.script-stage-title span, .delivery-stage-title span { color: #8796ad; font-size: 12px; }
+.stage-config-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; }.stage-config-grid .wide { grid-column: 1 / -1; }
+.stage-note { padding: 13px 15px; border: 1px solid #dce8fb; border-radius: 10px; background: #f7faff; }.stage-note b { color: #305d99; font-size: 13px; }.stage-note p { margin: 5px 0 0; color: #7185a3; font-size: 12px; line-height: 1.65; }.manual-note { border-color: #ebe0fb; background: #fbf8ff; }.manual-note b { color: #7a58af; }.notify-note { margin-bottom: 12px; border-color: #fee5d7; background: #fffaf6; }.notify-note b { color: #b56b43; }
+.image-stage-config { padding: 14px 16px; border: 1px solid #dfe8f7; border-radius: 10px; background: linear-gradient(135deg, #f9fbff 0%, #f5f8ff 100%); }
+.image-stage-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.image-stage-title strong { display: block; color: #223b64; font-size: 14px; line-height: 1.4; }
+.image-stage-title small { display: block; margin-top: 2px; color: #8191aa; font-size: 12px; }
+.image-stage-badge { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 800; }
+.image-stage-badge.build { background: linear-gradient(135deg, #3a72ed, #5d5fe9); box-shadow: 0 4px 10px rgba(58, 114, 237, .24); }
+.image-stage-badge.push { background: linear-gradient(135deg, #16a582, #2abb91); box-shadow: 0 4px 10px rgba(22, 165, 130, .22); }
+.image-stage-fields { display: grid; gap: 12px; }
+.image-stage-fields.build-fields { grid-template-columns: minmax(260px, 1.65fr) minmax(150px, .7fr) minmax(120px, .55fr); }
+.image-stage-fields.push-fields { grid-template-columns: minmax(280px, 1.4fr) minmax(310px, 1fr); }
+.image-stage-fields label { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.image-stage-fields label > span { color: #637895; font-size: 12px; font-weight: 600; }
+.image-stage-fields :deep(.el-select) { width: 100%; }
+.image-stage-preview { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 11px; border-radius: 7px; background: #eef4ff; color: #7185a2; font-size: 12px; }
+.image-stage-preview code { overflow: hidden; color: #315fc4; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, Monaco, monospace; font-size: 12px; }
+.login-mode-group { display: flex; width: 100%; }
+.login-mode-group :deep(.el-radio-button) { flex: 1; }
+.login-mode-group :deep(.el-radio-button__inner) { width: 100%; padding: 9px 8px; }
+.image-stage-tip { display: flex; gap: 8px; margin-top: 12px; padding: 9px 11px; border-radius: 7px; background: #f0fbf6; color: #56746c; font-size: 12px; line-height: 1.55; }
+.image-stage-tip > span { display: grid; flex: 0 0 auto; width: 17px; height: 17px; place-items: center; border-radius: 50%; background: #20b485; color: #fff; font-size: 11px; font-weight: 800; }
+.image-stage-tip p { margin: 0; }
+@media (max-width: 900px) { .stage-toolbar { align-items: flex-start; flex-direction: column; }.stage-toolbar > div { justify-content: flex-start; }.stage-main-fields, .image-stage-fields.build-fields, .image-stage-fields.push-fields, .stage-config-grid { grid-template-columns: 1fr; }.stage-config-grid .wide { grid-column: auto; } }
 .run-summary { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .run-summary div { padding: 14px; border: 1px solid #e3ebf7; border-radius: 8px; background: #fbfdff; }
 .run-summary span { display: block; margin-bottom: 6px; color: #7d8daa; }
 .run-detail-actions { display: flex; justify-content: flex-end; gap: 12px; margin: -4px 0 12px; }
-.run-detail-grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
-.run-stages { border: 1px solid #e3ebf7; border-radius: 10px; padding: 12px; }
-.run-stage { display: flex; gap: 10px; padding: 12px; border-bottom: 1px solid #edf2f9; }
-.run-stage span { width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #b8c5d9; }
-.run-stage.success span { background: #67c23a; }
-.run-stage.running span { background: #e6a23c; }
-.run-stage.failed span { background: #f56c6c; }
-.run-stage strong { color: #10213d; }
-.run-stage p { margin: 4px 0 0; color: #7d8daa; }
+.run-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 14px; margin-bottom: 16px; border: 1px solid #e3ebf7; border-radius: 12px; background: #f9fbff; }
+.run-timeline-stage { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 70px; padding: 10px; border: 1px solid #e2eaf6; border-radius: 9px; color: #263b5a; background: #fff; text-align: left; cursor: pointer; }
+.run-timeline-stage:hover, .run-timeline-stage.active { border-color: #4d7ef3; box-shadow: 0 4px 14px rgba(47, 107, 230, .12); }
+.timeline-order { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; color: #5c6f8b; background: #edf2fa; font-weight: 700; }
+.run-timeline-stage.success .timeline-order { color: #fff; background: #67c23a; }
+.run-timeline-stage.running .timeline-order, .run-timeline-stage.waiting_approval .timeline-order { color: #fff; background: #e6a23c; }
+.run-timeline-stage.failed .timeline-order { color: #fff; background: #f56c6c; }
+.timeline-content { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.timeline-content strong { overflow: hidden; color: #10213d; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-content small { overflow: hidden; color: #8190a8; text-overflow: ellipsis; white-space: nowrap; }
+.stage-log-panel { overflow: hidden; border: 1px solid #e3ebf7; border-radius: 12px; }
+.stage-log-heading { display: flex; align-items: center; justify-content: space-between; min-height: 70px; padding: 12px 16px; border-bottom: 1px solid #e8eef7; background: #fbfdff; }
+.stage-log-heading div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.stage-log-heading span, .stage-log-heading small { color: #8392aa; font-size: 12px; }
+.stage-log-heading strong { overflow: hidden; color: #203754; text-overflow: ellipsis; white-space: nowrap; }
 .run-log { min-height: 480px; max-height: 560px; margin: 0; padding: 16px; overflow: auto; border-radius: 10px; background: #111827; color: #d6e2ff; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 </style>

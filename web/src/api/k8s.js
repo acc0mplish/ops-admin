@@ -20,6 +20,8 @@ export const queryK8sNodeDetail = (clusterId, nodeName) =>
 export const queryK8sNodePods = (clusterId, nodeName) =>
   http.get('/api/v1/k8s/node/pods', { params: { clusterId, nodeName } })
 
+export const updateK8sNodeLabels = (data) => http.put('/api/v1/k8s/node/labels', data)
+
 export const queryK8sNamespaceDetail = (clusterId, namespace) =>
   http.get('/api/v1/k8s/namespace/detail', { params: { clusterId, namespace } })
 
@@ -64,6 +66,8 @@ export const scaleK8sWorkload = (data) => http.post('/api/v1/k8s/workload/scale'
 export const restartK8sWorkload = (data) => http.post('/api/v1/k8s/workload/restart', data)
 
 export const updateK8sWorkloadImages = (data) => http.post('/api/v1/k8s/workload/images', data)
+
+export const updateK8sWorkloadResources = (data) => http.put('/api/v1/k8s/workload/resources', data)
 
 export const updateK8sIstioTraffic = (data) => http.post('/api/v1/k8s/istio/traffic', data)
 
