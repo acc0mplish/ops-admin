@@ -1,5 +1,5 @@
 <script setup>
-import { Connection, Grid, Histogram, Monitor, Promotion, SetUp } from '@element-plus/icons-vue'
+import { Connection, Grid, Histogram, Monitor, Promotion, Refresh, SetUp } from '@element-plus/icons-vue'
 
 defineProps({
   page: {
@@ -89,6 +89,16 @@ const iconMap = {
               {{ page.namespaceFilter === '__all__' ? page.t('k8sAllNamespaces') : page.namespaceFilter }}
             </strong>
           </div>
+          <el-button
+            v-if="page.currentTab === 'pods'"
+            class="pod-list-refresh"
+            plain
+            :icon="Refresh"
+            :loading="page.loading"
+            @click="page.refreshCurrentClusterData"
+          >
+            {{ page.t('k8sRefresh') }}
+          </el-button>
         </div>
       </header>
 

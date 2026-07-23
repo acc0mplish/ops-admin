@@ -95,6 +95,8 @@
   gap: 12px;
 }
 
+.pod-list-refresh { margin-left:auto; }
+
 .inline-scope-card {
   display: inline-flex;
   align-items: center;

@@ -287,9 +287,12 @@ func chooseK8sContainerName(pod *corev1.Pod, container string) string {
 func normalizeK8sTerminalCommand(command string) []string {
 	switch Trimmed(command) {
 	case "", "sh", "/bin/sh":
-		return []string{"/bin/sh"}
+		// Kubernetes exec receives stdin through a pipe. Be explicit about
+		// interactive mode so the shell enables line editing and Tab completion.
+		// Prefer bash when the image provides it, with a portable sh fallback.
+		return []string{"/bin/sh", "-c", "if command -v bash >/dev/null 2>&1; then exec bash -i; else exec /bin/sh -i; fi"}
 	case "bash", "/bin/bash":
-		return []string{"/bin/bash"}
+		return []string{"/bin/bash", "-i"}
 	default:
 		return []string{Trimmed(command)}
 	}

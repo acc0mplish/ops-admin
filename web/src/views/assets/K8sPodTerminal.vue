@@ -208,6 +208,7 @@ onBeforeUnmount(() => {
               Pod 终端
             </span>
             <strong>{{ namespace }}/{{ podName }}</strong>
+            <span class="terminal-shortcut-hint">Tab 补全命令或路径</span>
           </div>
         </div>
 
@@ -271,6 +272,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+}
+
+.terminal-shortcut-hint {
+  color: #8492a7;
+  font-size: 12px;
 }
 
 .title-label {
