@@ -114,6 +114,209 @@ defineProps({
     </template>
   </el-dialog>
 
+  <el-dialog
+    v-model="page.configStorageCreateVisible"
+    :title="page.configStorageCreateTitle()"
+    width="920px"
+    class="config-storage-create-dialog"
+    destroy-on-close
+  >
+    <el-form label-width="96px" class="config-storage-create-form">
+      <template v-if="page.configStorageCreateForm.kind === 'pvc'">
+        <div class="config-storage-section-head pvc-storage-section-head">
+          <strong>存储卷配置</strong>
+          <span>先选择存储类，系统会自动限定可用命名空间与读取策略。</span>
+        </div>
+        <el-form-item label="存储类" required>
+          <el-select v-model="page.configStorageCreateForm.storageClass" filterable placeholder="请选择存储类">
+            <el-option
+              v-for="item in page.pvcStorageClassOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+          <div class="config-storage-field-hint">仅展示平台已创建的存储类；限定命名空间的存储类会自动锁定到对应命名空间。</div>
+        </el-form-item>
+      </template>
+
+      <el-form-item :label="page.t('k8sNamespace')" required>
+        <el-select
+          v-model="page.configStorageCreateForm.namespace"
+          filterable
+          placeholder="请选择命名空间"
+          :disabled="page.configStorageEditing || (page.configStorageCreateForm.kind === 'pvc' && page.pvcNamespaceLocked)"
+        >
+          <el-option
+            v-for="item in page.configStorageCreateForm.kind === 'pvc' ? page.pvcNamespaceOptions : page.namespaceOptions.filter((option) => option.value !== '__all__')"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+        <div class="config-storage-field-hint">
+          {{ page.configStorageCreateForm.kind === 'pvc' && page.pvcNamespaceLocked
+            ? '该存储类已限定命名空间，当前命名空间由存储类自动决定。'
+            : 'ConfigMap、Secret 与 PVC 均为命名空间级资源，将只创建到此命名空间。' }}
+        </div>
+      </el-form-item>
+
+      <el-form-item :label="page.t('k8sName')" required>
+        <div class="config-storage-name-wrap">
+          <el-input v-model="page.configStorageCreateForm.name" maxlength="63" :disabled="page.configStorageEditing" :placeholder="`请输入 ${page.configStorageCreateForm.kind === 'secret' ? 'Secret' : page.configStorageCreateForm.kind === 'pvc' ? '存储' : 'ConfigMap'} 名称`" />
+          <div class="config-storage-field-hint">最长 63 个字符，只能包含小写字母、数字及分隔符（-），且必须以小写字母或数字开头和结尾。</div>
+        </div>
+      </el-form-item>
+
+      <template v-if="page.configStorageCreateForm.kind === 'pvc'">
+        <div class="config-storage-section-head"><strong>申请规格</strong><span>容量由存储卷声明；访问模式严格继承已选存储类，不能手动修改。</span></div>
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="存储容量" required><el-input v-model="page.configStorageCreateForm.capacity" placeholder="例如 1Gi" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="访问模式"><el-input :model-value="page.pvcAccessModeLabel" readonly /></el-form-item></el-col>
+        </el-row>
+      </template>
+
+      <template v-else>
+        <el-form-item v-if="page.configStorageCreateForm.kind === 'secret'" label="Secret 类型">
+          <el-radio-group v-model="page.configStorageCreateForm.secretType" class="config-storage-radio-group">
+            <el-radio-button label="Opaque">Opaque</el-radio-button>
+            <el-radio-button label="kubernetes.io/tls">TLS 证书</el-radio-button>
+            <el-radio-button label="kubernetes.io/dockerconfigjson">Docker 配置</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <div class="config-storage-section-head">
+          <strong>配置项</strong>
+          <span>{{ page.configStorageCreateForm.kind === 'secret' ? 'Secret 会以安全的 stringData 方式写入，列表不会展示明文。' : '为 ConfigMap 添加应用配置；支持多行内容。' }}</span>
+        </div>
+        <el-form-item label="内容" required>
+          <div class="config-storage-entry-list">
+            <div class="config-storage-entry-table-head"><span>变量名</span><span>变量值</span><span></span></div>
+            <div v-for="(entry, index) in page.configStorageCreateForm.entries" :key="index" class="config-storage-entry-row">
+              <el-input v-model="entry.key" placeholder="例如 APP_MODE" />
+              <el-input v-model="entry.value" type="textarea" :autosize="{ minRows: 6 }" placeholder="请输入变量值，支持多行内容" />
+              <el-button link type="danger" :disabled="page.configStorageCreateForm.entries.length === 1" @click="page.removeConfigStorageEntry(index)">删除</el-button>
+            </div>
+            <el-button link type="primary" @click="page.addConfigStorageEntry">+ 手动添加</el-button>
+          </div>
+        </el-form-item>
+      </template>
+    </el-form>
+    <template #footer>
+      <el-button @click="page.configStorageCreateVisible = false">{{ page.t('cancel') }}</el-button>
+      <el-button type="primary" :loading="page.configStorageCreateSaving" @click="page.submitConfigStorageCreate">
+        {{ page.configStorageCreateTitle() }}
+      </el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog
+    v-model="page.storageClassCreateVisible"
+    title="新增存储类"
+    width="840px"
+    class="storage-class-create-dialog"
+    destroy-on-close
+  >
+    <div class="storage-class-create-tip">
+      创建静态存储资源，创建后可在“存储卷”中填写同名 StorageClass 来声明使用。
+    </div>
+    <el-form label-position="top" class="storage-class-create-form">
+      <section class="storage-class-form-section">
+        <div class="storage-class-section-heading">
+          <strong>基础配置</strong>
+          <span>定义静态卷名称、容量与数据来源。</span>
+        </div>
+        <el-form-item label="存储类名称" required>
+          <el-input v-model.trim="page.storageClassCreateForm.name" maxlength="63" placeholder="例如 game-nfs" />
+        </el-form-item>
+
+        <div class="storage-scope-panel">
+          <div class="storage-scope-panel-head">
+            <el-checkbox v-model="page.storageClassCreateForm.scopeNamespaceEnabled">
+              限定命名空间
+            </el-checkbox>
+            <span>{{ page.storageClassCreateForm.scopeNamespaceEnabled ? '仅指定命名空间可创建存储卷' : '未限定，作用域为集群级' }}</span>
+          </div>
+          <el-select
+            v-if="page.storageClassCreateForm.scopeNamespaceEnabled"
+            v-model="page.storageClassCreateForm.scopeNamespace"
+            class="storage-scope-namespace-select"
+            filterable
+            placeholder="请选择命名空间"
+          >
+            <el-option
+              v-for="option in page.namespaceOptions.filter((item) => item.value !== '__all__')"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </div>
+
+        <el-form-item label="存储源类型" required>
+          <el-radio-group v-model="page.storageClassCreateForm.sourceType" class="storage-source-type-group">
+          <el-radio-button label="hostpath">hostPath · 节点本地路径</el-radio-button>
+          <el-radio-button label="nfs">NFS · 远端共享存储</el-radio-button>
+        </el-radio-group>
+        <div class="config-storage-field-hint">
+          {{ page.storageClassCreateForm.sourceType === 'hostpath'
+            ? '直接使用节点上的文件系统路径，适用于单节点测试环境；目录会在 Pod 首次实际挂载该存储卷时由节点创建。'
+            : '通过 NFS 协议挂载远端存储，支持多节点共享访问。' }}
+        </div>
+        </el-form-item>
+
+        <el-row :gutter="16" class="storage-class-capacity-row">
+        <el-col :span="12">
+          <el-form-item label="容量" required>
+            <el-input v-model.trim="page.storageClassCreateForm.capacity" placeholder="例如 10Gi" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="回收策略" required>
+            <el-radio-group v-model="page.storageClassCreateForm.reclaimPolicy" class="storage-reclaim-policy-group">
+              <el-radio-button label="Delete">回收后删除</el-radio-button>
+              <el-radio-button label="Retain">回收后保留</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+        </el-col>
+        </el-row>
+      </section>
+
+      <section class="storage-class-form-section storage-source-config-section">
+        <div class="storage-class-section-heading">
+          <strong>挂载配置</strong>
+          <span>设置节点或 NFS 的实际存储位置及访问模式。</span>
+        </div>
+        <div class="storage-source-config-grid">
+          <el-form-item v-if="page.storageClassCreateForm.sourceType === 'nfs'" label="NFS 服务地址" required>
+            <el-input v-model.trim="page.storageClassCreateForm.nfsServer" placeholder="例如 10.0.0.10" />
+          </el-form-item>
+
+          <el-form-item label="路径" required>
+            <el-input
+              v-model.trim="page.storageClassCreateForm.path"
+              :placeholder="page.storageClassCreateForm.sourceType === 'hostpath' ? '例如 /data/k8s' : '例如 /exports/k8s'"
+            />
+          </el-form-item>
+
+          <el-form-item label="节点访问策略" required>
+            <el-select v-model="page.storageClassCreateForm.accessMode">
+              <el-option
+                v-for="option in page.storageAccessModeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+      </section>
+    </el-form>
+    <template #footer>
+      <el-button @click="page.storageClassCreateVisible = false">{{ page.t('cancel') }}</el-button>
+      <el-button type="primary" :loading="page.storageClassCreateSaving" @click="page.submitStorageClassCreate">新增存储类</el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="page.scaleDialogVisible" :title="page.t('k8sScaleWorkload')" width="420px">
     <el-form label-width="90px">
       <el-form-item :label="page.t('k8sNamespace')">

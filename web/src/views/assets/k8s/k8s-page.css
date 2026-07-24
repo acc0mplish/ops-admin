@@ -31,6 +31,10 @@
   gap: 18px;
 }
 
+.kuboard-head-title {
+  flex: 0 0 auto;
+}
+
 .kuboard-head-title h2 {
   margin: 0;
   color: #14213d;
@@ -50,7 +54,18 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
+  flex: 0 0 auto;
   min-width: 0;
+}
+
+.kuboard-head-filterbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: 1;
+  justify-content: center;
+  min-width: 420px;
 }
 
 .kuboard-cluster-select {
@@ -230,6 +245,7 @@
 .pod-node-cell small { color:#8492a7; font-size:12px; }
 .pod-row-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:8px; white-space:nowrap; }
 .pod-row-actions .el-button + .el-button { margin-left:0; }
+.pod-pagination { display:flex; justify-content:flex-end; padding:16px 4px 2px; }
 
 .pod-log-drawer .el-drawer__body { overflow:hidden; padding:0; }
 .pod-log-drawer-content { display:flex; flex-direction:column; height:100%; min-height:0; padding:20px 22px; }
@@ -560,6 +576,310 @@
 .network-grid,
 .config-grid {
   gap: 18px;
+}
+
+.config-storage-tabs {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e3e9f3;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.config-storage-create-action {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 26px;
+}
+
+.config-storage-tabs .el-tabs__header {
+  margin: 0;
+  padding: 0 26px;
+  background: #fff;
+}
+
+.config-storage-tabs .el-tabs__nav-wrap::after {
+  height: 1px;
+  background-color: #e3e9f3;
+}
+
+.config-storage-tabs .el-tabs__item {
+  height: 56px;
+  padding: 0 22px;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.config-storage-tabs .el-tabs__item.is-active {
+  color: #4f6bff;
+}
+
+.config-storage-tabs .el-tabs__active-bar {
+  height: 2px;
+  background-color: #4f6bff;
+}
+
+.config-storage-tabs .el-tabs__content {
+  padding: 0;
+}
+
+.config-storage-create-dialog .el-select,
+.config-storage-create-dialog .el-input {
+  width: 100%;
+}
+
+.config-storage-create-dialog .el-dialog__body {
+  padding: 22px 30px 12px;
+  max-height: calc(100vh - 210px);
+  overflow-y: auto;
+}
+
+.storage-class-create-dialog .el-dialog__body {
+  padding: 24px 30px 14px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+}
+
+.storage-class-create-dialog .el-input,
+.storage-class-create-dialog .el-select {
+  width: 100%;
+}
+
+.storage-scope-namespace-select {
+  display: block;
+  margin-top: 10px;
+}
+
+.storage-class-create-tip {
+  margin-bottom: 18px;
+  padding: 11px 14px;
+  border: 1px solid #dce6ff;
+  border-radius: 10px;
+  background: #f5f8ff;
+  color: #60718d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.storage-class-create-form {
+  display: grid;
+  gap: 16px;
+}
+
+.storage-class-create-form .el-form-item {
+  margin-bottom: 16px;
+}
+
+.storage-class-create-form .el-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.storage-class-form-section {
+  padding: 18px 20px 20px;
+  border: 1px solid #e3eaf5;
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.storage-class-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.storage-class-section-heading strong {
+  color: #172b4d;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.storage-class-section-heading span {
+  color: #8a98ad;
+  font-size: 12px;
+}
+
+.storage-scope-panel {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px dashed #cbdaf8;
+  border-radius: 10px;
+  background: #f6f9ff;
+}
+
+.storage-scope-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.storage-scope-panel-head > span {
+  color: #7789a5;
+  font-size: 12px;
+}
+
+.storage-source-type-group,
+.storage-reclaim-policy-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+}
+
+.storage-source-type-group .el-radio-button__inner {
+  min-width: 178px;
+  padding: 9px 18px;
+}
+
+.storage-reclaim-policy-group .el-radio-button__inner {
+  min-width: 112px;
+  padding: 9px 14px;
+}
+
+.storage-class-capacity-row .el-col {
+  display: flex;
+}
+
+.storage-class-capacity-row .el-form-item {
+  width: 100%;
+}
+
+.storage-source-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+
+.storage-source-config-grid .el-form-item {
+  width: 100%;
+}
+
+.storage-source-config-grid .el-form-item:last-child {
+  grid-column: span 2;
+}
+
+@media (max-width: 760px) {
+  .storage-class-create-dialog {
+    width: calc(100vw - 28px) !important;
+  }
+
+  .storage-class-capacity-row,
+  .storage-source-config-grid {
+    display: block;
+  }
+
+  .storage-class-capacity-row .el-col {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .storage-source-type-group,
+  .storage-reclaim-policy-group {
+    flex-wrap: wrap;
+  }
+
+  .storage-source-type-group .el-radio-button__inner,
+  .storage-reclaim-policy-group .el-radio-button__inner {
+    min-width: 0;
+  }
+}
+
+.config-storage-create-form .el-form-item {
+  margin-bottom: 20px;
+}
+
+.config-storage-name-wrap {
+  width: 100%;
+}
+
+.config-storage-field-hint {
+  margin-top: 7px;
+  color: #8a98ad;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.config-storage-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 26px 0 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e8edf5;
+}
+
+.config-storage-section-head strong {
+  color: #172b4d;
+  font-size: 16px;
+}
+
+.config-storage-section-head span {
+  color: #8a98ad;
+  font-size: 12px;
+}
+
+.config-storage-radio-group .el-radio-button__inner {
+  min-width: 110px;
+  padding: 9px 16px;
+}
+
+.config-storage-entry-list {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #dfe6f1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.config-storage-entry-table-head {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.55fr) minmax(400px, 1.75fr) 58px;
+  gap: 10px;
+  padding: 10px 12px;
+  color: #60718d;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f5f8fc;
+  border-bottom: 1px solid #e4eaf3;
+}
+
+.config-storage-entry-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.55fr) minmax(400px, 1.75fr) 58px;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.config-storage-entry-row .el-textarea__inner {
+  min-height: 136px !important;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.config-storage-entry-row:last-of-type {
+  border-bottom: 0;
+}
+
+.k8s-detail-value {
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.55 Consolas, 'SFMono-Regular', monospace;
+  color: #2b3f5c;
+}
+
+.k8s-secret-value .el-input__wrapper {
+  box-shadow: 0 0 0 1px #e3eaf3 inset;
+}
+
+.config-storage-entry-list > .el-button {
+  margin: 4px 12px 10px;
 }
 
 .subsection,
@@ -1057,6 +1377,12 @@
 
   .kuboard-head-tools {
     align-items: stretch;
+  }
+
+  .kuboard-head-filterbar {
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
   }
 
   .kuboard-cluster-select {

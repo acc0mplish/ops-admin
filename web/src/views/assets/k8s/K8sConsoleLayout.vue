@@ -61,7 +61,10 @@ const iconMap = {
           </div>
         </div>
 
-        <div v-if="page.hasCluster && page.currentTab !== 'workloads' && page.shouldShowNamespaceFilter(page.currentTab)" class="kuboard-global-toolbar">
+        <div
+          v-if="page.hasCluster && page.currentTab !== 'workloads' && page.shouldShowNamespaceFilter(page.currentTab)"
+          class="kuboard-global-toolbar"
+        >
           <el-select
             :model-value="page.namespaceFilter"
             filterable
@@ -90,7 +93,7 @@ const iconMap = {
             </strong>
           </div>
           <el-button
-            v-if="page.currentTab === 'pods'"
+            v-if="['pods', 'config-storage'].includes(page.currentTab)"
             class="pod-list-refresh"
             plain
             :icon="Refresh"

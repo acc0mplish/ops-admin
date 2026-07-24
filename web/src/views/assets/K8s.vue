@@ -128,6 +128,39 @@ const podLogLoading = ref(false)
 const podLogs = ref('')
 const selectedContainer = ref('')
 const podLogTailLines = ref(200)
+const podPage = ref(1)
+const podPageSize = ref(20)
+const configStorageTab = ref('configmaps')
+const configStorageCreateVisible = ref(false)
+const configStorageCreateSaving = ref(false)
+const configStorageEditing = ref(false)
+const storageClassCreateVisible = ref(false)
+const storageClassCreateSaving = ref(false)
+const storageClassCreateForm = reactive({
+  name: '',
+  sourceType: 'hostpath',
+  capacity: '10Gi',
+  reclaimPolicy: 'Delete',
+  accessMode: 'ReadWriteOnce',
+  path: '',
+  nfsServer: '',
+  scopeNamespaceEnabled: false,
+  scopeNamespace: ''
+})
+
+watch(() => storageClassCreateForm.sourceType, (sourceType) => {
+  if (sourceType === 'hostpath') storageClassCreateForm.accessMode = 'ReadWriteOnce'
+})
+const configStorageCreateForm = reactive({
+  kind: 'configmap',
+  namespace: '',
+  name: '',
+  entries: [{ key: '', value: '' }],
+  secretType: 'Opaque',
+  capacity: '1Gi',
+  storageClass: '',
+  accessMode: 'ReadWriteOnce'
+})
 const currentPodQuery = reactive({
   namespace: '',
   podName: ''
@@ -270,6 +303,10 @@ const namespaceOptions = computed(() => {
 })
 
 const filteredPods = computed(() => filterList(pods.value))
+const pagedPods = computed(() => {
+  const start = (podPage.value - 1) * podPageSize.value
+  return filteredPods.value.slice(start, start + podPageSize.value)
+})
 const filteredWorkloads = computed(() => filterList(workloads.value))
 const filteredServices = computed(() => filterList(services.value))
 const filteredIngresses = computed(() => filterList(ingresses.value))
@@ -278,6 +315,8 @@ const filteredHTTPRoutes = computed(() => filterList(httpRoutes.value))
 const filteredConfigMaps = computed(() => filterList(configMaps.value))
 const filteredSecrets = computed(() => filterList(secrets.value))
 const filteredStorages = computed(() => filterList(storages.value))
+const filteredStorageClasses = computed(() => filteredStorages.value.filter((item) => item.kind === 'PV'))
+const filteredStorageVolumes = computed(() => filteredStorages.value.filter((item) => item.kind === 'PVC'))
 const yamlDiffLines = computed(() => buildYAMLDiffLines(yamlEditor.originalYAML, yamlEditor.yaml))
 const yamlLineNumbers = computed(() => {
   const total = Math.max(1, yamlEditor.yaml.split('\n').length)
@@ -473,12 +512,14 @@ function restoreNamespaceFilter() {
 function handleNamespaceFilterChange(value) {
   namespaceFilter.value = value || '__all__'
   podScopedNames.value = []
+  podPage.value = 1
   localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
 }
 
 function handleResourceKeywordChange(value) {
   resourceKeyword.value = value || ''
   podScopedNames.value = []
+  podPage.value = 1
 }
 
 function handleNamespaceKeywordChange(value) {
@@ -502,6 +543,7 @@ async function openWorkloadPods(row) {
   const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
   const relatedPods = Array.isArray(detail?.pods) ? detail.pods.map((item) => item.name).filter(Boolean) : []
   podScopedNames.value = relatedPods
+  podPage.value = 1
   resourceKeyword.value = relatedPods.length ? '' : row.name
   handleTabChange('pods')
 }
@@ -1170,6 +1212,46 @@ async function openIngressYAML(row) {
   })
 }
 
+function handlePodPageSizeChange(size) {
+  podPageSize.value = size
+  podPage.value = 1
+}
+
+function handlePodPageChange(page) {
+  podPage.value = page
+}
+
+async function handleDeletePod(row) {
+  if (!cluster.value?.id || !row?.namespace || !row?.name) return
+  await ElMessageBox.confirm(
+    `确认删除 Pod ${row.namespace}/${row.name}？`,
+    '确认删除',
+    {
+      type: 'warning',
+      confirmButtonText: t('k8sDelete'),
+      cancelButtonText: t('cancel')
+    }
+  )
+  await deleteK8sResource({
+    clusterId: cluster.value.id,
+    resourceType: 'pod',
+    namespace: row.namespace,
+    name: row.name
+  })
+  ElMessage.success('Pod 已删除')
+  if (podDrawerVisible.value && podDetail.value?.name === row.name && podDetail.value?.namespace === row.namespace) {
+    podDrawerVisible.value = false
+  }
+  if (podLogDrawerVisible.value && currentPodQuery.podName === row.name && currentPodQuery.namespace === row.namespace) {
+    podLogDrawerVisible.value = false
+  }
+  await refreshCurrentClusterData()
+  const maxPage = Math.max(1, Math.ceil(filteredPods.value.length / podPageSize.value))
+  if (podPage.value > maxPage) {
+    podPage.value = maxPage
+  }
+}
+
 async function openWorkloadResourceSettings(row) {
   if (!cluster.value?.id) return
   const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
@@ -1222,6 +1304,324 @@ async function submitWorkloadResourceSettings() {
 function openNamespaceCreate() {
   namespaceCreateForm.name = ''
   namespaceCreateVisible.value = true
+}
+
+function configStorageCreateKind() {
+  if (configStorageTab.value === 'secrets') return 'secret'
+  if (configStorageTab.value === 'storage-volumes') return 'pvc'
+  return 'configmap'
+}
+
+const storageAccessModeOptions = computed(() => (
+  storageClassCreateForm.sourceType === 'hostpath'
+    ? [{ value: 'ReadWriteOnce', label: '单节点读写（ReadWriteOnce）' }]
+    : [
+        { value: 'ReadWriteOnce', label: '单节点读写（ReadWriteOnce）' },
+        { value: 'ReadOnlyMany', label: '多节点只读（ReadOnlyMany）' },
+        { value: 'ReadWriteMany', label: '多节点读写（ReadWriteMany）' }
+      ]
+))
+
+const pvcStorageClassOptions = computed(() => (
+  storages.value
+    .filter((item) => item.kind === 'PV' && String(item.storageClass || item.name || '').trim())
+    .map((item) => {
+      const value = String(item.storageClass || item.name).trim()
+      const scope = String(item.namespaceScope || '').trim()
+      return {
+        value,
+        label: scope && scope !== '集群级'
+          ? `${value}（限定：${scope}）`
+          : `${value}（集群级）`,
+        scope,
+        accessModes: String(item.accessModes || 'ReadWriteOnce')
+      }
+    })
+))
+
+const selectedPVCStorageClass = computed(() => (
+  pvcStorageClassOptions.value.find((item) => item.value === configStorageCreateForm.storageClass) || null
+))
+
+const pvcStorageClassScope = computed(() => {
+  const scope = selectedPVCStorageClass.value?.scope || ''
+  return scope && scope !== '集群级' ? scope : ''
+})
+
+const pvcNamespaceOptions = computed(() => {
+  const options = namespaceOptions.value.filter((item) => item.value !== '__all__')
+  return pvcStorageClassScope.value
+    ? options.filter((item) => item.value === pvcStorageClassScope.value)
+    : options
+})
+
+const pvcNamespaceLocked = computed(() => Boolean(pvcStorageClassScope.value))
+
+const pvcAccessMode = computed(() => (
+  String(selectedPVCStorageClass.value?.accessModes || 'ReadWriteOnce')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)[0] || 'ReadWriteOnce'
+))
+
+const pvcAccessModeLabel = computed(() => {
+  if (!selectedPVCStorageClass.value) return '请先选择存储类'
+  const labels = {
+    ReadWriteOnce: '单节点读写（ReadWriteOnce）',
+    ReadOnlyMany: '多节点只读（ReadOnlyMany）',
+    ReadWriteMany: '多节点读写（ReadWriteMany）'
+  }
+  return labels[pvcAccessMode.value] || pvcAccessMode.value
+})
+
+watch(() => configStorageCreateForm.storageClass, () => {
+  if (configStorageCreateForm.kind !== 'pvc') return
+  configStorageCreateForm.accessMode = pvcAccessMode.value
+  if (pvcStorageClassScope.value) configStorageCreateForm.namespace = pvcStorageClassScope.value
+})
+
+function openStorageClassCreate() {
+  storageClassCreateForm.name = ''
+  storageClassCreateForm.sourceType = 'hostpath'
+  storageClassCreateForm.capacity = '10Gi'
+  storageClassCreateForm.reclaimPolicy = 'Delete'
+  storageClassCreateForm.accessMode = 'ReadWriteOnce'
+  storageClassCreateForm.path = ''
+  storageClassCreateForm.nfsServer = ''
+  storageClassCreateForm.scopeNamespaceEnabled = false
+  storageClassCreateForm.scopeNamespace = ''
+  storageClassCreateVisible.value = true
+}
+
+async function submitStorageClassCreate() {
+  if (!cluster.value?.id) return
+  const name = String(storageClassCreateForm.name || '').trim().toLowerCase()
+  const path = String(storageClassCreateForm.path || '').trim()
+  const capacity = String(storageClassCreateForm.capacity || '').trim()
+  const sourceType = storageClassCreateForm.sourceType
+  const nfsServer = String(storageClassCreateForm.nfsServer || '').trim()
+  const scopeNamespace = storageClassCreateForm.scopeNamespaceEnabled
+    ? String(storageClassCreateForm.scopeNamespace || '').trim()
+    : ''
+  if (!validK8sResourceName(name)) {
+    ElMessage.warning('请输入符合 Kubernetes 命名规范的存储类名称')
+    return
+  }
+  if (!capacity || !path) {
+    ElMessage.warning('请填写容量和存储路径')
+    return
+  }
+  if (sourceType === 'nfs' && !nfsServer) {
+    ElMessage.warning('NFS 存储源需要填写 NFS 服务地址')
+    return
+  }
+  if (storageClassCreateForm.scopeNamespaceEnabled && !scopeNamespace) {
+    ElMessage.warning('请选择限定的命名空间')
+    return
+  }
+  const manifest = {
+    apiVersion: 'v1',
+    kind: 'PersistentVolume',
+    metadata: { name },
+    spec: {
+      capacity: { storage: capacity },
+      volumeMode: 'Filesystem',
+      accessModes: [storageClassCreateForm.accessMode],
+      persistentVolumeReclaimPolicy: storageClassCreateForm.reclaimPolicy,
+      storageClassName: name
+    }
+  }
+  if (scopeNamespace) {
+    manifest.metadata.annotations = { 'ops-admin.io/namespace-scope': scopeNamespace }
+  }
+  if (sourceType === 'hostpath') {
+    manifest.spec.hostPath = { path, type: 'DirectoryOrCreate' }
+  } else {
+    manifest.spec.nfs = { server: nfsServer, path }
+  }
+  storageClassCreateSaving.value = true
+  try {
+    await createK8sResourceYAML({
+      clusterId: cluster.value.id,
+      resourceType: 'pv',
+      name,
+      yaml: JSON.stringify(manifest, null, 2)
+    })
+    ElMessage.success('新增存储类成功')
+    storageClassCreateVisible.value = false
+    await refreshCurrentClusterData()
+  } finally {
+    storageClassCreateSaving.value = false
+  }
+}
+
+async function deleteStorageClass(row) {
+  if (!cluster.value?.id) return
+  if (String(row?.status || '').toLowerCase() !== 'available') {
+    ElMessage.warning('仅未绑定存储卷的存储类可以删除')
+    return
+  }
+  await ElMessageBox.confirm(
+    `确认删除存储类“${row.name}”？删除后不可恢复。`,
+    '删除存储类',
+    { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+  )
+  await deleteK8sResource({
+    clusterId: cluster.value.id,
+    resourceType: 'pv',
+    name: row.name
+  })
+  ElMessage.success('存储类已删除')
+  await refreshCurrentClusterData()
+}
+
+async function deleteStorageVolume(row) {
+  if (!cluster.value?.id || !row?.namespace || !row?.name) return
+  await ElMessageBox.confirm(
+    `确认删除存储卷“${row.namespace}/${row.name}”？删除后不可恢复。`,
+    '删除存储卷',
+    { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+  )
+  await deleteK8sResource({
+    clusterId: cluster.value.id,
+    resourceType: 'pvc',
+    namespace: row.namespace,
+    name: row.name
+  })
+  if (storageDrawerVisible.value && storageDetail.value?.kind === 'PVC' && storageDetail.value?.name === row.name && storageDetail.value?.namespace === row.namespace) {
+    storageDrawerVisible.value = false
+  }
+  ElMessage.success('存储卷已删除')
+  await refreshCurrentClusterData()
+}
+
+function configStorageCreateTitle() {
+  const action = configStorageEditing.value ? '编辑' : '新建'
+  const titles = {
+    configmap: `${action} ConfigMap`,
+    secret: `${action} Secret`,
+    pvc: '新增存储（PVC）'
+  }
+  return titles[configStorageCreateForm.kind] || titles.configmap
+}
+
+function openConfigStorageCreate() {
+  const kind = configStorageCreateKind()
+  configStorageEditing.value = false
+  configStorageCreateForm.kind = kind
+  configStorageCreateForm.namespace = namespaceFilter.value !== '__all__'
+    ? namespaceFilter.value
+    : (namespaces.value[0]?.name || '')
+  configStorageCreateForm.name = ''
+  configStorageCreateForm.entries = [{ key: '', value: '' }]
+  configStorageCreateForm.secretType = 'Opaque'
+  configStorageCreateForm.capacity = '1Gi'
+  configStorageCreateForm.storageClass = ''
+  configStorageCreateForm.accessMode = 'ReadWriteOnce'
+  configStorageCreateVisible.value = true
+}
+
+function addConfigStorageEntry() {
+  configStorageCreateForm.entries.push({ key: '', value: '' })
+}
+
+function removeConfigStorageEntry(index) {
+  if (configStorageCreateForm.entries.length <= 1) return
+  configStorageCreateForm.entries.splice(index, 1)
+}
+
+function validK8sResourceName(value) {
+  const name = String(value || '').trim().toLowerCase()
+  return /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name) && name.length <= 63
+}
+
+async function submitConfigStorageCreate() {
+  if (!cluster.value?.id) return
+  const { kind, namespace } = configStorageCreateForm
+  const name = String(configStorageCreateForm.name || '').trim().toLowerCase()
+  if (!namespace) {
+    ElMessage.warning('请选择命名空间')
+    return
+  }
+  if (!validK8sResourceName(name)) {
+    ElMessage.warning('名称必须为不超过 63 位的小写字母、数字或连字符，且不能以连字符开头或结尾')
+    return
+  }
+
+  let manifest
+  if (kind === 'pvc') {
+    const capacity = String(configStorageCreateForm.capacity || '').trim()
+    const storageClass = String(configStorageCreateForm.storageClass || '').trim()
+    if (!capacity) {
+      ElMessage.warning('请输入存储容量，例如 1Gi')
+      return
+    }
+    if (!storageClass || !selectedPVCStorageClass.value) {
+      ElMessage.warning('请选择存储类')
+      return
+    }
+    if (pvcStorageClassScope.value && namespace !== pvcStorageClassScope.value) {
+      ElMessage.warning(`存储类“${storageClass}”仅允许命名空间“${pvcStorageClassScope.value}”创建存储卷`)
+      return
+    }
+    manifest = {
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: { name, namespace },
+      spec: {
+        accessModes: [pvcAccessMode.value],
+        resources: { requests: { storage: capacity } },
+        storageClassName: storageClass
+      }
+    }
+  } else {
+    const entries = configStorageCreateForm.entries || []
+    const values = {}
+    for (const entry of entries) {
+      const key = String(entry.key || '').trim()
+      if (!key) {
+        ElMessage.warning('请填写每一项的键名')
+        return
+      }
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        ElMessage.warning(`键名“${key}”重复，请调整后再创建`)
+        return
+      }
+      values[key] = String(entry.value ?? '')
+    }
+    manifest = {
+      apiVersion: 'v1',
+      kind: kind === 'secret' ? 'Secret' : 'ConfigMap',
+      metadata: { name, namespace }
+    }
+    if (kind === 'secret') {
+      manifest.type = configStorageCreateForm.secretType || 'Opaque'
+      manifest.stringData = values
+    } else {
+      manifest.data = values
+    }
+  }
+
+  configStorageCreateSaving.value = true
+  try {
+    const payload = {
+      clusterId: cluster.value.id,
+      resourceType: kind,
+      namespace,
+      name,
+      yaml: JSON.stringify(manifest, null, 2)
+    }
+    if (configStorageEditing.value) {
+      await updateK8sResourceYAML(payload)
+    } else {
+      await createK8sResourceYAML(payload)
+    }
+    ElMessage.success(`${configStorageCreateTitle()}成功`)
+    configStorageCreateVisible.value = false
+    await refreshCurrentClusterData()
+  } finally {
+    configStorageCreateSaving.value = false
+  }
 }
 
 async function submitNamespaceCreate() {
@@ -1553,6 +1953,38 @@ async function openConfigMapYAML(row) {
   })
 }
 
+async function openConfigMapEdit(row) {
+  if (!cluster.value?.id) return
+  const detail = await queryK8sConfigMapDetail(cluster.value.id, row.namespace, row.name)
+  configStorageEditing.value = true
+  configStorageCreateForm.kind = 'configmap'
+  configStorageCreateForm.namespace = detail.namespace
+  configStorageCreateForm.name = detail.name
+  configStorageCreateForm.entries = (detail.keys || []).map((item) => ({ key: item.label, value: item.value || '' }))
+  if (!configStorageCreateForm.entries.length) configStorageCreateForm.entries = [{ key: '', value: '' }]
+  configStorageCreateVisible.value = true
+}
+
+async function deleteConfigMap(row) {
+  if (!cluster.value?.id) return
+  await ElMessageBox.confirm(`确认删除 ConfigMap “${row.name}” 吗？此操作不可恢复。`, '删除 ConfigMap', {
+    type: 'warning',
+    confirmButtonText: t('k8sDelete'),
+    cancelButtonText: t('cancel')
+  })
+  await deleteK8sResource({
+    clusterId: cluster.value.id,
+    resourceType: 'configmap',
+    namespace: row.namespace,
+    name: row.name
+  })
+  if (configMapDetail.value?.name === row.name && configMapDetail.value?.namespace === row.namespace) {
+    configMapDrawerVisible.value = false
+  }
+  ElMessage.success('ConfigMap 已删除')
+  await refreshCurrentTab()
+}
+
 async function openSecretDetail(row) {
   if (!cluster.value?.id) return
   secretDrawerVisible.value = true
@@ -1663,7 +2095,7 @@ async function refreshCurrentYAMLResource() {
         storageDetail.value = await queryK8sStorageDetail(
           cluster.value.id,
           storageDetail.value.kind,
-          storageDetail.value.namespace === '-' ? '' : storageDetail.value.namespace,
+          storageDetail.value.kind === 'PV' ? '' : storageDetail.value.namespace,
           storageDetail.value.name
         )
       }
@@ -1732,6 +2164,39 @@ function buildYAMLTitle(resourceKey, name) {
   })
 }
 
+async function openSecretEdit(row) {
+  if (!cluster.value?.id) return
+  const detail = await queryK8sSecretDetail(cluster.value.id, row.namespace, row.name)
+  configStorageEditing.value = true
+  configStorageCreateForm.kind = 'secret'
+  configStorageCreateForm.namespace = detail.namespace
+  configStorageCreateForm.name = detail.name
+  configStorageCreateForm.secretType = detail.type || 'Opaque'
+  configStorageCreateForm.entries = (detail.keys || []).map((item) => ({ key: item.label, value: item.value || '' }))
+  if (!configStorageCreateForm.entries.length) configStorageCreateForm.entries = [{ key: '', value: '' }]
+  configStorageCreateVisible.value = true
+}
+
+async function deleteSecret(row) {
+  if (!cluster.value?.id) return
+  await ElMessageBox.confirm(`确认删除 Secret “${row.name}” 吗？此操作不可恢复。`, '删除 Secret', {
+    type: 'warning',
+    confirmButtonText: t('k8sDelete'),
+    cancelButtonText: t('cancel')
+  })
+  await deleteK8sResource({
+    clusterId: cluster.value.id,
+    resourceType: 'secret',
+    namespace: row.namespace,
+    name: row.name
+  })
+  if (secretDetail.value?.name === row.name && secretDetail.value?.namespace === row.namespace) {
+    secretDrawerVisible.value = false
+  }
+  ElMessage.success('Secret 已删除')
+  await refreshCurrentTab()
+}
+
 function translateIstioDetailLabel(label) {
   const map = {
     GatewayClass: 'k8sType',
@@ -1758,6 +2223,16 @@ const page = reactive({
   nodes,
   namespaces,
   pods,
+  podPage,
+  podPageSize,
+  configStorageTab,
+  configStorageCreateVisible,
+  configStorageCreateSaving,
+  configStorageEditing,
+  configStorageCreateForm,
+  storageClassCreateVisible,
+  storageClassCreateSaving,
+  storageClassCreateForm,
   workloads,
   services,
   ingresses,
@@ -1843,6 +2318,12 @@ const page = reactive({
   hasCluster,
   statusType,
   namespaceOptions,
+  configStorageCreateTitle,
+  storageAccessModeOptions,
+  pvcStorageClassOptions,
+  pvcNamespaceOptions,
+  pvcNamespaceLocked,
+  pvcAccessModeLabel,
   kuboardMenuGroups,
   currentSection,
   kuboardNamespaceRows,
@@ -1854,6 +2335,7 @@ const page = reactive({
   workloadSummary,
   workloadSelectionCount,
   filteredPods,
+  pagedPods,
   filteredWorkloads,
   filteredServices,
   filteredIngresses,
@@ -1862,6 +2344,8 @@ const page = reactive({
   filteredConfigMaps,
   filteredSecrets,
   filteredStorages,
+  filteredStorageClasses,
+  filteredStorageVolumes,
   yamlDiffLines,
   yamlLineNumbers,
   yamlPreviewLineNumbers,
@@ -1897,6 +2381,14 @@ const page = reactive({
   openNamespaceYAML,
   openNamespaceCreate,
   submitNamespaceCreate,
+  openConfigStorageCreate,
+  openStorageClassCreate,
+  submitStorageClassCreate,
+  deleteStorageClass,
+  deleteStorageVolume,
+  addConfigStorageEntry,
+  removeConfigStorageEntry,
+  submitConfigStorageCreate,
   openWorkloadDetail,
 	openWorkloadResourceSettings,
 	submitWorkloadResourceSettings,
@@ -1914,6 +2406,9 @@ const page = reactive({
   openPodLogs,
   openPodYAML,
   openPodTerminal,
+  handlePodPageSizeChange,
+  handlePodPageChange,
+  handleDeletePod,
   refreshPodLogs,
   openServiceDetail,
   openServiceYAML,
@@ -1928,8 +2423,12 @@ const page = reactive({
   submitTrafficAdjust,
   openConfigMapDetail,
   openConfigMapYAML,
+  openConfigMapEdit,
+  deleteConfigMap,
   openSecretDetail,
   openSecretYAML,
+  openSecretEdit,
+  deleteSecret,
   openStorageDetail,
   openStorageYAML,
   translateIstioDetailLabel,
@@ -1957,6 +2456,13 @@ watch(
     }
   }
 )
+
+watch(filteredPods, () => {
+  const maxPage = Math.max(1, Math.ceil(filteredPods.value.length / podPageSize.value))
+  if (podPage.value > maxPage) {
+    podPage.value = maxPage
+  }
+})
 </script>
 
 <template>

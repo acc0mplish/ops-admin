@@ -276,10 +276,14 @@ defineProps({
         </el-descriptions>
 
         <div class="drawer-section">
-          <strong>{{ page.t('k8sKeys') }}</strong>
+          <strong>键值</strong>
           <el-table :data="page.configMapDetail.keys || []" class="data-table">
             <el-table-column prop="label" :label="page.t('k8sKeys')" min-width="220" />
-            <el-table-column prop="value" :label="page.t('k8sSize')" min-width="120" />
+            <el-table-column label="值" min-width="360">
+              <template #default="{ row }">
+                <pre class="k8s-detail-value">{{ row.value }}</pre>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </template>
@@ -297,10 +301,14 @@ defineProps({
         </el-descriptions>
 
         <div class="drawer-section">
-          <strong>{{ page.t('k8sKeys') }}</strong>
+          <strong>键值</strong>
           <el-table :data="page.secretDetail.keys || []" class="data-table">
             <el-table-column prop="label" :label="page.t('k8sKeys')" min-width="220" />
-            <el-table-column prop="value" :label="page.t('k8sStatus')" min-width="120" />
+            <el-table-column label="值" min-width="360">
+              <template #default="{ row }">
+                <el-input :model-value="row.value" type="password" show-password readonly class="k8s-secret-value" />
+              </template>
+            </el-table-column>
           </el-table>
         </div>
       </template>
@@ -317,6 +325,12 @@ defineProps({
           <el-descriptions-item :label="page.t('k8sStatus')">{{ page.storageDetail.status }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sCapacity')">{{ page.storageDetail.capacity }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sStorageClass')">{{ page.storageDetail.storageClass }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="存储源">{{ page.storageDetail.sourceType }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="限定命名空间">{{ page.storageDetail.namespaceScope || '集群级' }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="路径">{{ page.storageDetail.path }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV' && page.storageDetail.nfsServer !== '-'" label="NFS 服务地址">{{ page.storageDetail.nfsServer }}</el-descriptions-item>
+          <el-descriptions-item label="读取策略">{{ page.storageDetail.accessModes || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="回收策略">{{ page.storageDetail.reclaimPolicy }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sAge')">{{ page.storageDetail.age }}</el-descriptions-item>
         </el-descriptions>
       </template>

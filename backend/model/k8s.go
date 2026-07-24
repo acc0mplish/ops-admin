@@ -139,8 +139,9 @@ type K8sOverview struct {
 }
 
 type K8sKVTextItem struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
+	Label     string `json:"label"`
+	Value     string `json:"value"`
+	Sensitive bool   `json:"sensitive"`
 }
 
 type K8sCertificate struct {
@@ -382,25 +383,37 @@ type K8sSecretDetail struct {
 }
 
 type K8sStorageItem struct {
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Namespace    string `json:"namespace"`
-	Status       string `json:"status"`
-	Capacity     string `json:"capacity"`
-	StorageClass string `json:"storageClass"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	Namespace      string `json:"namespace"`
+	NamespaceScope string `json:"namespaceScope"`
+	Status         string `json:"status"`
+	Capacity       string `json:"capacity"`
+	StorageClass   string `json:"storageClass"`
+	SourceType     string `json:"sourceType"`
+	Path           string `json:"path"`
+	NFSServer      string `json:"nfsServer"`
+	AccessModes    string `json:"accessModes"`
+	ReclaimPolicy  string `json:"reclaimPolicy"`
 }
 
 type K8sStorageDetail struct {
-	Name         string            `json:"name"`
-	Kind         string            `json:"kind"`
-	Namespace    string            `json:"namespace"`
-	Status       string            `json:"status"`
-	Capacity     string            `json:"capacity"`
-	StorageClass string            `json:"storageClass"`
-	Labels       map[string]string `json:"labels"`
-	Annotations  map[string]string `json:"annotations"`
-	Age          string            `json:"age"`
-	YAML         string            `json:"yaml"`
+	Name           string            `json:"name"`
+	Kind           string            `json:"kind"`
+	Namespace      string            `json:"namespace"`
+	NamespaceScope string            `json:"namespaceScope"`
+	Status         string            `json:"status"`
+	Capacity       string            `json:"capacity"`
+	StorageClass   string            `json:"storageClass"`
+	SourceType     string            `json:"sourceType"`
+	Path           string            `json:"path"`
+	NFSServer      string            `json:"nfsServer"`
+	AccessModes    string            `json:"accessModes"`
+	ReclaimPolicy  string            `json:"reclaimPolicy"`
+	Labels         map[string]string `json:"labels"`
+	Annotations    map[string]string `json:"annotations"`
+	Age            string            `json:"age"`
+	YAML           string            `json:"yaml"`
 }
 
 type K8sNetworkSection struct {

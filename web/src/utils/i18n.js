@@ -339,7 +339,7 @@ const messages = {
     k8sServices: 'Services',
     k8sIngresses: 'Ingress',
     k8sAdvancedNetwork: 'Advanced Network',
-    k8sConfigStorage: 'Config & Storage',
+    k8sConfigStorage: 'ConfigMap Secret Storage',
     k8sPodTerminal: 'Pod Terminal',
     k8sClusterSelector: 'Cluster Selector',
     k8sSelectCluster: 'Select cluster',

@@ -69,6 +69,7 @@ function loadTags() {
     const source = Array.isArray(parsed) && parsed.length ? parsed : defaults
     return trimTagViews(source.map((item) => ({
       ...item,
+      fullPath: item.fullPath || item.path,
       title: translateRoute(item.path, item.title),
       affix: isPinnedTag(item)
     })))
@@ -213,7 +214,7 @@ function currentLogoText() {
   return 'OA'
 }
 
-function ensureTag(path, title) {
+function ensureTag(path, title, fullPath = path) {
   if (!path || path === '/login') {
     return
   }
@@ -221,21 +222,26 @@ function ensureTag(path, title) {
   const found = tagViews.value.find((item) => item.path === path)
   if (found) {
     found.title = translated
+    // 标签按路由路径去重，但必须保留最后一次打开时的查询参数。
+    // 否则像服务资源拓扑这类依赖 serviceId 的页面在切换标签后会丢失上下文。
+    found.fullPath = fullPath || path
     saveTags()
     return
   }
   tagViews.value.push({
     title: translated,
     path,
+    fullPath: fullPath || path,
     affix: path === '/dashboard'
   })
   tagViews.value = trimTagViews(tagViews.value, path)
   saveTags()
 }
 
-function handleTagClick(path) {
-  if (path && path !== route.path) {
-    router.push(path)
+function handleTagClick(tag) {
+  const target = tag?.fullPath || tag?.path
+  if (target && target !== route.fullPath) {
+    router.push(target)
   }
 }
 
@@ -252,7 +258,7 @@ function closeTag(tag) {
   saveTags()
   if (wasActive) {
     const nextTag = tagViews.value[index - 1] || tagViews.value[index] || tagViews.value[0]
-    router.push(nextTag?.path || '/dashboard')
+    router.push(nextTag?.fullPath || nextTag?.path || '/dashboard')
   }
 }
 
@@ -285,7 +291,7 @@ function closeLeftTags() {
   saveTags()
   closeTagContextMenu()
   if (removedActive) {
-    router.push(target.path)
+    router.push(target.fullPath || target.path)
   }
 }
 
@@ -304,7 +310,7 @@ function closeRightTags() {
   saveTags()
   closeTagContextMenu()
   if (removedActive) {
-    router.push(target.path)
+    router.push(target.fullPath || target.path)
   }
 }
 
@@ -318,7 +324,7 @@ function closeOtherTags() {
   saveTags()
   closeTagContextMenu()
   if (route.path !== keepPath && !tagViews.value.some((item) => item.path === route.path)) {
-    router.push(keepPath)
+    router.push(target.fullPath || keepPath)
   }
 }
 
@@ -382,11 +388,11 @@ async function syncProfile() {
 }
 
 watch(
-  () => route.path,
+  () => route.fullPath,
   () => {
     closeTagContextMenu()
     setCurrentApp(currentApp.value.key)
-    ensureTag(route.path, currentTitle.value)
+    ensureTag(route.path, currentTitle.value, route.fullPath)
   },
   { immediate: true }
 )
@@ -529,7 +535,7 @@ onMounted(() => {
             :key="tag.path"
             class="tab-chip"
             :class="{ active: tag.path === route.path }"
-            @click="handleTagClick(tag.path)"
+            @click="handleTagClick(tag)"
             @contextmenu="openTagContextMenu($event, tag)"
           >
             <span>{{ tag.title }}</span>

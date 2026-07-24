@@ -25,7 +25,7 @@ function healthy(item) {
 }
 const nodes = computed(() => {
   const add = (id, title, x, y, kind, note, workload = null) => ({ id, title, x, y, kind, note, workload, healthy: healthy(workload) })
-  const nginx = find((name) => name.includes('nginx-gm')); const mgr = find((name) => name.includes('mgr')); const gate = find((name) => name.includes('gate')); const login = find((name) => name.includes('login')); const notice = find((name) => name.includes('notice')); const home = find((name) => name.includes('home')); const world = find((name) => name.includes('world')); const zk = find((name) => name.includes('zookeeper') || name === 'zk')
+  const nginx = find((name) => name.includes('nginx-gm')); const mgr = find((name) => name.includes('mgr')); const gate = find((name) => name.includes('gate')); const login = find((name) => name.includes('login')); const notice = find((name) => name.includes('notice')); const home = find((name) => name.includes('home')); const world = find((name) => name.includes('world')); const social = find((name) => name.includes('social')); const zk = find((name) => name.includes('zookeeper') || name === 'zk')
   const result = [add('player', '玩家客户端', 34, 270, 'external', '仅通过 Gate / Notice 通信')]
   if (nginx) result.push(add('nginx', nginx.name, 250, 74, 'management', '独立 GM 入口', nginx))
   if (mgr) result.push(add('mgr', mgr.name, 460, 74, 'management', 'GM 后台', mgr))
@@ -34,15 +34,16 @@ const nodes = computed(() => {
   result.push(add('zk', zk?.name || 'ZooKeeper', 740, 280, 'dependency', '服务注册 / 启用状态', zk || null))
   if (home) result.push(add('home', home.name, 975, 190, 'service', '游戏服务', home))
   if (world) result.push(add('world', world.name, 975, 370, 'service', '游戏服务', world))
+  if (social) result.push(add('social', social.name, 740, 470, 'service', '社交服务 · 通过 ZooKeeper 发现', social))
   if (notice) result.push(add('notice', notice.name, 270, 470, 'public', '日志上报 · 对外入口', notice))
-  const known = new Set([nginx, mgr, gate, login, notice, home, world, zk].filter(Boolean).map((item) => item.name))
+  const known = new Set([nginx, mgr, gate, login, notice, home, world, social, zk].filter(Boolean).map((item) => item.name))
   workloads.value.filter((item) => !known.has(item.name)).forEach((item, index) => result.push(add(`extra-${index}`, item.name, 740 + (index % 2) * 230, 74 + Math.floor(index / 2) * 105, 'service', `${item.type} · Ready ${item.ready || '0/0'}`, item)))
   return result
 })
 const positions = computed(() => Object.fromEntries(nodes.value.map((item) => [item.id, item])))
 const edges = computed(() => {
   const result = []; const has = (id) => Boolean(positions.value[id]); const add = (from, to, label, tone = 'default') => { if (has(from) && has(to)) result.push({ from, to, label, tone }) }
-  add('player', 'gate', 'WebSocket 登录', 'public'); add('player', 'notice', '日志上报', 'public'); add('gate', 'login', '登录请求', 'public'); add('login', 'zk', '读取启用服务'); add('zk', 'home', '服务注册'); add('zk', 'world', '服务注册'); add('gate', 'home', '游戏会话'); add('gate', 'world', '游戏会话'); add('mgr', 'zk', '启停管理', 'management'); add('mgr', 'home', '管理游戏服', 'management'); add('mgr', 'world', '管理游戏服', 'management')
+  add('player', 'gate', 'WebSocket 登录', 'public'); add('player', 'notice', '日志上报', 'public'); add('gate', 'login', '登录请求', 'public'); add('login', 'zk', '读取启用服务'); add('zk', 'home', '服务注册'); add('zk', 'world', '服务注册'); add('zk', 'social', '服务注册'); add('gate', 'home', '游戏会话'); add('gate', 'world', '游戏会话'); add('home', 'social', '社交通信'); add('world', 'social', '社交通信'); add('mgr', 'zk', '启停管理', 'management'); add('mgr', 'home', '管理游戏服', 'management'); add('mgr', 'world', '管理游戏服', 'management')
   nodes.value.filter((item) => !['player', 'nginx', 'zk'].includes(item.id)).forEach((item) => add(item.id, 'nginx', '访问 GM', 'management'))
   return result
 })

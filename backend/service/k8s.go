@@ -313,7 +313,11 @@ type kubeSecret struct {
 type kubePersistentVolumeClaim struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		StorageClassName string `json:"storageClassName"`
+		StorageClassName string   `json:"storageClassName"`
+		AccessModes      []string `json:"accessModes"`
+		Resources        struct {
+			Requests map[string]string `json:"requests"`
+		} `json:"resources"`
 	} `json:"spec"`
 	Status struct {
 		Phase    string            `json:"phase"`
@@ -324,7 +328,17 @@ type kubePersistentVolumeClaim struct {
 type kubePersistentVolume struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		StorageClassName string `json:"storageClassName"`
+		StorageClassName              string            `json:"storageClassName"`
+		Capacity                      map[string]string `json:"capacity"`
+		AccessModes                   []string          `json:"accessModes"`
+		PersistentVolumeReclaimPolicy string            `json:"persistentVolumeReclaimPolicy"`
+		HostPath                      *struct {
+			Path string `json:"path"`
+		} `json:"hostPath"`
+		NFS *struct {
+			Server string `json:"server"`
+			Path   string `json:"path"`
+		} `json:"nfs"`
 	} `json:"spec"`
 	Status struct {
 		Phase    string            `json:"phase"`
@@ -1061,9 +1075,34 @@ func (s *Service) UpdateK8sResourceYAML(payload model.K8sResourceYAMLPayload) (m
 	if err != nil {
 		return nil, err
 	}
+	// Kubernetes PUT requires metadata.resourceVersion. Form editors submit a
+	// concise manifest, so retrieve the current version server-side.
+	var submitted map[string]any
+	if err := json.Unmarshal(body, &submitted); err != nil {
+		return nil, errors.New("invalid yaml content")
+	}
 	var updateErr error
 	for _, path := range paths {
-		updateErr = k8sDoJSON(client, runtime, http.MethodPut, path, nil, body, "application/json", nil)
+		var current map[string]any
+		if err := k8sGetJSONWithQuery(client, runtime, path, nil, &current); err != nil {
+			updateErr = err
+			if isK8sNotFoundError(updateErr) {
+				continue
+			}
+			break
+		}
+		if metadata, ok := current["metadata"].(map[string]any); ok {
+			if version, ok := metadata["resourceVersion"].(string); ok && version != "" {
+				if submittedMetadata, ok := submitted["metadata"].(map[string]any); ok {
+					submittedMetadata["resourceVersion"] = version
+				}
+			}
+		}
+		requestBody, marshalErr := json.Marshal(submitted)
+		if marshalErr != nil {
+			return nil, errors.New("invalid yaml content")
+		}
+		updateErr = k8sDoJSON(client, runtime, http.MethodPut, path, nil, requestBody, "application/json", nil)
 		if updateErr == nil {
 			break
 		}
@@ -1907,11 +1946,11 @@ func (s *Service) GetK8sConfigMapDetail(clusterID uint, namespace string, config
 	}
 
 	keys := make([]model.K8sKVTextItem, 0, len(item.Data)+len(item.Binary))
-	for key := range item.Data {
-		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "text"})
+	for key, value := range item.Data {
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: value})
 	}
-	for key := range item.Binary {
-		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "binary"})
+	for key, value := range item.Binary {
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: value})
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i].Label < keys[j].Label })
 
@@ -1938,8 +1977,12 @@ func (s *Service) GetK8sSecretDetail(clusterID uint, namespace string, secretNam
 	}
 
 	keys := make([]model.K8sKVTextItem, 0, len(item.Data))
-	for key := range item.Data {
-		keys = append(keys, model.K8sKVTextItem{Label: key, Value: "encoded"})
+	for key, value := range item.Data {
+		decoded, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			decoded = []byte(value)
+		}
+		keys = append(keys, model.K8sKVTextItem{Label: key, Value: string(decoded), Sensitive: true})
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i].Label < keys[j].Label })
 
@@ -1975,8 +2018,11 @@ func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace str
 			Kind:         "PVC",
 			Namespace:    fallbackText(item.Metadata.Namespace),
 			Status:       fallbackText(item.Status.Phase),
-			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			// PVC 列表与详情应展示用户声明的申请容量；绑定后 status.capacity
+			// 表示实际绑定 PV 的容量，可能大于 PVC 请求容量。
+			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
 			StorageClass: fallbackText(item.Spec.StorageClassName),
+			AccessModes:  strings.Join(item.Spec.AccessModes, ", "),
 			Labels:       item.Metadata.Labels,
 			Annotations:  item.Metadata.Annotations,
 			Age:          humanizeAge(item.Metadata.CreationTimestamp),
@@ -1987,17 +2033,24 @@ func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace str
 		if err := k8sGetJSON(client, runtime, "/api/v1/persistentvolumes/"+name, &item); err != nil {
 			return model.K8sStorageDetail{}, errors.New(k8sClusterConnectError)
 		}
+		sourceType, path, nfsServer := persistentVolumeSource(item)
 		return model.K8sStorageDetail{
-			Name:         item.Metadata.Name,
-			Kind:         "PV",
-			Namespace:    "-",
-			Status:       fallbackText(item.Status.Phase),
-			Capacity:     fallbackText(item.Status.Capacity["storage"]),
-			StorageClass: fallbackText(item.Spec.StorageClassName),
-			Labels:       item.Metadata.Labels,
-			Annotations:  item.Metadata.Annotations,
-			Age:          humanizeAge(item.Metadata.CreationTimestamp),
-			YAML:         marshalK8sYAML(item),
+			Name:           item.Metadata.Name,
+			Kind:           "PV",
+			Namespace:      "集群级",
+			NamespaceScope: storageNamespaceScope(item.Metadata.Annotations),
+			Status:         fallbackText(item.Status.Phase),
+			Capacity:       fallbackText(firstNonEmpty(item.Status.Capacity["storage"], item.Spec.Capacity["storage"])),
+			StorageClass:   fallbackText(item.Spec.StorageClassName),
+			SourceType:     sourceType,
+			Path:           path,
+			NFSServer:      nfsServer,
+			AccessModes:    strings.Join(item.Spec.AccessModes, ", "),
+			ReclaimPolicy:  fallbackText(item.Spec.PersistentVolumeReclaimPolicy),
+			Labels:         item.Metadata.Labels,
+			Annotations:    item.Metadata.Annotations,
+			Age:            humanizeAge(item.Metadata.CreationTimestamp),
+			YAML:           marshalK8sYAML(item),
 		}, nil
 	default:
 		return model.K8sStorageDetail{}, errors.New("unsupported storage kind")
@@ -3398,6 +3451,30 @@ func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpoi
 	}
 }
 
+func persistentVolumeSource(item kubePersistentVolume) (sourceType, path, nfsServer string) {
+	if item.Spec.HostPath != nil {
+		return "hostPath", fallbackText(item.Spec.HostPath.Path), "-"
+	}
+	if item.Spec.NFS != nil {
+		return "NFS", fallbackText(item.Spec.NFS.Path), fallbackText(item.Spec.NFS.Server)
+	}
+	return "-", "-", "-"
+}
+
+const storageNamespaceScopeAnnotation = "ops-admin.io/namespace-scope"
+
+// storageNamespaceScope records the platform-level PVC scope for a static PV.
+// PersistentVolumes are cluster-scoped Kubernetes resources, so this annotation
+// keeps an Ops Admin namespace restriction explicit.
+func storageNamespaceScope(annotations map[string]string) string {
+	if annotations != nil {
+		if scope := strings.TrimSpace(annotations[storageNamespaceScopeAnnotation]); scope != "" {
+			return scope
+		}
+	}
+	return "集群级"
+}
+
 func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret, pvcs []kubePersistentVolumeClaim, pvs []kubePersistentVolume) model.K8sConfigStorageSection {
 	configMapItems := make([]model.K8sConfigMapItem, 0, len(configMaps))
 	for _, item := range configMaps {
@@ -3438,18 +3515,27 @@ func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret,
 			Kind:         "PVC",
 			Namespace:    fallbackText(item.Metadata.Namespace),
 			Status:       fallbackText(item.Status.Phase),
-			Capacity:     fallbackText(item.Status.Capacity["storage"]),
+			// 申请容量优先于绑定 PV 的实际容量，避免把 PV 容量误展示为 PVC 容量。
+			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
 			StorageClass: fallbackText(item.Spec.StorageClassName),
+			AccessModes:  strings.Join(item.Spec.AccessModes, ", "),
 		})
 	}
 	for _, item := range pvs {
+		sourceType, path, nfsServer := persistentVolumeSource(item)
 		storageItems = append(storageItems, model.K8sStorageItem{
-			Name:         item.Metadata.Name,
-			Kind:         "PV",
-			Namespace:    "-",
-			Status:       fallbackText(item.Status.Phase),
-			Capacity:     fallbackText(item.Status.Capacity["storage"]),
-			StorageClass: fallbackText(item.Spec.StorageClassName),
+			Name:           item.Metadata.Name,
+			Kind:           "PV",
+			Namespace:      "集群级",
+			NamespaceScope: storageNamespaceScope(item.Metadata.Annotations),
+			Status:         fallbackText(item.Status.Phase),
+			Capacity:       fallbackText(firstNonEmpty(item.Status.Capacity["storage"], item.Spec.Capacity["storage"])),
+			StorageClass:   fallbackText(item.Spec.StorageClassName),
+			SourceType:     sourceType,
+			Path:           path,
+			NFSServer:      nfsServer,
+			AccessModes:    strings.Join(item.Spec.AccessModes, ", "),
+			ReclaimPolicy:  fallbackText(item.Spec.PersistentVolumeReclaimPolicy),
 		})
 	}
 	sort.Slice(storageItems, func(i, j int) bool {
