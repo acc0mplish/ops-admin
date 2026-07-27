@@ -2,6 +2,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"ops-admin/backend/httpx"
@@ -11,12 +12,41 @@ import (
 )
 
 func (ctl *Controller) GetMonitorOverview(c *gin.Context) {
-	data, err := ctl.service.GetMonitorOverview()
+	startAt, err := parseMonitorOverviewDate(c.Query("startDate"), false)
+	if err != nil {
+		httpx.Failed(c, 400, "startDate 格式无效，应为 YYYY-MM-DD")
+		return
+	}
+	endAt, err := parseMonitorOverviewDate(c.Query("endDate"), true)
+	if err != nil {
+		httpx.Failed(c, 400, "endDate 格式无效，应为 YYYY-MM-DD")
+		return
+	}
+	if startAt != nil && endAt != nil && !startAt.Before(*endAt) {
+		httpx.Failed(c, 400, "开始日期必须早于结束日期")
+		return
+	}
+	data, err := ctl.service.GetMonitorOverview(startAt, endAt)
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return
 	}
 	httpx.Success(c, data)
+}
+
+func parseMonitorOverviewDate(value string, endOfDay bool) (*time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", value, time.Local)
+	if err != nil {
+		return nil, err
+	}
+	if endOfDay {
+		parsed = parsed.AddDate(0, 0, 1)
+	}
+	return &parsed, nil
 }
 
 func (ctl *Controller) GetMonitorDatasourceList(c *gin.Context) {

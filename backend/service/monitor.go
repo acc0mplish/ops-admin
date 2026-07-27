@@ -703,10 +703,25 @@ func (s *Service) MonitorInstantQuery(datasourceID uint, query string, ts time.T
 	_ = s.db.Create(&model.MonitorQueryHistory{
 		DatasourceID: ds.ID, DatasourceName: ds.Name, Query: query, QueryType: queryType, Status: status, ErrorText: errorText,
 	}).Error
+	s.trimMonitorQueryHistories(10)
 	if err != nil {
 		return nil, err
 	}
 	return response, nil
+}
+
+func (s *Service) trimMonitorQueryHistories(limit int) {
+	if limit < 1 {
+		limit = 10
+	}
+	var keepIDs []uint
+	if err := s.db.Model(&model.MonitorQueryHistory{}).Order("id DESC").Limit(limit).Pluck("id", &keepIDs).Error; err != nil {
+		return
+	}
+	if len(keepIDs) < limit {
+		return
+	}
+	_ = s.db.Where("id NOT IN ?", keepIDs).Delete(&model.MonitorQueryHistory{}).Error
 }
 
 func (s *Service) ListMonitorQueryHistories(pageNum, pageSize int, keyword, status string) (map[string]any, error) {
@@ -714,6 +729,9 @@ func (s *Service) ListMonitorQueryHistories(pageNum, pageSize int, keyword, stat
 		pageNum = 1
 	}
 	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 10 {
 		pageSize = 10
 	}
 	query := s.db.Model(&model.MonitorQueryHistory{})
@@ -940,7 +958,7 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 			"filter": []any{map[string]any{"range": map[string]any{"@timestamp": map[string]any{"gte": startAt, "lte": endAt, "format": "epoch_millis"}}}},
 		}},
 		"aggs": map[string]any{"histogram": map[string]any{"date_histogram": map[string]any{
-			"field": "@timestamp", "fixed_interval": "1h", "min_doc_count": 0,
+			"field": "@timestamp", "fixed_interval": monitorLogHistogramInterval(startAt, endAt), "min_doc_count": 0,
 		}}},
 	}
 	if payload.TrackTotalHits {
@@ -1076,10 +1094,7 @@ func (s *Service) victoriaLogsHistogram(ds model.MonitorDatasource, query string
 	form.Set("query", query)
 	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
 	form.Set("end", time.UnixMilli(endAt).UTC().Format(time.RFC3339Nano))
-	step := int64(60)
-	if span := (endAt - startAt) / 1000 / 60; span > 60 {
-		step = span
-	}
+	step := monitorLogHistogramStepSeconds(startAt, endAt)
 	form.Set("step", strconv.FormatInt(step, 10)+"s")
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/hits", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -1133,6 +1148,30 @@ func (s *Service) victoriaLogsHistogram(ds model.MonitorDatasource, query string
 		})
 	}
 	return buckets, total
+}
+
+// Keep the log histogram readable regardless of the selected range. Around
+// 20–40 buckets make spikes visible without turning the chart into a solid bar.
+func monitorLogHistogramStepSeconds(startAt, endAt int64) int64 {
+	span := endAt - startAt
+	switch {
+	case span <= time.Hour.Milliseconds():
+		return 60
+	case span <= 6*time.Hour.Milliseconds():
+		return 5 * 60
+	case span <= 24*time.Hour.Milliseconds():
+		return 15 * 60
+	case span <= 3*24*time.Hour.Milliseconds():
+		return 60 * 60
+	case span <= 7*24*time.Hour.Milliseconds():
+		return 3 * 60 * 60
+	default:
+		return 6 * 60 * 60
+	}
+}
+
+func monitorLogHistogramInterval(startAt, endAt int64) string {
+	return strconv.FormatInt(monitorLogHistogramStepSeconds(startAt, endAt)/60, 10) + "m"
 }
 
 func formatMonitorLogItem(source map[string]any, index, id string) map[string]any {
@@ -3198,32 +3237,75 @@ func (s *Service) BatchUpdateMonitorAlertEvents(payload MonitorAlertEventBatchPa
 	return nil
 }
 
-func (s *Service) GetMonitorOverview() (map[string]any, error) {
-	var datasourceCount, ruleCount, firingCount, recoveredCount, todayRecoveredCount int64
-	var unclaimedCount, criticalCount, unhealthyDatasourceCount, evalFailedRuleCount, notificationFailedCount, todayTriggeredCount int64
+func (s *Service) GetMonitorOverview(startAt, endAt *time.Time) (map[string]any, error) {
+	finishedStatuses := []string{"recovered", "resolved", "closed"}
+	// Earlier event records can have only resolved_at (or, for imported legacy
+	// records, only updated_at). Always use the first available end timestamp so
+	// the overview and alert-event list describe the same history.
+	finishedAt := "COALESCE(recovered_at, resolved_at, updated_at)"
+	withinRange := func(query *gorm.DB, column string) *gorm.DB {
+		if startAt != nil {
+			query = query.Where(column+" >= ?", *startAt)
+		}
+		if endAt != nil {
+			query = query.Where(column+" < ?", *endAt)
+		}
+		return query
+	}
+	var datasourceCount, healthyDatasourceCount, ruleCount, activeRuleCount, successfulRuleCount int64
+	var firingCount, recoveredCount, rangeRecoveredCount int64
+	var unclaimedCount, criticalCount, unhealthyDatasourceCount, evalFailedRuleCount int64
+	var notificationFailedCount, notificationTotalCount, notificationSuccessCount, rangeTriggeredCount int64
 	_ = s.db.Model(&model.MonitorDatasource{}).Count(&datasourceCount).Error
+	_ = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND health_status IN ?", 1, []string{"healthy", "normal", "ok"}).Count(&healthyDatasourceCount).Error
 	_ = s.db.Model(&model.MonitorAlertRule{}).Count(&ruleCount).Error
-	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ?", []string{"firing", "claimed"}).Count(&firingCount).Error
-	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status = ?", "recovered").Count(&recoveredCount).Error
+	_ = s.db.Model(&model.MonitorAlertRule{}).Where("status = ?", 1).Count(&activeRuleCount).Error
+	_ = s.db.Model(&model.MonitorAlertRule{}).Where("status = ? AND (last_eval_status IN ? OR last_eval_status = '' OR last_eval_status IS NULL)", 1, []string{"success", "ok"}).Count(&successfulRuleCount).Error
+	// Current risk always represents the platform now; the selected range is only for historical statistics.
+	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ?", []string{"pending", "firing", "claimed"}).Count(&firingCount).Error
 	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND (claimed_by = '' OR claimed_by IS NULL)", []string{"pending", "firing"}).Count(&unclaimedCount).Error
 	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND severity IN ?", []string{"pending", "firing", "claimed"}, []string{"P0", "P1"}).Count(&criticalCount).Error
+	_ = withinRange(s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ?", finishedStatuses), finishedAt).Count(&recoveredCount).Error
 	_ = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND health_status = ?", 1, "unhealthy").Count(&unhealthyDatasourceCount).Error
 	_ = s.db.Model(&model.MonitorAlertRule{}).Where("status = ? AND last_eval_status = ?", 1, "failed").Count(&evalFailedRuleCount).Error
-	_ = s.db.Model(&model.NotifySendLog{}).Where("scope = ? AND status = ? AND created_at >= ?", "monitor", "failed", time.Now().Add(-24*time.Hour)).Count(&notificationFailedCount).Error
+	notifyQuery := s.db.Model(&model.NotifySendLog{}).Where("scope = ?", "monitor")
+	if startAt == nil && endAt == nil {
+		notifyQuery = notifyQuery.Where("created_at >= ?", time.Now().Add(-24*time.Hour))
+	} else {
+		notifyQuery = withinRange(notifyQuery, "created_at")
+	}
+	_ = notifyQuery.Count(&notificationTotalCount).Error
+	_ = notifyQuery.Where("status = ?", "failed").Count(&notificationFailedCount).Error
+	_ = notifyQuery.Where("status IN ?", []string{"success", "sent"}).Count(&notificationSuccessCount).Error
 	now := time.Now()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("created_at >= ?", dayStart).Count(&todayTriggeredCount).Error
-	_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND recovered_at >= ?", []string{"recovered", "resolved"}, dayStart).Count(&todayRecoveredCount).Error
+	triggeredQuery := s.db.Model(&model.MonitorAlertEvent{})
+	recoveredQuery := s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ?", finishedStatuses)
+	if startAt == nil && endAt == nil {
+		triggeredQuery = triggeredQuery.Where("created_at >= ?", dayStart)
+		recoveredQuery = recoveredQuery.Where(finishedAt+" >= ?", dayStart)
+	} else {
+		triggeredQuery = withinRange(triggeredQuery, "created_at")
+		recoveredQuery = withinRange(recoveredQuery, finishedAt)
+	}
+	_ = triggeredQuery.Count(&rangeTriggeredCount).Error
+	_ = recoveredQuery.Count(&rangeRecoveredCount).Error
 	severityRows := []map[string]any{}
 	for _, severity := range []string{"P0", "P1", "P2", "P3"} {
 		var count int64
-		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND severity = ?", []string{"firing", "claimed"}, severity).Count(&count).Error
+		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND severity = ?", []string{"pending", "firing", "claimed"}, severity).Count(&count).Error
 		severityRows = append(severityRows, map[string]any{"severity": severity, "count": count})
 	}
 	var recent []model.MonitorAlertEvent
 	_ = s.db.Where("status IN ?", []string{"pending", "firing", "claimed"}).Order("last_trigger_at DESC, id DESC").Limit(8).Find(&recent).Error
 	var recentHandled []model.MonitorAlertEvent
-	_ = s.db.Where("created_at >= ? AND (claimed_at IS NOT NULL OR recovered_at IS NOT NULL)", time.Now().Add(-30*24*time.Hour)).Find(&recentHandled).Error
+	handledQuery := s.db.Where("claimed_at IS NOT NULL OR recovered_at IS NOT NULL")
+	if startAt == nil && endAt == nil {
+		handledQuery = handledQuery.Where("created_at >= ?", time.Now().Add(-30*24*time.Hour))
+	} else {
+		handledQuery = withinRange(handledQuery, "created_at")
+	}
+	_ = handledQuery.Find(&recentHandled).Error
 	var totalAckSeconds, totalRecoverSeconds int64
 	var ackSamples, recoverSamples int64
 	for _, event := range recentHandled {
@@ -3242,14 +3324,83 @@ func (s *Service) GetMonitorOverview() (map[string]any, error) {
 		}
 		return total / count
 	}
+	trend := make([]map[string]any, 0)
+	trendStart, trendEnd := dayStart, dayStart.AddDate(0, 0, 1)
+	if startAt != nil {
+		trendStart = time.Date(startAt.Year(), startAt.Month(), startAt.Day(), 0, 0, 0, 0, startAt.Location())
+	}
+	if endAt != nil {
+		trendEnd = *endAt
+	}
+	for cursor := trendStart; cursor.Before(trendEnd); cursor = cursor.AddDate(0, 0, 1) {
+		next := cursor.AddDate(0, 0, 1)
+		var triggered, recovered int64
+		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("created_at >= ? AND created_at < ?", cursor, next).Count(&triggered).Error
+		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("status IN ? AND "+finishedAt+" >= ? AND "+finishedAt+" < ?", finishedStatuses, cursor, next).Count(&recovered).Error
+		trend = append(trend, map[string]any{"date": cursor.Format("01-02"), "triggered": triggered, "recovered": recovered})
+	}
+
+	activities := make([]map[string]any, 0, 10)
+	var recoveredEvents []model.MonitorAlertEvent
+	_ = withinRange(s.db.Where("status IN ?", finishedStatuses), finishedAt).Order(finishedAt + " DESC").Limit(3).Find(&recoveredEvents).Error
+	for _, item := range recoveredEvents {
+		activities = append(activities, map[string]any{"type": "recovered", "title": item.RuleName, "detail": firstNonEmpty(item.Summary, "告警已恢复"), "time": monitorAlertFinishedAt(item)})
+	}
+	var unhealthySources []model.MonitorDatasource
+	_ = s.db.Where("status = ? AND health_status = ?", 1, "unhealthy").Order("updated_at DESC").Limit(3).Find(&unhealthySources).Error
+	for _, item := range unhealthySources {
+		activities = append(activities, map[string]any{"type": "datasource", "title": item.Name, "detail": firstNonEmpty(item.LastError, "数据源健康检查异常"), "time": item.UpdatedAt})
+	}
+	var failedNotifications []model.NotifySendLog
+	_ = notifyQuery.Where("status = ?", "failed").Order("created_at DESC").Limit(3).Find(&failedNotifications).Error
+	for _, item := range failedNotifications {
+		activities = append(activities, map[string]any{"type": "notification", "title": firstNonEmpty(item.RuleName, item.ChannelName), "detail": firstNonEmpty(item.ErrorText, item.Summary, "通知发送失败"), "time": item.CreatedAt})
+	}
+	var failedRules []model.MonitorAlertRule
+	_ = s.db.Where("status = ? AND last_eval_status = ?", 1, "failed").Order("last_eval_at DESC").Limit(3).Find(&failedRules).Error
+	for _, item := range failedRules {
+		activities = append(activities, map[string]any{"type": "rule", "title": item.Name, "detail": firstNonEmpty(item.LastEvalMessage, "规则执行失败"), "time": item.LastEvalAt})
+	}
+	sort.SliceStable(activities, func(i, j int) bool {
+		leftTime, leftOK := overviewActivityTime(activities[i]["time"])
+		rightTime, rightOK := overviewActivityTime(activities[j]["time"])
+		return leftOK && (!rightOK || leftTime.After(rightTime))
+	})
+	if len(activities) > 8 {
+		activities = activities[:8]
+	}
 	return map[string]any{
-		"datasourceCount": datasourceCount, "ruleCount": ruleCount, "firingCount": firingCount,
-		"recoveredCount": recoveredCount, "todayRecoveredCount": todayRecoveredCount, "severity": severityRows, "recentEvents": recent,
+		"datasourceCount": datasourceCount, "healthyDatasourceCount": healthyDatasourceCount,
+		"ruleCount": ruleCount, "activeRuleCount": activeRuleCount, "successfulRuleCount": successfulRuleCount,
+		"firingCount": firingCount, "recoveredCount": recoveredCount, "rangeRecoveredCount": rangeRecoveredCount, "severity": severityRows, "recentEvents": recent,
 		"unclaimedCount": unclaimedCount, "criticalCount": criticalCount,
 		"unhealthyDatasourceCount": unhealthyDatasourceCount, "evalFailedRuleCount": evalFailedRuleCount,
-		"notificationFailedCount": notificationFailedCount, "todayTriggeredCount": todayTriggeredCount,
+		"notificationFailedCount": notificationFailedCount, "notificationTotalCount": notificationTotalCount, "notificationSuccessCount": notificationSuccessCount, "rangeTriggeredCount": rangeTriggeredCount,
 		"mttaSeconds": average(totalAckSeconds, ackSamples), "mttrSeconds": average(totalRecoverSeconds, recoverSamples),
+		"trend": trend, "recentActivities": activities, "refreshedAt": time.Now(),
 	}, nil
+}
+
+func monitorAlertFinishedAt(event model.MonitorAlertEvent) time.Time {
+	if event.RecoveredAt != nil && !event.RecoveredAt.IsZero() {
+		return *event.RecoveredAt
+	}
+	if event.ResolvedAt != nil && !event.ResolvedAt.IsZero() {
+		return *event.ResolvedAt
+	}
+	return event.UpdatedAt
+}
+
+func overviewActivityTime(value any) (time.Time, bool) {
+	switch item := value.(type) {
+	case time.Time:
+		return item, !item.IsZero()
+	case *time.Time:
+		if item != nil {
+			return *item, !item.IsZero()
+		}
+	}
+	return time.Time{}, false
 }
 
 func normalizeDashboardLayout(value string) string {

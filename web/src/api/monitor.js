@@ -1,6 +1,6 @@
 import http from './http'
 
-export const queryMonitorOverview = () => http.get('/api/v1/monitor/overview')
+export const queryMonitorOverview = (params = {}) => http.get('/api/v1/monitor/overview', { params })
 
 export const queryMonitorDatasourceList = (params) => http.get('/api/v1/monitor/datasource/list', { params })
 export const queryMonitorDatasourceOptions = () => http.get('/api/v1/monitor/datasource/options')

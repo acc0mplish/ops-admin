@@ -27,7 +27,7 @@ const selectedField = ref('')
 const selectedFieldQuery = ref('')
 const fieldValues = ref([])
 const fieldValueKeyword = ref('')
-const timeRange = ref('1h')
+const timeRange = ref('30m')
 const customDateRange = ref([])
 const streamOptions = ref([])
 const streamLoading = ref(false)
@@ -35,6 +35,7 @@ const selectedTopics = ref([])
 const opLogFieldDrilldownEnabled = ref(false)
 const items = ref([])
 const histogram = ref([])
+const selectedHistogramBucket = ref(null)
 const total = ref(0)
 const took = ref(0)
 const logView = ref('table')
@@ -44,7 +45,7 @@ const autoRefresh = ref(false)
 const shortcuts = ref([])
 const shortcutDialogVisible = ref(false)
 const shortcutSaving = ref(false)
-const shortcutForm = reactive({ id: undefined, name: '', query: '', indexName: '_all', timeRange: '1h', sort: 0 })
+const shortcutForm = reactive({ id: undefined, name: '', query: '', indexName: '_all', timeRange: '30m', sort: 0 })
 let refreshTimer
 
 const elasticsearchFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'level']
@@ -76,6 +77,15 @@ const fields = computed(() => {
   return phrase ? base.filter((item) => item.name.toLowerCase().includes(phrase)) : base
 })
 const maxBucketCount = computed(() => Math.max(1, ...histogram.value.map((item) => Number(item.doc_count || 0))))
+const histogramTicks = computed(() => {
+  const buckets = histogram.value
+  if (!buckets.length) return []
+  const step = Math.max(1, Math.ceil((buckets.length - 1) / 7))
+  const ticks = buckets
+    .map((bucket, index) => ({ bucket, index }))
+    .filter(({ index }) => index === 0 || index === buckets.length - 1 || index % step === 0)
+  return ticks.map(({ bucket, index }) => ({ bucket, position: buckets.length === 1 ? 0 : index / (buckets.length - 1) * 100 }))
+})
 
 function rangeTimestamps() {
   if (timeRange.value === 'custom' && customDateRange.value?.length === 2) {
@@ -85,8 +95,8 @@ function rangeTimestamps() {
     if (Number.isFinite(startAt) && Number.isFinite(endAt) && startAt < endAt) return { startAt, endAt }
   }
   const endAt = Date.now()
-  const hours = { '1h': 1, '6h': 6, '24h': 24, '3d': 72, '7d': 168 }[timeRange.value] || 1
-  return { startAt: endAt - hours * 3600000, endAt }
+  const minutes = { '30m': 30, '1h': 60, '6h': 360, '24h': 1440, '3d': 4320, '7d': 10080 }[timeRange.value] || 30
+  return { startAt: endAt - minutes * 60000, endAt }
 }
 
 function formatTime(value) {
@@ -97,6 +107,17 @@ function formatTime(value) {
 
 function histogramTime(bucket) {
   return formatTime(bucket.key_as_string || bucket.key).slice(5, 16)
+}
+
+function histogramAxisTime(bucket) {
+  const date = new Date(bucket.key_as_string || bucket.key)
+  if (Number.isNaN(date.getTime())) return histogramTime(bucket)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function selectHistogramBucket(bucket) {
+  selectedHistogramBucket.value = bucket
+  ElMessage.info(`${formatTime(bucket.key_as_string || bucket.key)}：${Number(bucket.doc_count || 0).toLocaleString()} 条日志`)
 }
 
 function levelClass(level) {
@@ -190,6 +211,7 @@ async function search() {
     })
     items.value = data.items || []
     histogram.value = data.histogram || []
+    selectedHistogramBucket.value = null
     total.value = Number(data.total?.value ?? data.total ?? 0)
     took.value = Number(data.took || 0)
   } finally {
@@ -251,15 +273,15 @@ function applyFieldValue(value) {
 function applyShortcut(item) {
   keyword.value = item.query || ''
   index.value = item.indexName || '_all'
-  timeRange.value = item.timeRange || '1h'
+  timeRange.value = item.timeRange || '30m'
   customDateRange.value = []
   search()
 }
 
 function openShortcutDialog(item) {
   Object.assign(shortcutForm, item
-    ? { id: item.id, name: item.name, query: item.query, indexName: item.indexName || '_all', timeRange: item.timeRange || '1h', sort: item.sort || 0 }
-    : { id: undefined, name: '', query: keyword.value, indexName: index.value || '_all', timeRange: timeRange.value || '1h', sort: shortcuts.value.length + 1 })
+    ? { id: item.id, name: item.name, query: item.query, indexName: item.indexName || '_all', timeRange: item.timeRange || '30m', sort: item.sort || 0 }
+    : { id: undefined, name: '', query: keyword.value, indexName: index.value || '_all', timeRange: timeRange.value || '30m', sort: shortcuts.value.length + 1 })
   shortcutDialogVisible.value = true
 }
 
@@ -354,7 +376,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="query-line">
         <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? '支持 LogsQL，例如 kubernetes.pod_namespace:default AND _msg:error' : '支持 Lucene query_string，例如 kubernetes.pod_namespace:default AND (ERROR OR WARN)'" @keyup.enter="search" />
-        <el-select v-model="timeRange" style="width: 140px"><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /><el-option label="指定日期" value="custom" /></el-select>
+        <el-select v-model="timeRange" style="width: 140px"><el-option label="最近 30 分钟" value="30m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /><el-option label="指定日期" value="custom" /></el-select>
         <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始日期时间" end-placeholder="结束日期时间" style="width: 360px" @change="search" />
         <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
       </div>
@@ -385,7 +407,18 @@ onBeforeUnmount(() => {
       </aside>
       <main class="log-main">
         <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">表格日志</el-radio-button><el-radio-button value="raw">原始日志</el-radio-button></el-radio-group><span>命中 {{ total }} 条</span><span>耗时 {{ took }} ms</span></div>
-        <div v-if="histogram.length" class="histogram-panel"><div class="histogram"><div v-for="bucket in histogram" :key="bucket.key" class="histogram-bar-wrap" :title="`${histogramTime(bucket)} / ${bucket.doc_count}`"><div class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></div></div></div>
+        <div v-if="histogram.length" class="histogram-panel">
+          <div class="histogram-head"><span>日志分布</span><small>悬浮或点击柱子查看条数</small><strong v-if="selectedHistogramBucket">{{ formatTime(selectedHistogramBucket.key_as_string || selectedHistogramBucket.key) }} · {{ Number(selectedHistogramBucket.doc_count || 0).toLocaleString() }} 条</strong></div>
+          <div class="histogram">
+            <div class="histogram-bars">
+              <el-tooltip v-for="bucket in histogram" :key="bucket.key" placement="top" :show-after="100">
+                <template #content><div class="histogram-tooltip"><b>{{ formatTime(bucket.key_as_string || bucket.key) }}</b><span>{{ Number(bucket.doc_count || 0).toLocaleString() }} 条日志</span></div></template>
+                <button type="button" :class="['histogram-bar-wrap', { selected: selectedHistogramBucket?.key === bucket.key }]" :aria-label="`${formatTime(bucket.key_as_string || bucket.key)}：${bucket.doc_count || 0} 条日志`" @click="selectHistogramBucket(bucket)"><span class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></button>
+              </el-tooltip>
+            </div>
+            <div class="histogram-axis"><span v-for="tick in histogramTicks" :key="tick.bucket.key" :style="{ left: `${tick.position}%` }">{{ histogramAxisTime(tick.bucket) }}</span></div>
+          </div>
+        </div>
         <div v-if="logView === 'table'" class="log-table-wrap">
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
             <el-table-column label="时间" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
@@ -427,7 +460,7 @@ onBeforeUnmount(() => {
         <el-form-item label="名称" required><el-input v-model="shortcutForm.name" placeholder="例如：错误日志" /></el-form-item>
         <el-form-item label="查询语句"><el-input v-model="shortcutForm.query" type="textarea" :rows="3" :placeholder="isVictoriaLogs ? 'LogsQL，留空表示全部日志' : 'Lucene query_string，留空表示全部日志'" /></el-form-item>
         <el-form-item v-if="!isVictoriaLogs" label="索引"><el-input v-model="shortcutForm.indexName" placeholder="_all 或 logs-*" /></el-form-item>
-        <el-form-item label="时间范围"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /></el-select></el-form-item>
+        <el-form-item label="时间范围"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option label="最近 30 分钟" value="30m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /></el-select></el-form-item>
       </el-form>
       <template #footer><el-button @click="shortcutDialogVisible = false">取消</el-button><el-button type="primary" :loading="shortcutSaving" @click="submitShortcut">保存</el-button></template>
     </el-dialog>
@@ -437,4 +470,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .log-page{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 115px);padding:24px;background:#f6f8fc;color:#24364e}.log-search-panel,.log-workspace{border:1px solid #e0e8f4;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(49,78,125,.06)}.source-line,.query-line,.shortcut-line{display:flex;align-items:center;gap:12px}.log-search-panel{padding:16px}.query-line,.shortcut-line{margin-top:12px}.source-line label,.shortcut-line>span{color:#51627f;font-weight:600;white-space:nowrap}.source-status{overflow:hidden;color:#8491a7;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.search-actions{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap}.query-input{flex:1}.shortcut-line{flex-wrap:wrap}.shortcut-button{border-color:#d9e3f3;color:#4f6384;background:#f7f9fd}.index-option,.stream-option{display:flex;justify-content:space-between;gap:16px}.index-option small,.stream-option small{color:#8491a7}.stream-option{width:100%;min-width:0}.stream-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.log-workspace{display:grid;grid-template-columns:230px minmax(0,1fr);overflow:hidden}.field-panel{display:flex;flex-direction:column;gap:8px;padding:14px;border-right:1px solid #e5ebf4;background:#fbfcff}.panel-title{display:flex;justify-content:space-between;color:#263a59}.panel-title span{color:#8291aa}.field-item{display:flex;justify-content:space-between;width:100%;padding:9px 8px;border:0;border-radius:5px;color:#536784;background:transparent;text-align:left;cursor:pointer}.field-item:hover{color:#3567d6;background:#eef4ff}.log-main{min-width:0}.result-summary{display:flex;align-items:center;gap:16px;min-height:55px;padding:10px 16px;border-bottom:1px solid #e5ebf4;color:#71809b;font-size:13px}.result-summary :deep(.el-radio-button__inner){padding:6px 12px;color:#62738d;font-size:13px}.result-summary :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner){color:#fff;background:#4298f6;border-color:#4298f6;box-shadow:-1px 0 0 0 #4298f6}.histogram-panel{height:150px;padding:12px 16px;border-bottom:1px solid #e5ebf4}.histogram{display:flex;align-items:flex-end;gap:4px;height:100%}.histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-bar{width:100%;min-height:2px;border-radius:2px 2px 0 0;background:#5a6df1;opacity:.88}.log-message{font-family:Consolas,Monaco,monospace;color:#3b4e6b}.raw-log-view{height:540px;overflow:auto;padding:8px 0;background:#fff;border-top:1px solid #e8eef7}.raw-log-item{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:start;gap:13px;width:100%;padding:5px 18px;border:0;color:#213b5c;background:transparent;text-align:left;cursor:pointer}.raw-log-item:hover{background:#f3f7fd}.raw-log-index{color:#8293aa;font:12px/1.75 Consolas,Monaco,monospace;text-align:right}.raw-log-item code{display:-webkit-box;overflow:hidden;color:#182d47;font:12px/1.75 Consolas,Monaco,monospace;letter-spacing:.05px;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:3}.raw-log-detail{align-self:center;margin-top:2px}.raw-log-empty{padding:28px;color:#93a5bf;text-align:center}.detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:#73849a;font-size:13px}.detail-meta span{padding:4px 8px;border-radius:4px;background:#f2f5f9}.message-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.message-fields>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e5ebf3;border-radius:6px}.message-fields small{color:#8491a7}.message-fields strong{overflow:hidden;color:#24364e;text-overflow:ellipsis;white-space:nowrap}.detail-message,.detail-json{overflow:auto;padding:14px;border-radius:6px;color:#dce6f5;background:#111827;font:12px/1.65 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.raw-log-line{margin:14px 0;color:#60748d}.raw-log-line summary{cursor:pointer}.raw-log-line pre{overflow:auto;max-height:180px;padding:12px;border-radius:6px;color:#c9d4e3;background:#202936;font:12px/1.6 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.level{display:inline-flex;min-width:48px;justify-content:center;padding:3px 5px;border-radius:3px;font-size:11px;font-weight:700}.level-error{color:#d94c5b;background:#fff0f1}.level-warn{color:#bd7c11;background:#fff7e8}.level-info{color:#3978c6;background:#eef6ff}.level-debug{color:#6c7788;background:#f1f4f7}:deep(.el-table){--el-table-header-bg-color:#f6f8fc;--el-table-header-text-color:#71809b;--el-table-row-hover-bg-color:#f4f7fc;--el-table-border-color:#e7edf6}@media(max-width:1000px){.log-workspace{grid-template-columns:1fr}.field-panel{display:none}.source-line,.query-line{align-items:stretch;flex-wrap:wrap}.search-actions{margin-left:0}.query-input{flex-basis:100%}.message-fields{grid-template-columns:1fr}}
 .log-workspace.fields-collapsed{grid-template-columns:44px minmax(0,1fr)}.field-panel{min-width:0}.panel-title{align-items:center;gap:4px}.collapse-button{margin-left:auto;font-size:18px}.field-list{display:flex;min-height:80px;flex-direction:column;gap:3px}.field-item{gap:6px;min-width:0}.field-item span{overflow:hidden;flex:1;text-overflow:ellipsis;white-space:nowrap}.field-item small{flex:0 0 auto;color:#8b98aa;font-size:10px}.field-item b{flex:0 0 auto;color:#5c75a1;font-weight:500}.fields-collapsed .field-panel{padding:14px 8px}.fields-collapsed .collapse-button{margin:auto}.field-value-tip{margin:0 0 12px;color:#7282a0;font-size:13px}.field-value-list{display:flex;flex-direction:column;gap:4px;min-height:100px;max-height:420px;margin-top:12px;overflow:auto}.field-value-item{display:flex;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:1px solid #e3e9f4;border-radius:6px;background:#fff;color:#354864;text-align:left;cursor:pointer}.field-value-item:hover{border-color:#9db8f4;background:#f3f7ff;color:#3567d6}.field-value-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.field-value-item small{flex:0 0 auto;color:#8291aa}
+.histogram-panel{height:176px;padding:10px 16px 12px}.histogram-head{display:flex;align-items:center;gap:10px;height:26px;color:#51627f;font-size:13px}.histogram-head>span{font-weight:700}.histogram-head small{color:#91a0b5}.histogram-head strong{margin-left:auto;padding:3px 8px;border-radius:4px;color:#4562b5;background:#edf2ff;font-size:12px;font-weight:600}.histogram{gap:3px;height:calc(100% - 26px);padding-top:4px}.histogram-bar-wrap{padding:0;border:0;border-radius:3px 3px 0 0;background:linear-gradient(to top,#edf1f7 1px,transparent 1px);background-size:100% 34px;cursor:pointer}.histogram-bar-wrap:hover .histogram-bar,.histogram-bar-wrap.selected .histogram-bar{background:#3858dd;opacity:1}.histogram-bar-wrap:focus-visible{outline:2px solid #5a6df1;outline-offset:1px}.histogram-bar{transition:height .16s,background .16s}.histogram-tooltip{display:grid;gap:4px;min-width:138px}.histogram-tooltip b,.histogram-tooltip span{font-size:12px}
+.histogram{display:block;position:relative;padding-top:4px}.histogram-bars{display:flex;align-items:flex-end;gap:3px;height:calc(100% - 22px)}.histogram-bars .histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-axis{position:relative;height:22px;margin:0 1px;color:#8291a7;font-size:11px}.histogram-axis span{position:absolute;top:5px;transform:translateX(-50%);white-space:nowrap}.histogram-axis span:first-child{transform:none}.histogram-axis span:last-child{transform:translateX(-100%)}
 </style>
