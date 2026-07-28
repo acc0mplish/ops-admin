@@ -136,6 +136,20 @@ func (ctl *Controller) QueryMonitorPrometheus(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) QueryMonitorPrometheusRange(c *gin.Context) {
+	var payload service.MonitorRangeQueryPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid range query payload")
+		return
+	}
+	data, err := ctl.service.MonitorRangeQuery(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) QueryMonitorLogs(c *gin.Context) {
 	var payload service.MonitorLogQueryPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

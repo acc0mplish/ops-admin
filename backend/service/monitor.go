@@ -167,6 +167,14 @@ type MonitorLogQueryPayload struct {
 	TrackTotalHits bool   `json:"trackTotalHits"`
 }
 
+type MonitorRangeQueryPayload struct {
+	DatasourceID uint   `json:"datasourceId"`
+	Query        string `json:"query"`
+	StartAt      int64  `json:"startAt"`
+	EndAt        int64  `json:"endAt"`
+	StepSeconds  int    `json:"stepSeconds"`
+}
+
 type MonitorLogShortcutPayload struct {
 	ID             uint   `json:"id"`
 	DatasourceType string `json:"datasourceType"`
@@ -670,6 +678,32 @@ func (s *Service) checkAllMonitorDatasources() {
 
 func (s *Service) PrometheusInstantQuery(datasourceID uint, query string, ts time.Time) (map[string]any, error) {
 	return s.MonitorInstantQuery(datasourceID, query, ts)
+}
+
+func (s *Service) MonitorRangeQuery(payload MonitorRangeQueryPayload) (map[string]any, error) {
+	if strings.TrimSpace(payload.Query) == "" {
+		return nil, errors.New("查询语句不能为空")
+	}
+	ds, err := s.GetMonitorDatasource(payload.DatasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitorMetricDatasource(ds.Type) {
+		return nil, errors.New("图表查询仅支持 Prometheus 或 VictoriaMetrics 数据源")
+	}
+	endAt := time.Unix(payload.EndAt, 0)
+	if payload.EndAt <= 0 {
+		endAt = time.Now()
+	}
+	startAt := time.Unix(payload.StartAt, 0)
+	if payload.StartAt <= 0 || !startAt.Before(endAt) {
+		startAt = endAt.Add(-time.Hour)
+	}
+	result, err := s.prometheusRangeQuery(*ds, payload.Query, startAt, endAt, payload.StepSeconds)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"resultType": result.Data.ResultType, "result": result.Data.Result, "startAt": startAt.Unix(), "endAt": endAt.Unix()}, nil
 }
 
 func (s *Service) MonitorInstantQuery(datasourceID uint, query string, ts time.Time) (map[string]any, error) {

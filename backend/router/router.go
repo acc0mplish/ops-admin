@@ -340,6 +340,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.DELETE("/monitor/datasource/delete", ctl.DeleteMonitorDatasource)
 		authGroup.POST("/monitor/datasource/test", ctl.TestMonitorDatasource)
 		authGroup.POST("/monitor/query/instant", ctl.QueryMonitorPrometheus)
+		authGroup.POST("/monitor/query/range", ctl.QueryMonitorPrometheusRange)
 		authGroup.POST("/monitor/logs/query", ctl.QueryMonitorLogs)
 		authGroup.GET("/monitor/logs/indices", ctl.GetMonitorElasticsearchIndices)
 		authGroup.GET("/monitor/logs/streams", ctl.GetMonitorVictoriaLogsStreams)

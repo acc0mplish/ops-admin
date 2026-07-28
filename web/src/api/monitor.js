@@ -10,6 +10,7 @@ export const deleteMonitorDatasource = (id) => http.delete('/api/v1/monitor/data
 export const testMonitorDatasource = (data) => http.post('/api/v1/monitor/datasource/test', data, { params: { id: data.id || 0 } })
 
 export const queryMonitorPrometheus = (data) => http.post('/api/v1/monitor/query/instant', data)
+export const queryMonitorPrometheusRange = (data) => http.post('/api/v1/monitor/query/range', data)
 export const queryMonitorLogs = (data) => http.post('/api/v1/monitor/logs/query', data)
 export const queryMonitorElasticsearchIndices = (params) => http.get('/api/v1/monitor/logs/indices', { params })
 export const queryMonitorVictoriaLogsStreams = (params) => http.get('/api/v1/monitor/logs/streams', { params })
