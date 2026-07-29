@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,12 @@ var integrationAIToolDefinitions = []aiToolDefinition{
 	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
 	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
 	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
+	{Key: "monitor_datasource_query", Name: "监控数据源查询", Category: "夜莺监控技能", Description: "查询已接入的监控和日志数据源、类型、健康状态、延迟与最近检查时间；不会返回地址中的敏感凭据。", Permission: "read", Parameters: datasourceQueryToolSchema()},
+	{Key: "monitor_alert_event_query", Name: "告警事件查询", Category: "夜莺监控技能", Description: "按关键词、状态、等级和时间范围查询监控告警事件，并返回数量和有限明细。", Permission: "read", Parameters: alertEventQueryToolSchema()},
+	{Key: "host_health_diagnose", Name: "主机健康诊断", Category: "夜莺监控技能", Description: "结合 CMDB 主机信息、最近 24 小时 CPU/内存/磁盘指标和关联告警，返回主机健康证据；仅查询，不执行任何修复操作。", Permission: "read", Parameters: hostHealthToolSchema()},
+	{Key: "ops_troubleshooting", Name: "智能排障", Category: "夜莺监控技能", Description: "围绕告警 ID、主机或问题关键词汇集告警、主机健康和数据源状态，形成有证据来源的排障上下文；模型必须区分事实与推测。", Permission: "read", Parameters: troubleshootingToolSchema()},
+	{Key: "monitor_dashboard_analyze", Name: "监控大屏分析", Category: "夜莺监控技能", Description: "读取大屏和面板的定义、数据源、PromQL 与说明，供模型分析指标含义和排障入口；不会修改大屏。", Permission: "read", Parameters: dashboardAnalyzeToolSchema()},
+	{Key: "monitor_alert_rule_draft", Name: "告警规则草稿", Category: "夜莺监控技能", Description: "创建一条默认停用且不发送通知的告警规则草稿。必须由用户确认后才会保存，保存后仍需在告警规则页面人工审核和启用。", Permission: "write", RequireConfirmation: true, Parameters: alertRuleDraftToolSchema()},
 	{Key: "finops_cost_analysis", Name: "云费用分析", Category: "云费用 FinOps", Description: "仅查询本地数据库中已通过账单同步导入的云费用数据。可返回费用总览、趋势、产品/地域拆分；询问某云产品的实例数或每实例费用时，传入 service 和 includeResourceBreakdown=true，按本地账单的资源 ID/名称聚合。绝不调用云厂商接口、不会同步账单。", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
 	{Key: "asset_host_list", Name: "服务器资产", Category: "资产管理", Description: "查询 CMDB 中的服务器、IP、环境、主机组与在线状态，不返回登录凭据。", Permission: "read", Parameters: assetQuerySchema("服务器名称、别名或 IP 关键词")},
 	{Key: "asset_mysql_list", Name: "MySQL 资产", Category: "资产管理", Description: "查询已纳管的 MySQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
@@ -149,6 +156,34 @@ func logQueryToolSchema() map[string]any {
 		"mode":           stringProperty("返回模式：count 仅统计数量，list 返回少量日志明细；默认 count"),
 		"limit":          integerProperty("list 模式最多返回的日志条数，范围 1 到 50，默认 20"),
 	}, []string{"startTime", "endTime"})
+}
+
+func datasourceQueryToolSchema() map[string]any {
+	return objectSchema(map[string]any{"keyword": stringProperty("数据源名称关键词"), "type": stringProperty("数据源类型：prometheus、victoriametrics、elasticsearch 或 victorialogs"), "healthStatus": stringProperty("健康状态，例如 healthy、unhealthy、unknown"), "limit": integerProperty("返回条数，1 到 50，默认 20")}, nil)
+}
+
+func alertEventQueryToolSchema() map[string]any {
+	return objectSchema(map[string]any{"keyword": stringProperty("规则名、指标、摘要或标签关键词"), "status": stringProperty("告警状态，例如 firing、claimed、recovered、resolved"), "severity": stringProperty("告警等级：P0、P1、P2、P3"), "startTime": stringProperty("可选，RFC3339 或 YYYY-MM-DD HH:mm:ss"), "endTime": stringProperty("可选，RFC3339 或 YYYY-MM-DD HH:mm:ss"), "limit": integerProperty("返回条数，1 到 50，默认 20")}, nil)
+}
+
+func hostHealthToolSchema() map[string]any {
+	return objectSchema(map[string]any{"hostId": integerProperty("CMDB 主机 ID；与 keyword 二选一"), "keyword": stringProperty("主机名、别名或 IP"), "range": stringProperty("指标时间范围：1h、6h、24h、7d，默认 24h")}, nil)
+}
+
+func troubleshootingToolSchema() map[string]any {
+	return objectSchema(map[string]any{"alertEventId": integerProperty("可选，告警事件 ID"), "host": stringProperty("可选，主机名、别名或 IP"), "keyword": stringProperty("可选，问题、规则或指标关键词"), "range": stringProperty("主机指标时间范围：1h、6h、24h、7d，默认 24h")}, nil)
+}
+
+func dashboardAnalyzeToolSchema() map[string]any {
+	return objectSchema(map[string]any{"dashboardId": integerProperty("监控大屏 ID"), "keyword": stringProperty("大屏名称关键词；未填写 ID 时使用")}, nil)
+}
+
+func alertRuleDraftToolSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"name": stringProperty("规则名称"), "datasourceId": integerProperty("Prometheus/VictoriaMetrics 数据源 ID"), "promql": stringProperty("已校验的 PromQL"),
+		"comparator": stringProperty("比较符：>、>=、<、<=、==、!="), "threshold": stringProperty("阈值数字"), "forSeconds": integerProperty("持续秒数，默认 300"),
+		"severity": stringProperty("等级：P0、P1、P2、P3，默认 P2"), "description": stringProperty("规则说明"), "env": stringProperty("环境，例如 prod"),
+	}, []string{"name", "datasourceId", "promql"})
 }
 
 func workloadActionSchema(withReplicas bool) map[string]any {
@@ -629,6 +664,7 @@ func truncateRunes(value string, limit int) string {
 
 func integrationAISystemPrompt(custom string) string {
 	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。只能调用本请求提供的原生工具名称；绝不在回复正文输出 XML、DSML、tool_calls、invoke 或其他内部工具协议。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
+	base += "\n\n夜莺监控技能规范：遇到 PromQL 需求先生成表达式，必要时用 prometheus_query 验证；查询告警使用 monitor_alert_event_query；查询数据源使用 monitor_datasource_query；主机问题优先使用 host_health_diagnose；综合故障使用 ops_troubleshooting；大屏问题使用 monitor_dashboard_analyze。分析结论必须基于工具返回的证据，并明确区分已证实的现象和推测。创建告警时只能调用 monitor_alert_rule_draft，等待用户确认后创建停用草稿，不能承诺已启用或已发送通知。"
 	if strings.TrimSpace(custom) != "" {
 		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
 	}
@@ -902,6 +938,16 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 		return s.queryAIRealtimeLogs(args, time.Now())
 	case "monitor_dashboard_list":
 		return s.ListMonitorDashboards(1, 20, anyString(args["keyword"]), "1")
+	case "monitor_datasource_query":
+		return s.queryAIMonitorDatasources(args)
+	case "monitor_alert_event_query":
+		return s.queryAIMonitorAlertEvents(args)
+	case "host_health_diagnose":
+		return s.queryAIHostHealth(args)
+	case "ops_troubleshooting":
+		return s.queryAIOpsTroubleshooting(args)
+	case "monitor_dashboard_analyze":
+		return s.queryAIMonitorDashboard(args)
 	case "finops_cost_analysis":
 		return s.queryAIFinOpsAnalysis(args)
 	case "asset_host_list":
@@ -921,6 +967,149 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 	default:
 		return nil, errors.New("该工具只能通过待确认动作执行")
 	}
+}
+
+func (s *Service) queryAIMonitorDatasources(args map[string]any) (map[string]any, error) {
+	limit := aiAssetQueryLimit(args["limit"])
+	query := s.db.Model(&model.MonitorDatasource{})
+	if keyword := strings.TrimSpace(anyString(args["keyword"])); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("name LIKE ? OR description LIKE ?", like, like)
+	}
+	if dsType := strings.TrimSpace(anyString(args["type"])); dsType != "" {
+		query = query.Where("type = ?", normalizeMonitorDatasourceType(dsType))
+	}
+	if health := strings.TrimSpace(anyString(args["healthStatus"])); health != "" {
+		query = query.Where("health_status = ?", health)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var list []model.MonitorDatasource
+	if err := query.Order("is_default DESC, id ASC").Limit(limit).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		items = append(items, map[string]any{"id": item.ID, "name": item.Name, "type": item.Type, "environment": item.Env, "enabled": item.Status == 1, "default": item.IsDefault, "healthStatus": item.HealthStatus, "lastCheckAt": item.LastCheckAt, "lastSuccessAt": item.LastSuccessAt, "latencyMs": item.LatencyMs, "consecutiveFailures": item.ConsecutiveFailures, "description": item.Description})
+	}
+	return map[string]any{"total": total, "returned": len(items), "items": items}, nil
+}
+
+func (s *Service) queryAIMonitorAlertEvents(args map[string]any) (map[string]any, error) {
+	limit := aiAssetQueryLimit(args["limit"])
+	query := s.db.Model(&model.MonitorAlertEvent{})
+	if keyword := strings.TrimSpace(anyString(args["keyword"])); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("rule_name LIKE ? OR metric LIKE ? OR summary LIKE ? OR labels_json LIKE ?", like, like, like, like)
+	}
+	if status := strings.TrimSpace(anyString(args["status"])); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if severity := strings.TrimSpace(anyString(args["severity"])); severity != "" {
+		query = query.Where("severity = ?", normalizeSeverity(severity))
+	}
+	if startAt, ok := parseAIQueryTime(anyString(args["startTime"])); ok {
+		query = query.Where("last_trigger_at >= ?", startAt)
+	}
+	if endAt, ok := parseAIQueryTime(anyString(args["endTime"])); ok {
+		query = query.Where("last_trigger_at <= ?", endAt)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	var list []model.MonitorAlertEvent
+	if err := query.Order("last_trigger_at DESC, id DESC").Limit(limit).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	items := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		items = append(items, map[string]any{"id": item.ID, "ruleId": item.RuleID, "ruleName": item.RuleName, "datasource": item.DatasourceName, "severity": item.Severity, "status": item.Status, "metric": item.Metric, "currentValue": item.CurrentValue, "threshold": item.Threshold, "summary": item.Summary, "claimedBy": item.ClaimedBy, "firstTriggerAt": item.FirstTriggerAt, "lastTriggerAt": item.LastTriggerAt, "recoveredAt": item.RecoveredAt})
+	}
+	return map[string]any{"total": total, "returned": len(items), "items": items}, nil
+}
+
+func parseAIQueryTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func (s *Service) queryAIHostHealth(args map[string]any) (map[string]any, error) {
+	hostID := anyUint(args["hostId"])
+	var host model.AssetHost
+	if hostID > 0 {
+		if err := s.db.First(&host, hostID).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		keyword := strings.TrimSpace(anyString(args["keyword"]))
+		if keyword == "" {
+			return nil, errors.New("请提供 hostId 或主机关键词")
+		}
+		like := "%" + keyword + "%"
+		if err := s.db.Where("host_name LIKE ? OR alias LIKE ? OR private_ip LIKE ? OR public_ip LIKE ? OR ssh_ip LIKE ?", like, like, like, like, like).Order("id DESC").First(&host).Error; err != nil {
+			return nil, err
+		}
+	}
+	metrics, err := s.GetAssetHostMetrics(host.ID, firstNonEmpty(strings.TrimSpace(anyString(args["range"])), "24h"), "", "")
+	if err != nil {
+		return nil, err
+	}
+	alerts, err := s.queryAIMonitorAlertEvents(map[string]any{"keyword": firstNonEmpty(host.PrivateIP, host.PublicIP, host.HostName), "limit": 10})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"host": map[string]any{"id": host.ID, "name": host.HostName, "alias": host.Alias, "privateIp": host.PrivateIP, "publicIp": host.PublicIP, "environment": host.Environment, "online": host.AliveStatus == 1, "enabled": host.Status == 1, "lastCheckTime": host.LastCheckTime}, "metrics": metrics, "relatedAlerts": alerts}, nil
+}
+
+func (s *Service) queryAIOpsTroubleshooting(args map[string]any) (map[string]any, error) {
+	result := map[string]any{"scope": "read_only", "evidence": map[string]any{}}
+	evidence := result["evidence"].(map[string]any)
+	if eventID := anyUint(args["alertEventId"]); eventID > 0 {
+		detail, err := s.GetMonitorAlertEventDetail(eventID)
+		if err != nil {
+			return nil, err
+		}
+		evidence["alertEvent"] = detail
+	}
+	keyword := strings.TrimSpace(anyString(args["keyword"]))
+	if keyword != "" {
+		alerts, err := s.queryAIMonitorAlertEvents(map[string]any{"keyword": keyword, "limit": 10})
+		if err != nil {
+			return nil, err
+		}
+		evidence["matchingAlerts"] = alerts
+	}
+	if host := strings.TrimSpace(anyString(args["host"])); host != "" {
+		health, err := s.queryAIHostHealth(map[string]any{"keyword": host, "range": anyString(args["range"])})
+		if err != nil {
+			return nil, err
+		}
+		evidence["hostHealth"] = health
+	}
+	datasources, err := s.queryAIMonitorDatasources(map[string]any{"limit": 20})
+	if err != nil {
+		return nil, err
+	}
+	evidence["datasources"] = datasources
+	return result, nil
+}
+
+func (s *Service) queryAIMonitorDashboard(args map[string]any) (any, error) {
+	if dashboardID := anyUint(args["dashboardId"]); dashboardID > 0 {
+		return s.GetMonitorDashboard(dashboardID)
+	}
+	return s.ListMonitorDashboards(1, 20, anyString(args["keyword"]), "1")
 }
 
 func (s *Service) queryAIKnowledgeBase(args map[string]any) (map[string]any, error) {
@@ -1492,6 +1681,26 @@ func anyUint(value any) uint {
 	}
 }
 
+func anyFloat(value any) float64 {
+	if value == nil {
+		return 0
+	}
+	switch item := value.(type) {
+	case float64:
+		return item
+	case float32:
+		return float64(item)
+	case int:
+		return float64(item)
+	case json.Number:
+		parsed, _ := item.Float64()
+		return parsed
+	default:
+		parsed, _ := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(value)), 64)
+		return parsed
+	}
+}
+
 func anyBool(value any) bool {
 	switch item := value.(type) {
 	case bool:
@@ -1523,6 +1732,8 @@ func (s *Service) ConfirmIntegrationAIToolAction(userID uint, username string, i
 		result, err = s.RestartK8sWorkload(payload)
 	case "k8s_scale_workload":
 		result, err = s.ScaleK8sWorkload(payload)
+	case "monitor_alert_rule_draft":
+		result, err = s.createAIMonitorAlertRuleDraft(args)
 	default:
 		err = errors.New("不支持的待确认动作")
 	}
@@ -1541,6 +1752,30 @@ func (s *Service) ConfirmIntegrationAIToolAction(userID uint, username string, i
 		return nil, err
 	}
 	return map[string]any{"action": action, "result": result}, nil
+}
+
+func (s *Service) createAIMonitorAlertRuleDraft(args map[string]any) (map[string]any, error) {
+	name := strings.TrimSpace(anyString(args["name"]))
+	promQL := strings.TrimSpace(anyString(args["promql"]))
+	datasourceID := anyUint(args["datasourceId"])
+	if name == "" || promQL == "" || datasourceID == 0 {
+		return nil, errors.New("规则名称、数据源和 PromQL 不能为空")
+	}
+	payload := MonitorAlertRulePayload{
+		Name: name, AlertType: "metric", DatasourceScope: "specific", DatasourceID: datasourceID, PromQL: promQL,
+		Comparator: firstNonEmpty(strings.TrimSpace(anyString(args["comparator"])), ">"), Threshold: anyFloat(args["threshold"]),
+		ForSeconds: int(anyUint(args["forSeconds"])), Severity: firstNonEmpty(strings.TrimSpace(anyString(args["severity"])), "P2"),
+		Env: strings.TrimSpace(anyString(args["env"])), Description: strings.TrimSpace(anyString(args["description"])),
+		LabelsJSON: "{}", AnnotationsJSON: "{}", NotifyEnabled: false, NotifyRecoveryEnabled: true, Status: 2,
+	}
+	if err := s.SaveMonitorAlertRule(payload); err != nil {
+		return nil, err
+	}
+	var rule model.MonitorAlertRule
+	if err := s.db.Where("name = ?", name).Order("id DESC").First(&rule).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": rule.ID, "name": rule.Name, "status": "draft_disabled", "message": "告警规则草稿已保存为停用状态，未启用通知；请在告警规则页面审核后再启用。"}, nil
 }
 
 func (s *Service) RejectIntegrationAIToolAction(userID, id uint) error {

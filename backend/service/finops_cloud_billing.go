@@ -267,7 +267,18 @@ func finOpsAliCloudRecords(items []map[string]any, account model.IntegrationFinO
 	records := make([]FinOpsCostInput, 0, len(items))
 	for _, item := range items {
 		billingDate := finOpsMonthBillingDate(finOpsFirst(item, "BillingCycle", "BillingDate", "UsageStartTime", "BillingDateTime", "Date"), cycle)
-		records = append(records, FinOpsCostInput{ExternalID: finOpsAliCloudExternalID(item, cycle), BillingDate: billingDate, Service: finOpsFirst(item, "ProductDetail", "ProductName", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName"), ResourceID: finOpsFirst(item, "InstanceID", "ResourceId"), ResourceName: finOpsFirst(item, "InstanceID", "ResourceName"), ResourceType: finOpsFirst(item, "ProductCode", "ProductType"), Amount: finOpsFloat(item, "PretaxAmount", "DeductedByCashCoupons", "CashAmount", "Amount"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"), Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle}})
+		// CashAmount is the cash actually paid after coupons. Keep the full
+		// difference from list price as discount, including coupon deductions.
+		actual, hasCashAmount := finOpsOptionalFloat(item, "CashAmount")
+		if !hasCashAmount {
+			actual = finOpsFloat(item, "PretaxAmount", "Amount")
+		}
+		original := finOpsFloat(item, "PretaxGrossAmount", "ListPrice", "OriginalAmount")
+		if original == 0 {
+			original = actual
+		}
+		discount := original - actual
+		records = append(records, FinOpsCostInput{ExternalID: finOpsAliCloudExternalID(item, cycle), BillingDate: billingDate, Service: finOpsFirst(item, "ProductDetail", "ProductName", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName"), ResourceID: finOpsFirst(item, "InstanceID", "ResourceId"), ResourceName: finOpsFirst(item, "InstanceID", "ResourceName"), ResourceType: finOpsFirst(item, "ProductCode", "ProductType"), ResourceConfig: finOpsFirst(item, "InstanceSpec", "InstanceType", "Specification"), Amount: actual, OriginalPrice: original, Discount: discount, ActualPayment: actual, Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"), Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle}})
 	}
 	return records
 }
@@ -296,12 +307,22 @@ func finOpsAliCloudEstimatedDailyRecords(items []map[string]any, account model.I
 	for _, item := range items {
 		instanceID := finOpsFirst(item, "InstanceID", "InstanceId", "ResourceId")
 		resourceName := finOpsFirst(item, "InstanceName", "ResourceName", "InstanceID", "InstanceId")
+		actual, hasCashAmount := finOpsOptionalFloat(item, "CashAmount")
+		if !hasCashAmount {
+			actual = finOpsFloat(item, "PretaxAmount", "Amount")
+		}
+		original := finOpsFloat(item, "PretaxGrossAmount", "ListPrice", "OriginalAmount")
+		if original == 0 {
+			original = actual
+		}
+		discount := original - actual
+		resourceConfig := finOpsFirst(item, "InstanceSpec", "InstanceType", "Specification")
 		for day := month; !day.After(lastDay); day = day.AddDate(0, 0, 1) {
 			records = append(records, FinOpsCostInput{
 				ExternalID: finOpsAliCloudExternalID(item, cycle) + "|estimated|" + day.Format("2006-01-02"), BillingDate: day.Format("2006-01-02"),
 				Service: finOpsFirst(item, "ProductName", "ProductDetail", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName", "RegionId"),
-				ResourceID: instanceID, ResourceName: resourceName, ResourceType: finOpsFirst(item, "ProductCode", "ProductType", "ProductName"),
-				Amount: finOpsFloat(item, "PretaxAmount", "PaymentAmount", "DeductedByCashCoupons", "CashAmount", "Amount") / float64(days), Currency: finOpsFirst(item, "Currency", "CurrencyCode"),
+				ResourceID: instanceID, ResourceName: resourceName, ResourceType: finOpsFirst(item, "ProductCode", "ProductType", "ProductName"), ResourceConfig: resourceConfig,
+				Amount: actual / float64(days), OriginalPrice: original / float64(days), Discount: discount / float64(days), ActualPayment: actual / float64(days), Currency: finOpsFirst(item, "Currency", "CurrencyCode"),
 				UsageQuantity: finOpsFloat(item, "Usage", "UsageQuantity") / float64(days), UsageUnit: finOpsFirst(item, "UsageUnit", "SubscriptionType"),
 				Tags: map[string]string{"provider": "alicloud", "billingCycle": cycle, "granularity": "daily_estimate"},
 			})
@@ -314,7 +335,9 @@ func finOpsTencentRecords(items []map[string]any, account model.IntegrationFinOp
 	records := make([]FinOpsCostInput, 0, len(items))
 	for _, item := range items {
 		billingDate := finOpsMonthBillingDate(finOpsFirst(item, "OperateTime", "PayTime", "BillMonth", "Month"), month)
-		records = append(records, FinOpsCostInput{ExternalID: finOpsFirst(item, "BillId", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "OperateTime", "PayTime", "BillMonth"), BillingDate: billingDate, Service: finOpsFirst(item, "BusinessCodeName", "ProductCodeName", "ProductCode"), Region: finOpsFirst(item, "RegionName", "RegionId"), ResourceID: finOpsFirst(item, "ResourceId", "InstanceId"), ResourceName: finOpsFirst(item, "ResourceName", "InstanceName"), ResourceType: finOpsFirst(item, "PayModeName", "ProductCode"), Amount: finOpsFloat(item, "RealTotalCost", "CashPayAmount", "TotalCost"), Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "UsageAmount", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit"), Tags: map[string]string{"provider": "tencent", "billingMonth": month}})
+		actual := finOpsFloat(item, "RealTotalCost", "CashPayAmount", "TotalCost")
+		original := finOpsFloat(item, "TotalCost", "OriginalCost", "ListPrice", "RealTotalCost")
+		records = append(records, FinOpsCostInput{ExternalID: finOpsFirst(item, "BillId", "ResourceId", "ProductCode") + "|" + finOpsFirst(item, "OperateTime", "PayTime", "BillMonth"), BillingDate: billingDate, Service: finOpsFirst(item, "BusinessCodeName", "ProductCodeName", "ProductCode"), Region: finOpsFirst(item, "RegionName", "RegionId"), ResourceID: finOpsFirst(item, "ResourceId", "InstanceId"), ResourceName: finOpsFirst(item, "ResourceName", "InstanceName"), ResourceType: finOpsFirst(item, "PayModeName", "ProductCode"), ResourceConfig: finOpsFirst(item, "InstanceType", "Specification", "ProductCodeName"), Amount: actual, OriginalPrice: original, Discount: max(0, original-actual), ActualPayment: actual, Currency: finOpsFirst(item, "Currency", "CurrencyCode"), UsageQuantity: finOpsFloat(item, "UsageAmount", "UsageQuantity"), UsageUnit: finOpsFirst(item, "UsageUnit"), Tags: map[string]string{"provider": "tencent", "billingMonth": month}})
 	}
 	return records
 }
@@ -403,6 +426,20 @@ func finOpsFloat(value map[string]any, keys ...string) float64 {
 		}
 	}
 	return 0
+}
+
+func finOpsOptionalFloat(value map[string]any, keys ...string) (float64, bool) {
+	for _, key := range keys {
+		text := finOpsString(value[key])
+		if text == "" {
+			continue
+		}
+		parsed, err := strconv.ParseFloat(strings.ReplaceAll(text, ",", ""), 64)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 func finOpsAPIError(body []byte) string {
 	text := strings.TrimSpace(string(body))

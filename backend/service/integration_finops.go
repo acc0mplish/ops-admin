@@ -35,18 +35,22 @@ type FinOpsAccountPayload struct {
 }
 
 type FinOpsCostInput struct {
-	ExternalID    string            `json:"externalId"`
-	BillingDate   string            `json:"billingDate"`
-	Service       string            `json:"service"`
-	Region        string            `json:"region"`
-	ResourceID    string            `json:"resourceId"`
-	ResourceName  string            `json:"resourceName"`
-	ResourceType  string            `json:"resourceType"`
-	Tags          map[string]string `json:"tags"`
-	Amount        float64           `json:"amount"`
-	Currency      string            `json:"currency"`
-	UsageQuantity float64           `json:"usageQuantity"`
-	UsageUnit     string            `json:"usageUnit"`
+	ExternalID     string            `json:"externalId"`
+	BillingDate    string            `json:"billingDate"`
+	Service        string            `json:"service"`
+	Region         string            `json:"region"`
+	ResourceID     string            `json:"resourceId"`
+	ResourceName   string            `json:"resourceName"`
+	ResourceType   string            `json:"resourceType"`
+	ResourceConfig string            `json:"resourceConfig"`
+	Tags           map[string]string `json:"tags"`
+	Amount         float64           `json:"amount"`
+	OriginalPrice  float64           `json:"originalPrice"`
+	Discount       float64           `json:"discount"`
+	ActualPayment  float64           `json:"actualPayment"`
+	Currency       string            `json:"currency"`
+	UsageQuantity  float64           `json:"usageQuantity"`
+	UsageUnit      string            `json:"usageUnit"`
 }
 
 type FinOpsCostImportPayload struct {
@@ -297,9 +301,25 @@ func (s *Service) upsertFinOpsCosts(account model.IntegrationFinOpsAccount, inpu
 				externalID = fmt.Sprintf("%s|%s|%s|%s|%.6f", date.Format("2006-01-02"), input.Service, input.ResourceID, input.UsageUnit, input.Amount)
 			}
 			tags, _ := json.Marshal(input.Tags)
+			actualPayment := input.ActualPayment
+			if actualPayment == 0 {
+				actualPayment = input.Amount
+			}
+			originalPrice := input.OriginalPrice
+			if originalPrice == 0 {
+				originalPrice = actualPayment + input.Discount
+			}
+			discount := input.Discount
+			if discount == 0 && originalPrice > actualPayment {
+				discount = originalPrice - actualPayment
+			}
+			resourceConfig := strings.TrimSpace(input.ResourceConfig)
+			if resourceConfig == "" && input.UsageQuantity != 0 {
+				resourceConfig = fmt.Sprintf("%.2f %s", input.UsageQuantity, strings.TrimSpace(input.UsageUnit))
+			}
 			record := model.IntegrationFinOpsCostRecord{AccountID: account.ID, Provider: account.Provider, ExternalID: externalID,
 				BillingDate: date, Service: input.Service, Region: input.Region, ResourceID: input.ResourceID,
-				ResourceName: input.ResourceName, ResourceType: input.ResourceType, Tags: string(tags), Amount: input.Amount,
+				ResourceName: input.ResourceName, ResourceType: input.ResourceType, ResourceConfig: resourceConfig, Tags: string(tags), Amount: actualPayment, OriginalPrice: originalPrice, Discount: discount, ActualPayment: actualPayment,
 				Currency: strings.ToUpper(input.Currency), UsageQuantity: input.UsageQuantity, UsageUnit: input.UsageUnit}
 			if record.Currency == "" {
 				record.Currency = account.Currency
@@ -324,7 +344,7 @@ func (s *Service) upsertFinOpsCosts(account model.IntegrationFinOpsAccount, inpu
 				}
 			}
 			count++
-			total += input.Amount
+			total += actualPayment
 		}
 		return nil
 	})
@@ -591,10 +611,19 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 	for _, a := range accounts {
 		names[a.ID] = a.Name
 	}
+	assetConfigs := map[string]string{}
+	var hosts []model.AssetHost
+	if err := s.db.Select("instance_id", "cpu", "memory", "disk").Where("instance_id <> ''").Find(&hosts).Error; err == nil {
+		for _, host := range hosts {
+			if config := finOpsHostResourceConfig(host); config != "" {
+				assetConfigs[host.InstanceID] = config
+			}
+		}
+	}
 	type aggregate struct {
-		Cost                                  float64
-		Provider, Account, Region, Type, Name string
-		Count                                 int
+		OriginalPrice, Discount, ActualPayment        float64
+		Provider, Account, Region, Type, Name, Config string
+		Count                                         int
 	}
 	values := map[string]*aggregate{}
 	for _, r := range records {
@@ -620,17 +649,27 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 		key = fmt.Sprintf("%d|%s|%s", r.AccountID, key, r.ResourceType)
 		a := values[key]
 		if a == nil {
-			a = &aggregate{Provider: r.Provider, Account: names[r.AccountID], Region: r.Region, Type: r.ResourceType, Name: r.ResourceName}
+			a = &aggregate{Provider: r.Provider, Account: names[r.AccountID], Region: r.Region, Type: r.ResourceType, Name: r.ResourceName, Config: firstNonEmpty(r.ResourceConfig, assetConfigs[r.ResourceID])}
 			values[key] = a
 		}
-		a.Cost += r.Amount
+		actualPayment := r.ActualPayment
+		if actualPayment == 0 {
+			actualPayment = r.Amount
+		}
+		originalPrice := r.OriginalPrice
+		if originalPrice == 0 {
+			originalPrice = actualPayment + r.Discount
+		}
+		a.OriginalPrice += originalPrice
+		a.Discount += r.Discount
+		a.ActualPayment += actualPayment
 		a.Count++
 	}
 	rows := make([]map[string]any, 0, len(values))
 	for id, a := range values {
-		rows = append(rows, map[string]any{"resourceId": id, "resourceName": a.Name, "resourceType": a.Type, "provider": a.Provider, "accountName": a.Account, "region": a.Region, "cost": a.Cost, "recordCount": a.Count})
+		rows = append(rows, map[string]any{"resourceId": id, "resourceName": a.Name, "resourceType": a.Type, "resourceConfig": a.Config, "provider": a.Provider, "accountName": a.Account, "region": a.Region, "originalPrice": a.OriginalPrice, "discount": a.Discount, "actualPayment": a.ActualPayment, "cost": a.ActualPayment, "recordCount": a.Count})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i]["cost"].(float64) > rows[j]["cost"].(float64) })
+	sort.Slice(rows, func(i, j int) bool { return rows[i]["actualPayment"].(float64) > rows[j]["actualPayment"].(float64) })
 	regionOptions, typeOptions := make([]string, 0, len(allRegions)), make([]string, 0, len(allTypes))
 	for value := range allRegions {
 		regionOptions = append(regionOptions, value)
@@ -641,6 +680,20 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 	sort.Strings(regionOptions)
 	sort.Strings(typeOptions)
 	return map[string]any{"items": rows, "regions": regionOptions, "resourceTypes": typeOptions}, nil
+}
+
+func finOpsHostResourceConfig(host model.AssetHost) string {
+	parts := make([]string, 0, 3)
+	if value := strings.TrimSpace(host.CPU); value != "" {
+		parts = append(parts, "CPU "+value)
+	}
+	if value := strings.TrimSpace(host.Memory); value != "" {
+		parts = append(parts, "内存 "+value)
+	}
+	if value := strings.TrimSpace(host.Disk); value != "" {
+		parts = append(parts, "磁盘 "+value)
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, accountID uint, analysisMonth string) (int, string, error) {

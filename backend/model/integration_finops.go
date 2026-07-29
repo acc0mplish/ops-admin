@@ -26,23 +26,27 @@ type IntegrationFinOpsAccount struct {
 func (IntegrationFinOpsAccount) TableName() string { return "integration_finops_account" }
 
 type IntegrationFinOpsCostRecord struct {
-	ID            uint      `json:"id" gorm:"primaryKey"`
-	AccountID     uint      `json:"accountId" gorm:"not null;index;uniqueIndex:uk_finops_cost_record,priority:1"`
-	Provider      string    `json:"provider" gorm:"size:32;not null;index"`
-	ExternalID    string    `json:"externalId" gorm:"size:191;not null;uniqueIndex:uk_finops_cost_record,priority:2"`
-	BillingDate   time.Time `json:"billingDate" gorm:"not null;index"`
-	Service       string    `json:"service" gorm:"size:191;index"`
-	Region        string    `json:"region" gorm:"size:128;index"`
-	ResourceID    string    `json:"resourceId" gorm:"size:191;index"`
-	ResourceName  string    `json:"resourceName" gorm:"size:191;index"`
-	ResourceType  string    `json:"resourceType" gorm:"size:128;index"`
-	Tags          string    `json:"tags" gorm:"type:text"`
-	Amount        float64   `json:"amount" gorm:"type:decimal(20,6);not null;default:0"`
-	Currency      string    `json:"currency" gorm:"size:16;not null;default:CNY"`
-	UsageQuantity float64   `json:"usageQuantity" gorm:"type:decimal(20,6);not null;default:0"`
-	UsageUnit     string    `json:"usageUnit" gorm:"size:64"`
-	CreatedAt     time.Time `json:"createTime"`
-	UpdatedAt     time.Time `json:"updateTime"`
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	AccountID      uint      `json:"accountId" gorm:"not null;index;uniqueIndex:uk_finops_cost_record,priority:1"`
+	Provider       string    `json:"provider" gorm:"size:32;not null;index"`
+	ExternalID     string    `json:"externalId" gorm:"size:191;not null;uniqueIndex:uk_finops_cost_record,priority:2"`
+	BillingDate    time.Time `json:"billingDate" gorm:"not null;index"`
+	Service        string    `json:"service" gorm:"size:191;index"`
+	Region         string    `json:"region" gorm:"size:128;index"`
+	ResourceID     string    `json:"resourceId" gorm:"size:191;index"`
+	ResourceName   string    `json:"resourceName" gorm:"size:191;index"`
+	ResourceType   string    `json:"resourceType" gorm:"size:128;index"`
+	ResourceConfig string    `json:"resourceConfig" gorm:"size:255"`
+	Tags           string    `json:"tags" gorm:"type:text"`
+	Amount         float64   `json:"amount" gorm:"type:decimal(20,6);not null;default:0"`
+	OriginalPrice  float64   `json:"originalPrice" gorm:"type:decimal(20,6);not null;default:0"`
+	Discount       float64   `json:"discount" gorm:"type:decimal(20,6);not null;default:0"`
+	ActualPayment  float64   `json:"actualPayment" gorm:"type:decimal(20,6);not null;default:0"`
+	Currency       string    `json:"currency" gorm:"size:16;not null;default:CNY"`
+	UsageQuantity  float64   `json:"usageQuantity" gorm:"type:decimal(20,6);not null;default:0"`
+	UsageUnit      string    `json:"usageUnit" gorm:"size:64"`
+	CreatedAt      time.Time `json:"createTime"`
+	UpdatedAt      time.Time `json:"updateTime"`
 }
 
 func (IntegrationFinOpsCostRecord) TableName() string { return "integration_finops_cost_record" }
