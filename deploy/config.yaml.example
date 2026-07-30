@@ -1,0 +1,12 @@
+app:
+  name: ops-admin
+  port: "8082"
+  mode: release
+
+db:
+  host: mysql
+  port: "3306"
+  user: ops_admin
+  password: replace_with_the_same_value_as_MYSQL_PASSWORD
+  name: ops_admin
+  log-mode: false

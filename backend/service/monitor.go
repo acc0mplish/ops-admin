@@ -977,8 +977,8 @@ func (s *Service) QueryMonitorTraces(payload MonitorTraceQueryPayload) ([]map[st
 	if limit <= 0 {
 		limit = 50
 	}
-	if limit > 200 {
-		limit = 200
+	if limit > 1000 {
+		limit = 1000
 	}
 	params := url.Values{
 		"service": {strings.TrimSpace(payload.Service)},

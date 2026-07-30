@@ -59,6 +59,30 @@ const form = reactive({
 
 const currentApp = computed(() => appOptions.value.find((item) => Number(item.id) === Number(form.appId)))
 
+const dockerComposeBuildScript = `set -eu
+CONFIG_DIR="\${OPS_ADMIN_CONFIG_DIR:-$HOME/.config/ops-admin}"
+test -f "$CONFIG_DIR/.env" || { echo "Missing $CONFIG_DIR/.env"; exit 1; }
+test -f "$CONFIG_DIR/config.yaml" || { echo "Missing $CONFIG_DIR/config.yaml"; exit 1; }
+command -v docker >/dev/null || { echo "Docker is not installed"; exit 1; }
+docker compose version
+export OPS_ADMIN_CONFIG_PATH="$CONFIG_DIR/config.yaml"
+docker compose --env-file "$CONFIG_DIR/.env" build`
+
+const dockerComposeDeployScript = `set -eu
+CONFIG_DIR="\${OPS_ADMIN_CONFIG_DIR:-$HOME/.config/ops-admin}"
+test -f "$CONFIG_DIR/.env" || { echo "Missing $CONFIG_DIR/.env"; exit 1; }
+test -f "$CONFIG_DIR/config.yaml" || { echo "Missing $CONFIG_DIR/config.yaml"; exit 1; }
+export OPS_ADMIN_CONFIG_PATH="$CONFIG_DIR/config.yaml"
+docker compose --env-file "$CONFIG_DIR/.env" up -d --remove-orphans
+docker compose --env-file "$CONFIG_DIR/.env" ps`
+
+function applyDockerComposePreset() {
+  form.buildScript = dockerComposeBuildScript
+  form.deployScript = dockerComposeDeployScript
+  form.timeoutSeconds = Math.max(Number(form.timeoutSeconds) || 0, 1800)
+  ElMessage.success('已套用 Docker Compose 模板：构建主机仅需 Docker 和 Compose')
+}
+
 function resetForm() {
   Object.assign(form, {
     id: undefined,
@@ -462,6 +486,13 @@ onMounted(async () => {
         </section>
 
         <section class="script-grid">
+          <div class="docker-compose-tip">
+            <div>
+              <strong>Docker Compose 部署模板</strong>
+              <span>Go 和 Node 会在 Docker 多阶段构建中完成；构建主机只需 Docker Engine 与 Docker Compose。</span>
+            </div>
+            <el-button type="primary" plain @click="applyDockerComposePreset">套用模板</el-button>
+          </div>
           <div class="script-card">
             <div class="script-head">
               <div>
@@ -528,6 +559,9 @@ onMounted(async () => {
 .path-code { color: #29466f; font-family: Consolas, Monaco, "Courier New", monospace; font-size: 12px; }
 .history-cell { display: flex; align-items: center; gap: 8px; }
 .unit { margin-left: 8px; color: #6b7c9b; }
+.docker-compose-tip { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 10px; background: #f0f7ff; color: #315b89; }
+.docker-compose-tip strong { display: block; margin-bottom: 4px; color: #173d69; }
+.docker-compose-tip span { font-size: 13px; }
 .pager { display: flex; justify-content: flex-end; padding-top: 16px; }
 .dialog-layout { max-height: 78vh; overflow: auto; padding: 2px 6px 2px 2px; }
 .dialog-section { padding: 18px 20px; border: 1px solid #dce7f5; border-radius: 8px; background: #fff; }

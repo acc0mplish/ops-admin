@@ -18,9 +18,15 @@ const traceId = ref('')
 const timeRange = ref('1h')
 const customDateRange = ref([])
 const items = ref([])
+const pageNum = ref(1)
+const pageSize = ref(20)
 const router = useRouter()
 
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
+const pagedItems = computed(() => {
+  const start = (pageNum.value - 1) * pageSize.value
+  return items.value.slice(start, start + pageSize.value)
+})
 function rangeTimestamps() {
   if (timeRange.value === 'custom' && customDateRange.value?.length === 2) {
     const [startAt, endAt] = customDateRange.value.map(Number)
@@ -106,7 +112,8 @@ async function search() {
       if (!service.value) return ElMessage.warning('请选择服务，或直接输入 Trace ID 查询')
       if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的起止时间')
       const { startAt, endAt } = rangeTimestamps()
-      items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 100 }) || []
+      items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 1000 }) || []
+      pageNum.value = 1
     }
   } finally {
     loading.value = false
@@ -139,7 +146,7 @@ onMounted(loadDatasources)
       <el-button type="primary" :loading="loading" @click="search">查询</el-button>
     </div>
     <div class="hint">当前数据源：{{ activeDatasource?.name || '-' }}。标签筛选需填写 Jaeger 格式的 JSON 对象。</div>
-    <el-table v-loading="loading" :data="items" border empty-text="请选择服务并查询，或输入 Trace ID 直接定位调用链">
+    <el-table v-loading="loading" :data="pagedItems" border empty-text="请选择服务并查询，或输入 Trace ID 直接定位调用链">
       <el-table-column label="Trace ID" min-width="270"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.traceID }}</el-link></template></el-table-column>
       <el-table-column label="服务链路" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ traceServices(row) }}</template></el-table-column>
       <el-table-column label="Operation" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ traceOperation(row) }}</template></el-table-column>
@@ -148,10 +155,11 @@ onMounted(loadDatasources)
       <el-table-column label="Span 数" width="110" align="center" sortable :sort-method="(left, right) => (left.spans?.length || 0) - (right.spans?.length || 0)"><template #default="{ row }">{{ row.spans?.length || 0 }}</template></el-table-column>
       <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">详情</el-button></template></el-table-column>
     </el-table>
+    <div class="trace-pagination"><span>每页展示 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :page-sizes="[20, 50, 100]" :total="items.length" layout="total, sizes, prev, pager, next, jumper" @size-change="pageNum = 1" /></div>
   </div>
 </template>
 
 <style scoped>
 .trace-page { display: flex; flex-direction: column; gap: 18px; padding: 24px; background: #fff; border-radius: 18px; box-shadow: 0 12px 30px rgba(36, 54, 90, .08); }
-.page-header h2 { margin: 0 0 8px; font-size: 26px; color: #10213f; }.page-header p, .hint { margin: 0; color: #7282a0; }.toolbar { display: flex; flex-wrap: wrap; gap: 12px; }.hint { font-size: 13px; }
+.page-header h2 { margin: 0 0 8px; font-size: 26px; color: #10213f; }.page-header p, .hint { margin: 0; color: #7282a0; }.toolbar { display: flex; flex-wrap: wrap; gap: 12px; }.hint { font-size: 13px; }.trace-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 14px 2px 0; color: #7b8ca5; font-size: 12px; } @media (max-width: 720px) { .trace-pagination { align-items: flex-end; flex-direction: column; } }
 </style>

@@ -1,0 +1,80 @@
+name: ops-admin
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ops-admin-mysql
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ops_admin}
+      MYSQL_USER: ${MYSQL_USER:-ops_admin}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in deploy/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in deploy/.env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    volumes:
+      - ops-admin-mysql-data:/var/lib/mysql
+    networks:
+      - ops-admin
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ops-admin-api:local
+    container_name: ops-admin-api
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${OPS_ADMIN_CONFIG_PATH:-./deploy/config.yaml}:/app/config.yaml:ro
+      - ops-admin-uploads:/app/uploads
+    networks:
+      - ops-admin
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8082/ping >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: ops-admin-web:local
+    container_name: ops-admin-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    networks:
+      - ops-admin
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+
+networks:
+  ops-admin:
+    name: ops-admin-network
+
+volumes:
+  ops-admin-mysql-data:
+    name: ops-admin-mysql-data
+  ops-admin-uploads:
+    name: ops-admin-uploads
