@@ -2,10 +2,47 @@ package service
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"ops-admin/backend/model"
 )
+
+func TestNormalizeMonitorDatasourceTypeJaeger(t *testing.T) {
+	for _, value := range []string{"jaeger", "Jaeger-Query", "tracing"} {
+		if got := normalizeMonitorDatasourceType(value); got != "jaeger" {
+			t.Fatalf("normalizeMonitorDatasourceType(%q) = %q, want jaeger", value, got)
+		}
+	}
+	if !isMonitorTraceDatasource("jaeger") {
+		t.Fatal("Jaeger should be recognized as a trace datasource")
+	}
+}
+
+func TestJaegerHealth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/services" {
+			t.Fatalf("unexpected Jaeger health path: %s", request.URL.Path)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":["ops-admin"]}`))
+	}))
+	defer server.Close()
+
+	if err := (&Service{}).jaegerHealth(model.MonitorDatasource{URL: server.URL}); err != nil {
+		t.Fatalf("Jaeger health check failed: %v", err)
+	}
+}
+
+func TestNormalizeMonitorLogPagination(t *testing.T) {
+	if page, size := normalizeMonitorLogPagination(0, 0); page != 1 || size != 200 {
+		t.Fatalf("default pagination = (%d, %d), want (1, 200)", page, size)
+	}
+	if page, size := normalizeMonitorLogPagination(3, 1200); page != 3 || size != 1000 {
+		t.Fatalf("capped pagination = (%d, %d), want (3, 1000)", page, size)
+	}
+}
 
 func TestFormatMonitorOpLogContentHidesTransportFields(t *testing.T) {
 	raw := `{"@timestamp":"2026-07-15T01:41:18.013Z","actionType":14,"source_type":"kafka","timestamp":"2026-07-15T01:41:18.013Z","ts":"2026-07-15T09:41:18.013+08:00","kafka_topic":"szfc.op.log.0"}`

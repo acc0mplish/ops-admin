@@ -329,6 +329,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 				{"数据源管理", "/monitor/datasources", "monitor:datasource:list", "Connection"},
 				{"即时查询", "/monitor/query", "monitor:query", "Search"},
 				{"日志查询", "/monitor/logs", "monitor:logs", "Document"},
+				{"链路追踪", "/monitor/traces", "monitor:traces", "Share"},
 				{"告警规则", "/monitor/alert-rules", "monitor:alertrule:list", "Bell"},
 				{"告警事件", "/monitor/alert-events", "monitor:alertevent:list", "Warning"},
 				{"告警屏蔽", "/monitor/silences", "monitor:silence:list", "MuteNotification"},

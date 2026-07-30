@@ -19,6 +19,10 @@ export const queryMonitorLogFieldValues = (params) => http.get('/api/v1/monitor/
 export const queryMonitorLogShortcuts = (params) => http.get('/api/v1/monitor/logs/shortcuts', { params })
 export const saveMonitorLogShortcut = (data) => http.post('/api/v1/monitor/logs/shortcuts/save', data)
 export const deleteMonitorLogShortcut = (id) => http.delete('/api/v1/monitor/logs/shortcuts/delete', { data: { id } })
+export const queryMonitorJaegerServices = (params) => http.get('/api/v1/monitor/traces/services', { params })
+export const queryMonitorJaegerOperations = (params) => http.get('/api/v1/monitor/traces/operations', { params })
+export const queryMonitorTraces = (data) => http.post('/api/v1/monitor/traces/query', data)
+export const queryMonitorTraceDetail = (params) => http.get('/api/v1/monitor/traces/detail', { params })
 export const queryMonitorQueryHistoryList = (params) => http.get('/api/v1/monitor/query/history', { params })
 
 export const queryMonitorAlertRuleList = (params) => http.get('/api/v1/monitor/alert/rule/list', { params })

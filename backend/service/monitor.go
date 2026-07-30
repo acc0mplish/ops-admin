@@ -163,8 +163,19 @@ type MonitorLogQueryPayload struct {
 	Query          string `json:"query"`
 	StartAt        int64  `json:"startAt"`
 	EndAt          int64  `json:"endAt"`
+	PageNum        int    `json:"pageNum"`
 	PageSize       int    `json:"pageSize"`
 	TrackTotalHits bool   `json:"trackTotalHits"`
+}
+
+type MonitorTraceQueryPayload struct {
+	DatasourceID uint   `json:"datasourceId"`
+	Service      string `json:"service"`
+	Operation    string `json:"operation"`
+	Tags         string `json:"tags"`
+	StartAt      int64  `json:"startAt"`
+	EndAt        int64  `json:"endAt"`
+	Limit        int    `json:"limit"`
 }
 
 type MonitorRangeQueryPayload struct {
@@ -218,6 +229,8 @@ func normalizeMonitorDatasourceType(value string) string {
 		return "victorialogs"
 	case "elasticsearch", "elastic", "es":
 		return "elasticsearch"
+	case "jaeger", "jaeger-query", "tracing":
+		return "jaeger"
 	default:
 		return "prometheus"
 	}
@@ -231,6 +244,10 @@ func isMonitorLogDatasource(value string) bool {
 func isMonitorMetricDatasource(value string) bool {
 	datasourceType := normalizeMonitorDatasourceType(value)
 	return datasourceType == "prometheus" || datasourceType == "victoriametrics"
+}
+
+func isMonitorTraceDatasource(value string) bool {
+	return normalizeMonitorDatasourceType(value) == "jaeger"
 }
 
 func normalizeAlertType(value string) string {
@@ -643,6 +660,8 @@ func (s *Service) checkMonitorDatasourceHealth(ds model.MonitorDatasource) error
 		return s.elasticsearchHealth(ds)
 	case "victorialogs":
 		return s.victoriaLogsHealth(ds)
+	case "jaeger":
+		return s.jaegerHealth(ds)
 	}
 	_, err := s.prometheusQuery(ds, "up", time.Now())
 	return err
@@ -877,6 +896,172 @@ func (s *Service) elasticsearchHealth(ds model.MonitorDatasource) error {
 	return nil
 }
 
+// jaegerHealth verifies the Jaeger Query API is reachable. The services
+// endpoint is available on both the all-in-one and query service deployments.
+func (s *Service) jaegerHealth(ds model.MonitorDatasource) error {
+	request, err := http.NewRequest(http.MethodGet, strings.TrimRight(ds.URL, "/")+"/api/services", nil)
+	if err != nil {
+		return err
+	}
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("Jaeger 健康检查失败，状态码 %d: %s", response.StatusCode, string(body))
+	}
+	return nil
+}
+
+func (s *Service) ListMonitorJaegerServices(datasourceID uint) ([]string, error) {
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitorTraceDatasource(ds.Type) {
+		return nil, errors.New("当前数据源不是 Jaeger")
+	}
+	var data []string
+	if err := s.jaegerGet(*ds, "/api/services", nil, &data); err != nil {
+		return nil, err
+	}
+	sort.Strings(data)
+	return data, nil
+}
+
+func (s *Service) ListMonitorJaegerOperations(datasourceID uint, service string) ([]string, error) {
+	if strings.TrimSpace(service) == "" {
+		return []string{}, nil
+	}
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitorTraceDatasource(ds.Type) {
+		return nil, errors.New("当前数据源不是 Jaeger")
+	}
+	var data []string
+	if err := s.jaegerGet(*ds, "/api/services/"+url.PathEscape(strings.TrimSpace(service))+"/operations", nil, &data); err != nil {
+		return nil, err
+	}
+	sort.Strings(data)
+	return data, nil
+}
+
+func (s *Service) QueryMonitorTraces(payload MonitorTraceQueryPayload) ([]map[string]any, error) {
+	if payload.DatasourceID == 0 {
+		return nil, errors.New("请选择 Jaeger 数据源")
+	}
+	if strings.TrimSpace(payload.Service) == "" {
+		return nil, errors.New("请选择服务")
+	}
+	ds, err := s.GetMonitorDatasource(payload.DatasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitorTraceDatasource(ds.Type) {
+		return nil, errors.New("链路追踪仅支持 Jaeger 数据源")
+	}
+	endAt := payload.EndAt
+	if endAt <= 0 {
+		endAt = time.Now().UnixMilli()
+	}
+	startAt := payload.StartAt
+	if startAt <= 0 || startAt >= endAt {
+		startAt = endAt - int64(time.Hour/time.Millisecond)
+	}
+	limit := payload.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	params := url.Values{
+		"service": {strings.TrimSpace(payload.Service)},
+		"start":   {strconv.FormatInt(startAt*1000, 10)},
+		"end":     {strconv.FormatInt(endAt*1000, 10)},
+		"limit":   {strconv.Itoa(limit)},
+	}
+	if operation := strings.TrimSpace(payload.Operation); operation != "" {
+		params.Set("operation", operation)
+	}
+	if tags := strings.TrimSpace(payload.Tags); tags != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(tags), &parsed); err != nil {
+			return nil, errors.New("标签筛选必须是 JSON 对象")
+		}
+		params.Set("tags", tags)
+	}
+	var data []map[string]any
+	if err := s.jaegerGet(*ds, "/api/traces", params, &data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (s *Service) GetMonitorTrace(datasourceID uint, traceID string) (map[string]any, error) {
+	if datasourceID == 0 || strings.TrimSpace(traceID) == "" {
+		return nil, errors.New("请填写数据源和 Trace ID")
+	}
+	if strings.ContainsAny(traceID, "/\\") {
+		return nil, errors.New("Trace ID 格式无效")
+	}
+	ds, err := s.GetMonitorDatasource(datasourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitorTraceDatasource(ds.Type) {
+		return nil, errors.New("链路追踪仅支持 Jaeger 数据源")
+	}
+	var data []map[string]any
+	if err := s.jaegerGet(*ds, "/api/traces/"+url.PathEscape(strings.TrimSpace(traceID)), nil, &data); err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, errors.New("未找到该 Trace")
+	}
+	return data[0], nil
+}
+
+func (s *Service) jaegerGet(ds model.MonitorDatasource, path string, params url.Values, target any) error {
+	endpoint := strings.TrimRight(ds.URL, "/") + path
+	if len(params) > 0 {
+		endpoint += "?" + params.Encode()
+	}
+	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	applyMonitorDatasourceAuth(request, ds)
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("Jaeger API 返回状态码 %d: %s", response.StatusCode, string(body))
+	}
+	var result struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []any           `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return err
+	}
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("Jaeger 查询失败: %v", result.Errors[0])
+	}
+	if len(result.Data) == 0 {
+		return errors.New("Jaeger API 未返回数据")
+	}
+	return json.Unmarshal(result.Data, target)
+}
+
 func (s *Service) elasticsearchQuery(ds model.MonitorDatasource, query string) (map[string]any, error) {
 	payload := map[string]any{}
 	if err := json.Unmarshal([]byte(query), &payload); err != nil {
@@ -963,13 +1148,7 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 	if strings.Contains(index, "/") || strings.Contains(index, "\\") {
 		return nil, errors.New("索引不能包含路径分隔符")
 	}
-	pageSize := payload.PageSize
-	if pageSize < 1 {
-		pageSize = 100
-	}
-	if pageSize > 500 {
-		pageSize = 500
-	}
+	pageNum, pageSize := normalizeMonitorLogPagination(payload.PageNum, payload.PageSize)
 	endAt := payload.EndAt
 	if endAt <= 0 {
 		endAt = time.Now().UnixMilli()
@@ -985,6 +1164,7 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 		must = append(must, map[string]any{"query_string": map[string]any{"query": strings.TrimSpace(payload.Query), "analyze_wildcard": true}})
 	}
 	body := map[string]any{
+		"from": (pageNum - 1) * pageSize,
 		"size": pageSize,
 		"sort": []any{map[string]any{"@timestamp": map[string]any{"order": "desc", "unmapped_type": "date"}}},
 		"query": map[string]any{"bool": map[string]any{
@@ -1038,7 +1218,7 @@ func (s *Service) queryElasticsearchMonitorLogs(payload MonitorLogQueryPayload) 
 	buckets, _ := histogram["buckets"].([]any)
 	return map[string]any{
 		"items": items, "total": hits["total"], "took": response["took"], "histogram": buckets,
-		"startAt": startAt, "endAt": endAt,
+		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
 	}, nil
 }
 
@@ -1061,13 +1241,7 @@ func (s *Service) victoriaLogsHealth(ds model.MonitorDatasource) error {
 }
 
 func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorLogQueryPayload) (map[string]any, error) {
-	pageSize := payload.PageSize
-	if pageSize < 1 {
-		pageSize = 100
-	}
-	if pageSize > 500 {
-		pageSize = 500
-	}
+	pageNum, pageSize := normalizeMonitorLogPagination(payload.PageNum, payload.PageSize)
 	endAt := payload.EndAt
 	if endAt <= 0 {
 		endAt = time.Now().UnixMilli()
@@ -1085,6 +1259,7 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
 	form.Set("end", time.UnixMilli(endAt).UTC().Format(time.RFC3339Nano))
 	form.Set("limit", strconv.Itoa(pageSize))
+	form.Set("offset", strconv.Itoa((pageNum-1)*pageSize))
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/query", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -1097,7 +1272,7 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 		return nil, err
 	}
 	defer response.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024*1024))
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 32*1024*1024))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("VictoriaLogs 查询失败，状态码 %d: %s", response.StatusCode, string(body))
 	}
@@ -1119,8 +1294,21 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	}
 	return map[string]any{
 		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
-		"startAt": startAt, "endAt": endAt,
+		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
 	}, nil
+}
+
+func normalizeMonitorLogPagination(pageNum, pageSize int) (int, int) {
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize < 1 {
+		pageSize = 200
+	}
+	if pageSize > 1000 {
+		pageSize = 1000
+	}
+	return pageNum, pageSize
 }
 
 func (s *Service) victoriaLogsHistogram(ds model.MonitorDatasource, query string, startAt, endAt int64) ([]map[string]any, int64) {

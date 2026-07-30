@@ -37,6 +37,8 @@ const items = ref([])
 const histogram = ref([])
 const selectedHistogramBucket = ref(null)
 const total = ref(0)
+const pageNum = ref(1)
+const pageSize = 200
 const took = ref(0)
 const logView = ref('table')
 const activeLog = ref(null)
@@ -196,17 +198,21 @@ async function loadStreams() {
   }
 }
 
-async function search() {
+async function search(targetPage = 1) {
   if (!datasourceId.value) return ElMessage.warning('请先配置并选择日志数据源')
   if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的开始和结束日期时间')
   loading.value = true
   try {
+    const parsedPage = Number(targetPage)
+    pageNum.value = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1
     const range = rangeTimestamps()
     const data = await queryMonitorLogs({
       datasourceId: datasourceId.value,
       index: isVictoriaLogs.value ? '_all' : (index.value.trim() || '_all'),
       query: effectiveQuery(),
-      pageSize: 100,
+      pageNum: pageNum.value,
+      pageSize,
+      trackTotalHits: true,
       ...range
     })
     items.value = data.items || []
@@ -428,17 +434,21 @@ onBeforeUnmount(() => {
             <el-table-column prop="message" label="日志内容" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
             <el-table-column label="操作" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
           </el-table>
+          <div class="log-pagination"><span>每页 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </div>
-        <div v-else v-loading="loading" class="raw-log-view">
-          <div v-if="!items.length" class="raw-log-empty">当前查询条件下没有日志</div>
-          <button v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" type="button" :class="['raw-log-item', levelClass(row.level)]" @click="showDetail(row)">
-            <time>{{ formatRawLogTime(row.logTime || row.timestamp) }}</time>
-            <span class="raw-log-level">{{ String(row.level || 'INFO').toUpperCase() }}</span>
-            <span class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
-            <code>{{ displayLogContent(row) }}</code>
-            <span class="raw-log-open">详情</span>
-          </button>
-        </div>
+        <template v-else>
+          <div v-loading="loading" class="raw-log-view">
+            <div v-if="!items.length" class="raw-log-empty">当前查询条件下没有日志</div>
+            <button v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" type="button" :class="['raw-log-item', levelClass(row.level)]" @click="showDetail(row)">
+              <time>{{ formatRawLogTime(row.logTime || row.timestamp) }}</time>
+              <span class="raw-log-level">{{ String(row.level || 'INFO').toUpperCase() }}</span>
+              <span class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
+              <code>{{ displayLogContent(row) }}</code>
+              <span class="raw-log-open">详情</span>
+            </button>
+          </div>
+          <div class="log-pagination"><span>每页 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
+        </template>
       </main>
     </section>
 
@@ -482,4 +492,5 @@ onBeforeUnmount(() => {
 .histogram-panel{height:176px;padding:10px 16px 12px}.histogram-head{display:flex;align-items:center;gap:10px;height:26px;color:#51627f;font-size:13px}.histogram-head>span{font-weight:700}.histogram-head small{color:#91a0b5}.histogram-head strong{margin-left:auto;padding:3px 8px;border-radius:4px;color:#4562b5;background:#edf2ff;font-size:12px;font-weight:600}.histogram{gap:3px;height:calc(100% - 26px);padding-top:4px}.histogram-bar-wrap{padding:0;border:0;border-radius:3px 3px 0 0;background:linear-gradient(to top,#edf1f7 1px,transparent 1px);background-size:100% 34px;cursor:pointer}.histogram-bar-wrap:hover .histogram-bar,.histogram-bar-wrap.selected .histogram-bar{background:#3858dd;opacity:1}.histogram-bar-wrap:focus-visible{outline:2px solid #5a6df1;outline-offset:1px}.histogram-bar{transition:height .16s,background .16s}.histogram-tooltip{display:grid;gap:4px;min-width:138px}.histogram-tooltip b,.histogram-tooltip span{font-size:12px}
 .histogram{display:block;position:relative;padding-top:4px}.histogram-bars{display:flex;align-items:flex-end;gap:3px;height:calc(100% - 22px)}.histogram-bars .histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-axis{position:relative;height:22px;margin:0 1px;color:#8291a7;font-size:11px}.histogram-axis span{position:absolute;top:5px;transform:translateX(-50%);white-space:nowrap}.histogram-axis span:first-child{transform:none}.histogram-axis span:last-child{transform:translateX(-100%)}
 .raw-log-view{height:540px;padding:0;background:#fff;border-top:0}.raw-log-item{display:grid;grid-template-columns:178px 60px minmax(150px,220px) minmax(0,1fr) auto;align-items:start;gap:12px;width:100%;min-height:42px;padding:9px 16px 9px 12px;border:0;border-left:3px solid #4d8be4;color:#263d5d;background:#fff;text-align:left;cursor:pointer;transition:background .14s,border-color .14s}.raw-log-item:hover{background:#f6f8ff}.raw-log-item.level-error{border-left-color:#e05261}.raw-log-item.level-warn{border-left-color:#df9b27}.raw-log-item.level-debug{border-left-color:#97a3b5}.raw-log-item time{padding-top:2px;color:#60738f;font:12px/1.55 Consolas,Monaco,monospace;white-space:nowrap}.raw-log-level{justify-self:start;padding:2px 5px;border-radius:3px;color:#3978c6;background:#eef6ff;font:700 11px/1.35 Consolas,Monaco,monospace}.raw-log-item.level-error .raw-log-level{color:#d94c5b;background:#fff0f1}.raw-log-item.level-warn .raw-log-level{color:#bd7c11;background:#fff7e8}.raw-log-item.level-debug .raw-log-level{color:#6c7788;background:#f1f4f7}.raw-log-source{overflow:hidden;padding-top:2px;color:#596f91;font:12px/1.55 Consolas,Monaco,monospace;text-overflow:ellipsis;white-space:nowrap}.raw-log-item code{display:-webkit-box;overflow:hidden;padding-top:1px;color:#243954;font:12px/1.55 Consolas,Monaco,monospace;letter-spacing:0;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:2}.raw-log-open{padding-top:2px;color:#4a83dd;font-size:12px;white-space:nowrap}.raw-log-empty{padding:48px;color:#93a5bf;text-align:center}@media(max-width:1200px){.raw-log-item{grid-template-columns:164px 54px minmax(0,1fr) auto}.raw-log-source{display:none}}@media(max-width:720px){.raw-log-item{grid-template-columns:54px minmax(0,1fr) auto;gap:8px;padding-right:10px}.raw-log-item time{display:none}.raw-log-source{display:none}.raw-log-level{font-size:10px}.raw-log-item code{-webkit-line-clamp:3}}
+.log-pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;min-height:58px;padding:0 16px;border-top:1px solid #e7edf6;background:#fff}.log-pagination>span{color:#7d8da4;font-size:12px;white-space:nowrap}@media(max-width:720px){.log-pagination{align-items:flex-end;flex-direction:column;padding:10px}.log-pagination :deep(.el-pagination){justify-content:flex-end}}
 </style>

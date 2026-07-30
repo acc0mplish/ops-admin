@@ -164,6 +164,47 @@ func (ctl *Controller) QueryMonitorLogs(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetMonitorJaegerServices(c *gin.Context) {
+	data, err := ctl.service.ListMonitorJaegerServices(uint(mustAtoi(c.Query("datasourceId"))))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorJaegerOperations(c *gin.Context) {
+	data, err := ctl.service.ListMonitorJaegerOperations(uint(mustAtoi(c.Query("datasourceId"))), c.Query("service"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) QueryMonitorTraces(c *gin.Context) {
+	var payload service.MonitorTraceQueryPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid trace query payload")
+		return
+	}
+	data, err := ctl.service.QueryMonitorTraces(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorTrace(c *gin.Context) {
+	data, err := ctl.service.GetMonitorTrace(uint(mustAtoi(c.Query("datasourceId"))), c.Query("traceId"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetMonitorElasticsearchIndices(c *gin.Context) {
 	data, err := ctl.service.ListMonitorElasticsearchIndices(uint(mustAtoi(c.Query("datasourceId"))))
 	if err != nil {

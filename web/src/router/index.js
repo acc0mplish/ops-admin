@@ -61,6 +61,8 @@ import MonitorOverview from '../views/monitor/MonitorOverview.vue'
 import MonitorDatasource from '../views/monitor/MonitorDatasource.vue'
 import MonitorQuery from '../views/monitor/MonitorQuery.vue'
 import MonitorLogQuery from '../views/monitor/MonitorLogQuery.vue'
+import MonitorTraceQuery from '../views/monitor/MonitorTraceQuery.vue'
+import MonitorTraceDetail from '../views/monitor/MonitorTraceDetail.vue'
 import MonitorAlertRule from '../views/monitor/MonitorAlertRule.vue'
 import MonitorAlertEvent from '../views/monitor/MonitorAlertEvent.vue'
 import MonitorSilenceRule from '../views/monitor/MonitorSilenceRule.vue'
@@ -444,7 +446,7 @@ const routes = [
         meta: {
           title: '数据源管理',
           app: 'monitor',
-          summary: '接入 Prometheus 或 VictoriaMetrics 数据源。'
+          summary: '接入指标、日志与 Jaeger 链路追踪数据源。'
         }
       },
       {
@@ -464,6 +466,20 @@ const routes = [
           app: 'monitor',
           summary: '通过 Elasticsearch 检索应用与 Kubernetes 日志，并按字段、时间范围查看上下文。'
         }
+      },
+      {
+        path: '/monitor/traces',
+        component: MonitorTraceQuery,
+        meta: {
+          title: '链路追踪',
+          app: 'monitor',
+          summary: '通过 Jaeger 查询分布式调用链与 Span 明细。'
+        }
+      },
+      {
+        path: '/monitor/traces/:traceId',
+        component: MonitorTraceDetail,
+        meta: { title: 'Trace 详情', app: 'monitor', summary: '以时间轴方式查看分布式调用链详情。' }
       },
       {
         path: '/monitor/alert-rules',

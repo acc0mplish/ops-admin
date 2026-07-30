@@ -507,6 +507,13 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '链路追踪',
+        titleKey: 'monitorTraces',
+        path: '/monitor/traces',
+        icon: 'Share',
+        children: []
+      },
+      {
         title: '告警规则',
         titleKey: 'monitorAlertRules',
         path: '/monitor/alert-rules',
