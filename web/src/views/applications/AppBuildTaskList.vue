@@ -60,8 +60,15 @@ const form = reactive({
 const currentApp = computed(() => appOptions.value.find((item) => Number(item.id) === Number(form.appId)))
 
 const dockerComposeBuildScript = `set -eu
-command -v docker >/dev/null || { echo "Docker is not installed"; exit 1; }
-docker compose version
+if docker info >/dev/null 2>&1; then
+  docker_cmd() { docker "$@"; }
+elif sudo -n docker info >/dev/null 2>&1; then
+  docker_cmd() { sudo -n docker "$@"; }
+else
+  echo "Cannot access Docker. The build user needs Docker socket access or passwordless sudo for docker."
+  exit 1
+fi
+docker_cmd compose version
 if [ ! -f deploy/.env ]; then
   umask 077
   MYSQL_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
@@ -79,13 +86,21 @@ MYSQL_PASSWORD="$(sed -n 's/^MYSQL_PASSWORD=//p' deploy/.env | head -n 1)"
 test -n "$MYSQL_PASSWORD" || { echo "MYSQL_PASSWORD is missing"; exit 1; }
 sed -i "s|^  password: .*|  password: $MYSQL_PASSWORD|" deploy/config.yaml
 chmod 600 deploy/.env deploy/config.yaml
-docker compose --env-file deploy/.env build`
+docker_cmd compose --env-file deploy/.env build`
 
 const dockerComposeDeployScript = `set -eu
+if docker info >/dev/null 2>&1; then
+  docker_cmd() { docker "$@"; }
+elif sudo -n docker info >/dev/null 2>&1; then
+  docker_cmd() { sudo -n docker "$@"; }
+else
+  echo "Cannot access Docker. The build user needs Docker socket access or passwordless sudo for docker."
+  exit 1
+fi
 test -f deploy/.env || { echo "deploy/.env was not created"; exit 1; }
 test -f deploy/config.yaml || { echo "deploy/config.yaml was not created"; exit 1; }
-docker compose --env-file deploy/.env up -d --remove-orphans
-docker compose --env-file deploy/.env ps`
+docker_cmd compose --env-file deploy/.env up -d --remove-orphans
+docker_cmd compose --env-file deploy/.env ps`
 
 function applyDockerComposePreset() {
   form.buildScript = dockerComposeBuildScript

@@ -32,7 +32,7 @@ curl http://127.0.0.1:8080/api/v1/systemConfig/public
 
 ## 从应用中心执行构建
 
-构建主机**不需要安装 Go 或 Node.js**。`backend/Dockerfile` 会在 `golang:1.24-alpine` 构建阶段交叉编译 Linux 二进制，`web/Dockerfile` 会在 Node 构建阶段生成前端产物；构建主机只需 Docker Engine、Docker Compose V2、Git，以及执行账户访问 Docker socket 的权限。
+构建主机**不需要安装 Go 或 Node.js**。`backend/Dockerfile` 会在 `golang:1.24-alpine` 构建阶段交叉编译 Linux 二进制，`web/Dockerfile` 会在 Node 构建阶段生成前端产物；构建主机只需 Docker Engine、Docker Compose V2 与 Git。模板会优先直接调用 Docker；若当前 SSH 用户没有 Socket 权限，则自动尝试 `sudo -n docker`。
 
 在“应用中心 → 构建任务”中选择“资产主机”后，执行路径建议填写该 SSH 用户可写的绝对路径，例如 `/home/testvm/ops-admin`。点击“套用 Docker Compose 模板”即可写入构建与构建后脚本。
 
