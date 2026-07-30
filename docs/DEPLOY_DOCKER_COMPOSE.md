@@ -36,16 +36,7 @@ curl http://127.0.0.1:8080/api/v1/systemConfig/public
 
 在“应用中心 → 构建任务”中选择“资产主机”后，执行路径建议填写该 SSH 用户可写的绝对路径，例如 `/home/testvm/ops-admin`。点击“套用 Docker Compose 模板”即可写入构建与构建后脚本。
 
-由于构建任务首次运行会在执行路径执行 `git clone`，运行配置请先放在仓库外，避免与代码拉取冲突：
-
-```bash
-mkdir -p ~/.config/ops-admin
-cp /path/to/ops-admin/deploy/.env.example ~/.config/ops-admin/.env
-cp /path/to/ops-admin/deploy/config.yaml.example ~/.config/ops-admin/config.yaml
-chmod 600 ~/.config/ops-admin/.env ~/.config/ops-admin/config.yaml
-```
-
-编辑这两个文件：`config.yaml` 的 `db.password` 必须与 `.env` 的 `MYSQL_PASSWORD` 相同。模板会自动将 `~/.config/ops-admin/config.yaml` 只读挂载到 API 容器。若使用其他目录，可为任务新增构建参数 `OPS_ADMIN_CONFIG_DIR`，并填写该目录的绝对路径。
+无需提前登录构建主机准备文件。模板首次执行时会在代码工作目录自动创建被 Git 忽略的 `deploy/.env` 与 `deploy/config.yaml`，并生成两组随机 MySQL 密码；后续构建会复用这些配置和已有数据库卷。请将执行路径放在 SSH 用户可写位置，且不要手工删除这两个文件。
 
 首次 API 启动会自动执行数据库迁移和初始化数据。登录后请立即修改默认管理员密码。
 

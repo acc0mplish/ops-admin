@@ -60,21 +60,32 @@ const form = reactive({
 const currentApp = computed(() => appOptions.value.find((item) => Number(item.id) === Number(form.appId)))
 
 const dockerComposeBuildScript = `set -eu
-CONFIG_DIR="\${OPS_ADMIN_CONFIG_DIR:-$HOME/.config/ops-admin}"
-test -f "$CONFIG_DIR/.env" || { echo "Missing $CONFIG_DIR/.env"; exit 1; }
-test -f "$CONFIG_DIR/config.yaml" || { echo "Missing $CONFIG_DIR/config.yaml"; exit 1; }
 command -v docker >/dev/null || { echo "Docker is not installed"; exit 1; }
 docker compose version
-export OPS_ADMIN_CONFIG_PATH="$CONFIG_DIR/config.yaml"
-docker compose --env-file "$CONFIG_DIR/.env" build`
+if [ ! -f deploy/.env ]; then
+  umask 077
+  MYSQL_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+  MYSQL_ROOT_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+  cat > deploy/.env <<EOF
+TZ=Asia/Shanghai
+MYSQL_DATABASE=ops_admin
+MYSQL_USER=ops_admin
+MYSQL_PASSWORD=$MYSQL_PASSWORD
+MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+EOF
+fi
+if [ ! -f deploy/config.yaml ]; then cp deploy/config.yaml.example deploy/config.yaml; fi
+MYSQL_PASSWORD="$(sed -n 's/^MYSQL_PASSWORD=//p' deploy/.env | head -n 1)"
+test -n "$MYSQL_PASSWORD" || { echo "MYSQL_PASSWORD is missing"; exit 1; }
+sed -i "s|^  password: .*|  password: $MYSQL_PASSWORD|" deploy/config.yaml
+chmod 600 deploy/.env deploy/config.yaml
+docker compose --env-file deploy/.env build`
 
 const dockerComposeDeployScript = `set -eu
-CONFIG_DIR="\${OPS_ADMIN_CONFIG_DIR:-$HOME/.config/ops-admin}"
-test -f "$CONFIG_DIR/.env" || { echo "Missing $CONFIG_DIR/.env"; exit 1; }
-test -f "$CONFIG_DIR/config.yaml" || { echo "Missing $CONFIG_DIR/config.yaml"; exit 1; }
-export OPS_ADMIN_CONFIG_PATH="$CONFIG_DIR/config.yaml"
-docker compose --env-file "$CONFIG_DIR/.env" up -d --remove-orphans
-docker compose --env-file "$CONFIG_DIR/.env" ps`
+test -f deploy/.env || { echo "deploy/.env was not created"; exit 1; }
+test -f deploy/config.yaml || { echo "deploy/config.yaml was not created"; exit 1; }
+docker compose --env-file deploy/.env up -d --remove-orphans
+docker compose --env-file deploy/.env ps`
 
 function applyDockerComposePreset() {
   form.buildScript = dockerComposeBuildScript
@@ -489,7 +500,7 @@ onMounted(async () => {
           <div class="docker-compose-tip">
             <div>
               <strong>Docker Compose 部署模板</strong>
-              <span>Go 和 Node 会在 Docker 多阶段构建中完成；构建主机只需 Docker Engine 与 Docker Compose。</span>
+              <span>Go 和 Node 会在 Docker 多阶段构建中完成；首次执行会自动生成运行配置和随机数据库密码。</span>
             </div>
             <el-button type="primary" plain @click="applyDockerComposePreset">套用模板</el-button>
           </div>
