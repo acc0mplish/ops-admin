@@ -208,6 +208,8 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 		authGroup.GET("/dbms/workbench", ctl.GetDatabaseWorkbench)
 		authGroup.GET("/dbms/schema/tree", ctl.GetDatabaseSchemaTree)
+		authGroup.POST("/dbms/schema/create", ctl.CreateDatabaseSchema)
+		authGroup.GET("/dbms/charset/options", ctl.GetDatabaseCharsetOptions)
 		authGroup.GET("/dbms/table/data", ctl.GetDatabaseTableData)
 		authGroup.GET("/dbms/resource/data", ctl.GetDatabaseResourceData)
 		authGroup.POST("/dbms/sql/execute", ctl.ExecuteDatabaseSQL)

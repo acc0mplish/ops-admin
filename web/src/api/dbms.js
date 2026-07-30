@@ -2,6 +2,8 @@ import http from './http'
 
 export const queryDBMSWorkbench = (databaseId) => http.get('/api/v1/dbms/workbench', { params: { databaseId } })
 export const queryDBMSSchemaTree = (databaseId) => http.get('/api/v1/dbms/schema/tree', { params: { databaseId } })
+export const createDBMSSchema = (data) => http.post('/api/v1/dbms/schema/create', data)
+export const queryDBMSCharsetOptions = (params) => http.get('/api/v1/dbms/charset/options', { params })
 export const queryDBMSTableData = (params) => http.get('/api/v1/dbms/table/data', { params })
 export const queryDBMSResourceData = (params) => http.get('/api/v1/dbms/resource/data', { params })
 export const executeDBMSSQL = (data) => http.post('/api/v1/dbms/sql/execute', data)

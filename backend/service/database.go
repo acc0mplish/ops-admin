@@ -24,7 +24,20 @@ type DBMSSQLExecutePayload struct {
 	ClientIP   string `json:"-"`
 }
 
+// DBMSCreateDatabasePayload creates a database on MySQL, or a schema in the
+// currently connected PostgreSQL database. PostgreSQL's workbench tree is a
+// schema tree, so creating a schema keeps the new object immediately usable.
+type DBMSCreateDatabasePayload struct {
+	DatabaseID uint   `json:"databaseId"`
+	Name       string `json:"name"`
+	Charset    string `json:"charset"`
+	Collation  string `json:"collation"`
+	Operator   string `json:"-"`
+}
+
 var mysqlNamedForeignKeyPattern = regexp.MustCompile("(?i)CONSTRAINT\\s+(?:`[^`]+`|[a-zA-Z0-9_]+)\\s+(FOREIGN\\s+KEY)")
+var databaseObjectNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
+var mysqlCharsetOptionPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
 // mysqlImportCreateTableSQL keeps foreign keys during an automatic table copy,
 // but drops their source-side names. MySQL requires foreign key names to be
@@ -591,6 +604,122 @@ func (s *Service) GetDatabaseSchemaTree(databaseID uint) (map[string]any, error)
 		"schemas":       schemas,
 		"defaultSchema": defaultSchema(item, ""),
 	}, nil
+}
+
+func (s *Service) CreateDatabaseSchema(payload DBMSCreateDatabasePayload) (map[string]any, error) {
+	name := strings.TrimSpace(payload.Name)
+	if payload.DatabaseID == 0 || name == "" {
+		return nil, errors.New("请输入数据库名称")
+	}
+	if !databaseObjectNamePattern.MatchString(name) {
+		return nil, errors.New("名称须以字母或下划线开头，仅可包含字母、数字和下划线，长度不超过 63 个字符")
+	}
+
+	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, "")
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	defer db.Close()
+	if err := ensureDatabaseWritable(item); err != nil {
+		return nil, err
+	}
+
+	objectType := "database"
+	sqlText := ""
+	switch normalizeDatabaseType(item.DBType) {
+	case "mysql":
+		charset := strings.TrimSpace(payload.Charset)
+		if charset == "" {
+			charset = "utf8mb4"
+		}
+		collation := strings.TrimSpace(payload.Collation)
+		if collation == "" {
+			collation = "utf8mb4_unicode_ci"
+		}
+		if !mysqlCharsetOptionPattern.MatchString(charset) || !mysqlCharsetOptionPattern.MatchString(collation) {
+			return nil, errors.New("字符集或排序规则格式不正确")
+		}
+		if !strings.HasPrefix(strings.ToLower(collation), strings.ToLower(charset)+"_") {
+			return nil, errors.New("排序规则必须与所选字符集匹配")
+		}
+		sqlText = "CREATE DATABASE " + quoteIdentifier(name) + " CHARACTER SET " + charset + " COLLATE " + collation
+	case "postgresql":
+		objectType = "schema"
+		sqlText = "CREATE SCHEMA " + postgresQuoteIdentifier(name)
+	default:
+		return nil, errors.New("当前数据库类型不支持新增数据库")
+	}
+	if _, err := db.Exec(sqlText); err != nil {
+		return nil, err
+	}
+
+	summary := "SQL 工作台新增数据库：" + name
+	if objectType == "schema" {
+		summary = "SQL 工作台新增 PostgreSQL Schema：" + name
+	}
+	s.recordAssetChange("database", item.ID, item.Name, "create_schema", summary, payload.Operator)
+	return map[string]any{"name": name, "objectType": objectType}, nil
+}
+
+func (s *Service) GetDatabaseCharsetOptions(databaseID uint, charset string) (map[string]any, error) {
+	item, db, cleanup, err := s.openDatabaseByID(databaseID, "")
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	defer db.Close()
+	if normalizeDatabaseType(item.DBType) != "mysql" {
+		return nil, errors.New("当前数据库类型不支持字符集与排序规则设置")
+	}
+
+	charsetRows, err := db.Query(`
+		SELECT CHARACTER_SET_NAME, DEFAULT_COLLATE_NAME
+		FROM information_schema.CHARACTER_SETS
+		ORDER BY CHARACTER_SET_NAME
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer charsetRows.Close()
+	charsets := make([]map[string]any, 0)
+	for charsetRows.Next() {
+		var name, defaultCollation string
+		if err := charsetRows.Scan(&name, &defaultCollation); err != nil {
+			return nil, err
+		}
+		charsets = append(charsets, map[string]any{"name": name, "defaultCollation": defaultCollation})
+	}
+	if err := charsetRows.Err(); err != nil {
+		return nil, err
+	}
+
+	selectedCharset := strings.TrimSpace(charset)
+	if selectedCharset == "" {
+		selectedCharset = "utf8mb4"
+	}
+	collationRows, err := db.Query(`
+		SELECT COLLATION_NAME, IS_DEFAULT
+		FROM information_schema.COLLATIONS
+		WHERE CHARACTER_SET_NAME = ?
+		ORDER BY IS_DEFAULT DESC, COLLATION_NAME
+	`, selectedCharset)
+	if err != nil {
+		return nil, err
+	}
+	defer collationRows.Close()
+	collations := make([]map[string]any, 0)
+	for collationRows.Next() {
+		var name, isDefault string
+		if err := collationRows.Scan(&name, &isDefault); err != nil {
+			return nil, err
+		}
+		collations = append(collations, map[string]any{"name": name, "isDefault": strings.EqualFold(isDefault, "Yes")})
+	}
+	if err := collationRows.Err(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"charsets": charsets, "collations": collations}, nil
 }
 
 func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[string]any, error) {

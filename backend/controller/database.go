@@ -112,6 +112,30 @@ func (ctl *Controller) GetDatabaseSchemaTree(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) CreateDatabaseSchema(c *gin.Context) {
+	var payload service.DBMSCreateDatabasePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid database create payload")
+		return
+	}
+	payload.Operator = c.GetString("username")
+	data, err := ctl.service.CreateDatabaseSchema(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetDatabaseCharsetOptions(c *gin.Context) {
+	data, err := ctl.service.GetDatabaseCharsetOptions(uint(mustAtoi(c.Query("databaseId"))), c.Query("charset"))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetDatabaseTableData(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "25"))

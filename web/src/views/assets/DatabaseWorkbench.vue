@@ -7,6 +7,7 @@ import DatabaseConnectionTree from './database/DatabaseConnectionTree.vue'
 import {
   analyzeDBMSSQL,
   analyzeRedisCommand,
+  createDBMSSchema,
   createDBMSExportTask,
   createDBMSImportTask,
   deleteDBMSTableRow,
@@ -16,6 +17,7 @@ import {
   insertDBMSTableRow,
   precheckDBMSImportTask,
   queryDBMSSchemaTree,
+  queryDBMSCharsetOptions,
   queryDBMSSQLHistory,
   queryDBMSResourceData,
   queryDBMSTableData,
@@ -40,6 +42,9 @@ const rowDialogVisible = ref(false)
 const redisKeyDialogVisible = ref(false)
 const rollbackDialogVisible = ref(false)
 const importDialogVisible = ref(false)
+const createDatabaseVisible = ref(false)
+const creatingDatabase = ref(false)
+const charsetOptionsLoading = ref(false)
 const sqlConfirmVisible = ref(false)
 const activeTab = ref('data')
 const rowDialogMode = ref('insert')
@@ -85,6 +90,7 @@ const sqlEditorRef = ref(null)
 const editorWrapRef = ref(null)
 const treeRef = ref(null)
 const taskTimer = ref(null)
+const sqlFavorites = ref([])
 
 const execMeta = reactive({
   sqlType: '',
@@ -142,6 +148,15 @@ const importForm = reactive({
   truncateTarget: false
 })
 
+const createDatabaseForm = reactive({
+  name: '',
+  charset: 'utf8mb4',
+  collation: 'utf8mb4_0900_ai_ci'
+})
+
+const mysqlCharsetOptions = ref([])
+const availableCollations = ref([])
+
 const sqlKeywordPool = [
   'SELECT', 'FROM', 'WHERE', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
   'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE',
@@ -177,6 +192,8 @@ const capabilities = computed(() => connection.value?.capabilities || {})
 const supportsSQL = computed(() => capabilities.value.sql !== false)
 const isRedis = computed(() => connection.value?.dbType === 'redis')
 const isPostgres = computed(() => connection.value?.dbType === 'postgresql')
+const supportsCreateDatabase = computed(() => !isReadOnly.value && ['mysql', 'postgresql'].includes(connection.value?.dbType))
+const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : '数据库'))
 const sqlSnippets = computed(() => [
   ...baseSqlSnippets,
   isPostgres.value
@@ -262,6 +279,94 @@ function highlightSQL(source) {
   html = html.replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
   html = html.replace(/\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|HAVING|LIMIT|OFFSET|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|CREATE TABLE|ALTER TABLE|DROP TABLE|SHOW|TABLES|DATABASES|DESCRIBE|EXPLAIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION ALL|COUNT|SUM|AVG|MIN|MAX|NOW)\b/gi, '<span class="token-keyword">$1</span>')
   return html
+}
+
+function sqlFavoritesStorageKey() {
+  return `ops-admin.dbms.sql-favorites.${databaseId.value}`
+}
+
+function loadSqlFavorites() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(sqlFavoritesStorageKey()) || '[]')
+    sqlFavorites.value = Array.isArray(saved) ? saved.filter((item) => item?.name && item?.sqlText).slice(0, 30) : []
+  } catch {
+    sqlFavorites.value = []
+  }
+}
+
+function persistSqlFavorites() {
+  localStorage.setItem(sqlFavoritesStorageKey(), JSON.stringify(sqlFavorites.value.slice(0, 30)))
+}
+
+function basicFormatSQL(source) {
+  const parts = String(source || '').split(/('(?:''|[^'])*'|"(?:""|[^"])*")/g)
+  return parts.map((part, index) => {
+    if (index % 2) return part
+    return part
+      .replace(/\s+/g, ' ')
+      .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION ALL|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/gi, (_, keyword) => `\n${keyword.toUpperCase()}`)
+      .replace(/\s*,\s*/g, ', ')
+  }).join('').replace(/^\s+|\s+$/g, '').replace(/;\s*(?=\S)/g, ';\n\n')
+}
+
+function formatSQL() {
+  const editor = sqlEditorRef.value
+  const source = selectedSQLText()
+  if (!source) return ElMessage.warning('请输入需要格式化的 SQL')
+  const formatted = basicFormatSQL(source)
+  if (editor && editor.selectionStart !== editor.selectionEnd) {
+    const before = sqlText.value.slice(0, editor.selectionStart)
+    const after = sqlText.value.slice(editor.selectionEnd)
+    sqlText.value = before + formatted + after
+    nextTick(() => editor.setSelectionRange(before.length, before.length + formatted.length))
+  } else {
+    sqlText.value = formatted
+  }
+  ElMessage.success('SQL 已格式化')
+}
+
+async function saveCurrentSQL() {
+  const statement = selectedSQLText()
+  if (!statement) return ElMessage.warning('请输入需要收藏的 SQL')
+  const { value } = await ElMessageBox.prompt('为这条 SQL 设置名称，后续可一键填入编辑器。', '收藏 SQL', {
+    inputPlaceholder: '例如：查询近 24 小时订单',
+    inputPattern: /\S+/,
+    inputErrorMessage: '请输入收藏名称',
+    confirmButtonText: '保存',
+    cancelButtonText: '取消'
+  })
+  sqlFavorites.value.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: value.trim(), sqlText: statement, updatedAt: Date.now() })
+  persistSqlFavorites()
+  ElMessage.success('SQL 已收藏')
+}
+
+function applySqlFavorite(item) {
+  sqlText.value = item.sqlText
+  nextTick(() => sqlEditorRef.value?.focus())
+}
+
+function removeSqlFavorite(item) {
+  sqlFavorites.value = sqlFavorites.value.filter((current) => current.id !== item.id)
+  persistSqlFavorites()
+}
+
+function reuseHistorySQL(row) {
+  sqlText.value = row.sqlText || ''
+  activeTab.value = 'result'
+  nextTick(() => sqlEditorRef.value?.focus())
+}
+
+function exportResultCSV() {
+  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning('当前没有可导出的 SQL 结果')
+  const escapeCSV = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
+  const lines = [resultColumns.value, ...filteredResultRows.value.map((row) => resultColumns.value.map((column) => row[column]))]
+    .map((row) => row.map(escapeCSV).join(','))
+  const blob = new Blob(['\uFEFF', lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `sql-result-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
+  link.click()
+  URL.revokeObjectURL(link.href)
 }
 
 function normalizeTree(data) {
@@ -377,6 +482,7 @@ async function commitCellEdit(row, column) {
 
 async function loadConnection() {
   connection.value = await queryDBMSWorkbench(databaseId.value)
+  loadSqlFavorites()
 }
 
 async function loadTree() {
@@ -390,6 +496,68 @@ async function loadTree() {
     }
   } finally {
     treeLoading.value = false
+  }
+}
+
+async function loadDatabaseCharsetOptions(charset = createDatabaseForm.charset) {
+  charsetOptionsLoading.value = true
+  try {
+    const data = await queryDBMSCharsetOptions({ databaseId: databaseId.value, charset })
+    mysqlCharsetOptions.value = (data.charsets || []).map((item) => ({ label: item.name, value: item.name, defaultCollation: item.defaultCollation }))
+    availableCollations.value = (data.collations || []).map((item) => ({ label: item.name, value: item.name, isDefault: item.isDefault }))
+    if (!mysqlCharsetOptions.value.some((item) => item.value === createDatabaseForm.charset)) {
+      createDatabaseForm.charset = mysqlCharsetOptions.value.find((item) => item.value === 'utf8mb4')?.value || mysqlCharsetOptions.value[0]?.value || ''
+      if (createDatabaseForm.charset && createDatabaseForm.charset !== charset) {
+        await loadDatabaseCharsetOptions(createDatabaseForm.charset)
+        return
+      }
+    }
+    if (!availableCollations.value.some((item) => item.value === createDatabaseForm.collation)) {
+      createDatabaseForm.collation = availableCollations.value.find((item) => item.isDefault)?.value || availableCollations.value[0]?.value || ''
+    }
+  } finally {
+    charsetOptionsLoading.value = false
+  }
+}
+
+async function openCreateDatabase() {
+  createDatabaseForm.name = ''
+  if (!isPostgres.value) {
+    createDatabaseForm.charset = connection.value?.charset || 'utf8mb4'
+    createDatabaseForm.collation = ''
+    createDatabaseVisible.value = true
+    await loadDatabaseCharsetOptions()
+    return
+  }
+  createDatabaseVisible.value = true
+}
+
+async function onCreateDatabaseCharsetChange() {
+  createDatabaseForm.collation = ''
+  await loadDatabaseCharsetOptions(createDatabaseForm.charset)
+}
+
+async function submitCreateDatabase() {
+  const name = createDatabaseForm.name.trim()
+  if (!name) {
+    ElMessage.warning(`请输入${createDatabaseObjectLabel.value}名称`)
+    return
+  }
+  creatingDatabase.value = true
+  try {
+    const result = await createDBMSSchema({
+      databaseId: databaseId.value,
+      name,
+      charset: isPostgres.value ? '' : createDatabaseForm.charset,
+      collation: isPostgres.value ? '' : createDatabaseForm.collation
+    })
+    selectedSchema.value = result.name || name
+    selectedTable.value = ''
+    await loadTree()
+    createDatabaseVisible.value = false
+    ElMessage.success(`${createDatabaseObjectLabel.value} ${name} 已创建`)
+  } finally {
+    creatingDatabase.value = false
   }
 }
 
@@ -1118,7 +1286,12 @@ onBeforeUnmount(() => {
         <section class="sidebar-section schema-section">
           <div class="sidebar-section-title">
             <strong>库表结构</strong>
-            <span>{{ connection?.dbName || '全部数据库' }}</span>
+            <div class="schema-title-actions">
+              <el-button v-if="supportsCreateDatabase" type="primary" link @click="openCreateDatabase">
+                新增{{ createDatabaseObjectLabel }}
+              </el-button>
+              <span>{{ connection?.dbName || '全部数据库' }}</span>
+            </div>
           </div>
           <div class="sidebar-top">
             <el-input v-model="treeKeyword" clearable placeholder="搜索数据库或数据表" />
@@ -1179,7 +1352,20 @@ onBeforeUnmount(() => {
             </div>
             <div class="panel-actions">
               <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
-              <el-button v-else-if="isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">执行 Redis 命令</el-button>
+              <el-button v-if="supportsSQL" @click="formatSQL">格式化</el-button>
+              <el-button v-if="supportsSQL" @click="saveCurrentSQL">收藏 SQL</el-button>
+              <el-dropdown v-if="supportsSQL && sqlFavorites.length" trigger="click">
+                <el-button>已收藏 {{ sqlFavorites.length }}</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu class="sql-favorite-menu">
+                    <el-dropdown-item v-for="item in sqlFavorites" :key="item.id" class="sql-favorite-item">
+                      <span @click="applySqlFavorite(item)">{{ item.name }}</span>
+                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">删除</el-button>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">执行 Redis 命令</el-button>
               <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">导出任务</el-button>
               <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">导入任务</el-button>
             </div>
@@ -1189,7 +1375,7 @@ onBeforeUnmount(() => {
             <el-button v-for="item in sqlSnippets" :key="item.label" size="small" plain @click="insertSnippet(item.text)">
               {{ item.label }}
             </el-button>
-            <span class="snippet-hint">`Ctrl + Enter` 可执行当前选中 SQL</span>
+              <span class="snippet-hint">`Ctrl + Enter` 可执行当前选中 SQL；格式化与收藏仅作用于选中 SQL，未选中时作用于全部内容。</span>
           </div>
 
           <div v-else-if="isRedis" class="redis-command-console">
@@ -1351,11 +1537,12 @@ onBeforeUnmount(() => {
             </el-tab-pane>
 
             <el-tab-pane label="SQL 结果" name="result">
-              <div class="filter-row">
+              <div class="filter-row result-filter-row">
                 <el-select v-model="resultFilter.key" clearable placeholder="筛选字段" style="width: 180px">
                   <el-option v-for="item in resultColumns" :key="item" :label="item" :value="item" />
                 </el-select>
                 <el-input v-model="resultFilter.text" clearable placeholder="筛选结果集" style="width: 280px" />
+                <el-button :disabled="!filteredResultRows.length" @click="exportResultCSV">导出 CSV</el-button>
               </div>
               <el-table :data="filteredResultRows" border height="380">
                 <el-table-column v-for="col in resultColumns" :key="col" :prop="col" :label="col" min-width="160" />
@@ -1391,6 +1578,7 @@ onBeforeUnmount(() => {
                     <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">复制</el-button>
                   </template>
                 </el-table-column>
+                <el-table-column label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">复用</el-button></template></el-table-column>
               </el-table>
               <div class="pager">
                 <el-pagination
@@ -1462,6 +1650,37 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
+
+    <el-dialog v-model="createDatabaseVisible" :title="`新增${createDatabaseObjectLabel}`" width="520px" destroy-on-close>
+      <el-alert
+        :title="isPostgres ? 'PostgreSQL 将在当前连接数据库中创建 Schema，创建后会立即显示在左侧结构树。' : '将直接在当前 MySQL 实例中创建数据库，创建后会立即显示在左侧结构树。'"
+        type="info"
+        :closable="false"
+        show-icon
+      />
+      <el-form label-width="112px" class="create-database-form">
+        <el-form-item :label="`${createDatabaseObjectLabel}名称`" required>
+          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit placeholder="例如：ops_reporting" @keyup.enter="submitCreateDatabase" />
+        </el-form-item>
+        <template v-if="!isPostgres">
+          <el-form-item label="字符集">
+            <el-select v-model="createDatabaseForm.charset" style="width: 100%" :loading="charsetOptionsLoading" @change="onCreateDatabaseCharsetChange">
+              <el-option v-for="item in mysqlCharsetOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="排序规则">
+            <el-select v-model="createDatabaseForm.collation" style="width: 100%" :loading="charsetOptionsLoading" :disabled="charsetOptionsLoading">
+              <el-option v-for="item in availableCollations" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <p class="form-help">以字母或下划线开头，仅支持字母、数字和下划线。</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDatabaseVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">确认创建</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="sqlConfirmVisible" title="确认执行写操作 SQL" width="780px">
       <div v-if="sqlAnalysis" class="sql-risk-panel">
@@ -1711,6 +1930,29 @@ onBeforeUnmount(() => {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.schema-title-actions {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.schema-title-actions .el-button {
+  flex: none;
+  padding: 0;
+}
+
+.create-database-form {
+  margin-top: 18px;
+}
+
+.form-help {
+  margin: -8px 0 0 112px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .sidebar-top {
