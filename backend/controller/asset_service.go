@@ -80,6 +80,27 @@ func (ctl *Controller) GetAssetServiceWorkloadTopology(c *gin.Context) {
 	}
 	httpx.Success(c, data)
 }
+func (ctl *Controller) GetAssetServiceWorkloadRolloutHistory(c *gin.Context) {
+	data, err := ctl.service.GetAssetServiceWorkloadRolloutHistory(uint(mustAtoi(c.Query("serviceId"))), c.Query("workloadType"), c.Query("workloadName"))
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) RollbackAssetServiceWorkload(c *gin.Context) {
+	var payload service.AssetServiceWorkloadRollbackPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid workload rollback payload")
+		return
+	}
+	data, err := ctl.service.RollbackAssetServiceWorkload(payload)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
 func (ctl *Controller) GetAssetServiceWorkloadLogs(c *gin.Context) {
 	data, err := ctl.service.GetAssetServiceWorkloadLogs(uint(mustAtoi(c.Query("serviceId"))), c.Query("workloadType"), c.Query("workloadName"), c.Query("podName"), c.Query("container"), mustAtoi(c.DefaultQuery("tailLines", "200")))
 	if err != nil {

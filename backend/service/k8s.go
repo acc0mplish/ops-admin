@@ -217,7 +217,8 @@ type kubePod struct {
 type kubeReplicaSet struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		Replicas *int `json:"replicas"`
+		Replicas *int           `json:"replicas"`
+		Template map[string]any `json:"template"`
 	} `json:"spec"`
 	Status struct {
 		ReadyReplicas     int `json:"readyReplicas"`
@@ -2014,10 +2015,10 @@ func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace str
 			return model.K8sStorageDetail{}, errors.New(k8sClusterConnectError)
 		}
 		return model.K8sStorageDetail{
-			Name:         item.Metadata.Name,
-			Kind:         "PVC",
-			Namespace:    fallbackText(item.Metadata.Namespace),
-			Status:       fallbackText(item.Status.Phase),
+			Name:      item.Metadata.Name,
+			Kind:      "PVC",
+			Namespace: fallbackText(item.Metadata.Namespace),
+			Status:    fallbackText(item.Status.Phase),
 			// PVC 列表与详情应展示用户声明的申请容量；绑定后 status.capacity
 			// 表示实际绑定 PV 的容量，可能大于 PVC 请求容量。
 			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
@@ -3511,10 +3512,10 @@ func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret,
 	storageItems := make([]model.K8sStorageItem, 0, len(pvcs)+len(pvs))
 	for _, item := range pvcs {
 		storageItems = append(storageItems, model.K8sStorageItem{
-			Name:         item.Metadata.Name,
-			Kind:         "PVC",
-			Namespace:    fallbackText(item.Metadata.Namespace),
-			Status:       fallbackText(item.Status.Phase),
+			Name:      item.Metadata.Name,
+			Kind:      "PVC",
+			Namespace: fallbackText(item.Metadata.Namespace),
+			Status:    fallbackText(item.Status.Phase),
 			// 申请容量优先于绑定 PV 的实际容量，避免把 PV 容量误展示为 PVC 容量。
 			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
 			StorageClass: fallbackText(item.Spec.StorageClassName),

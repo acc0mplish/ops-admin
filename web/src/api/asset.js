@@ -9,6 +9,8 @@ export const queryAssetServiceK8sCatalog = (params) => http.get('/api/v1/asset/s
 export const queryAssetServiceRuntimeTopology = (serviceId) => http.get('/api/v1/asset/service/runtime-topology', { params: { serviceId } })
 export const queryAssetServiceWorkloadRuntime = (params) => http.get('/api/v1/asset/service/workload/runtime', { params })
 export const queryAssetServiceWorkloadTopology = (params) => http.get('/api/v1/asset/service/workload/topology', { params })
+export const queryAssetServiceWorkloadRolloutHistory = (params) => http.get('/api/v1/asset/service/workload/rollout-history', { params })
+export const rollbackAssetServiceWorkload = (data) => http.post('/api/v1/asset/service/workload/rollback', data)
 export const queryAssetServiceWorkloadLogs = (params) => http.get('/api/v1/asset/service/workload/logs', { params })
 export const queryAssetChangeLogs = (params) => http.get('/api/v1/asset/change-log/list', { params })
 export const queryAssetHostList = (params) => http.get('/api/v1/asset/host/list', { params })

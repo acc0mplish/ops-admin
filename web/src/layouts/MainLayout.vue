@@ -545,7 +545,12 @@ onMounted(() => {
       </el-header>
 
       <el-main class="layout-main">
-        <router-view />
+        <router-view v-slot="{ Component, route: currentRoute }">
+          <keep-alive>
+            <component :is="Component" v-if="currentRoute.meta.keepAlive" />
+          </keep-alive>
+          <component :is="Component" v-if="!currentRoute.meta.keepAlive" />
+        </router-view>
       </el-main>
     </el-container>
 

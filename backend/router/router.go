@@ -151,6 +151,8 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/asset/service/runtime-topology", ctl.GetAssetServiceRuntimeTopology)
 		authGroup.GET("/asset/service/workload/runtime", ctl.GetAssetServiceWorkloadRuntime)
 		authGroup.GET("/asset/service/workload/topology", ctl.GetAssetServiceWorkloadTopology)
+		authGroup.GET("/asset/service/workload/rollout-history", ctl.GetAssetServiceWorkloadRolloutHistory)
+		authGroup.POST("/asset/service/workload/rollback", ctl.RollbackAssetServiceWorkload)
 		authGroup.GET("/asset/service/workload/logs", ctl.GetAssetServiceWorkloadLogs)
 		authGroup.GET("/asset/overview", ctl.GetAssetOverview)
 		authGroup.GET("/asset/change-log/list", ctl.GetAssetChangeLogs)

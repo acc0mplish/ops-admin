@@ -79,7 +79,7 @@ async function load() {
 async function copyTraceID() {
   try { await navigator.clipboard.writeText(trace.value?.traceID || route.params.traceId); ElMessage.success('Trace ID 已复制') } catch { ElMessage.info('请手动复制 Trace ID') }
 }
-function back() { router.push('/monitor/traces') }
+function back() { router.back() }
 
 onMounted(load)
 </script>

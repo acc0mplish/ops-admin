@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
@@ -25,6 +26,13 @@ type AssetServicePayload struct {
 type AssetServiceWorkloadPayload struct {
 	WorkloadType string `json:"workloadType"`
 	WorkloadName string `json:"workloadName"`
+}
+
+type AssetServiceWorkloadRollbackPayload struct {
+	ServiceID    uint   `json:"serviceId"`
+	WorkloadType string `json:"workloadType"`
+	WorkloadName string `json:"workloadName"`
+	Revision     string `json:"revision"`
 }
 
 func (s *Service) ListAssetServices(pageNum, pageSize int, keyword string) (map[string]any, error) {
@@ -236,6 +244,11 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	if !strings.EqualFold(workloadType, "deployment") {
 		return result, nil
 	}
+	currentRevision := ""
+	var deployment kubeDeployment
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/deployments/"+workloadName, &deployment); err == nil {
+		currentRevision = deployment.Metadata.Annotations["deployment.kubernetes.io/revision"]
+	}
 	var replicaSetList kubeReplicaSetListResponse
 	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSetList); err != nil {
 		return result, nil
@@ -253,10 +266,115 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 			}
 		}
 		desired := intValue(item.Spec.Replicas)
-		replicaSets = append(replicaSets, map[string]any{"name": item.Metadata.Name, "ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, desired), "available": item.Status.AvailableReplicas, "age": humanizeAge(item.Metadata.CreationTimestamp), "healthy": desired > 0 && item.Status.ReadyReplicas == desired && item.Status.AvailableReplicas >= desired, "pods": buildPodItems(relatedPods)})
+		revision := strings.TrimSpace(item.Metadata.Annotations["deployment.kubernetes.io/revision"])
+		replicaSets = append(replicaSets, map[string]any{"name": item.Metadata.Name, "revision": revision, "current": revision != "" && revision == currentRevision, "ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, desired), "available": item.Status.AvailableReplicas, "age": humanizeAge(item.Metadata.CreationTimestamp), "healthy": desired > 0 && item.Status.ReadyReplicas == desired && item.Status.AvailableReplicas >= desired, "pods": buildPodItems(relatedPods)})
 	}
 	result["replicaSets"] = replicaSets
 	return result, nil
+}
+
+// GetAssetServiceWorkloadRolloutHistory returns Deployment revisions which are
+// represented by ReplicaSets controlled by the selected Deployment.
+func (s *Service) GetAssetServiceWorkloadRolloutHistory(serviceID uint, workloadType, workloadName string) (map[string]any, error) {
+	service, err := s.GetAssetService(serviceID)
+	if err != nil {
+		return nil, err
+	}
+	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
+		return nil, errors.New("workload does not belong to this service")
+	}
+	if !strings.EqualFold(Trimmed(workloadType), "deployment") {
+		return nil, errors.New("only deployment supports version rollback")
+	}
+	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
+	if err != nil {
+		return nil, err
+	}
+	var deployment kubeDeployment
+	deploymentPath := "/apis/apps/v1/namespaces/" + service.Namespace + "/deployments/" + workloadName
+	if err := k8sGetJSON(client, runtime, deploymentPath, &deployment); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	var replicaSets kubeReplicaSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	currentRevision := deployment.Metadata.Annotations["deployment.kubernetes.io/revision"]
+	history := make([]map[string]any, 0)
+	for _, item := range replicaSets.Items {
+		if !hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", workloadName) {
+			continue
+		}
+		revision := strings.TrimSpace(item.Metadata.Annotations["deployment.kubernetes.io/revision"])
+		if revision == "" || len(item.Spec.Template) == 0 {
+			continue
+		}
+		history = append(history, map[string]any{
+			"revision": revision, "replicaSet": item.Metadata.Name, "age": humanizeAge(item.Metadata.CreationTimestamp),
+			"images": workloadTemplateImages(item.Spec.Template), "current": revision == currentRevision,
+			"ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, intValue(item.Spec.Replicas)),
+		})
+	}
+	sort.Slice(history, func(i, j int) bool {
+		left, _ := strconv.Atoi(fmt.Sprint(history[i]["revision"]))
+		right, _ := strconv.Atoi(fmt.Sprint(history[j]["revision"]))
+		return left > right
+	})
+	return map[string]any{"workloadName": workloadName, "currentRevision": currentRevision, "history": history}, nil
+}
+
+// RollbackAssetServiceWorkload restores the pod template from the requested
+// Deployment ReplicaSet revision. Kubernetes creates a new revision for this
+// operation, equivalent to kubectl rollout undo --to-revision.
+func (s *Service) RollbackAssetServiceWorkload(payload AssetServiceWorkloadRollbackPayload) (map[string]any, error) {
+	service, err := s.GetAssetService(payload.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	if !assetServiceContainsWorkload(service, payload.WorkloadType, payload.WorkloadName) {
+		return nil, errors.New("workload does not belong to this service")
+	}
+	if !strings.EqualFold(Trimmed(payload.WorkloadType), "deployment") || Trimmed(payload.Revision) == "" {
+		return nil, errors.New("only deployment supports version rollback")
+	}
+	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
+	if err != nil {
+		return nil, err
+	}
+	var replicaSets kubeReplicaSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	var target *kubeReplicaSet
+	for i := range replicaSets.Items {
+		item := &replicaSets.Items[i]
+		if hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", payload.WorkloadName) && item.Metadata.Annotations["deployment.kubernetes.io/revision"] == Trimmed(payload.Revision) {
+			target = item
+			break
+		}
+	}
+	if target == nil || len(target.Spec.Template) == 0 {
+		return nil, errors.New("rollback revision does not exist")
+	}
+	path := "/apis/apps/v1/namespaces/" + service.Namespace + "/deployments/" + payload.WorkloadName
+	if err := k8sPatchJSON(client, runtime, path, map[string]any{"spec": map[string]any{"template": target.Spec.Template}}, "application/strategic-merge-patch+json", nil); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	return map[string]any{"workloadName": payload.WorkloadName, "rollbackRevision": payload.Revision, "replicaSet": target.Metadata.Name}, nil
+}
+
+func workloadTemplateImages(template map[string]any) []string {
+	spec, _ := template["spec"].(map[string]any)
+	containers, _ := spec["containers"].([]any)
+	images := make([]string, 0, len(containers))
+	for _, raw := range containers {
+		container, _ := raw.(map[string]any)
+		name, image := strings.TrimSpace(fmt.Sprint(container["name"])), strings.TrimSpace(fmt.Sprint(container["image"]))
+		if image != "" {
+			images = append(images, strings.Trim(strings.TrimSpace(name+": "+image), ": "))
+		}
+	}
+	return images
 }
 
 // GetAssetServiceWorkloadLogs limits pod logs to pods returned by the selected

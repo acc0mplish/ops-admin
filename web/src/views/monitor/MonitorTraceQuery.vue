@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { queryMonitorDatasourceOptions, queryMonitorJaegerOperations, queryMonitorJaegerServices, queryMonitorTraces } from '../../api/monitor'
 
@@ -20,7 +20,10 @@ const customDateRange = ref([])
 const items = ref([])
 const pageNum = ref(1)
 const pageSize = ref(20)
+const lastQueryWindow = ref(null)
 const router = useRouter()
+const route = useRoute()
+let restoringQuery = false
 
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
 const pagedItems = computed(() => {
@@ -59,6 +62,33 @@ function traceOperation(trace) {
   const spans = trace.spans || []
   const rootSpan = spans.find((span) => !(span.references || []).some((reference) => reference.refType === 'CHILD_OF'))
   return rootSpan?.operationName || spans[0]?.operationName || '-'
+}
+
+function traceRootSpan(trace) {
+  const spans = trace.spans || []
+  return spans.find((span) => !(span.references || []).some((reference) => reference.refType === 'CHILD_OF')) || spans[0] || {}
+}
+
+function traceStatus(trace) {
+  const span = traceRootSpan(trace)
+  const tags = span.tags || []
+  const httpTag = tags.find((item) => ['http.status_code', 'http.response.status_code', 'http.status', 'http.statusCode'].includes(item.key))
+  if (httpTag) return String(httpTag.value ?? '-')
+  const hasError = (trace.spans || []).some((item) => (item.tags || []).some((tag) => {
+    if (tag.key === 'error') return String(tag.value).toLowerCase() !== 'false'
+    if (tag.key === 'status.code') return String(tag.value).toUpperCase() === 'ERROR'
+    return ['http.status_code', 'http.response.status_code'].includes(tag.key) && Number(tag.value) >= 400
+  }))
+  return hasError ? '异常' : '成功'
+}
+
+function traceStatusTagType(trace) {
+  const status = traceStatus(trace)
+  const code = Number(status)
+  if (code >= 200 && code < 400) return 'success'
+  if (code >= 500 || status === '异常' || status.toUpperCase() === 'ERROR') return 'danger'
+  if (code >= 400) return 'warning'
+  return status === '成功' ? 'success' : 'info'
 }
 
 function traceDuration(trace) {
@@ -101,19 +131,61 @@ async function loadDatasources() {
   datasourceId.value = datasources.value[0]?.id
 }
 
+function queryWindowFromRoute() {
+  const startAt = Number(route.query.startAt)
+  const endAt = Number(route.query.endAt)
+  return Number.isFinite(startAt) && Number.isFinite(endAt) && startAt < endAt ? { startAt, endAt } : null
+}
+
+function detailRouteQuery() {
+  const { startAt, endAt } = lastQueryWindow.value || rangeTimestamps()
+  return {
+    datasourceId: datasourceId.value, service: service.value || undefined, operation: operation.value || undefined,
+    tags: tags.value || undefined, timeRange: timeRange.value, startAt, endAt, page: pageNum.value, pageSize: pageSize.value
+  }
+}
+
+async function queryList(window = null, preservePage = false) {
+  if (!service.value) return ElMessage.warning('请选择服务，或直接输入 Trace ID 查询')
+  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的起止时间')
+  const { startAt, endAt } = window || rangeTimestamps()
+  lastQueryWindow.value = { startAt, endAt }
+  items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 1000 }) || []
+  if (!preservePage) pageNum.value = 1
+  const pageCount = Math.max(1, Math.ceil(items.value.length / pageSize.value))
+  pageNum.value = Math.min(Math.max(1, pageNum.value), pageCount)
+}
+
+async function restoreQueryState() {
+  const state = route.query
+  if (!state?.service) return false
+  restoringQuery = true
+  try {
+    datasourceId.value = datasources.value.find((item) => Number(item.id) === Number(state.datasourceId))?.id || datasources.value[0]?.id
+    await loadServices()
+    service.value = state.service || ''
+    await loadOperations()
+    operation.value = state.operation || ''
+    tags.value = state.tags || ''
+    timeRange.value = state.timeRange || '1h'
+    customDateRange.value = state.timeRange === 'custom' && queryWindowFromRoute() ? [String(state.startAt), String(state.endAt)] : []
+    pageSize.value = [20, 50, 100].includes(Number(state.pageSize)) ? Number(state.pageSize) : 20
+    pageNum.value = Math.max(1, Number(state.page) || 1)
+  } finally {
+    restoringQuery = false
+  }
+  return true
+}
+
 async function search() {
   if (!datasourceId.value) return ElMessage.warning('请先在数据源管理中配置 Jaeger 数据源')
   loading.value = true
   try {
     if (traceId.value.trim()) {
-      router.push({ path: `/monitor/traces/${encodeURIComponent(traceId.value.trim())}`, query: { datasourceId: datasourceId.value } })
+      router.push({ path: `/monitor/traces/${encodeURIComponent(traceId.value.trim())}`, query: detailRouteQuery() })
       return
     } else {
-      if (!service.value) return ElMessage.warning('请选择服务，或直接输入 Trace ID 查询')
-      if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的起止时间')
-      const { startAt, endAt } = rangeTimestamps()
-      items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 1000 }) || []
-      pageNum.value = 1
+      await queryList()
     }
   } finally {
     loading.value = false
@@ -121,12 +193,18 @@ async function search() {
 }
 
 function openDetail(trace) {
-  router.push({ path: `/monitor/traces/${encodeURIComponent(trace.traceID)}`, query: { datasourceId: datasourceId.value } })
+  router.push({ path: `/monitor/traces/${encodeURIComponent(trace.traceID)}`, query: detailRouteQuery() })
 }
 
-watch(datasourceId, loadServices)
-watch(service, loadOperations)
-onMounted(loadDatasources)
+watch(datasourceId, () => { if (!restoringQuery) loadServices() })
+watch(service, () => { if (!restoringQuery) loadOperations() })
+onMounted(async () => {
+  await loadDatasources()
+  if (await restoreQueryState()) {
+    loading.value = true
+    try { await queryList(queryWindowFromRoute(), true) } finally { loading.value = false }
+  }
+})
 </script>
 
 <template>
@@ -150,6 +228,7 @@ onMounted(loadDatasources)
       <el-table-column label="Trace ID" min-width="270"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.traceID }}</el-link></template></el-table-column>
       <el-table-column label="服务链路" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ traceServices(row) }}</template></el-table-column>
       <el-table-column label="Operation" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ traceOperation(row) }}</template></el-table-column>
+      <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag size="small" effect="light" :type="traceStatusTagType(row)">{{ traceStatus(row) }}</el-tag></template></el-table-column>
       <el-table-column label="开始时间" width="190"><template #default="{ row }">{{ formatTime(row.spans?.[0]?.startTime) }}</template></el-table-column>
       <el-table-column label="总耗时" width="120"><template #default="{ row }">{{ traceDuration(row) }}</template></el-table-column>
       <el-table-column label="Span 数" width="110" align="center" sortable :sort-method="(left, right) => (left.spans?.length || 0) - (right.spans?.length || 0)"><template #default="{ row }">{{ row.spans?.length || 0 }}</template></el-table-column>

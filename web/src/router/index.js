@@ -473,7 +473,8 @@ const routes = [
         meta: {
           title: '链路追踪',
           app: 'monitor',
-          summary: '通过 Jaeger 查询分布式调用链与 Span 明细。'
+          summary: '通过 Jaeger 查询分布式调用链与 Span 明细。',
+          keepAlive: true
         }
       },
       {
