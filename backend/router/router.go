@@ -390,7 +390,6 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/monitor/dashboard/panel/save", ctl.SaveMonitorDashboardPanel)
 		authGroup.DELETE("/monitor/dashboard/panel/delete", ctl.DeleteMonitorDashboardPanel)
 		authGroup.POST("/monitor/dashboard/panel/query", ctl.QueryMonitorDashboardPanel)
-
 		authGroup.GET("/k8s/cluster/list", ctl.GetK8sClusterList)
 		authGroup.GET("/k8s/cluster/info", ctl.GetK8sClusterInfo)
 		authGroup.POST("/k8s/cluster/add", ctl.CreateK8sCluster)

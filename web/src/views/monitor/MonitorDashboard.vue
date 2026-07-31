@@ -37,6 +37,7 @@ let panelRefreshVersion = 0
 const panelResultCache = new Map()
 const PANEL_QUERY_CONCURRENCY = 4
 const PANEL_CACHE_TTL = 15 * 1000
+const inspectionFilter = ref('all')
 
 const pageMode = computed(() => route.path.includes('/monitor/inspections') ? 'inspection' : 'dashboard')
 const pageLayout = computed(() => pageMode.value === 'inspection' ? 'list' : 'grid')
@@ -135,6 +136,18 @@ const dashboardTemplates = [
 ]
 
 const activePanels = computed(() => panels.value.filter((item) => item.status === 1))
+const inspectionSummary = computed(() => {
+  const summary = { healthy: 0, warning: 0, danger: 0, disabled: 0 }
+  panels.value.forEach((panel) => { summary[panelStateKey(panel)] += 1 })
+  return summary
+})
+const inspectionPanels = computed(() => {
+  const priority = { danger: 0, warning: 1, healthy: 2, disabled: 3 }
+  return panels.value
+    .filter((panel) => inspectionFilter.value === 'all' || panelStateKey(panel) === inspectionFilter.value)
+    .slice()
+    .sort((left, right) => priority[panelStateKey(left)] - priority[panelStateKey(right)] || Number(left.sort || 0) - Number(right.sort || 0))
+})
 const visibleDashboards = computed(() => dashboards.value.filter((item) => (item.layout || 'grid') === pageLayout.value))
 const isListLayout = computed(() => pageMode.value === 'inspection')
 const isK8sDashboard = computed(() => {
@@ -318,6 +331,13 @@ function panelState(panel) {
   if (panelResults[panel.id]?.error) return '查询失败'
   if (!panelRows(panel).length) return '暂无数据'
   return '实时'
+}
+
+function panelStateKey(panel) {
+  if (panel.status !== 1) return 'disabled'
+  if (panelResults[panel.id]?.error) return 'danger'
+  if (!panelRows(panel).length) return 'warning'
+  return 'healthy'
 }
 
 function panelStateType(panel) {
@@ -578,6 +598,23 @@ async function refreshPanel(row) {
   lastRefreshAt.value = new Date()
 }
 
+async function refreshProblemPanels() {
+  const items = activePanels.value.filter((panel) => ['danger', 'warning'].includes(panelStateKey(panel)))
+  if (!items.length) return ElMessage.success('当前没有需要复核的异常面板')
+  const version = ++panelRefreshVersion
+  await runPanelQueue(items, version, true)
+  if (version === panelRefreshVersion) lastRefreshAt.value = new Date()
+}
+
+async function copyPromql(promql) {
+  try {
+    await navigator.clipboard.writeText(promql || '')
+    ElMessage.success('PromQL 已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制 PromQL')
+  }
+}
+
 function panelQueryPayload(id) {
 	const endAt = Math.floor(Date.now() / 1000)
 	const startAt = endAt - timeRangeSeconds.value
@@ -798,6 +835,19 @@ onBeforeUnmount(() => {
       <el-empty v-else-if="!panels.length" description="当前大屏还没有面板，可以新增面板或使用模板创建" />
 
       <section v-else-if="isListLayout" class="inspection-list">
+        <div class="inspection-command-bar">
+          <div class="inspection-filter">
+            <button :class="{ active: inspectionFilter === 'all' }" @click="inspectionFilter = 'all'">全部 {{ panels.length }}</button>
+            <button :class="{ active: inspectionFilter === 'danger' }" @click="inspectionFilter = 'danger'">异常 {{ inspectionSummary.danger }}</button>
+            <button :class="{ active: inspectionFilter === 'warning' }" @click="inspectionFilter = 'warning'">待核查 {{ inspectionSummary.warning }}</button>
+            <button :class="{ active: inspectionFilter === 'healthy' }" @click="inspectionFilter = 'healthy'">正常 {{ inspectionSummary.healthy }}</button>
+          </div>
+          <div class="inspection-command-actions">
+            <span>异常优先排序 · 当前展示 {{ inspectionPanels.length }} 项</span>
+            <el-button @click="refreshProblemPanels" :disabled="!activePanels.length">复核异常</el-button>
+            <el-button type="primary" @click="refreshAllPanels" :disabled="!activePanels.length">执行巡检</el-button>
+          </div>
+        </div>
         <div class="inspection-head">
           <div>
             <h3>巡检面板</h3>
@@ -805,7 +855,7 @@ onBeforeUnmount(() => {
           </div>
           <el-button @click="refreshAllPanels" :disabled="!activePanels.length">执行巡检</el-button>
         </div>
-        <el-table :data="panels" class="inspection-table" row-key="id">
+        <el-table :data="inspectionPanels" class="inspection-table" row-key="id" empty-text="当前筛选条件下暂无面板">
           <el-table-column label="面板" min-width="180">
             <template #default="{ row }">
               <div class="inspection-name">
@@ -850,7 +900,20 @@ onBeforeUnmount(() => {
         </el-table>
       </section>
 
-      <section v-else class="panel-grid" :class="{ 'k8s-panel-grid': isK8sDashboard }">
+      <section v-else class="dashboard-grid-shell">
+        <div class="dashboard-grid-toolbar">
+          <div class="dashboard-grid-status">
+            <span class="status-chip healthy"><i></i>正常 {{ inspectionSummary.healthy }}</span>
+            <span class="status-chip warning"><i></i>待确认 {{ inspectionSummary.warning }}</span>
+            <span class="status-chip danger"><i></i>异常 {{ inspectionSummary.danger }}</span>
+            <span class="status-chip muted"><i></i>已停用 {{ inspectionSummary.disabled }}</span>
+          </div>
+          <div class="dashboard-grid-actions">
+            <span>最近刷新 {{ lastRefreshText }}</span>
+            <el-button size="small" @click="refreshProblemPanels" :disabled="!activePanels.length">复核异常</el-button>
+          </div>
+        </div>
+        <div class="panel-grid" :class="{ 'k8s-panel-grid': isK8sDashboard }">
         <div
           v-for="panel in panels"
           :key="panel.id"
@@ -969,6 +1032,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="promql">{{ panel.promql }}</div>
           </template>
+        </div>
         </div>
       </section>
     </main>
@@ -1279,6 +1343,48 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #7282a0;
 }
+.inspection-command-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: -2px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #e0e9f6;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #f8fbff, #f1f6ff);
+}
+.inspection-command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #7282a0;
+  font-size: 12px;
+}
+.inspection-filter {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #dce7f7;
+  border-radius: 10px;
+  background: #eef4fc;
+}
+.inspection-filter button {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #667895;
+  cursor: pointer;
+  font-size: 12px;
+}
+.inspection-filter button:hover,
+.inspection-filter button.active {
+  background: #fff;
+  color: #2463d4;
+  box-shadow: 0 2px 6px rgba(36, 99, 212, 0.12);
+}
 .inspection-table {
   border-radius: 14px;
   overflow: hidden;
@@ -1325,6 +1431,52 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, minmax(240px, 1fr));
   gap: 14px;
 }
+.dashboard-grid-shell {
+  min-width: 0;
+}
+.dashboard-grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(169, 190, 222, 0.72);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(12px);
+}
+.dashboard-grid-status,
+.dashboard-grid-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dashboard-grid-actions {
+  justify-content: flex-end;
+  color: #71829e;
+  font-size: 12px;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.status-chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-chip.healthy { color: #16834b; background: #eaf8ef; }
+.status-chip.warning { color: #a56608; background: #fff7df; }
+.status-chip.danger { color: #c24141; background: #fff0f0; }
+.status-chip.muted { color: #64748b; background: #eef2f7; }
 .k8s-dashboard-main {
   background:
     radial-gradient(circle at 10% 8%, rgba(34, 197, 94, 0.12), transparent 24%),
@@ -2300,6 +2452,16 @@ onBeforeUnmount(() => {
 .observability-canvas:fullscreen .dashboard-summary {
   display: none;
 }
+.observability-canvas:fullscreen .dashboard-grid-toolbar {
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-color: rgba(96, 165, 250, 0.24);
+  background: rgba(15, 23, 42, 0.9);
+}
+.observability-canvas:fullscreen .status-chip {
+  padding: 3px 7px;
+  font-size: 10px;
+}
 .observability-canvas:fullscreen .panel-grid {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
@@ -2412,5 +2574,17 @@ onBeforeUnmount(() => {
   .dashboard-summary {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
+  .dashboard-grid-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dashboard-grid-actions { justify-content: flex-start; }
+}
+@media (max-width: 760px) {
+  .inspection-command-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .inspection-command-actions { justify-content: flex-start; }
 }
 </style>

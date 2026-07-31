@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteMonitorLogShortcut,
@@ -13,6 +14,7 @@ import {
 } from '../../api/monitor'
 
 const loading = ref(false)
+const route = useRoute()
 const datasources = ref([])
 const datasourceId = ref()
 const indexOptions = ref([])
@@ -339,6 +341,11 @@ watch(datasourceId, async () => {
 
 onMounted(async () => {
   await loadDatasources()
+  const routeDatasourceId = Number(route.query.datasourceId)
+  if (routeDatasourceId && datasources.value.some((item) => Number(item.id) === routeDatasourceId)) {
+    datasourceId.value = routeDatasourceId
+  }
+  if (route.query.query) keyword.value = String(route.query.query)
   await loadIndices()
   await loadStreams()
   await loadShortcuts()
