@@ -13,7 +13,7 @@ const workload = computed(() => data.value.workload || {}); const services = com
 const rollbackSaving = ref(false)
 const canRollback = computed(() => String(workload.value.type || params.value.workloadType || '').toLowerCase() === 'deployment')
 function healthy(item) { if (typeof item?.healthy === 'boolean') return item.healthy; const [ready, expected] = String(item?.ready || '').split('/').map(Number); return expected > 0 && ready === expected && Number(item.available) >= expected }
-function viewLogs(pod) { const target = { ...params.value, podName: pod.name }; if (props.inline) emit('show-logs', target); else router.push({ path: '/assets/services/logs', query: target }) }
+function viewLogs(pod) { const target = { ...params.value, podName: pod.name }; if (props.inline) emit('show-logs', target); else router.push({ path: '/containers/services/logs', query: target }) }
 async function load() { loading.value = true; try { data.value = await queryAssetServiceWorkloadTopology(params.value) } finally { loading.value = false } }
 async function rollbackRevision(row) { if (!row.revision || row.current || rollbackSaving.value) return; await ElMessageBox.confirm(`将 ${workload.value.name || params.value.workloadName} 回滚至 ReplicaSet ${row.name}（修订版本 ${row.revision}）。Kubernetes 会创建一次新的发布版本，确认继续？`, '确认回滚版本', { type: 'warning', confirmButtonText: '确认回滚', cancelButtonText: '取消' }); rollbackSaving.value = true; try { await rollbackAssetServiceWorkload({ ...params.value, revision: row.revision }); ElMessage.success(`已提交回滚到版本 ${row.revision}`); await load() } finally { rollbackSaving.value = false } }
 onMounted(load)

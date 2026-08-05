@@ -45,15 +45,15 @@ const CLUSTER_KEY = 'ops-admin-k8s-current-cluster'
 const NAMESPACE_FILTER_KEY = 'ops-admin-k8s-namespace-filter'
 
 const sectionTabs = [
-  { key: 'overview', labelKey: 'k8sOverview', path: '/assets/k8s/overview', icon: Histogram },
-  { key: 'nodes', labelKey: 'k8sNodes', path: '/assets/k8s/nodes', icon: Monitor },
-  { key: 'namespaces', labelKey: 'k8sNamespaces', path: '/assets/k8s/namespaces', icon: Grid },
-  { key: 'workloads', labelKey: 'k8sWorkloads', path: '/assets/k8s/workloads', icon: SetUp },
-  { key: 'pods', labelKey: 'k8sPods', path: '/assets/k8s/pods', icon: Promotion },
-  { key: 'services', labelKey: 'k8sServices', path: '/assets/k8s/services', icon: Connection },
-  { key: 'ingresses', labelKey: 'k8sIngresses', path: '/assets/k8s/ingresses', icon: Connection },
-  { key: 'advanced-network', labelKey: 'k8sAdvancedNetwork', path: '/assets/k8s/advanced-network', icon: Connection },
-  { key: 'config-storage', labelKey: 'k8sConfigStorage', path: '/assets/k8s/config-storage', icon: Grid }
+  { key: 'overview', labelKey: 'k8sOverview', path: '/containers/k8s/overview', icon: Histogram },
+  { key: 'nodes', labelKey: 'k8sNodes', path: '/containers/k8s/nodes', icon: Monitor },
+  { key: 'namespaces', labelKey: 'k8sNamespaces', path: '/containers/k8s/namespaces', icon: Grid },
+  { key: 'workloads', labelKey: 'k8sWorkloads', path: '/containers/k8s/workloads', icon: SetUp },
+  { key: 'pods', labelKey: 'k8sPods', path: '/containers/k8s/pods', icon: Promotion },
+  { key: 'services', labelKey: 'k8sServices', path: '/containers/k8s/services', icon: Connection },
+  { key: 'ingresses', labelKey: 'k8sIngresses', path: '/containers/k8s/ingresses', icon: Connection },
+  { key: 'advanced-network', labelKey: 'k8sAdvancedNetwork', path: '/containers/k8s/advanced-network', icon: Connection },
+  { key: 'config-storage', labelKey: 'k8sConfigStorage', path: '/containers/k8s/config-storage', icon: Grid }
 ]
 
 const loading = ref(false)

@@ -162,7 +162,7 @@ function handleContainerChange() {
 }
 
 function goBack() {
-  router.push('/assets/k8s/pods')
+  router.push('/containers/k8s/pods')
 }
 
 function disposeTerminal() {

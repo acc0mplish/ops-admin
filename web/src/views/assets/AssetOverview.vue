@@ -65,7 +65,7 @@ const summaryCards = computed(() => {
       value: summary.k8sClusterTotal || 0,
       note: `运行中 ${summary.k8sClusterOnline || 0} / 节点 ${summary.k8sNodeTotal || 0}`,
       icon: Grid,
-      action: () => router.push('/assets/k8s/clusters')
+      action: () => router.push('/containers/k8s/clusters')
     }
   ]
 })
@@ -176,7 +176,7 @@ function openDatabase(item) {
 }
 
 function openCluster(item) {
-  router.push(`/assets/k8s/clusters/${item.id}/detail`)
+  router.push(`/containers/k8s/clusters/${item.id}/detail`)
 }
 
 function openHost(item) {
@@ -352,7 +352,7 @@ onMounted(loadOverview)
               <h3>K8s 集群状态</h3>
               <p>聚合展示当前纳管集群、节点数和基础连接状态。</p>
             </div>
-            <el-button link type="primary" @click="router.push('/assets/k8s/clusters')">集群管理</el-button>
+            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">集群管理</el-button>
           </div>
 
           <el-table :data="overview.recentClusters || []" size="small" class="compact-table">

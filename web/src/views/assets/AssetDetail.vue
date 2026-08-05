@@ -19,7 +19,7 @@ const { environmentName } = useEnvironmentOptions()
 const config = computed(() => ({
   host: { title: '主机详情', list: '/assets/server/hosts', name: asset.value.hostName, env: asset.value.environment },
   database: { title: '数据库详情', list: '/assets/databases', name: asset.value.name, env: asset.value.env },
-  k8s: { title: 'K8s 集群详情', list: '/assets/k8s/clusters', name: asset.value.name, env: asset.value.env }
+  k8s: { title: 'K8s 集群详情', list: '/containers/k8s/clusters', name: asset.value.name, env: asset.value.env }
 }[props.resourceType]))
 
 const status = computed(() => {
@@ -73,7 +73,7 @@ async function loadData() {
 
 function enterConsole() {
   if (props.resourceType === 'database') router.push({ name: 'DatabaseWorkbench', params: { id: route.params.id } })
-  if (props.resourceType === 'k8s') router.push({ path: '/assets/k8s/overview', query: { clusterId: route.params.id } })
+  if (props.resourceType === 'k8s') router.push({ path: '/containers/k8s/overview', query: { clusterId: route.params.id } })
 }
 
 onMounted(loadData)

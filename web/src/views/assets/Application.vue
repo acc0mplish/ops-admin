@@ -89,7 +89,7 @@ async function remove(row) {
   await loadData()
 }
 
-function openTopology(row) { router.push({ path: '/assets/services/topology', query: { serviceId: row.id } }) }
+function openTopology(row) { router.push({ path: '/containers/services/topology', query: { serviceId: row.id } }) }
 
 onMounted(async () => {
   const [clusterData] = await Promise.all([queryK8sClusterList(), loadData()])

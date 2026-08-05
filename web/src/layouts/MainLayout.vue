@@ -68,6 +68,7 @@ const breadcrumbs = computed(() => buildBreadcrumbs(sidebarMenus.value, route.pa
 const appNavigationAccent = {
   console: '#5b6cf9',
   assets: '#11a765',
+  containers: '#0ea5e9',
   ops: '#f59e0b',
   applications: '#3b82f6',
   notify: '#ec4899',
@@ -78,6 +79,7 @@ const appNavigationAccent = {
 const appNavigationSoftAccent = {
   console: 'rgba(91, 108, 249, 0.13)',
   assets: 'rgba(17, 167, 101, 0.13)',
+  containers: 'rgba(14, 165, 233, 0.13)',
   ops: 'rgba(245, 158, 11, 0.14)',
   applications: 'rgba(59, 130, 246, 0.13)',
   notify: 'rgba(236, 72, 153, 0.13)',
@@ -459,7 +461,7 @@ onMounted(() => {
           </div>
           <el-popover v-model:visible="appNavigationVisible" placement="bottom-start" :width="820" trigger="click" popper-class="platform-nav-popper">
             <template #reference>
-              <button type="button" class="platform-nav-trigger" :aria-label="t('appSwitch')">
+              <button type="button" class="platform-nav-trigger" :aria-label="t('appSwitch')" :title="t('appSwitch')">
                 <el-icon><Grid /></el-icon>
                 <span>平台导航</span>
                 <el-icon class="platform-nav-arrow"><ArrowDown /></el-icon>
@@ -768,26 +770,30 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
   margin-left: auto;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 10px;
-  color: #eef2ff;
-  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(177, 197, 255, 0.58);
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(112, 134, 255, 0.78), rgba(91, 108, 249, 0.48));
+  box-shadow: 0 0 0 3px rgba(130, 151, 255, 0.14), 0 8px 18px rgba(6, 16, 66, 0.28);
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-  transition: 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
+.platform-nav-trigger .el-icon { font-size: 19px; }
 .platform-nav-trigger > span,
 .platform-nav-trigger .platform-nav-arrow { display: none; }
 .platform-nav-trigger:hover {
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.34);
-  background: rgba(255, 255, 255, 0.17);
+  border-color: #fff;
+  background: linear-gradient(135deg, #7c8eff, #596cf4);
+  box-shadow: 0 0 0 4px rgba(141, 160, 255, 0.22), 0 12px 24px rgba(6, 16, 66, 0.34);
+  transform: translateY(-1px);
 }
 .platform-nav-arrow { font-size: 11px; }
 .platform-navigation { padding: 16px; }

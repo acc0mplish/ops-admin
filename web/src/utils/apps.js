@@ -115,88 +115,37 @@ export const appDefinitions = [
         icon: 'Switch',
         children: []
       },
+    ]
+  },
+  {
+    key: 'containers',
+    name: '容器管理',
+    labelKey: 'appContainers',
+    icon: 'Box',
+    defaultRoute: '/containers/k8s/clusters',
+    menus: [
       {
         title: '服务管理',
-        path: '/assets/services',
+        path: '/containers/services',
         icon: 'Grid',
         children: []
       },
       {
-        title: 'K8s 管理',
+        title: 'Kubernetes 管理',
         titleKey: 'k8sManagement',
-        path: '/assets/k8s',
+        path: '/containers/k8s',
         icon: 'Connection',
         children: [
-          {
-            title: '集群管理',
-            titleKey: 'k8sClusters',
-            path: '/assets/k8s/clusters',
-            icon: 'FolderOpened',
-            children: []
-          },
-          {
-            title: '集群概览',
-            titleKey: 'k8sOverview',
-            path: '/assets/k8s/overview',
-            icon: 'DataAnalysis',
-            children: []
-          },
-          {
-            title: '节点管理',
-            titleKey: 'k8sNodes',
-            path: '/assets/k8s/nodes',
-            icon: 'Monitor',
-            children: []
-          },
-          {
-            title: '命名空间',
-            titleKey: 'k8sNamespaces',
-            path: '/assets/k8s/namespaces',
-            icon: 'Grid',
-            children: []
-          },
-          {
-            title: '工作负载',
-            titleKey: 'k8sWorkloads',
-            path: '/assets/k8s/workloads',
-            icon: 'SetUp',
-            children: []
-          },
-          {
-            title: 'Pod 管理',
-            titleKey: 'k8sPods',
-            path: '/assets/k8s/pods',
-            icon: 'Box',
-            children: []
-          },
-          {
-            title: '服务',
-            titleKey: 'k8sServices',
-            path: '/assets/k8s/services',
-            icon: 'Share',
-            children: []
-          },
-          {
-            title: 'Ingress',
-            titleKey: 'k8sIngresses',
-            path: '/assets/k8s/ingresses',
-            icon: 'Connection',
-            children: []
-          },
-          {
-            title: '高级网络',
-            titleKey: 'k8sAdvancedNetwork',
-            path: '/assets/k8s/advanced-network',
-            icon: 'Connection',
-            children: []
-          },
-          {
-            title: '配置与存储',
-            titleKey: 'k8sConfigStorage',
-            path: '/assets/k8s/config-storage',
-            icon: 'Files',
-            children: []
-          }
+          { title: '集群管理', titleKey: 'k8sClusters', path: '/containers/k8s/clusters', icon: 'FolderOpened', children: [] },
+          { title: '集群概览', titleKey: 'k8sOverview', path: '/containers/k8s/overview', icon: 'DataAnalysis', children: [] },
+          { title: '节点管理', titleKey: 'k8sNodes', path: '/containers/k8s/nodes', icon: 'Monitor', children: [] },
+          { title: '命名空间', titleKey: 'k8sNamespaces', path: '/containers/k8s/namespaces', icon: 'Grid', children: [] },
+          { title: '工作负载', titleKey: 'k8sWorkloads', path: '/containers/k8s/workloads', icon: 'SetUp', children: [] },
+          { title: 'Pod 管理', titleKey: 'k8sPods', path: '/containers/k8s/pods', icon: 'Box', children: [] },
+          { title: '服务', titleKey: 'k8sServices', path: '/containers/k8s/services', icon: 'Share', children: [] },
+          { title: 'Ingress', titleKey: 'k8sIngresses', path: '/containers/k8s/ingresses', icon: 'Connection', children: [] },
+          { title: '高级网络', titleKey: 'k8sAdvancedNetwork', path: '/containers/k8s/advanced-network', icon: 'Connection', children: [] },
+          { title: '配置与存储', titleKey: 'k8sConfigStorage', path: '/containers/k8s/config-storage', icon: 'Files', children: [] }
         ]
       }
     ]
@@ -572,6 +521,9 @@ export function getAppByKey(key) {
 export function getAppByRoute(path) {
   if (path.startsWith('/assets')) {
     return getAppByKey('assets')
+  }
+  if (path.startsWith('/containers')) {
+    return getAppByKey('containers')
   }
   if (path.startsWith('/ops')) {
     return getAppByKey('ops')

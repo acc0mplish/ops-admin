@@ -83,6 +83,7 @@ const messages = {
     appSwitch: '应用切换',
     appConsole: '控制台',
     appAssets: '资产管理',
+    appContainers: '容器管理',
     appOps: '标准运维',
     appApplications: '应用中心',
     appNotify: '消息通知',
@@ -288,6 +289,7 @@ const messages = {
     appSwitch: 'Applications',
     appConsole: 'Console',
     appAssets: 'Asset Management',
+    appContainers: 'Container Management',
     appOps: 'Standard Operations',
     appApplications: 'Application Center',
     appMonitor: 'Monitoring Center',
@@ -972,19 +974,19 @@ const routeTitleMap = {
   '/assets/databases/import': 'databaseImport',
   '/assets/databases/backups': 'databaseBackup',
   '/assets/gateways': 'gatewayManagement',
-  '/assets/k8s': 'k8sManagement',
-  '/assets/k8s/clusters': 'k8sClusters',
-  '/assets/k8s/overview': 'k8sOverview',
-  '/assets/k8s/nodes': 'k8sNodes',
-  '/assets/k8s/namespaces': 'k8sNamespaces',
-  '/assets/k8s/workloads': 'k8sWorkloads',
-  '/assets/k8s/pods': 'k8sPods',
-  '/assets/k8s/network': 'k8sServices',
-  '/assets/k8s/services': 'k8sServices',
-  '/assets/k8s/ingresses': 'k8sIngresses',
-  '/assets/k8s/advanced-network': 'k8sAdvancedNetwork',
-  '/assets/k8s/config-storage': 'k8sConfigStorage',
-  '/assets/k8s/pod-terminal': 'k8sPodTerminal',
+  '/containers/k8s': 'k8sManagement',
+  '/containers/k8s/clusters': 'k8sClusters',
+  '/containers/k8s/overview': 'k8sOverview',
+  '/containers/k8s/nodes': 'k8sNodes',
+  '/containers/k8s/namespaces': 'k8sNamespaces',
+  '/containers/k8s/workloads': 'k8sWorkloads',
+  '/containers/k8s/pods': 'k8sPods',
+  '/containers/k8s/network': 'k8sServices',
+  '/containers/k8s/services': 'k8sServices',
+  '/containers/k8s/ingresses': 'k8sIngresses',
+  '/containers/k8s/advanced-network': 'k8sAdvancedNetwork',
+  '/containers/k8s/config-storage': 'k8sConfigStorage',
+  '/containers/k8s/pod-terminal': 'k8sPodTerminal',
   '/assets/hosts': 'hostManagement',
   '/assets/tags': 'assetsTags',
   '/ops/overview': 'opsOverview',
@@ -1035,8 +1037,8 @@ const routeTitleMap = {
 }
 
 export function translateRoute(path, fallback = '') {
-  const normalizedPath = path.startsWith('/assets/k8s/pod-terminal/')
-    ? '/assets/k8s/pod-terminal'
+  const normalizedPath = path.startsWith('/containers/k8s/pod-terminal/')
+    ? '/containers/k8s/pod-terminal'
     : /^\/assets\/databases\/\d+\/workbench$/.test(path)
       ? '/assets/databases/workbench'
       : path
