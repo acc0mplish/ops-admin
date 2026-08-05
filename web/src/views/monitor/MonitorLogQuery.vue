@@ -200,6 +200,15 @@ async function loadStreams() {
   }
 }
 
+async function handleTopicChange() {
+  // Topic 是独立的日志范围。切换后不复用上一 Topic 的 LogsQL 条件，避免误筛选。
+  keyword.value = ''
+  selectedHistogramBucket.value = null
+  if (!hasSelectedOpLogStream.value) opLogFieldDrilldownEnabled.value = false
+  await loadStreams()
+  await search(1)
+}
+
 async function search(targetPage = 1) {
   if (!datasourceId.value) return ElMessage.warning('请先配置并选择日志数据源')
   if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的开始和结束日期时间')
@@ -325,10 +334,6 @@ watch(timeRange, async (value) => {
     await loadStreams()
   }
 })
-watch(selectedTopics, () => {
-  if (!hasSelectedOpLogStream.value) opLogFieldDrilldownEnabled.value = false
-  search()
-})
 watch(datasourceId, async () => {
   selectedTopics.value = []
   opLogFieldDrilldownEnabled.value = false
@@ -367,7 +372,7 @@ onBeforeUnmount(() => {
         </el-select>
         <template v-if="isVictoriaLogs">
           <label>Stream</label>
-          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" placeholder="选择 Topic" style="width: 340px">
+          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" placeholder="选择 Topic" style="width: 340px" @change="handleTopicChange">
             <el-option v-for="stream in streamOptions" :key="stream.value" :label="stream.value" :value="stream.value">
               <div class="stream-option"><span>{{ stream.value }}</span><small>{{ Number(stream.hits || 0).toLocaleString() }} 条</small></div>
             </el-option>

@@ -58,6 +58,7 @@ import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
 import NotifySendLog from '../views/notify/NotifySendLog.vue'
 import MonitorOverview from '../views/monitor/MonitorOverview.vue'
+import MonitorCommandCenter from '../views/monitor/MonitorCommandCenter.vue'
 import MonitorDatasource from '../views/monitor/MonitorDatasource.vue'
 import MonitorQuery from '../views/monitor/MonitorQuery.vue'
 import MonitorLogQuery from '../views/monitor/MonitorLogQuery.vue'
@@ -439,6 +440,11 @@ const routes = [
           app: 'monitor',
           summary: '统一查看数据源、规则、当前告警和最近事件。'
         }
+      },
+      {
+        path: '/monitor/command-center',
+        component: MonitorCommandCenter,
+        meta: { title: '智能大屏', app: 'monitor', summary: '聚合资产、告警、监控与资源热点的全屏运维驾驶舱。' }
       },
       {
         path: '/monitor/datasources',

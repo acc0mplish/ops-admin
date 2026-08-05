@@ -34,6 +34,19 @@ func (ctl *Controller) GetMonitorOverview(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+// GetMonitorCommandCenter returns the compact data set required by the
+// monitoring command center. It intentionally aggregates native platform
+// assets and monitoring data in one request so the screen has a stable first
+// paint and does not fan out into a large number of browser requests.
+func (ctl *Controller) GetMonitorCommandCenter(c *gin.Context) {
+	data, err := ctl.service.GetMonitorCommandCenter()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func parseMonitorOverviewDate(value string, endOfDay bool) (*time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {

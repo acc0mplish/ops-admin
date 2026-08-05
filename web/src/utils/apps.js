@@ -486,6 +486,12 @@ export const appDefinitions = [
         children: []
       },
       {
+        title: '智能大屏',
+        path: '/monitor/command-center',
+        icon: 'DataBoard',
+        children: []
+      },
+      {
         title: '数据源管理',
         titleKey: 'monitorDatasources',
         path: '/monitor/datasources',

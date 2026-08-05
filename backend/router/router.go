@@ -337,6 +337,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/notify/send-log/retry", ctl.RetryNotifySendLog)
 
 		authGroup.GET("/monitor/overview", ctl.GetMonitorOverview)
+		authGroup.GET("/monitor/command-center", ctl.GetMonitorCommandCenter)
 		authGroup.GET("/monitor/datasource/list", ctl.GetMonitorDatasourceList)
 		authGroup.GET("/monitor/datasource/options", ctl.GetMonitorDatasourceOptions)
 		authGroup.GET("/monitor/datasource/info", ctl.GetMonitorDatasourceInfo)

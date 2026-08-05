@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Check, Expand, Fold, House, Switch } from '@element-plus/icons-vue'
+import { ArrowDown, Check, Expand, Fold, Grid, House } from '@element-plus/icons-vue'
 import { profile } from '../api/system'
 import {
   getMenus,
@@ -28,6 +28,7 @@ const collapsed = ref(getSidebarCollapsed())
 const layoutConfig = ref(getSystemConfig())
 const tagViews = ref(loadTags())
 const appDrawerVisible = ref(false)
+const appNavigationVisible = ref(false)
 const tagContextMenu = ref({
   visible: false,
   x: 0,
@@ -41,6 +42,12 @@ const siteName = computed(() => layoutConfig.value.siteName || 'Ops Admin')
 const sidebarTheme = computed(() => layoutConfig.value.sidebarTheme || 'dark')
 const currentApp = computed(() => getAppByRoute(route.path))
 const currentAppLabel = computed(() => t(currentApp.value.labelKey || 'appConsole'))
+const appNavigationItems = computed(() => appDefinitions.map((app) => ({
+  ...app,
+  menuCount: countAppMenus(app),
+  accent: appNavigationAccent[app.key] || '#5b6cf9',
+  softAccent: appNavigationSoftAccent[app.key] || 'rgba(91, 108, 249, 0.12)'
+})))
 const currentTitle = computed(() => translateRoute(route.path, route.meta.title || findMenuTitle(sidebarMenus.value, route.path) || siteName.value))
 const logoImage = computed(() => {
   if (layoutConfig.value.logoType === 'upload' || layoutConfig.value.logoType === 'url') {
@@ -57,6 +64,31 @@ const sidebarMenus = computed(() => {
 })
 
 const breadcrumbs = computed(() => buildBreadcrumbs(sidebarMenus.value, route.path, currentTitle.value))
+
+const appNavigationAccent = {
+  console: '#5b6cf9',
+  assets: '#11a765',
+  ops: '#f59e0b',
+  applications: '#3b82f6',
+  notify: '#ec4899',
+  integration: '#14b8a6',
+  monitor: '#6366f1'
+}
+
+const appNavigationSoftAccent = {
+  console: 'rgba(91, 108, 249, 0.13)',
+  assets: 'rgba(17, 167, 101, 0.13)',
+  ops: 'rgba(245, 158, 11, 0.14)',
+  applications: 'rgba(59, 130, 246, 0.13)',
+  notify: 'rgba(236, 72, 153, 0.13)',
+  integration: 'rgba(20, 184, 166, 0.13)',
+  monitor: 'rgba(99, 102, 241, 0.13)'
+}
+
+function countAppMenus(app) {
+  const countTree = (items = []) => items.reduce((total, item) => total + 1 + countTree(item.children), 0)
+  return app.menuSource === 'backend' ? countTree(rawMenus.value) : countTree(app.menus)
+}
 
 function loadTags() {
   const defaults = [{ title: t('dashboard'), path: '/dashboard', affix: true }]
@@ -354,7 +386,7 @@ function switchLocale(value) {
 function switchApp(key) {
   const targetApp = appDefinitions.find((item) => item.key === key) || appDefinitions[0]
   setCurrentApp(targetApp.key)
-  appDrawerVisible.value = false
+  appNavigationVisible.value = false
   if (route.path !== targetApp.defaultRoute) {
     router.push(targetApp.defaultRoute)
   }
@@ -416,7 +448,7 @@ onMounted(() => {
 
 <template>
   <el-container class="layout-shell" :class="[`theme-${sidebarTheme}`]">
-    <el-aside :width="collapsed ? '78px' : '236px'" class="layout-aside">
+    <el-aside :width="collapsed ? '78px' : '200px'" class="layout-aside" :class="{ 'is-collapsed': collapsed }">
       <div class="brand-box">
         <div class="brand-row">
           <img v-if="logoImage" :src="logoImage" alt="logo" class="brand-image" />
@@ -425,11 +457,42 @@ onMounted(() => {
             <strong>{{ siteName }}</strong>
             <span>{{ layoutConfig.siteSlogan || '个人运维管理平台' }}</span>
           </div>
-          <el-tooltip v-if="!collapsed" :content="t('appSwitch')" placement="right">
-            <button type="button" class="brand-switch-button" @click="appDrawerVisible = true">
-              <el-icon><Switch /></el-icon>
-            </button>
-          </el-tooltip>
+          <el-popover v-model:visible="appNavigationVisible" placement="bottom-start" :width="820" trigger="click" popper-class="platform-nav-popper">
+            <template #reference>
+              <button type="button" class="platform-nav-trigger" :aria-label="t('appSwitch')">
+                <el-icon><Grid /></el-icon>
+                <span>平台导航</span>
+                <el-icon class="platform-nav-arrow"><ArrowDown /></el-icon>
+              </button>
+            </template>
+            <div class="platform-navigation">
+              <div class="platform-navigation-head">
+                <div>
+                  <span>PLATFORM NAVIGATION</span>
+                  <strong>应用平台导航</strong>
+                </div>
+                <small>选择一个应用，切换对应的工作台与菜单</small>
+              </div>
+              <div class="platform-navigation-grid">
+                <button
+                  v-for="app in appNavigationItems"
+                  :key="app.key"
+                  type="button"
+                  class="platform-app-card"
+                  :class="{ active: app.key === currentApp.key }"
+                  :style="{ '--app-nav-accent': app.accent, '--app-nav-soft': app.softAccent }"
+                  @click="switchApp(app.key)"
+                >
+                  <span class="platform-app-icon"><el-icon><component :is="app.icon || House" /></el-icon></span>
+                  <span class="platform-app-copy">
+                    <strong>{{ t(app.labelKey || 'appConsole') }}</strong>
+                    <small>{{ app.menuCount }} 个菜单入口</small>
+                  </span>
+                  <el-icon v-if="app.key === currentApp.key" class="platform-app-check"><Check /></el-icon>
+                </button>
+              </div>
+            </div>
+          </el-popover>
         </div>
       </div>
 
@@ -554,7 +617,7 @@ onMounted(() => {
       </el-main>
     </el-container>
 
-    <el-drawer v-model="appDrawerVisible" :size="320" direction="ltr" class="app-drawer" :with-header="false">
+    <el-drawer v-if="false" v-model="appDrawerVisible" :size="320" direction="ltr" class="app-drawer" :with-header="false">
       <div class="app-drawer-header">
         <span>{{ t('appSwitch') }}</span>
         <strong>{{ currentAppLabel }}</strong>
@@ -613,27 +676,38 @@ onMounted(() => {
 }
 
 .brand-box {
-  padding: 18px 12px 14px;
-  min-height: 74px;
+  padding: 16px 9px 12px;
+  min-height: 68px;
   overflow: hidden;
 }
 
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
+}
+.layout-aside.is-collapsed .brand-box {
+  min-height: 104px;
+}
+.layout-aside.is-collapsed .brand-row {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+}
+.layout-aside.is-collapsed .platform-nav-trigger {
+  margin-left: 0;
 }
 
 .brand-mark,
 .brand-image {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  max-width: 42px;
-  min-height: 42px;
-  max-height: 42px;
-  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  max-width: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  border-radius: 11px;
   box-shadow: 0 10px 22px rgba(35, 178, 255, 0.28);
 }
 
@@ -659,7 +733,8 @@ onMounted(() => {
 
 .brand-text strong {
   color: #fff;
-  font-size: 18px;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 .brand-text span {
@@ -687,6 +762,134 @@ onMounted(() => {
 .brand-switch-button:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.14);
+}
+
+.platform-nav-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  color: #eef2ff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: 0.18s ease;
+}
+.platform-nav-trigger > span,
+.platform-nav-trigger .platform-nav-arrow { display: none; }
+.platform-nav-trigger:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.17);
+}
+.platform-nav-arrow { font-size: 11px; }
+.platform-navigation { padding: 16px; }
+.platform-navigation-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 2px 2px 14px;
+}
+.platform-navigation-head span,
+.platform-navigation-head strong { display: block; }
+.platform-navigation-head span {
+  color: #8493ab;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.platform-navigation-head strong {
+  margin-top: 4px;
+  color: #172b4d;
+  font-size: 18px;
+}
+.platform-navigation-head small {
+  color: #7a8aa3;
+  font-size: 12px;
+}
+.platform-navigation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e3eaf5;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fbfdff, #f4f8fd);
+}
+.platform-app-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 78px;
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #172b4d;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+.platform-app-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--app-nav-accent) 34%, #dce6f3);
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(52, 78, 117, 0.1);
+}
+.platform-app-card.active {
+  border-color: color-mix(in srgb, var(--app-nav-accent) 45%, #dce6f3);
+  background: linear-gradient(110deg, var(--app-nav-soft), rgba(255, 255, 255, 0.94));
+  box-shadow: inset 0 0 0 1px var(--app-nav-soft);
+}
+.platform-app-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--app-nav-accent);
+  box-shadow: 0 8px 16px color-mix(in srgb, var(--app-nav-accent) 28%, transparent);
+  font-size: 21px;
+}
+.platform-app-copy { min-width: 0; }
+.platform-app-copy strong,
+.platform-app-copy small { display: block; }
+.platform-app-copy strong {
+  overflow: hidden;
+  color: #1e3559;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.platform-app-copy small {
+  margin-top: 5px;
+  color: #8190a9;
+  font-size: 12px;
+}
+.platform-app-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--app-nav-accent);
+  font-size: 15px;
+}
+:global(.platform-nav-popper.el-popper) {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #dce6f3;
+  border-radius: 18px;
+  box-shadow: 0 18px 44px rgba(24, 44, 78, 0.2);
 }
 
 .app-switcher-wrap {
@@ -770,9 +973,14 @@ onMounted(() => {
 
 :deep(.sidebar-menu .el-menu-item),
 :deep(.sidebar-menu .el-sub-menu__title) {
-  margin: 6px 12px;
-  border-radius: 12px;
+  margin: 5px 8px;
+  border-radius: 10px;
   color: #d8defb;
+}
+
+:deep(.sidebar-menu .el-menu-item .el-icon),
+:deep(.sidebar-menu .el-sub-menu__title .el-icon) {
+  margin-right: 8px;
 }
 
 :deep(.sidebar-menu .el-menu-item:hover),

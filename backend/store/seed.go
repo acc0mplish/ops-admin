@@ -326,6 +326,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 			name: "监控中心", url: "/monitor", value: "monitor", icon: "Histogram",
 			children: []menuSeed{
 				{"监控概览", "/monitor/overview", "monitor:overview", "TrendCharts"},
+				{"智能大屏", "/monitor/command-center", "monitor:commandcenter", "DataBoard"},
 				{"数据源管理", "/monitor/datasources", "monitor:datasource:list", "Connection"},
 				{"即时查询", "/monitor/query", "monitor:query", "Search"},
 				{"日志查询", "/monitor/logs", "monitor:logs", "Document"},

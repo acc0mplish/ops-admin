@@ -3603,6 +3603,92 @@ func (s *Service) GetMonitorOverview(startAt, endAt *time.Time) (map[string]any,
 	}, nil
 }
 
+// GetMonitorCommandCenter is the read model for the operations command
+// center. It uses the platform's already-managed asset inventory rather than
+// fabricating geographic data or depending on an external map service.
+func (s *Service) GetMonitorCommandCenter() (map[string]any, error) {
+	overview, err := s.GetMonitorOverview(nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var hostCount, onlineHostCount, databaseCount, connectedDatabaseCount, clusterCount, serviceCount int64
+	_ = s.db.Model(&model.AssetHost{}).Where("status = ?", 1).Count(&hostCount).Error
+	_ = s.db.Model(&model.AssetHost{}).Where("status = ? AND alive_status = ?", 1, 1).Count(&onlineHostCount).Error
+	_ = s.db.Model(&model.AssetDatabase{}).Where("status = ?", 1).Count(&databaseCount).Error
+	_ = s.db.Model(&model.AssetDatabase{}).Where("status = ? AND connect_status = ?", 1, 1).Count(&connectedDatabaseCount).Error
+	_ = s.db.Model(&model.K8sCluster{}).Count(&clusterCount).Error
+	_ = s.db.Model(&model.AssetService{}).Where("status = ?", 1).Count(&serviceCount).Error
+
+	type regionRow struct {
+		Name  string `json:"name"`
+		Count int64  `json:"count"`
+	}
+	regions := make([]regionRow, 0)
+	_ = s.db.Model(&model.AssetHost{}).
+		Select("COALESCE(NULLIF(region, ''), '未分配区域') AS name, COUNT(*) AS count").
+		Where("status = ?", 1).
+		Group("COALESCE(NULLIF(region, ''), '未分配区域')").
+		Order("count DESC, name ASC").
+		Limit(6).
+		Scan(&regions).Error
+
+	type ruleRow struct {
+		Name  string `json:"name"`
+		Count int64  `json:"count"`
+	}
+	topRules := make([]ruleRow, 0)
+	_ = s.db.Model(&model.MonitorAlertEvent{}).
+		Select("COALESCE(NULLIF(rule_name, ''), '未命名规则') AS name, COUNT(*) AS count").
+		Where("status IN ?", []string{"pending", "firing", "claimed"}).
+		Group("COALESCE(NULLIF(rule_name, ''), '未命名规则')").
+		Order("count DESC, name ASC").
+		Limit(5).
+		Scan(&topRules).Error
+
+	type hostRow struct {
+		Name        string    `json:"name"`
+		Region      string    `json:"region"`
+		AliveStatus int       `json:"aliveStatus"`
+		UpdatedAt   time.Time `json:"updatedAt"`
+	}
+	hotHosts := make([]hostRow, 0)
+	_ = s.db.Model(&model.AssetHost{}).
+		Select("host_name AS name, COALESCE(NULLIF(region, ''), '未分配区域') AS region, alive_status, updated_at").
+		Where("status = ?", 1).
+		Order("alive_status ASC, updated_at DESC").
+		Limit(5).
+		Scan(&hotHosts).Error
+
+	recentAlerts := make([]model.MonitorAlertEvent, 0)
+	_ = s.db.Where("status IN ?", []string{"pending", "firing", "claimed"}).
+		Order("last_trigger_at DESC, id DESC").
+		Limit(6).
+		Find(&recentAlerts).Error
+
+	assetTotal := hostCount + databaseCount + clusterCount + serviceCount
+	coverage := 0.0
+	if hostCount > 0 {
+		coverage = float64(onlineHostCount) * 100 / float64(hostCount)
+	}
+	return map[string]any{
+		"overview": overview,
+		"assetSummary": map[string]any{
+			"total": assetTotal, "hosts": hostCount, "onlineHosts": onlineHostCount,
+			"databases": databaseCount, "connectedDatabases": connectedDatabaseCount,
+			"clusters": clusterCount, "services": serviceCount, "coverage": coverage,
+		},
+		"resourceComposition": []map[string]any{
+			{"name": "物理/云主机", "count": hostCount, "tone": "cyan"},
+			{"name": "Kubernetes 集群", "count": clusterCount, "tone": "blue"},
+			{"name": "数据库", "count": databaseCount, "tone": "amber"},
+			{"name": "服务", "count": serviceCount, "tone": "violet"},
+		},
+		"regions": regions, "topRules": topRules, "recentAlerts": recentAlerts,
+		"hotHosts": hotHosts, "refreshedAt": time.Now(),
+	}, nil
+}
+
 func monitorAlertFinishedAt(event model.MonitorAlertEvent) time.Time {
 	if event.RecoveredAt != nil && !event.RecoveredAt.IsZero() {
 		return *event.RecoveredAt
