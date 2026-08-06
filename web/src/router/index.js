@@ -33,6 +33,7 @@ import AssetApplication from '../views/assets/Application.vue'
 import AssetApplicationTopology from '../views/assets/ApplicationTopology.vue'
 import AssetServiceWorkloadDetail from '../views/assets/ServiceWorkloadDetail.vue'
 import AssetServiceWorkloadLogs from '../views/assets/ServiceWorkloadLogs.vue'
+import AssetServiceHealthDiagnosis from '../views/assets/ServiceHealthDiagnosis.vue'
 import OpsScriptLibrary from '../views/ops/OpsScriptLibrary.vue'
 import OpsExecutionHistory from '../views/ops/OpsExecutionHistory.vue'
 import OpsCommandExecute from '../views/ops/OpsCommandExecute.vue'
@@ -216,6 +217,7 @@ const routes = [
         }
       },
       { path: '/containers/services', component: AssetApplication, meta: { title: '服务管理', app: 'containers', summary: '从 Kubernetes 命名空间发现工作负载，并维护业务服务与通信链路。' } },
+      { path: '/containers/services/health-diagnosis', component: AssetServiceHealthDiagnosis, meta: { title: '服务健康诊断', app: 'containers', summary: '选择服务工作负载、Pod、容器和 Java 进程，通过 Arthas 进行运行时诊断。' } },
       { path: '/containers/services/topology', component: AssetApplicationTopology, meta: { title: '服务资源拓扑', app: 'containers', summary: '展示玩家入口、GM 管理、ZooKeeper 和游戏服务通信链路。' } },
       { path: '/containers/services/workload', component: AssetServiceWorkloadDetail, meta: { title: '服务详情', app: 'containers', summary: '展示服务工作负载、Service、Deployment、ReplicaSet 与 Pod 的资源关系。' } },
       { path: '/containers/services/logs', component: AssetServiceWorkloadLogs, meta: { title: '查看日志', app: 'containers', summary: '查看服务工作负载中 Pod 的 Kubernetes 日志。' } },

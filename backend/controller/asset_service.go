@@ -1,12 +1,95 @@
 package controller
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/service"
 )
+
+func (ctl *Controller) GetAssetServiceDiagnosisProcesses(c *gin.Context) {
+	var target service.AssetServiceDiagnosisTarget
+	if err := c.ShouldBindQuery(&target); err != nil {
+		httpx.Failed(c, 400, "invalid diagnosis target")
+		return
+	}
+	data, err := ctl.service.GetAssetServiceDiagnosisProcesses(target)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) GetAssetServiceDiagnosisEnvironment(c *gin.Context) {
+	var target service.AssetServiceDiagnosisTarget
+	if err := c.ShouldBindQuery(&target); err != nil {
+		httpx.Failed(c, 400, "invalid diagnosis target")
+		return
+	}
+	data, err := ctl.service.GetAssetServiceDiagnosisEnvironment(target)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) RunAssetServiceDiagnosis(c *gin.Context) {
+	var target service.AssetServiceDiagnosisTarget
+	if err := c.ShouldBindQuery(&target); err != nil {
+		httpx.Failed(c, 400, "invalid diagnosis target")
+		return
+	}
+	data, err := ctl.service.RunAssetServiceDiagnosis(target)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) DownloadAssetServiceArthas(c *gin.Context) {
+	var target service.AssetServiceDiagnosisTarget
+	if err := c.ShouldBindJSON(&target); err != nil {
+		httpx.Failed(c, 400, "invalid diagnosis target")
+		return
+	}
+	data, err := ctl.service.DownloadAssetServiceArthas(target)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) UploadAssetServiceArthas(c *gin.Context) {
+	var target service.AssetServiceDiagnosisTarget
+	if err := c.ShouldBind(&target); err != nil {
+		httpx.Failed(c, 400, "invalid diagnosis target")
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		httpx.Failed(c, 400, "arthas-boot.jar is required")
+		return
+	}
+	source, err := file.Open()
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	defer source.Close()
+	content, err := io.ReadAll(source)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	data, err := ctl.service.UploadAssetServiceArthas(target, content)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
 
 func (ctl *Controller) GetAssetServiceList(c *gin.Context) {
 	data, err := ctl.service.ListAssetServices(mustAtoi(c.DefaultQuery("pageNum", "1")), mustAtoi(c.DefaultQuery("pageSize", "20")), c.Query("keyword"))

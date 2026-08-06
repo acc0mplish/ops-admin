@@ -130,6 +130,7 @@ export const appDefinitions = [
         icon: 'Grid',
         children: []
       },
+      { title: '服务健康诊断', path: '/containers/services/health-diagnosis', icon: 'Monitor', children: [] },
       {
         title: 'Kubernetes 管理',
         titleKey: 'k8sManagement',
