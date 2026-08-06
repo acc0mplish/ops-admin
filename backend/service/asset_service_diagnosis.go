@@ -25,6 +25,7 @@ type AssetServiceDiagnosisTarget struct {
 	PID          string `json:"pid" form:"pid"`
 	Operation    string `json:"operation" form:"operation"`
 	Pattern      string `json:"pattern" form:"pattern"`
+	Event        string `json:"event" form:"event"`
 	Seconds      int    `json:"seconds" form:"seconds"`
 }
 
@@ -185,8 +186,7 @@ func (s *Service) UploadAssetServiceArthas(target AssetServiceDiagnosisTarget, c
 
 var arthasANSIControl = regexp.MustCompile("(?:\\x1b|�)\\[[0-?]*[ -/]*[@-~]")
 var arthasThreadHeader = regexp.MustCompile(`(?m)^"([^"]+)"\s+Id=(\d+)\s+cpuUsage=([^\s]+)\s+deltaTime=[^\s]+\s+time=([^\s]+)\s+([A-Z_]+)`)
-var arthasFlameFrame = regexp.MustCompile(`(?m)^[ \t]*f\(`)
-var arthasProfilerSampleCount = regexp.MustCompile(`(?m)^\s*(\d+)\s*$`)
+var arthasFlameData = regexp.MustCompile(`(?m)^[ \t]*(?:f|u|n)\(\d+\s*,`)
 
 func cleanArthasOutput(output string) string {
 	return strings.TrimSpace(arthasANSIControl.ReplaceAllString(output, ""))
@@ -449,43 +449,31 @@ func (s *Service) getAssetServiceJVMDashboard(clusterID uint, namespace string, 
 	return map[string]any{"dashboard": parseDashboardSummary(output), "raw": output}, nil
 }
 
-// getAssetServiceFlamegraph keeps the generated HTML in the container only for
-// the duration of this request. The result is returned to the browser for an
-// inline preview and the temporary file is then removed.
+// getAssetServiceFlamegraph keeps the generated HTML in the container /tmp
+// directory so operators can compare the platform result with a manual Arthas
+// run. The same HTML is also returned to the browser for an inline preview.
 func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, target AssetServiceDiagnosisTarget) (map[string]any, error) {
 	seconds := target.Seconds
 	if seconds != 10 && seconds != 30 && seconds != 60 && seconds != 120 {
 		return nil, errors.New("invalid flamegraph sampling duration")
 	}
-	file := fmt.Sprintf("/tmp/arthas-flame-%s-%d.html", Trimmed(target.PID), time.Now().UnixNano())
-	startOutput, err := s.runArthasCLI(clusterID, namespace, target, "profiler start --event wall")
-	if err != nil {
+	event := Trimmed(target.Event)
+	if event == "" {
+		event = "cpu"
+	}
+	if event != "cpu" && event != "alloc" {
+		return nil, errors.New("invalid flamegraph event")
+	}
+	profilerEvent := event
+	file := fmt.Sprintf("/tmp/arthas-flame-%s-%d.html", event, seconds)
+	if _, err := s.runArthasCLI(clusterID, namespace, target, "profiler start --event "+profilerEvent); err != nil {
 		return nil, fmt.Errorf("start profiler failed: %w", err)
 	}
-	startOutput = cleanArthasOutput(startOutput)
-	if !strings.Contains(startOutput, "Started [wall] profiling") {
-		return nil, fmt.Errorf("wall profiler did not start: %s", startOutput)
-	}
-	stopped := false
-	defer func() {
-		if !stopped {
-			_, _ = s.runArthasCLI(clusterID, namespace, target, "profiler stop")
-		}
-		_, _ = s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "rm -f " + shellQuote(file)})
-	}()
-
 	time.Sleep(time.Duration(seconds) * time.Second)
-	sampleOutput, sampleErr := s.runArthasCLI(clusterID, namespace, target, "profiler getSamples")
-	if sampleErr != nil {
-		return nil, fmt.Errorf("read profiler sample count failed: %w", sampleErr)
-	}
-	sampleOutput = cleanArthasOutput(sampleOutput)
 	stopOutput, stopErr := s.runArthasCLI(clusterID, namespace, target, "profiler stop --format html --file "+file)
 	if stopErr != nil {
 		return nil, fmt.Errorf("stop profiler failed: %w", stopErr)
 	}
-	stopped = true
-
 	html, err := s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "cat " + shellQuote(file)})
 	if err != nil {
 		return nil, fmt.Errorf("read flamegraph failed: %w", err)
@@ -493,15 +481,13 @@ func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, ta
 	if !strings.Contains(strings.ToLower(html), "<html") {
 		return nil, errors.New("generated flamegraph is not valid HTML")
 	}
-	if !arthasFlameFrame.MatchString(html) {
-		return nil, fmt.Errorf("profiler generated no flamegraph frames; sample result: %s", sampleOutput)
+	if !arthasFlameData.MatchString(html) {
+		if event == "cpu" {
+			return nil, errors.New("CPU profiler collected no samples; generate application load during the sampling period and try again")
+		}
+		return nil, errors.New("allocation profiler collected no samples; trigger requests that allocate objects during the sampling period and try again")
 	}
-	samples := "-"
-	if matches := arthasProfilerSampleCount.FindAllStringSubmatch(sampleOutput, -1); len(matches) > 0 {
-		samples = matches[len(matches)-1][1]
-	}
-	raw := strings.Join([]string{startOutput, sampleOutput, cleanArthasOutput(stopOutput)}, "\n\n")
-	return map[string]any{"flameHtml": html, "mode": "wall", "samples": samples, "raw": raw}, nil
+	return map[string]any{"flameHtml": html, "event": event, "engine": profilerEvent, "raw": cleanArthasOutput(stopOutput)}, nil
 }
 
 // RunAssetServiceDiagnosis only accepts a small read-only Arthas command set.

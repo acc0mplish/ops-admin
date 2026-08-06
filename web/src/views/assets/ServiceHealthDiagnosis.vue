@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Download, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { queryAssetServiceList, queryAssetServiceRuntimeTopology, queryAssetServiceWorkloadRuntime, queryAssetServiceDiagnosisEnvironment, queryAssetServiceDiagnosisProcesses, queryAssetServiceDiagnosisRun, downloadAssetServiceArthas, uploadAssetServiceArthas } from '../../api/asset'
@@ -15,21 +15,12 @@ const containers = ref([])
 const processes = ref([])
 const environment = ref(null)
 const diagnostic = ref(null)
+const flameSrcdoc = ref('')
 const target = ref({ serviceId: '', workloadKey: '', podName: '', container: '', pid: '' })
 const activeTab = ref('dashboard')
 const classPattern = ref('')
 const sampleSeconds = ref(30)
-const flamePreviewUrl = ref('')
-
-function clearFlamePreview() {
-  if (flamePreviewUrl.value) URL.revokeObjectURL(flamePreviewUrl.value)
-  flamePreviewUrl.value = ''
-}
-
-watch(() => diagnostic.value?.flameHtml, (html) => {
-  clearFlamePreview()
-  if (html) flamePreviewUrl.value = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-})
+const flameEvent = ref('cpu')
 
 const workloads = computed(() => topology.value.workloads || [])
 const selectedWorkload = computed(() => workloads.value.find(item => `${item.type}:${item.name}` === target.value.workloadKey))
@@ -37,6 +28,15 @@ const canInspect = computed(() => target.value.serviceId && target.value.workloa
 const params = computed(() => ({ serviceId: Number(target.value.serviceId), workloadType: selectedWorkload.value?.type, workloadName: selectedWorkload.value?.name, podName: target.value.podName, container: target.value.container, pid: target.value.pid }))
 const resultRows = computed(() => diagnostic.value?.rows || [])
 const dashboard = computed(() => diagnostic.value?.dashboard || null)
+const flamePreviewHeight = computed(() => {
+  const html = diagnostic.value?.flameHtml || ''
+  const match = html.match(/#canvas\s*\{[^}]*height:\s*(\d+)px/i)
+  const canvasHeight = Number(match?.[1] || 0)
+  // async-profiler draws normal flame graphs from the bottom of its canvas.
+  // The iframe therefore needs to include the complete canvas instead of
+  // clipping it to a fixed viewport that only shows the empty upper area.
+  return `${Math.min(Math.max(canvasHeight + 110, 520), 1400)}px`
+})
 const activeOperation = computed(() => ({ dashboard: 'JVM 仪表板', thread: '线程分析', jvm: 'JVM 信息', memory: '内存信息', env: '环境变量', sysprop: '系统属性', class: '代码分析', flame: '火焰图' }[activeTab.value] || '诊断结果'))
 
 function readableName(name) {
@@ -52,10 +52,31 @@ async function refreshProcesses() { if (!canInspect.value) return ElMessage.warn
 async function checkEnvironment() { if (!canInspect.value) return ElMessage.warning('请先选择诊断目标'); actionLoading.value = true; try { environment.value = await queryAssetServiceDiagnosisEnvironment(params.value) } finally { actionLoading.value = false } }
 async function downloadArthas() { if (!canInspect.value) return ElMessage.warning('请先选择诊断目标'); actionLoading.value = true; try { environment.value = await downloadAssetServiceArthas(params.value); ElMessage.success('Arthas 下载完成') } finally { actionLoading.value = false } }
 async function uploadArthas(file) { if (!canInspect.value) { ElMessage.warning('请先选择诊断目标'); return false }; actionLoading.value = true; try { const form = new FormData(); form.append('file', file.raw); Object.entries(params.value).forEach(([key, value]) => form.append(key, value || '')); environment.value = await uploadAssetServiceArthas(form); ElMessage.success('Arthas 已上传') } finally { actionLoading.value = false }; return false }
-async function runDiagnostic(operation, extra = {}) { if (!target.value.pid) return ElMessage.warning('请先刷新并选择 Java 进程 PID'); if (!environment.value?.ready) return ElMessage.warning('请先检查 Arthas 环境'); diagnosticLoading.value = true; diagnostic.value = null; try { const result = await queryAssetServiceDiagnosisRun({ ...params.value, operation, ...extra }); diagnostic.value = result.data } finally { diagnosticLoading.value = false } }
+async function runDiagnostic(operation, extra = {}) {
+  if (!target.value.pid) return ElMessage.warning('请先刷新并选择 Java 进程 PID')
+  if (!environment.value?.ready) return ElMessage.warning('请先检查 Arthas 环境')
+  diagnosticLoading.value = true
+  diagnostic.value = null
+  flameSrcdoc.value = ''
+  try {
+    const result = await queryAssetServiceDiagnosisRun({ ...params.value, operation, ...extra })
+    diagnostic.value = result.data
+    if (operation === 'flame' && result.data?.flameHtml) {
+      // Mount and lay out the empty iframe first. async-profiler measures the
+      // canvas width while its inline script starts; injecting srcdoc in the
+      // same render pass can make that measurement zero and leave a blank graph.
+      await nextTick()
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      flameSrcdoc.value = result.data.flameHtml
+    }
+  } finally {
+    diagnosticLoading.value = false
+  }
+}
+function changeFlameOption() { diagnostic.value = null; flameSrcdoc.value = '' }
+function runFlameDiagnostic() { return runDiagnostic('flame', { event: flameEvent.value, seconds: Number(sampleSeconds.value) }) }
 function changeTab(tab) { activeTab.value = tab; diagnostic.value = null }
 onMounted(loadServices)
-onBeforeUnmount(clearFlamePreview)
 </script>
 
 <template>
@@ -81,7 +102,7 @@ onBeforeUnmount(clearFlamePreview)
         <el-tab-pane label="环境变量" name="env"><div class="tab-tools"><el-button type="primary" :icon="Refresh" :loading="diagnosticLoading" @click="runDiagnostic('env')">刷新数据</el-button></div></el-tab-pane>
         <el-tab-pane label="系统属性" name="sysprop"><div class="tab-tools"><el-button type="primary" :icon="Refresh" :loading="diagnosticLoading" @click="runDiagnostic('sysprop')">刷新数据</el-button></div></el-tab-pane>
         <el-tab-pane label="代码分析" name="class"><div class="tab-tools"><el-input v-model="classPattern" placeholder="输入类名模式（支持通配符 *）" @keyup.enter="runDiagnostic('class', { pattern: classPattern })"/><el-button type="primary" :icon="Search" :loading="diagnosticLoading" @click="runDiagnostic('class', { pattern: classPattern })">搜索类</el-button></div></el-tab-pane>
-        <el-tab-pane label="火焰图" name="flame"><div class="tab-tools"><b>采样时长：</b><el-radio-group v-model="sampleSeconds"><el-radio-button :value="10">10秒</el-radio-button><el-radio-button :value="30">30秒</el-radio-button><el-radio-button :value="60">60秒</el-radio-button><el-radio-button :value="120">120秒</el-radio-button></el-radio-group><el-button type="primary" :loading="diagnosticLoading" @click="runDiagnostic('flame', { seconds: sampleSeconds })">生成火焰图</el-button></div></el-tab-pane>
+        <el-tab-pane label="火焰图" name="flame"><div class="tab-tools"><b>采样类型：</b><el-radio-group v-model="flameEvent" :disabled="diagnosticLoading" @change="changeFlameOption"><el-radio-button value="cpu">CPU</el-radio-button><el-radio-button value="alloc">内存分配</el-radio-button></el-radio-group><b>采样时长：</b><el-radio-group v-model="sampleSeconds" :disabled="diagnosticLoading" @change="changeFlameOption"><el-radio-button :value="10">10秒</el-radio-button><el-radio-button :value="30">30秒</el-radio-button><el-radio-button :value="60">60秒</el-radio-button><el-radio-button :value="120">120秒</el-radio-button></el-radio-group><el-button type="primary" :loading="diagnosticLoading" @click="runFlameDiagnostic">生成火焰图</el-button></div></el-tab-pane>
       </el-tabs>
       <div v-if="!diagnostic" class="empty">点击上方按钮获取{{ activeOperation }}数据</div>
       <div v-else class="result-panel">
@@ -96,8 +117,8 @@ onBeforeUnmount(clearFlamePreview)
         <el-row v-else-if="activeTab === 'sysprop' && diagnostic.propertySummary" :gutter="16" class="metric-grid"><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>应用名称</span><strong>{{ diagnostic.propertySummary.application }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>启动命令</span><strong>{{ diagnostic.propertySummary.command }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>进程 PID</span><strong>{{ diagnostic.propertySummary.pid }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>工作目录</span><strong>{{ diagnostic.propertySummary.workDir }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>Java Home</span><strong>{{ diagnostic.propertySummary.javaHome }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>临时目录</span><strong>{{ diagnostic.propertySummary.tempDir }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>时区</span><strong>{{ diagnostic.propertySummary.timezone }}</strong></div></el-col><el-col :xs="24" :sm="12" :lg="6"><div class="metric-card"><span>文件编码</span><strong>{{ diagnostic.propertySummary.encoding }}</strong></div></el-col></el-row>
         <el-descriptions v-else :title="activeOperation" :column="1" border class="details"><el-descriptions-item v-for="(item, index) in resultRows" :key="`${item.name}-${index}`" :label="readableName(item.name)">{{ item.value }}</el-descriptions-item></el-descriptions>
         <template v-if="activeTab === 'flame' && diagnostic.flameHtml">
-          <el-alert type="success" :closable="false" show-icon :title="`墙钟火焰图已生成，共采集 ${diagnostic.samples || '-'} 个样本，可直接在页面中交互查看`" />
-          <iframe class="flame-preview" :src="flamePreviewUrl" sandbox="allow-scripts" title="Arthas 火焰图预览" />
+          <el-alert type="success" :closable="false" show-icon :title="`${diagnostic.event === 'alloc' ? '内存分配' : 'CPU'}火焰图已生成，可直接在页面中交互查看`" />
+          <iframe class="flame-preview" :srcdoc="flameSrcdoc" :style="{ height: flamePreviewHeight }" sandbox="allow-scripts" title="Arthas 火焰图预览" />
         </template>
         <el-collapse class="raw-output"><el-collapse-item title="查看 Arthas 原始命令输出（诊断参考）"><pre>{{ diagnostic.raw }}</pre></el-collapse-item></el-collapse>
       </div>
@@ -106,5 +127,5 @@ onBeforeUnmount(clearFlamePreview)
 </template>
 
 <style scoped>
-.diagnosis-page{min-height:100%;padding:26px 30px;background:#f5f8fd}.hero,.target-card,.diagnostic-card{border:1px solid #e0e8f5;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(55,83,135,.06)}.hero{display:flex;align-items:center;gap:16px;padding:20px 24px}.hero-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;color:#fff;background:linear-gradient(135deg,#8067e8,#4f82e8);font-size:27px;font-weight:800}.hero h1{margin:0;color:#536bd4;font-size:23px}.hero p{margin:6px 0 0;color:#8391a8}.target-card{display:flex;align-items:end;justify-content:space-between;gap:18px;padding:16px 20px;margin-top:14px}.target-fields,.target-actions,.tab-tools{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.target-fields label{display:grid;gap:6px;color:#60708a;font-size:12px}.target-fields .el-select{width:172px}.target-actions{flex-wrap:nowrap}.environment{margin-top:14px}.environment p{margin:6px 0 0}.diagnostic-card{min-height:430px;margin-top:14px;padding:0 22px}.tab-tools{align-items:center;padding:12px 0 20px;border-bottom:1px solid #edf1f7}.tab-tools .el-input{width:400px}.empty{display:grid;place-items:center;min-height:260px;border-radius:10px;color:#8b99af;background:#f8faff}.result-panel{padding:20px 0}.metric-grid{margin-bottom:20px}.metric-card{display:grid;min-height:112px;place-items:center;border:1px solid #e2e9f7;border-radius:12px;color:#7c8ba2;background:#fbfcff}.metric-card strong{max-width:95%;overflow:hidden;color:#5f72d9;font-size:18px;text-overflow:ellipsis;white-space:nowrap}.details{margin-top:12px}.thread-table,.memory-table,.environment-table{width:100%;margin-top:12px}.flame-preview{display:block;width:100%;height:clamp(360px,52vh,460px);margin-top:16px;border:1px solid #dfe7f5;border-radius:12px;background:#fff}.raw-output{margin-top:16px}.raw-output pre{max-height:360px;overflow:auto;margin:0;padding:14px;border-radius:8px;color:#dbe8ff;background:#101c33;white-space:pre-wrap;font:12px/1.7 Consolas,monospace}@media(max-width:1100px){.target-card{align-items:flex-start;flex-direction:column}.target-actions{flex-wrap:wrap}}
+.diagnosis-page{min-height:100%;padding:26px 30px;background:#f5f8fd}.hero,.target-card,.diagnostic-card{border:1px solid #e0e8f5;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(55,83,135,.06)}.hero{display:flex;align-items:center;gap:16px;padding:20px 24px}.hero-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;color:#fff;background:linear-gradient(135deg,#8067e8,#4f82e8);font-size:27px;font-weight:800}.hero h1{margin:0;color:#536bd4;font-size:23px}.hero p{margin:6px 0 0;color:#8391a8}.target-card{display:flex;align-items:end;justify-content:space-between;gap:18px;padding:16px 20px;margin-top:14px}.target-fields,.target-actions,.tab-tools{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.target-fields label{display:grid;gap:6px;color:#60708a;font-size:12px}.target-fields .el-select{width:172px}.target-actions{flex-wrap:nowrap}.environment{margin-top:14px}.environment p{margin:6px 0 0}.diagnostic-card{min-height:430px;margin-top:14px;padding:0 22px}.tab-tools{align-items:center;padding:12px 0 20px;border-bottom:1px solid #edf1f7}.tab-tools .el-input{width:400px}.empty{display:grid;place-items:center;min-height:260px;border-radius:10px;color:#8b99af;background:#f8faff}.result-panel{padding:20px 0}.metric-grid{margin-bottom:20px}.metric-card{display:grid;min-height:112px;place-items:center;border:1px solid #e2e9f7;border-radius:12px;color:#7c8ba2;background:#fbfcff}.metric-card strong{max-width:95%;overflow:hidden;color:#5f72d9;font-size:18px;text-overflow:ellipsis;white-space:nowrap}.details{margin-top:12px}.thread-table,.memory-table,.environment-table{width:100%;margin-top:12px}.flame-preview{display:block;width:100%;min-height:520px;margin-top:16px;border:1px solid #dfe7f5;border-radius:12px;background:#fff}.raw-output{margin-top:16px}.raw-output pre{max-height:360px;overflow:auto;margin:0;padding:14px;border-radius:8px;color:#dbe8ff;background:#101c33;white-space:pre-wrap;font:12px/1.7 Consolas,monospace}@media(max-width:1100px){.target-card{align-items:flex-start;flex-direction:column}.target-actions{flex-wrap:wrap}}
 </style>
