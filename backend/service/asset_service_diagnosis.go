@@ -449,9 +449,8 @@ func (s *Service) getAssetServiceJVMDashboard(clusterID uint, namespace string, 
 	return map[string]any{"dashboard": parseDashboardSummary(output), "raw": output}, nil
 }
 
-// getAssetServiceFlamegraph keeps the generated HTML in the container /tmp
-// directory so operators can compare the platform result with a manual Arthas
-// run. The same HTML is also returned to the browser for an inline preview.
+// getAssetServiceFlamegraph generates a uniquely named temporary report in the
+// container, returns its HTML for the browser preview, and then removes it.
 func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, target AssetServiceDiagnosisTarget) (map[string]any, error) {
 	seconds := target.Seconds
 	if seconds != 10 && seconds != 30 && seconds != 60 && seconds != 120 {
@@ -465,10 +464,13 @@ func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, ta
 		return nil, errors.New("invalid flamegraph event")
 	}
 	profilerEvent := event
-	file := fmt.Sprintf("/tmp/arthas-flame-%s-%d.html", event, seconds)
+	file := fmt.Sprintf("/tmp/arthas-flame-%s-%s-%d-%d.html", event, Trimmed(target.PID), seconds, time.Now().UnixNano())
 	if _, err := s.runArthasCLI(clusterID, namespace, target, "profiler start --event "+profilerEvent); err != nil {
 		return nil, fmt.Errorf("start profiler failed: %w", err)
 	}
+	defer func() {
+		_, _ = s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "rm -f " + shellQuote(file)})
+	}()
 	time.Sleep(time.Duration(seconds) * time.Second)
 	stopOutput, stopErr := s.runArthasCLI(clusterID, namespace, target, "profiler stop --format html --file "+file)
 	if stopErr != nil {
