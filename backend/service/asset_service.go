@@ -139,18 +139,45 @@ func (s *Service) GetAssetServiceK8sCatalog(clusterID uint, namespace string) (m
 	if clusterID == 0 {
 		return nil, errors.New("kubernetes cluster is required")
 	}
-	detail, err := s.GetK8sClusterDetail(clusterID)
+	cluster, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
 		return nil, err
 	}
+	// The service form only needs namespaces and workload controllers. Avoid the
+	// expensive full overview (pods, secrets, storage, services, gateway APIs).
+	var namespaceResp kubeNamespaceListResponse
+	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces", &namespaceResp); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	data := k8sFetchedData{Namespaces: namespaceResp.Items}
+	var deploymentResp kubeDeploymentListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/deployments", &deploymentResp); err == nil {
+		data.Deployments = deploymentResp.Items
+	}
+	var statefulSetResp kubeStatefulSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/statefulsets", &statefulSetResp); err == nil {
+		data.StatefulSet = statefulSetResp.Items
+	}
+	var daemonSetResp kubeDaemonSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/daemonsets", &daemonSetResp); err == nil {
+		data.DaemonSets = daemonSetResp.Items
+	}
+	var jobResp kubeJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/jobs", &jobResp); err == nil {
+		data.Jobs = jobResp.Items
+	}
+	var cronJobResp kubeCronJobListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/batch/v1/cronjobs", &cronJobResp); err == nil {
+		data.CronJobs = cronJobResp.Items
+	}
 	namespace = Trimmed(namespace)
 	workloads := make([]model.K8sWorkloadItem, 0)
-	for _, workload := range detail.Workloads {
+	for _, workload := range buildWorkloadItems(data) {
 		if namespace == "" || workload.Namespace == namespace {
 			workloads = append(workloads, workload)
 		}
 	}
-	return map[string]any{"cluster": detail.Cluster, "namespaces": detail.Namespaces, "workloads": workloads}, nil
+	return map[string]any{"cluster": toK8sClusterView(cluster), "namespaces": buildNamespaceItems(data.Namespaces, nil), "workloads": workloads}, nil
 }
 
 func (s *Service) GetAssetServiceRuntimeTopology(serviceID uint) (map[string]any, error) {
@@ -162,35 +189,15 @@ func (s *Service) GetAssetServiceRuntimeTopology(serviceID uint) (map[string]any
 	if err := s.db.First(&cluster, service.K8sClusterID).Error; err != nil {
 		return nil, err
 	}
-	result := map[string]any{"service": service, "cluster": cluster, "namespace": service.Namespace, "source": "saved", "workloads": service.Workloads}
-	detail, err := s.GetK8sClusterDetail(service.K8sClusterID)
-	if err != nil {
-		result["refreshError"] = "Kubernetes workload status is temporarily unavailable; showing saved service associations."
-		return result, nil
-	}
-	selected := map[string]model.AssetServiceWorkload{}
+	result := map[string]any{"service": service, "cluster": toK8sClusterView(cluster), "namespace": service.Namespace, "source": "saved", "workloads": service.Workloads}
+	workloads := make([]model.K8sWorkloadItem, 0, len(service.Workloads))
 	for _, item := range service.Workloads {
-		selected[strings.ToLower(item.WorkloadType)+":"+item.WorkloadName] = item
-	}
-	workloads := make([]model.K8sWorkloadItem, 0, len(selected))
-	for _, item := range detail.Workloads {
-		if item.Namespace == service.Namespace {
-			if _, ok := selected[strings.ToLower(item.Type)+":"+item.Name]; ok {
-				workloads = append(workloads, item)
-			}
-		}
-	}
-	for key, item := range selected {
-		found := false
-		for _, live := range workloads {
-			if strings.ToLower(live.Type)+":"+live.Name == key {
-				found = true
-				break
-			}
-		}
-		if !found {
+		detail, detailErr := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, item.WorkloadType, item.WorkloadName)
+		if detailErr != nil {
 			workloads = append(workloads, model.K8sWorkloadItem{Name: item.WorkloadName, Type: item.WorkloadType, Namespace: service.Namespace, Ready: "0/0"})
+			continue
 		}
+		workloads = append(workloads, model.K8sWorkloadItem{Name: detail.Name, Type: detail.Type, Namespace: detail.Namespace, Ready: detail.Ready, Updated: detail.Updated, Available: detail.Available, Age: detail.Age})
 	}
 	sort.Slice(workloads, func(i, j int) bool { return workloads[i].Name < workloads[j].Name })
 	result["workloads"], result["source"] = workloads, "live"

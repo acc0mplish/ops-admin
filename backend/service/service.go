@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 	"ops-admin/backend/auth"
 	"ops-admin/backend/model"
@@ -34,6 +35,22 @@ type Service struct {
 	notifyDispatcherOnce sync.Once
 	notifyConcurrency    chan struct{}
 	monitorNotifyMu      sync.Mutex
+	// Gateway SSH connections are multiplexed by ssh.Client. Keeping one client
+	// per gateway avoids repeating the public-network SSH handshake on every
+	// Kubernetes API request.
+	gatewaySSHMu      sync.Mutex
+	gatewaySSHClients map[uint]*ssh.Client
+	// Cluster overview is relatively expensive for gateway clusters. A brief
+	// cache avoids duplicate page-load requests while singleflight coalesces
+	// concurrent refreshes for the same cluster.
+	k8sOverviewMu    sync.Mutex
+	k8sOverviewCache map[uint]k8sOverviewCacheEntry
+	k8sOverviewGroup singleflight.Group
+}
+
+type k8sOverviewCacheEntry struct {
+	detail    model.K8sClusterDetail
+	expiresAt time.Time
 }
 
 type AssetTerminalSession struct {
@@ -46,7 +63,7 @@ type AssetTerminalSession struct {
 }
 
 func New(db *gorm.DB) *Service {
-	svc := &Service{db: db}
+	svc := &Service{db: db, gatewaySSHClients: make(map[uint]*ssh.Client), k8sOverviewCache: make(map[uint]k8sOverviewCacheEntry)}
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
 	svc.initDatabaseBackupScheduler()

@@ -23,10 +23,12 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	ksyaml "sigs.k8s.io/yaml"
 )
 
-const k8sClusterConnectError = "闆嗙兢杩炴帴澶辫触锛岃妫€鏌ubeconfig"
+const k8sClusterConnectError = "集群连接失败，请检查 kubeconfig"
 
 type kubeConfig struct {
 	APIVersion     string `yaml:"apiVersion"`
@@ -761,7 +763,51 @@ func (s *Service) DeleteK8sCluster(id uint) error {
 	return nil
 }
 
+const k8sOverviewCacheTTL = 15 * time.Second
+
 func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
+	if detail, ok := s.cachedK8sClusterDetail(clusterID); ok {
+		return detail, nil
+	}
+	result, err, _ := s.k8sOverviewGroup.Do(fmt.Sprintf("cluster-overview:%d", clusterID), func() (any, error) {
+		if detail, ok := s.cachedK8sClusterDetail(clusterID); ok {
+			return detail, nil
+		}
+		detail, err := s.getK8sClusterDetailUncached(clusterID)
+		if err != nil {
+			return model.K8sClusterDetail{}, err
+		}
+		s.k8sOverviewMu.Lock()
+		s.k8sOverviewCache[clusterID] = k8sOverviewCacheEntry{detail: detail, expiresAt: time.Now().Add(k8sOverviewCacheTTL)}
+		s.k8sOverviewMu.Unlock()
+		return detail, nil
+	})
+	if err != nil {
+		return model.K8sClusterDetail{}, err
+	}
+	return result.(model.K8sClusterDetail), nil
+}
+
+func (s *Service) cachedK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, bool) {
+	s.k8sOverviewMu.Lock()
+	defer s.k8sOverviewMu.Unlock()
+	entry, ok := s.k8sOverviewCache[clusterID]
+	if !ok || time.Now().After(entry.expiresAt) {
+		if ok {
+			delete(s.k8sOverviewCache, clusterID)
+		}
+		return model.K8sClusterDetail{}, false
+	}
+	return entry.detail, true
+}
+
+func (s *Service) invalidateK8sClusterDetailCache(clusterID uint) {
+	s.k8sOverviewMu.Lock()
+	delete(s.k8sOverviewCache, clusterID)
+	s.k8sOverviewMu.Unlock()
+}
+
+func (s *Service) getK8sClusterDetailUncached(clusterID uint) (model.K8sClusterDetail, error) {
 	cluster, err := s.GetK8sCluster(clusterID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -772,16 +818,24 @@ func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, e
 
 	runtime, err := parseKubeConfig(cluster.KubeConfig)
 	if err != nil {
-		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+		return model.K8sClusterDetail{}, fmt.Errorf("解析 kubeconfig 失败: %w", err)
 	}
-	client, err := newK8sHTTPClient(runtime)
+	// 集群详情必须复用与集群连接方式一致的客户端。对于 gateway 模式，
+	// 该客户端会先连接网关，再由网关访问私网 Kubernetes API；不能在
+	// Ops Admin 所在机器上直接拨号 kubeconfig 中的私网地址。
+	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
 	if err != nil {
-		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+		return model.K8sClusterDetail{}, fmt.Errorf("创建 Kubernetes API 客户端失败: %w", err)
 	}
+	defer cleanup()
 
 	data, err := fetchK8sData(client, runtime)
 	if err != nil {
-		return model.K8sClusterDetail{}, errors.New(k8sClusterConnectError)
+		route := "直连"
+		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
+			route = "网关转发"
+		}
+		return model.K8sClusterDetail{}, fmt.Errorf("通过%s获取 Kubernetes 集群详情失败: %w", route, err)
 	}
 
 	metrics := calculateK8sAggregateMetrics(data.Nodes, data.Pods)
@@ -1383,6 +1437,7 @@ func (s *Service) ScaleK8sWorkload(payload model.K8sWorkloadActionPayload) (map[
 	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/merge-patch+json", nil); err != nil {
 		return nil, errors.New(k8sClusterConnectError)
 	}
+	s.invalidateK8sClusterDetailCache(payload.ClusterID)
 
 	return map[string]any{
 		"namespace":    payload.Namespace,
@@ -1429,7 +1484,7 @@ func (s *Service) RestartK8sWorkload(payload model.K8sWorkloadActionPayload) (ma
 	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/strategic-merge-patch+json", nil); err != nil {
 		return nil, errors.New(k8sClusterConnectError)
 	}
-
+	s.invalidateK8sClusterDetailCache(payload.ClusterID)
 	return map[string]any{
 		"namespace":    payload.Namespace,
 		"workloadType": payload.WorkloadType,
@@ -1510,6 +1565,7 @@ func (s *Service) UpdateK8sWorkloadImages(payload model.K8sWorkloadImageBatchPay
 			"images":       images,
 		})
 	}
+	s.invalidateK8sClusterDetailCache(payload.ClusterID)
 	return map[string]any{
 		"version": payload.Version,
 		"count":   len(updated),
@@ -1595,6 +1651,7 @@ func (s *Service) UpdateK8sWorkloadResources(payload model.K8sWorkloadResourcesP
 	if err := k8sPatchJSON(client, runtime, path, patchBody, "application/strategic-merge-patch+json", nil); err != nil {
 		return nil, errors.New(k8sClusterConnectError)
 	}
+	s.invalidateK8sClusterDetailCache(payload.ClusterID)
 	return map[string]any{
 		"namespace": payload.Namespace, "workloadType": payload.WorkloadType,
 		"workloadName": payload.WorkloadName, "containers": len(containers),
@@ -2857,7 +2914,9 @@ func serviceExternalIP(service kubeService) string {
 }
 
 func k8sWorkloadResourcePath(namespace string, workloadType string, workloadName string) (string, error) {
-	switch workloadType {
+	// 页面列表展示的是 Deployment / StatefulSet 等 Kubernetes Kind，
+	// 而 API 调用也可能传入小写形式；路径选择统一按规范化的小写值处理。
+	switch strings.ToLower(strings.TrimSpace(workloadType)) {
 	case "deployment":
 		return fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, workloadName), nil
 	case "statefulset":
@@ -3619,31 +3678,36 @@ func validateK8sClusterPayload(cluster model.K8sCluster) error {
 }
 
 func (s *Service) probeK8sCluster(cluster model.K8sCluster) (k8sClusterProbe, error) {
-	runtime, err := parseKubeConfig(cluster.KubeConfig)
+	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
-		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
-	}
-
-	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
-	if err != nil {
-		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+		return k8sClusterProbe{}, fmt.Errorf("集群配置解析失败: %w", err)
 	}
 	defer cleanup()
+	config.Timeout = 8 * time.Second
 
-	version, err := fetchK8sVersion(client, runtime)
+	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+		return k8sClusterProbe{}, fmt.Errorf("Kubernetes 客户端初始化失败: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
 
-	nodeCount, err := fetchK8sNodeCount(client, runtime)
+	version, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		return k8sClusterProbe{}, errors.New(k8sClusterConnectError)
+		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
+			return k8sClusterProbe{}, fmt.Errorf("通过网关连接 API Server 失败（%s）: %w", config.Host, err)
+		}
+		return k8sClusterProbe{}, fmt.Errorf("连接 API Server 失败（%s）: %w", config.Host, err)
+	}
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return k8sClusterProbe{}, fmt.Errorf("连接成功，但读取节点列表失败（请检查 nodes/list 权限）: %w", err)
 	}
 
 	return k8sClusterProbe{
-		APIServer: runtime.Server,
-		Version:   version,
-		NodeCount: nodeCount,
+		APIServer: config.Host,
+		Version:   version.GitVersion,
+		NodeCount: len(nodes.Items),
 		Status:    "running",
 	}, nil
 }

@@ -288,17 +288,8 @@ func (s *Service) newGatewaySSHClient(gateway model.AssetGateway) (*ssh.Client, 
 }
 
 func (s *Service) dialThroughGateway(ctx context.Context, gatewayID uint, network, address string) (net.Conn, func(), error) {
-	gateway, err := s.getAssetGatewayWithCredential(gatewayID)
+	conn, err := s.dialGatewayTarget(gatewayID, network, address)
 	if err != nil {
-		return nil, func() {}, err
-	}
-	client, err := s.newGatewaySSHClient(*gateway)
-	if err != nil {
-		return nil, func() {}, err
-	}
-	conn, err := client.Dial(network, address)
-	if err != nil {
-		_ = client.Close()
 		return nil, func() {}, err
 	}
 	if deadline, ok := ctx.Deadline(); ok {
@@ -306,23 +297,59 @@ func (s *Service) dialThroughGateway(ctx context.Context, gatewayID uint, networ
 	}
 	cleanup := func() {
 		_ = conn.Close()
-		_ = client.Close()
 	}
 	return conn, cleanup, nil
 }
 
-func (s *Service) startGatewayTunnel(gatewayID uint, targetAddress string) (string, func(), error) {
+func (s *Service) sharedGatewaySSHClient(gatewayID uint) (*ssh.Client, error) {
+	s.gatewaySSHMu.Lock()
+	defer s.gatewaySSHMu.Unlock()
+	if client := s.gatewaySSHClients[gatewayID]; client != nil {
+		return client, nil
+	}
 	gateway, err := s.getAssetGatewayWithCredential(gatewayID)
 	if err != nil {
-		return "", func() {}, err
+		return nil, err
 	}
 	client, err := s.newGatewaySSHClient(*gateway)
 	if err != nil {
-		return "", func() {}, err
+		return nil, err
 	}
+	s.gatewaySSHClients[gatewayID] = client
+	return client, nil
+}
+
+func (s *Service) invalidateGatewaySSHClient(gatewayID uint, expected *ssh.Client) {
+	s.gatewaySSHMu.Lock()
+	defer s.gatewaySSHMu.Unlock()
+	if current := s.gatewaySSHClients[gatewayID]; current == expected {
+		delete(s.gatewaySSHClients, gatewayID)
+		_ = current.Close()
+	}
+}
+
+// dialGatewayTarget opens a multiplexed channel through the cached SSH client.
+// A stale SSH transport is discarded and retried once with a new connection.
+func (s *Service) dialGatewayTarget(gatewayID uint, network, address string) (net.Conn, error) {
+	client, err := s.sharedGatewaySSHClient(gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := client.Dial(network, address)
+	if err == nil {
+		return conn, nil
+	}
+	s.invalidateGatewaySSHClient(gatewayID, client)
+	client, reconnectErr := s.sharedGatewaySSHClient(gatewayID)
+	if reconnectErr != nil {
+		return nil, reconnectErr
+	}
+	return client.Dial(network, address)
+}
+
+func (s *Service) startGatewayTunnel(gatewayID uint, targetAddress string) (string, func(), error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		_ = client.Close()
 		return "", func() {}, err
 	}
 	done := make(chan struct{})
@@ -334,7 +361,7 @@ func (s *Service) startGatewayTunnel(gatewayID uint, targetAddress string) (stri
 				return
 			}
 			go func() {
-				remoteConn, err := client.Dial("tcp", targetAddress)
+				remoteConn, err := s.dialGatewayTarget(gatewayID, "tcp", targetAddress)
 				if err != nil {
 					_ = localConn.Close()
 					return
@@ -354,7 +381,6 @@ func (s *Service) startGatewayTunnel(gatewayID uint, targetAddress string) (stri
 	}()
 	cleanup := func() {
 		_ = listener.Close()
-		_ = client.Close()
 		select {
 		case <-done:
 		case <-time.After(200 * time.Millisecond):

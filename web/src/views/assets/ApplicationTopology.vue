@@ -18,6 +18,19 @@ const serviceId = computed(() => Number(route.query.serviceId))
 const workloads = computed(() => topology.value.workloads || [])
 const normalize = (value = '') => String(value).toLowerCase()
 const find = (predicate) => workloads.value.find((item) => predicate(normalize(item.name)))
+const byInstance = (items) => [...items].sort((left, right) => String(left.name).localeCompare(String(right.name), undefined, { numeric: true, sensitivity: 'base' }))
+const homeWorkloads = computed(() => byInstance(workloads.value.filter((item) => normalize(item.name).includes('home'))))
+const worldWorkloads = computed(() => byInstance(workloads.value.filter((item) => normalize(item.name).includes('world'))))
+const gameColumns = computed(() => Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(homeWorkloads.value.length, worldWorkloads.value.length, 1)) * 1.65))))
+const gameStartX = 900
+const nodeStepX = 194
+const nodeStepY = 116
+const homeRows = computed(() => Math.max(1, Math.ceil(homeWorkloads.value.length / gameColumns.value)))
+const worldRows = computed(() => Math.max(1, Math.ceil(worldWorkloads.value.length / gameColumns.value)))
+const worldStartY = computed(() => 154 + homeRows.value * nodeStepY + 28)
+const gameBottomY = computed(() => worldStartY.value + worldRows.value * nodeStepY)
+const canvasWidth = computed(() => Math.max(1200, gameStartX + gameColumns.value * nodeStepX + 14))
+const canvasHeight = computed(() => Math.max(600, gameBottomY.value + 130))
 function healthy(item) {
   if (!item) return true
   const [ready, expected] = String(item.ready || '').split('/').map(Number)
@@ -25,25 +38,32 @@ function healthy(item) {
 }
 const nodes = computed(() => {
   const add = (id, title, x, y, kind, note, workload = null) => ({ id, title, x, y, kind, note, workload, healthy: healthy(workload) })
-  const nginx = find((name) => name.includes('nginx-gm')); const mgr = find((name) => name.includes('mgr')); const gate = find((name) => name.includes('gate')); const login = find((name) => name.includes('login')); const notice = find((name) => name.includes('notice')); const home = find((name) => name.includes('home')); const world = find((name) => name.includes('world')); const social = find((name) => name.includes('social')); const zk = find((name) => name.includes('zookeeper') || name === 'zk')
+  const nginx = find((name) => name.includes('nginx-gm')); const mgr = find((name) => name.includes('mgr')); const gate = find((name) => name.includes('gate')); const login = find((name) => name.includes('login')); const notice = find((name) => name.includes('notice')); const social = find((name) => name.includes('social')); const zk = find((name) => name.includes('zookeeper') || name === 'zk')
   const result = [add('player', '玩家客户端', 34, 270, 'external', '仅通过 Gate / Notice 通信')]
   if (nginx) result.push(add('nginx', nginx.name, 250, 74, 'management', '独立 GM 入口', nginx))
   if (mgr) result.push(add('mgr', mgr.name, 460, 74, 'management', 'GM 后台', mgr))
   if (gate) result.push(add('gate', gate.name, 270, 280, 'public', 'WebSocket · 对外入口', gate))
   if (login) result.push(add('login', login.name, 505, 280, 'service', '登录校验', login))
   result.push(add('zk', zk?.name || 'ZooKeeper', 740, 280, 'dependency', '服务注册 / 启用状态', zk || null))
-  if (home) result.push(add('home', home.name, 975, 190, 'service', '游戏服务', home))
-  if (world) result.push(add('world', world.name, 975, 370, 'service', '游戏服务', world))
-  if (social) result.push(add('social', social.name, 740, 470, 'service', '社交服务 · 通过 ZooKeeper 发现', social))
+  const addGameGroup = (items, prefix, startY) => items.forEach((item, index) => {
+    const column = index % gameColumns.value
+    const row = Math.floor(index / gameColumns.value)
+    result.push(add(`${prefix}-${index}`, item.name, gameStartX + column * nodeStepX, startY + row * nodeStepY, 'service', '游戏服务', item))
+  })
+  addGameGroup(homeWorkloads.value, 'home', 154)
+  addGameGroup(worldWorkloads.value, 'world', worldStartY.value)
+  if (social) result.push(add('social', social.name, 740, Math.max(470, gameBottomY.value + 18), 'service', '社交服务 · 通过 ZooKeeper 发现', social))
   if (notice) result.push(add('notice', notice.name, 270, 470, 'public', '日志上报 · 对外入口', notice))
-  const known = new Set([nginx, mgr, gate, login, notice, home, world, social, zk].filter(Boolean).map((item) => item.name))
-  workloads.value.filter((item) => !known.has(item.name)).forEach((item, index) => result.push(add(`extra-${index}`, item.name, 740 + (index % 2) * 230, 74 + Math.floor(index / 2) * 105, 'service', `${item.type} · Ready ${item.ready || '0/0'}`, item)))
+  const known = new Set([nginx, mgr, gate, login, notice, social, zk, ...homeWorkloads.value, ...worldWorkloads.value].filter(Boolean).map((item) => item.name))
+  workloads.value.filter((item) => !known.has(item.name)).forEach((item, index) => result.push(add(`extra-${index}`, item.name, 740 + (index % 1) * 230, 74 + Math.floor(index / 1) * 105, 'service', `${item.type} · Ready ${item.ready || '0/0'}`, item)))
   return result
 })
 const positions = computed(() => Object.fromEntries(nodes.value.map((item) => [item.id, item])))
 const edges = computed(() => {
   const result = []; const has = (id) => Boolean(positions.value[id]); const add = (from, to, label, tone = 'default') => { if (has(from) && has(to)) result.push({ from, to, label, tone }) }
-  add('player', 'gate', 'WebSocket 登录', 'public'); add('player', 'notice', '日志上报', 'public'); add('gate', 'login', '登录请求', 'public'); add('login', 'zk', '读取启用服务'); add('zk', 'home', '服务注册'); add('zk', 'world', '服务注册'); add('zk', 'social', '服务注册'); add('gate', 'home', '游戏会话'); add('gate', 'world', '游戏会话'); add('home', 'social', '社交通信'); add('world', 'social', '社交通信'); add('mgr', 'zk', '启停管理', 'management'); add('mgr', 'home', '管理游戏服', 'management'); add('mgr', 'world', '管理游戏服', 'management')
+  add('player', 'gate', 'WebSocket 登录', 'public'); add('player', 'notice', '日志上报', 'public'); add('gate', 'login', '登录请求', 'public'); add('login', 'zk', '读取启用服务'); add('zk', 'social', '服务注册'); add('mgr', 'zk', '启停管理', 'management')
+  homeWorkloads.value.forEach((_, index) => { const id = `home-${index}`; add('zk', id, index === 0 ? '服务注册' : ''); add('gate', id, index === 0 ? '游戏会话' : ''); add(id, 'social', index === 0 ? '社交通信' : ''); add('mgr', id, index === 0 ? '管理游戏服' : '', 'management') })
+  worldWorkloads.value.forEach((_, index) => { const id = `world-${index}`; add('zk', id, index === 0 ? '服务注册' : ''); add('gate', id, index === 0 ? '游戏会话' : ''); add(id, 'social', index === 0 ? '社交通信' : ''); add('mgr', id, index === 0 ? '管理游戏服' : '', 'management') })
   nodes.value.filter((item) => !['player', 'nginx', 'zk'].includes(item.id)).forEach((item) => add(item.id, 'nginx', '访问 GM', 'management'))
   return result
 })
@@ -59,7 +79,7 @@ onMounted(load)
   <div class="service-topology" v-loading="loading">
     <section class="topology-header"><div><el-button text :icon="ArrowLeft" @click="router.push('/containers/services')">返回服务管理</el-button><p class="eyebrow">SERVICE RESOURCE TOPOLOGY</p><h1>{{ topology.service?.name || '服务资源拓扑' }}</h1><p><code>{{ topology.service?.serviceUid }}</code> · {{ topology.cluster?.name || '未绑定集群' }} / {{ topology.namespace || '-' }}</p></div><el-button :icon="Refresh" @click="load">刷新运行状态</el-button></section>
     <el-alert v-if="topology.refreshError" type="warning" :closable="false" show-icon :title="topology.refreshError" />
-    <section class="topology-card"><header><div><h2>业务通信链路</h2><p>绿色 ✓ 表示健康，红色 ! 表示异常。点击服务节点进入服务详情。</p></div><div class="legend"><span class="public"></span>对外入口 <span class="management"></span>GM 管理 <span class="service"></span>内部服务 <i class="legend-health ok">✓</i>健康 <i class="legend-health bad">!</i>异常</div></header><div class="canvas"><svg viewBox="0 0 1200 600"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></section>
+    <section class="topology-card"><header><div><h2>业务通信链路</h2><p>绿色 ✓ 表示健康，红色 ! 表示异常。Home / World 实例会按编号自动排序并横向换行。点击服务节点进入服务详情。</p></div><div class="legend"><span class="public"></span>对外入口 <span class="management"></span>GM 管理 <span class="service"></span>内部服务 <i class="legend-health ok">✓</i>健康 <i class="legend-health bad">!</i>异常</div></header><div class="topology-scroll"><div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"><svg :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text v-if="edge.label" :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></div></section>
     <section class="workload-card"><h2>关联工作负载</h2><el-table :data="workloads" size="small"><el-table-column prop="name" label="工作负载"/><el-table-column prop="type" label="类型" width="120"/><el-table-column prop="ready" label="Ready" width="100"/><el-table-column label="健康" width="100"><template #default="{ row }"><el-tag :type="healthy(row) ? 'success' : 'danger'">{{ healthy(row) ? '✓ 正常' : '! 异常' }}</el-tag></template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button link type="primary" @click="openDetail({ workload: row })">服务详情</el-button></template></el-table-column></el-table></section>
     <el-drawer v-model="detailVisible" size="70%" :with-header="false" destroy-on-close>
       <div v-if="selectedWorkload" class="service-drawer-tabs"><el-button :type="activeDrawerTab === 'detail' ? 'primary' : 'default'" @click="activeDrawerTab = 'detail'">服务详情</el-button><el-button :type="activeDrawerTab === 'logs' ? 'primary' : 'default'" @click="openLogs()">服务日志</el-button></div>
@@ -74,6 +94,10 @@ onMounted(load)
 </style>
 
 <style scoped>
-.canvas{zoom:1.1}
-.topology-card{overflow:auto}
+.topology-scroll{overflow:auto;padding-bottom:2px}
+.canvas{min-width:1200px;zoom:1}
+.canvas>svg{width:100%;height:100%}
+.topology-card{overflow:hidden}
+.topology-node{transition:transform .16s ease,box-shadow .16s ease}
+.topology-node b,.topology-node small{overflow-wrap:anywhere;word-break:break-word;line-height:1.35}
 </style>

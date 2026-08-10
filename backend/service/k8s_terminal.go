@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"net/url"
+	"strings"
 	"sync"
 
 	"ops-admin/backend/model"
@@ -98,9 +101,17 @@ func (w *k8sTerminalOutput) Write(p []byte) (int, error) {
 }
 
 func (s *Service) GetK8sPodContainers(clusterID uint, namespace string, podName string) ([]string, error) {
-	clientset, err := s.newK8sClientset(clusterID)
+	cluster, err := s.GetK8sCluster(clusterID)
 	if err != nil {
 		return nil, err
+	}
+	config, _, err := s.k8sRESTConfigForCluster(cluster)
+	if err != nil {
+		return nil, err
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, errors.New(k8sClusterConnectError)
 	}
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
@@ -234,39 +245,39 @@ func (s *Service) OpenK8sPodTerminal(clusterID uint, namespace string, podName s
 	}
 }
 
-func (s *Service) newK8sClientset(clusterID uint) (*kubernetes.Clientset, error) {
-	cluster, err := s.GetK8sCluster(clusterID)
-	if err != nil {
-		return nil, err
-	}
-	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
-	if err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
-	defer cleanup()
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
-	return clientset, nil
-}
-
 func (s *Service) k8sRESTConfigForCluster(cluster model.K8sCluster) (*rest.Config, func(), error) {
 	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
 	if err != nil {
 		return nil, func() {}, err
 	}
+	endpoint, err := url.Parse(config.Host)
+	if err != nil || endpoint.Hostname() == "" {
+		return nil, func() {}, fmt.Errorf("invalid Kubernetes API server URL: %s", config.Host)
+	}
 	if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" && cluster.GatewayID != nil && *cluster.GatewayID > 0 {
-		gatewayID := *cluster.GatewayID
-		config.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
-			conn, cleanup, err := s.dialThroughGateway(ctx, gatewayID, network, address)
-			if err != nil {
-				return nil, err
-			}
-			return cleanupConn{Conn: conn, cleanup: cleanup}, nil
+		if isLoopbackK8sAPIHost(endpoint.Hostname()) {
+			return nil, func() {}, fmt.Errorf("Kubernetes API server is configured as %s, which is a stale local tunnel address; restore the original API server address in kubeconfig", config.Host)
 		}
+		gatewayID := *cluster.GatewayID
+		// Keep the original API server URL and TLS identity intact.  client-go
+		// opens every HTTP/SPDY connection through the shared SSH client instead
+		// of routing it through a short-lived localhost listener.  The latter
+		// produced stale 127.0.0.1:<port> connections during terminal sessions.
+		config.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return s.dialGatewayTarget(gatewayID, network, address)
+		}
+		return config, func() {}, nil
 	}
 	return config, func() {}, nil
+}
+
+func isLoopbackK8sAPIHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "localhost" || host == "::1" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func chooseK8sContainerName(pod *corev1.Pod, container string) string {
