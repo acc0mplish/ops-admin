@@ -146,7 +146,7 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div class="page-card host-group-page">
+  <div class="page-card host-group-page asset-card-page">
     <div class="page-header">
       <div>
         <h2 class="page-title">主机组管理</h2>
@@ -261,7 +261,7 @@ onMounted(loadData)
 .host-group-page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .page-header {
@@ -273,13 +273,13 @@ onMounted(loadData)
 
 .page-title {
   margin: 0;
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 650;
   color: #18213a;
 }
 
 .page-desc {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: #6a7592;
   font-size: 14px;
 }
@@ -326,7 +326,7 @@ onMounted(loadData)
 .action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 @media (max-width: 900px) {

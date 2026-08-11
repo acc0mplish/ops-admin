@@ -8,7 +8,7 @@ defineProps({
 </script>
 
 <template>
-  <section class="kuboard-section">
+  <section class="kuboard-section workload-workspace">
     <div class="workload-control-panel">
       <div class="workload-control-row">
         <div class="workload-filter-group">

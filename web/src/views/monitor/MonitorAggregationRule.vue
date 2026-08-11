@@ -186,7 +186,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page monitor-aggregation-page">
     <div class="page-header">
       <div>
         <h2>告警聚合收敛规则</h2>

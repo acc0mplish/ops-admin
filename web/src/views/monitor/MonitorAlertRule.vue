@@ -388,7 +388,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page monitor-alert-rule-page">
     <div class="page-header">
       <div>
         <h2>告警规则</h2>

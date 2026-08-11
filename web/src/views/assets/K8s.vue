@@ -2466,7 +2466,7 @@ watch(filteredPods, () => {
 </script>
 
 <template>
-  <div class="k8s-page" v-loading="page.loading">
+  <div class="k8s-page" :class="`k8s-page--${page.currentTab}`" v-loading="page.loading">
     <K8sConsoleLayout :page="page">
       <K8sSectionContent :page="page" />
     </K8sConsoleLayout>

@@ -93,7 +93,7 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div class="page-card" v-loading="loading">
+  <div class="page-card console-card-page" v-loading="loading">
     <div class="page-section-head">
       <div>
         <h2 class="card-title">{{ t('configTitle') }}</h2>

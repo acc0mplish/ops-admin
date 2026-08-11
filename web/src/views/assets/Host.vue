@@ -525,6 +525,17 @@ watch(
 
 <template>
   <div class="asset-host-page">
+    <header class="host-page-header">
+      <div>
+        <p class="host-page-kicker">ASSET INVENTORY</p>
+        <h2>主机管理</h2>
+        <p>统一查看主机连通性、认证状态与容量指标，优先处置离线和认证异常资源。</p>
+      </div>
+      <div class="host-page-summary">
+        <span>资源工作台</span>
+        <small>支持批量同步与凭据替换</small>
+      </div>
+    </header>
     <section class="query-panel">
       <el-form inline>
         <el-form-item label="主机名称">
@@ -853,14 +864,14 @@ watch(
 .asset-host-page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .query-panel {
-  padding: 24px 16px;
-  border: 1px solid #dfe5ff;
+  padding: 16px;
+  border: 1px solid #e3e8f0;
   border-radius: 10px;
-  background: #f4f6ff;
+  background: #f9fafc;
 }
 
 .query-actions {
@@ -873,7 +884,8 @@ watch(
 .host-table {
   overflow: hidden;
   border-radius: 10px;
-  box-shadow: 0 10px 28px rgba(31, 45, 87, 0.08);
+  border: 1px solid #e3e8f0;
+  box-shadow: 0 2px 5px rgba(20, 34, 58, 0.035);
 }
 
 .host-name {
@@ -919,6 +931,52 @@ watch(
   color: #8190ad;
 }
 
+.host-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px;
+  border: 1px solid #dfe7f3;
+  border-radius: 12px;
+  background: linear-gradient(110deg, #ffffff 0%, #f3f7fd 100%);
+}
+
+.host-page-kicker {
+  margin: 0 0 6px;
+  color: #356ae6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.host-page-header h2 {
+  margin: 0;
+  color: #18243a;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+}
+
+.host-page-header > div > p:last-child {
+  margin: 7px 0 0;
+  color: #66758d;
+  font-size: 13px;
+}
+
+.host-page-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  padding: 10px 12px;
+  border-left: 3px solid #356ae6;
+  color: #304b78;
+  background: rgba(53, 106, 230, .06);
+}
+
+.host-page-summary span { font-size: 13px; font-weight: 650; }
+.host-page-summary small { color: #71809a; font-size: 12px; }
+
 .pager {
   display: flex;
   justify-content: flex-end;
@@ -957,11 +1015,11 @@ watch(
 .more-action-trigger {
   min-width: 110px;
   height: 34px;
-  border: 1px solid #bfd5ff;
+  border: 1px solid #dce3ed;
   border-radius: 8px;
-  background: #f7fbff;
-  color: #5e78b4;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  background: #fff;
+  color: #52647e;
+  box-shadow: none;
 }
 
 .more-action-trigger:hover,
@@ -998,6 +1056,11 @@ watch(
 :deep(.host-more-dropdown .el-dropdown-menu__item:hover) {
   background: #eef4ff;
   color: #4669c9;
+}
+
+@media (max-width: 900px) {
+  .host-page-header { align-items: flex-start; flex-direction: column; }
+  .host-page-summary { width: 100%; }
 }
 
 .metric-unavailable {

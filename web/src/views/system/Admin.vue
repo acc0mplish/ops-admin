@@ -161,7 +161,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card console-card-page">
     <h2 class="page-title">用户管理</h2>
     <div class="toolbar">
       <div class="toolbar-left">

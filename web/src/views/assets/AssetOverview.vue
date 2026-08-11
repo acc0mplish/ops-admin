@@ -471,12 +471,10 @@ onMounted(loadOverview)
   justify-content: space-between;
   gap: 24px;
   padding: 20px 24px;
-  border-radius: 8px;
+  border-radius: 12px;
   color: #fff;
-  background:
-    radial-gradient(circle at top right, rgba(125, 211, 252, 0.24), transparent 24%),
-    linear-gradient(135deg, #1f2b5a 0%, #3657c9 60%, #4f7dff 100%);
-  box-shadow: 0 18px 40px rgba(46, 73, 166, 0.2);
+  background: linear-gradient(118deg, #1b2d49 0%, #294f91 100%);
+  box-shadow: 0 8px 20px rgba(28, 54, 97, 0.14);
 }
 
 .hero-copy h1 {
@@ -507,8 +505,9 @@ onMounted(loadOverview)
 
 .hero-side-card {
   padding: 12px 16px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .hero-side-card span {
@@ -522,7 +521,7 @@ onMounted(loadOverview)
   font-size: 22px;
 }
 
-.hero-side-card.attention { background: rgba(245, 158, 11, 0.28); }
+.hero-side-card.attention { background: rgba(217, 140, 22, 0.28); }
 
 .summary-grid {
   display: grid;
@@ -533,17 +532,17 @@ onMounted(loadOverview)
 .summary-card {
   padding: 16px;
   border: 1px solid #e6ecf7;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 5px rgba(20, 34, 58, 0.035);
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .summary-card:hover {
-  transform: translateY(-2px);
-  border-color: #cad7fb;
-  box-shadow: 0 18px 32px rgba(46, 73, 166, 0.12);
+  transform: translateY(-1px);
+  border-color: #bcd0f7;
+  box-shadow: 0 8px 18px rgba(20, 34, 58, 0.08);
 }
 
 .summary-head {
@@ -597,11 +596,11 @@ onMounted(loadOverview)
 .page-card,
 .panel-card,
 .detail-card {
-  padding: 22px;
-  border-radius: 8px;
+  padding: 20px;
+  border-radius: 10px;
   background: #fff;
   border: 1px solid #e7edf8;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 2px 5px rgba(20, 34, 58, 0.035);
 }
 
 .panel-header {
@@ -647,8 +646,8 @@ onMounted(loadOverview)
 }
 
 .health-item {
-  padding: 16px 18px;
-  border-radius: 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #e7edf8;
 }
@@ -695,10 +694,10 @@ onMounted(loadOverview)
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 16px 18px;
+  padding: 14px 16px;
   border: 1px solid #e7edf8;
-  border-radius: 16px;
-  background: #fbfcff;
+  border-radius: 8px;
+  background: #fafbfd;
   text-align: left;
   cursor: pointer;
 }
@@ -733,8 +732,8 @@ onMounted(loadOverview)
 
 .distribution-card {
   padding: 18px;
-  border-radius: 16px;
-  background: #fbfcff;
+  border-radius: 8px;
+  background: #fafbfd;
   border: 1px solid #ecf1fb;
 }
 

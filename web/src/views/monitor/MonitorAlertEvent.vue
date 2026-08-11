@@ -152,7 +152,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page monitor-alert-event-page">
     <div class="page-header">
       <div>
         <h2>告警事件</h2>

@@ -2,6 +2,89 @@
   min-height: calc(100vh - 160px);
 }
 
+/* Resource-specific card language: each Kubernetes view has a clear operating
+   purpose while retaining a single, restrained console visual system. */
+.k8s-page--overview .stats-panel:first-child { border-top: 3px solid #2563eb; }
+.k8s-page--overview .stats-panel:nth-child(2) { border-top: 3px solid #0ea5c9; }
+.k8s-page--overview .stats-panel:nth-child(3) { border-top: 3px solid #7c6ce7; }
+.k8s-page--overview .cert-band { border-left: 3px solid #2563eb; }
+
+.node-workspace .node-management-card,
+.pod-workspace .pod-management-table,
+.service-workspace .service-resource-table,
+.ingress-workspace .ingress-resource-table {
+  overflow: hidden;
+  border: 1px solid #dbe6f4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(29, 63, 112, .045);
+}
+.node-workspace .node-management-intro,
+.pod-workspace::before,
+.service-workspace::before,
+.ingress-workspace::before {
+  color: #18365f;
+}
+.node-workspace .node-management-intro { border-bottom: 1px solid #e6eef8; background: linear-gradient(90deg, #f6f9ff, #fff); }
+.node-workspace .node-name-cell i { box-shadow: 0 0 0 4px #e6f8ef; }
+.pod-workspace, .service-workspace, .ingress-workspace { position: relative; padding-top: 28px; }
+.pod-workspace::before, .service-workspace::before, .ingress-workspace::before {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.pod-workspace::before { content: 'POD RUNTIME'; }
+.service-workspace::before { content: 'SERVICE DISCOVERY'; }
+.ingress-workspace::before { content: 'EDGE ROUTING'; }
+.pod-workspace .pod-management-table { border-top: 3px solid #2563eb; }
+.service-workspace .service-resource-table { border-top: 3px solid #0ea5c9; }
+.ingress-workspace .ingress-resource-table { border-top: 3px solid #d97706; }
+.pod-workspace .pod-row-actions, .service-workspace .el-button + .el-button,
+.ingress-workspace .el-button + .el-button { margin-left: 6px; }
+
+.namespace-workspace .kuboard-resource-head {
+  padding: 18px 20px;
+  border: 1px solid #dbe6f4;
+  border-top: 3px solid #2563eb;
+  border-radius: 12px;
+  background: linear-gradient(120deg, #fff, #f4f8ff);
+}
+.namespace-workspace .kuboard-stat-card { border-top: 3px solid #4d74df; }
+.namespace-workspace .kuboard-stat-card:nth-child(2) { border-top-color: #19a974; }
+.namespace-workspace .kuboard-stat-card:nth-child(3) { border-top-color: #0ea5c9; }
+.namespace-workspace .kuboard-stat-card:nth-child(4) { border-top-color: #7c6ce7; }
+.namespace-workspace .kuboard-stat-card:nth-child(5) { border-top-color: #d97706; }
+
+.workload-workspace .workload-control-panel { border-top: 3px solid #7c6ce7; }
+.workload-workspace .kuboard-table-card { border-top: 3px solid #7c6ce7; }
+.workload-workspace .kuboard-type-tab.active { box-shadow: inset 0 -2px 0 #7c6ce7; }
+.workload-workspace .kuboard-images { border-left: 2px solid #dce6fa; }
+
+.network-workspace .subsection {
+  overflow: hidden;
+  border: 1px solid #dbe6f4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(29, 63, 112, .045);
+}
+.network-workspace .subsection:first-child { border-top: 3px solid #0ea5c9; }
+.network-workspace .subsection:last-child { border-top: 3px solid #d97706; }
+.network-workspace .subsection-head { padding: 16px 18px; background: #f7faff; border-bottom: 1px solid #e7eef8; }
+
+.storage-workspace .config-storage-tabs {
+  overflow: hidden;
+  border: 1px solid #dbe6f4;
+  border-top: 3px solid #19a974;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(29, 63, 112, .045);
+}
+.storage-workspace .config-storage-create-action { padding: 14px 16px 0; background: #f7fbfa; }
+.storage-workspace .el-tabs__header { padding: 0 16px; background: #f7fbfa; }
+
 .kuboard-shell {
   display: block;
 }

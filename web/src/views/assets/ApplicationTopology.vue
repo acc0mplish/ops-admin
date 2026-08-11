@@ -21,16 +21,28 @@ const find = (predicate) => workloads.value.find((item) => predicate(normalize(i
 const byInstance = (items) => [...items].sort((left, right) => String(left.name).localeCompare(String(right.name), undefined, { numeric: true, sensitivity: 'base' }))
 const homeWorkloads = computed(() => byInstance(workloads.value.filter((item) => normalize(item.name).includes('home'))))
 const worldWorkloads = computed(() => byInstance(workloads.value.filter((item) => normalize(item.name).includes('world'))))
-const gameColumns = computed(() => Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(homeWorkloads.value.length, worldWorkloads.value.length, 1)) * 1.65))))
-const gameStartX = 900
-const nodeStepX = 194
-const nodeStepY = 116
+const gameColumns = computed(() => Math.min(3, Math.max(1, Math.ceil(Math.sqrt(Math.max(homeWorkloads.value.length, worldWorkloads.value.length, 1))))))
+// Keep stateful game workloads clear of ZooKeeper and its dependency paths.
+const gameStartX = 1010
+const nodeStepX = 214
+const nodeStepY = 122
+const statefulGroupPadding = 22
+const statefulGroupHeaderHeight = 0
 const homeRows = computed(() => Math.max(1, Math.ceil(homeWorkloads.value.length / gameColumns.value)))
 const worldRows = computed(() => Math.max(1, Math.ceil(worldWorkloads.value.length / gameColumns.value)))
-const worldStartY = computed(() => 154 + homeRows.value * nodeStepY + 28)
-const gameBottomY = computed(() => worldStartY.value + worldRows.value * nodeStepY)
-const canvasWidth = computed(() => Math.max(1200, gameStartX + gameColumns.value * nodeStepX + 14))
+const statefulGroupWidth = computed(() => Math.max(236, gameColumns.value * nodeStepX + statefulGroupPadding * 2 - 28))
+const homeGroupY = 122
+const homeGroupHeight = computed(() => statefulGroupPadding * 2 + homeRows.value * nodeStepY + 4)
+const worldGroupY = computed(() => homeGroupY + homeGroupHeight.value + 58)
+const worldGroupHeight = computed(() => statefulGroupPadding * 2 + worldRows.value * nodeStepY + 4)
+const worldStartY = computed(() => worldGroupY.value + statefulGroupPadding)
+const gameBottomY = computed(() => worldGroupY.value + worldGroupHeight.value)
+const canvasWidth = computed(() => Math.max(1240, gameStartX + statefulGroupWidth.value + 30))
 const canvasHeight = computed(() => Math.max(600, gameBottomY.value + 130))
+const statefulGroups = computed(() => [
+  { key: 'home', items: homeWorkloads.value, x: gameStartX - statefulGroupPadding, y: homeGroupY, width: statefulGroupWidth.value, height: homeGroupHeight.value },
+  { key: 'world', items: worldWorkloads.value, x: gameStartX - statefulGroupPadding, y: worldGroupY.value, width: statefulGroupWidth.value, height: worldGroupHeight.value }
+].filter((group) => group.items.length))
 function healthy(item) {
   if (!item) return true
   const [ready, expected] = String(item.ready || '').split('/').map(Number)
@@ -48,9 +60,12 @@ const nodes = computed(() => {
   const addGameGroup = (items, prefix, startY) => items.forEach((item, index) => {
     const column = index % gameColumns.value
     const row = Math.floor(index / gameColumns.value)
-    result.push(add(`${prefix}-${index}`, item.name, gameStartX + column * nodeStepX, startY + row * nodeStepY, 'service', '游戏服务', item))
+    const node = add(`${prefix}-${index}`, item.name, gameStartX + column * nodeStepX, startY + row * nodeStepY, 'service', '有状态游戏服务', item)
+    node.statefulGroup = prefix
+    node.instance = index + 1
+    result.push(node)
   })
-  addGameGroup(homeWorkloads.value, 'home', 154)
+  addGameGroup(homeWorkloads.value, 'home', homeGroupY + statefulGroupPadding)
   addGameGroup(worldWorkloads.value, 'world', worldStartY.value)
   if (social) result.push(add('social', social.name, 740, Math.max(470, gameBottomY.value + 18), 'service', '社交服务 · 通过 ZooKeeper 发现', social))
   if (notice) result.push(add('notice', notice.name, 270, 470, 'public', '日志上报 · 对外入口', notice))
@@ -67,8 +82,9 @@ const edges = computed(() => {
   nodes.value.filter((item) => !['player', 'nginx', 'zk'].includes(item.id)).forEach((item) => add(item.id, 'nginx', '访问 GM', 'management'))
   return result
 })
-function path(edge) { const from = positions.value[edge.from]; const to = positions.value[edge.to]; const x1 = from.x + 174; const y1 = from.y + 46; const x2 = to.x; const y2 = to.y + 46; const middle = Math.round((x1 + x2) / 2); return `M ${x1} ${y1} H ${middle} V ${y2} H ${x2}` }
-function label(edge) { const from = positions.value[edge.from]; const to = positions.value[edge.to]; return { x: Math.round((from.x + 174 + to.x) / 2), y: Math.round((from.y + to.y) / 2) - 8 } }
+function nodeWidth(node) { return node?.statefulGroup ? 190 : 174 }
+function path(edge) { const from = positions.value[edge.from]; const to = positions.value[edge.to]; const x1 = from.x + nodeWidth(from); const y1 = from.y + 46; const x2 = to.x; const y2 = to.y + 46; const middle = Math.round((x1 + x2) / 2); return `M ${x1} ${y1} H ${middle} V ${y2} H ${x2}` }
+function label(edge) { const from = positions.value[edge.from]; const to = positions.value[edge.to]; return { x: Math.round((from.x + nodeWidth(from) + to.x) / 2), y: Math.round((from.y + to.y) / 2) - 8 } }
 function openDetail(node) { if (!node.workload) return; selectedWorkload.value = node.workload; selectedLog.value = null; activeDrawerTab.value = 'detail'; detailVisible.value = true }
 function openLogs(target = null) { selectedLog.value = target; activeDrawerTab.value = 'logs' }
 async function load() { if (!serviceId.value) return; loading.value = true; try { topology.value = await queryAssetServiceRuntimeTopology(serviceId.value) } finally { loading.value = false } }
@@ -79,7 +95,7 @@ onMounted(load)
   <div class="service-topology" v-loading="loading">
     <section class="topology-header"><div><el-button text :icon="ArrowLeft" @click="router.push('/containers/services')">返回服务管理</el-button><p class="eyebrow">SERVICE RESOURCE TOPOLOGY</p><h1>{{ topology.service?.name || '服务资源拓扑' }}</h1><p><code>{{ topology.service?.serviceUid }}</code> · {{ topology.cluster?.name || '未绑定集群' }} / {{ topology.namespace || '-' }}</p></div><el-button :icon="Refresh" @click="load">刷新运行状态</el-button></section>
     <el-alert v-if="topology.refreshError" type="warning" :closable="false" show-icon :title="topology.refreshError" />
-    <section class="topology-card"><header><div><h2>业务通信链路</h2><p>绿色 ✓ 表示健康，红色 ! 表示异常。Home / World 实例会按编号自动排序并横向换行。点击服务节点进入服务详情。</p></div><div class="legend"><span class="public"></span>对外入口 <span class="management"></span>GM 管理 <span class="service"></span>内部服务 <i class="legend-health ok">✓</i>健康 <i class="legend-health bad">!</i>异常</div></header><div class="topology-scroll"><div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"><svg :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text v-if="edge.label" :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></div></section>
+    <section class="topology-card"><header><div><h2>业务通信链路</h2><p>绿色 ✓ 表示健康，红色 ! 表示异常。Home / World 以 StatefulSet 服务组展示，保留实例顺序、就绪状态与详情入口。</p></div><div class="legend"><span class="public"></span>对外入口 <span class="management"></span>GM 管理 <span class="service"></span>内部服务 <i class="legend-health ok">✓</i>健康 <i class="legend-health bad">!</i>异常</div></header><div class="topology-scroll"><div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"><div v-for="group in statefulGroups" :key="group.key" class="stateful-group" :class="group.key" :style="{ left: `${group.x}px`, top: `${group.y}px`, width: `${group.width}px`, height: `${group.height}px` }"></div><svg :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text v-if="edge.label" :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload, 'node-stateful': node.statefulGroup }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><span v-if="node.statefulGroup" class="instance-chip">{{ node.statefulGroup.toUpperCase() }} #{{ node.instance }}</span><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></div></section>
     <section class="workload-card"><h2>关联工作负载</h2><el-table :data="workloads" size="small"><el-table-column prop="name" label="工作负载"/><el-table-column prop="type" label="类型" width="120"/><el-table-column prop="ready" label="Ready" width="100"/><el-table-column label="健康" width="100"><template #default="{ row }"><el-tag :type="healthy(row) ? 'success' : 'danger'">{{ healthy(row) ? '✓ 正常' : '! 异常' }}</el-tag></template></el-table-column><el-table-column label="操作" width="110"><template #default="{ row }"><el-button link type="primary" @click="openDetail({ workload: row })">服务详情</el-button></template></el-table-column></el-table></section>
     <el-drawer v-model="detailVisible" size="70%" :with-header="false" destroy-on-close>
       <div v-if="selectedWorkload" class="service-drawer-tabs"><el-button :type="activeDrawerTab === 'detail' ? 'primary' : 'default'" @click="activeDrawerTab = 'detail'">服务详情</el-button><el-button :type="activeDrawerTab === 'logs' ? 'primary' : 'default'" @click="openLogs()">服务日志</el-button></div>
@@ -100,4 +116,10 @@ onMounted(load)
 .topology-card{overflow:hidden}
 .topology-node{transition:transform .16s ease,box-shadow .16s ease}
 .topology-node b,.topology-node small{overflow-wrap:anywhere;word-break:break-word;line-height:1.35}
+.stateful-group{position:absolute;z-index:0;padding:10px 12px;border:1px dashed #9acdbd;border-radius:18px;background:rgba(239,255,248,.72)}
+.stateful-group.world{border-color:#9dbce9;background:rgba(241,247,255,.76)}
+.stateful-group-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.stateful-group-head b,.stateful-group-head small{display:block}.stateful-group-head b{color:#17694f;font-size:13px}.stateful-group.world .stateful-group-head b{color:#386bb4}.stateful-group-head small{margin-top:2px;color:#6e8796;font-size:11px}
+.canvas>svg{z-index:1}.topology-node{z-index:2}
+.node-stateful{width:190px;min-height:104px;padding-top:28px;border-color:#35bb8b;background:#f5fffb}.node-stateful .instance-chip{position:absolute;top:9px;left:12px;padding:2px 6px;border-radius:999px;background:#dff7ed;color:#17825d;font-size:10px;font-weight:800;letter-spacing:.04em}.node-stateful b{font-size:15px}.node-stateful small{margin-top:6px}
 </style>

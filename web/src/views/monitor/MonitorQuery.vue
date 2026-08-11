@@ -228,9 +228,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="monitor-query">
+  <div class="monitor-query monitor-query-page">
     <div class="query-top">
       <div>
+        <p class="query-eyebrow">METRIC EXPLORER</p>
         <h2>即时查询</h2>
         <p>仅支持 Prometheus 与 VictoriaMetrics，输入 PromQL 直接查询指标、调试告警规则和排查现场。</p>
       </div>
@@ -346,4 +347,26 @@ onMounted(async () => {
 @media (max-width: 900px) { .instant-chart { overflow-x: auto; }.metric-bar-item { flex: 0 0 44px; } }
 .result-view-switch :deep(.el-radio-button__inner){min-width:82px;padding:9px 18px;border-color:#b8c8ef;color:#4663aa;font-size:14px;font-weight:700;box-shadow:none}.result-view-switch :deep(.el-radio-button:first-child .el-radio-button__inner){border-radius:8px 0 0 8px}.result-view-switch :deep(.el-radio-button:last-child .el-radio-button__inner){border-radius:0 8px 8px 0}.result-view-switch :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner){border-color:#5a76eb;background:#5a76eb;color:#fff;box-shadow:-1px 0 0 0 #5a76eb}.instant-chart-panel{min-height:390px}.chart-actions{display:flex;gap:8px;align-items:center}.line-chart-wrap{height:265px;margin-top:18px;padding:10px 12px 0;border:1px solid #e5ebf5;border-radius:8px;background:#fff}.line-chart{display:block;width:100%;height:230px;overflow:visible}.chart-grid{stroke:#e7edf6;stroke-width:1}.chart-value{fill:#8391a7;font-size:11px}.chart-line{fill:none;stroke-width:2.2;vector-effect:non-scaling-stroke}.chart-time-axis{display:flex;justify-content:space-between;padding:3px 3px 0 38px;color:#8391a7;font-size:11px}.series-list{display:flex;flex-direction:column;max-height:145px;margin-top:12px;overflow:auto;border:1px solid #e5ebf5;border-radius:8px}.series-list>div{display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #edf1f7;color:#53657f;font:12px/1.4 Consolas,Monaco,monospace}.series-list>div:last-child{border-bottom:0}.series-list i{width:8px;height:8px;border-radius:50%}.series-list span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.series-list b{color:#2d4e80;font-weight:600}
 .line-chart-wrap{position:relative;background:linear-gradient(180deg,#fbfcff,#fff)}.chart-cursor{stroke:#8796b1;stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}.chart-point{stroke:#fff;stroke-width:2;vector-effect:non-scaling-stroke}.chart-hover-tooltip{position:absolute;z-index:2;top:22px;min-width:210px;max-width:330px;padding:10px 12px;border:1px solid #d8e1f1;border-radius:8px;color:#41536e;background:rgba(255,255,255,.96);box-shadow:0 10px 24px rgba(42,61,98,.18);font-size:12px;pointer-events:none}.chart-hover-tooltip>b{display:block;margin-bottom:7px;color:#263d65}.chart-hover-tooltip>div{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:7px;padding:3px 0}.chart-hover-tooltip i{width:7px;height:7px;border-radius:50%}.chart-hover-tooltip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chart-hover-tooltip strong{color:#2c4d80}.series-list .series-head{position:sticky;top:0;display:grid;grid-template-columns:minmax(0,1fr) auto;padding:7px 10px;color:#60728e;background:#f6f8fc;font:600 12px/1.4 system-ui,sans-serif}.series-head button{padding:0;border:0;color:#4168bd;background:transparent;font:inherit;cursor:pointer}.series-head button:hover{color:#254fba;text-decoration:underline}
+.monitor-query { gap: 16px; padding: 20px; border: 1px solid #dce7f5; border-radius: 14px; background: #f6f9fe; box-shadow: 0 8px 22px rgba(30,79,145,.05); }
+.query-top { position: relative; overflow: hidden; padding: 20px 22px; border: 1px solid #d8e6f7; border-radius: 12px; background: linear-gradient(120deg,#fff,#f0f7ff); }
+.query-top::before { position:absolute; top:0; left:0; width:100%; height:3px; content:''; background:linear-gradient(90deg,#1e40af,#3b82f6 58%,#d97706 58%,#d97706 66%,transparent 66%); }
+.query-eyebrow { margin:0 0 5px !important; color:#4771ba !important; font-size:11px !important; font-weight:800; letter-spacing:.1em; }
+.query-top h2 { margin:0 0 6px !important; color:#173b76 !important; font-size:25px !important; letter-spacing:-.02em; }
+.query-top p:not(.query-eyebrow) { color:#687e9d !important; line-height:1.55; }
+.query-editor { border: 1px solid #223c63 !important; border-radius: 12px !important; background:#122440; box-shadow:0 8px 18px rgba(19,45,82,.12); }
+.template-toolbar { min-height:44px; padding:9px 12px; border-bottom-color:#27466f !important; background:#172e4f !important; color:#b9cae3 !important; }
+.template-toolbar > span:first-child { color:#e4edff !important; }
+.template-description { color:#9bb0cf !important; }
+.query-editor :deep(.el-textarea__inner) { min-height:138px; padding:16px; color:#e6efff; background:#10213b !important; box-shadow:none !important; font:14px/1.7 Consolas,Monaco,monospace; }
+.query-editor :deep(.el-textarea__inner)::placeholder { color:#8199bd; }
+.query-actions { border-top-color:#27466f !important; background:#172e4f !important; color:#b9cae3 !important; }
+.query-actions .el-button--primary { --el-button-bg-color:#3b74e8; --el-button-border-color:#3b74e8; }
+.result-toolbar { padding: 13px 16px; border:1px solid #dce7f5; border-radius:10px; background:#fff; }
+.monitor-query-page .query-editor { border: 1px solid #d9e6f5 !important; background: #fff !important; box-shadow: 0 5px 16px rgba(30,79,145,.045) !important; }
+.monitor-query-page .template-toolbar { border-bottom-color: #e1eaf6 !important; background: #f6f9ff !important; color: #627694 !important; }
+.monitor-query-page .template-toolbar > span:first-child { color: #234b86 !important; }
+.monitor-query-page .template-description { color: #7d8da5 !important; }
+.monitor-query-page .query-editor :deep(.el-textarea__inner) { min-height: 138px; color: #203b61; background: #fbfdff !important; box-shadow: inset 3px 0 0 #3b82f6 !important; font: 14px/1.7 Consolas, Monaco, monospace; }
+.monitor-query-page .query-editor :deep(.el-textarea__inner)::placeholder { color: #8a9ab2; }
+.monitor-query-page .query-actions { border-top-color: #e1eaf6 !important; background: #f6f9ff !important; color: #6e819f !important; }
 </style>

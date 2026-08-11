@@ -88,7 +88,7 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card asset-card-page">
     <h2 class="page-title">凭据管理</h2>
     <div class="toolbar">
       <div class="toolbar-left">
@@ -174,3 +174,10 @@ onMounted(loadData)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.page-card { min-height: 300px; }
+.page-title { margin-bottom: 14px; }
+.toolbar { padding: 12px; border: 1px solid #e8edf3; border-radius: 9px; background: #f9fafc; }
+.pager { margin-top: 16px; padding-top: 14px; border-top: 1px solid #edf0f5; display: flex; justify-content: flex-end; }
+</style>

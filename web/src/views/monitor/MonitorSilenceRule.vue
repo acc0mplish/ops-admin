@@ -236,7 +236,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page monitor-silence-page">
     <div class="page-header">
       <div>
         <h2>告警屏蔽规则</h2>

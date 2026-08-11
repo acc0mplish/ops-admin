@@ -1,10 +1,11 @@
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
 import { executeOpsFileDispatch, queryOpsExecHistoryDetail } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
 import OpsExecutionResultDialog from './components/OpsExecutionResultDialog.vue'
+import { confirmRiskOperation } from '../../composables/useRiskConfirm'
 
 const submitting = ref(false)
 const hostOptions = ref([])
@@ -67,13 +68,15 @@ async function submit() {
     return form.hostIds.map(Number).includes(Number(host.id))
   })
   const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('生产'))
-  const confirmationRequired = highRisk || includesProduction
+  const confirmationRequired = highRisk || includesProduction || form.overwrite
   if (confirmationRequired) {
-    await ElMessageBox.confirm(
-      includesProduction ? '目标包含生产环境主机，请确认文件、路径和目标范围后继续。' : '目标路径属于系统目录，覆盖文件可能影响服务运行。确认继续分发吗？',
-      includesProduction ? '生产环境操作确认' : '高风险路径确认',
-      { type: 'warning', confirmButtonText: '确认分发' }
-    )
+    await confirmRiskOperation({
+      operation: `文件分发至 ${form.targetPath}`,
+      targetSummary: selectedHosts.length ? selectedHosts.map((host) => host.hostName || host.sshIp || host.id).slice(0, 4).join('、') : '所选主机组',
+      targetCount: selectedHosts.length,
+      production: includesProduction,
+      destructive: highRisk || form.overwrite
+    })
   }
 
   const payload = new FormData()

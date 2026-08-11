@@ -185,7 +185,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="database-page page-card">
+  <div class="database-page page-card asset-card-page">
     <div class="page-header">
       <div>
         <h2 class="page-title">数据库管理</h2>
@@ -383,7 +383,7 @@ onMounted(() => {
 .database-page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .page-header {
@@ -395,12 +395,12 @@ onMounted(() => {
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 650;
 }
 
 .page-desc {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: var(--el-text-color-secondary);
 }
 
@@ -411,9 +411,14 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.toolbar { padding: 12px; border: 1px solid #e8edf3; border-radius: 9px; background: #f9fafc; }
+
 .pager {
   display: flex;
   justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
 }
 
 .form-tip { margin-top: 6px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.35; }

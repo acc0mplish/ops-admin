@@ -232,7 +232,7 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]any{"workload": detail, "services": []map[string]any{}, "replicaSets": []map[string]any{}}
+	result := map[string]any{"workload": detail, "services": []map[string]any{}, "replicaSets": []map[string]any{}, "statefulSet": nil}
 	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
 	if err != nil {
 		return result, nil
@@ -242,11 +242,24 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+service.Namespace+"/services", &serviceList); err == nil {
 		items := make([]map[string]any, 0)
 		for _, item := range serviceList.Items {
-			if labelsMatch(item.Spec.Selector, detail.Selector) {
+			// A Service targets Pod labels. The workload selector is preferred,
+			// while workload labels provide a fallback for StatefulSets.
+			if labelsMatch(item.Spec.Selector, detail.Selector) || labelsMatch(item.Spec.Selector, detail.Labels) {
 				items = append(items, map[string]any{"name": item.Metadata.Name, "type": item.Spec.Type, "clusterIP": item.Spec.ClusterIP, "age": humanizeAge(item.Metadata.CreationTimestamp), "healthy": true})
 			}
 		}
 		result["services"] = items
+	}
+	if strings.EqualFold(workloadType, "statefulset") {
+		result["statefulSet"] = map[string]any{
+			"name":      detail.Name,
+			"ready":     detail.Ready,
+			"available": detail.Available,
+			"age":       detail.Age,
+			"healthy":   workloadDetailHealthy(detail),
+			"pods":      detail.Pods,
+		}
+		return result, nil
 	}
 	if !strings.EqualFold(workloadType, "deployment") {
 		return result, nil
@@ -278,6 +291,16 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	}
 	result["replicaSets"] = replicaSets
 	return result, nil
+}
+
+func workloadDetailHealthy(detail model.K8sWorkloadDetail) bool {
+	parts := strings.Split(detail.Ready, "/")
+	if len(parts) != 2 {
+		return false
+	}
+	ready, readyErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	desired, desiredErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	return readyErr == nil && desiredErr == nil && desired > 0 && ready == desired && detail.Available >= desired
 }
 
 // GetAssetServiceWorkloadRolloutHistory returns Deployment revisions which are

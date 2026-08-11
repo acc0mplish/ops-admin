@@ -126,7 +126,7 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page monitor-datasource-page">
     <div class="page-header">
       <div>
         <h2>数据源管理</h2>

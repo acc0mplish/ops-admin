@@ -8,7 +8,7 @@ defineProps({
 </script>
 
 <template>
-  <section class="kuboard-section">
+  <section class="kuboard-section namespace-workspace">
     <div class="kuboard-resource-head">
       <div>
         <h3>{{ page.t('k8sNamespaces') }}</h3>

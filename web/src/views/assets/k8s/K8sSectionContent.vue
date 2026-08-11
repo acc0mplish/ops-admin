@@ -80,7 +80,7 @@ defineProps({
     </div>
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'nodes'" class="section-body">
+  <section v-if="page.hasCluster && page.currentTab === 'nodes'" class="section-body node-workspace">
     <div v-if="page.hasItems(page.nodes)" class="node-management-card">
       <div class="node-management-intro">
         <div><strong>节点运行概览</strong><span>查看节点角色、容量与 Pod 分配；标签管理会直接写入 Kubernetes Node。</span></div>
@@ -110,7 +110,7 @@ defineProps({
 
   <K8sNamespaceBoard v-if="page.hasCluster && page.currentTab === 'namespaces'" :page="page" />
 
-  <section v-if="page.hasCluster && page.currentTab === 'pods'" class="section-body">
+  <section v-if="page.hasCluster && page.currentTab === 'pods'" class="section-body pod-workspace">
     <el-table v-if="page.hasItems(page.filteredPods)" :data="page.pagedPods" class="data-table pod-management-table">
       <el-table-column prop="name" :label="page.t('k8sPodName')" min-width="260" />
       <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="140" />
@@ -161,8 +161,8 @@ defineProps({
 
   <K8sWorkloadBoard v-if="page.hasCluster && page.currentTab === 'workloads'" :page="page" />
 
-  <section v-if="page.hasCluster && page.currentTab === 'services'" class="section-body">
-    <el-table v-if="page.hasItems(page.filteredServices)" :data="page.filteredServices" class="data-table">
+  <section v-if="page.hasCluster && page.currentTab === 'services'" class="section-body service-workspace">
+    <el-table v-if="page.hasItems(page.filteredServices)" :data="page.filteredServices" class="data-table service-resource-table">
       <el-table-column prop="name" :label="page.t('k8sName')" min-width="160" />
       <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="120" />
       <el-table-column prop="type" :label="page.t('k8sType')" width="120" />
@@ -180,8 +180,8 @@ defineProps({
     <el-empty v-else :description="page.t('k8sNoRealtimeServiceData')" />
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'ingresses'" class="section-body">
-    <el-table v-if="page.hasItems(page.filteredIngresses)" :data="page.filteredIngresses" class="data-table">
+  <section v-if="page.hasCluster && page.currentTab === 'ingresses'" class="section-body ingress-workspace">
+    <el-table v-if="page.hasItems(page.filteredIngresses)" :data="page.filteredIngresses" class="data-table ingress-resource-table">
       <el-table-column prop="name" :label="page.t('k8sName')" min-width="160" />
       <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="120" />
       <el-table-column prop="host" :label="page.t('k8sHost')" min-width="180" />
@@ -198,7 +198,7 @@ defineProps({
     <el-empty v-else :description="page.t('k8sNoRealtimeIngressData')" />
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'advanced-network'" class="section-body config-grid">
+  <section v-if="page.hasCluster && page.currentTab === 'advanced-network'" class="section-body config-grid network-workspace">
     <div class="subsection">
       <div class="subsection-head">
         <strong>{{ page.t('k8sGatewayApiGateways') }}</strong>
@@ -252,7 +252,7 @@ defineProps({
     </div>
   </section>
 
-  <section v-if="page.hasCluster && page.currentTab === 'config-storage'" class="section-body">
+  <section v-if="page.hasCluster && page.currentTab === 'config-storage'" class="section-body storage-workspace">
     <div class="config-storage-tabs">
       <div class="config-storage-create-action">
         <el-button v-if="page.configStorageTab === 'storage-classes'" type="primary" @click="page.openStorageClassCreate">

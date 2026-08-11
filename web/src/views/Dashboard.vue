@@ -35,21 +35,22 @@ onMounted(async () => {
 <template>
   <div class="dashboard-page">
     <section class="hero-card">
-      <div>
-        <p class="hero-kicker">OPS-ADMIN</p>
+      <div class="hero-copy">
+        <p class="hero-kicker">CONTROL PLANE / SYSTEM GOVERNANCE</p>
         <h1>{{ t('welcomeBack', { name: welcome }) }}</h1>
         <p class="hero-text">{{ t('dashboardDesc') }}</p>
       </div>
-      <div class="hero-badge">
-        <span>System</span>
-        <span>Config</span>
-        <span>Audit</span>
+      <div class="hero-badge" aria-label="控制台工作范围">
+        <p>CONSOLE SCOPE</p>
+        <span><i></i>系统治理</span>
+        <span><i></i>权限配置</span>
+        <span><i></i>审计追溯</span>
       </div>
     </section>
 
     <section class="stat-grid">
-      <article v-for="item in stats" :key="item.title" class="stat-card">
-        <span>{{ item.title }}</span>
+      <article v-for="(item, index) in stats" :key="item.title" class="stat-card" :class="`metric-${index + 1}`">
+        <span class="stat-label">{{ item.title }}</span>
         <strong>{{ item.value }}</strong>
         <small>{{ item.note }}</small>
       </article>
@@ -68,25 +69,30 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 28px 32px;
-  border-radius: 24px;
+  padding: 26px 30px;
+  border: 1px solid rgba(142, 178, 218, 0.2);
+  border-radius: 14px;
   color: #fff;
   background:
-    radial-gradient(circle at top right, rgba(101, 196, 255, 0.35), transparent 26%),
-    linear-gradient(135deg, #222c61 0%, #405bc7 55%, #4f7dff 100%);
-  box-shadow: 0 18px 40px rgba(46, 73, 166, 0.24);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 88% 8%, rgba(24, 168, 160, 0.22), transparent 24%),
+    #132640;
+  background-size: 24px 24px, 24px 24px, auto, auto;
+  box-shadow: none;
 }
 
 .hero-kicker {
   margin: 0 0 10px;
   letter-spacing: 0.18em;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: #9db1c9;
 }
 
 .hero-card h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: 30px;
+  letter-spacing: -0.025em;
 }
 
 .hero-text {
@@ -98,14 +104,28 @@ onMounted(async () => {
 
 .hero-badge {
   display: grid;
-  gap: 12px;
+  min-width: 174px;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid rgba(192, 214, 239, 0.16);
+  border-radius: 10px;
+  background: rgba(6, 19, 37, 0.32);
 }
 
+.hero-badge p { margin: 0 0 2px; color: #8ea3bd; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
 .hero-badge span {
-  padding: 10px 18px;
-  border-radius: 999px;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dbe8f8;
+  font-size: 13px;
+}
+.hero-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, .12);
 }
 
 .stat-grid {
@@ -115,14 +135,28 @@ onMounted(async () => {
 }
 
 .stat-card {
+  position: relative;
+  overflow: hidden;
   padding: 22px;
-  border-radius: 20px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.045);
   border: 1px solid #e8edf6;
 }
 
-.stat-card span {
+.stat-card::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: #356ae6;
+  content: '';
+}
+.stat-card.metric-2::before { background: #0f766e; }
+.stat-card.metric-3::before { background: #7c5ce3; }
+.stat-card.metric-4::before { background: #b7791f; }
+.stat-label {
   display: block;
   color: #64748b;
 }
@@ -130,7 +164,8 @@ onMounted(async () => {
 .stat-card strong {
   display: block;
   margin: 16px 0 10px;
-  font-size: 34px;
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
   color: #111827;
 }
 

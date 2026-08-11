@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
 import { executeOpsScript, queryOpsExecHistoryDetail, queryOpsScriptOptions } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
 import OpsExecutionResultDialog from './components/OpsExecutionResultDialog.vue'
+import { confirmRiskOperation } from '../../composables/useRiskConfirm'
 
 const submitting = ref(false)
 const hostOptions = ref([])
@@ -71,11 +72,13 @@ async function submit() {
   const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('生产'))
   const confirmationRequired = highRisk || includesProduction
   if (confirmationRequired) {
-    await ElMessageBox.confirm(
-      includesProduction ? '目标包含生产环境主机，请确认脚本和目标范围后继续。' : '所选脚本包含高风险操作，请确认目标范围后继续。',
-      includesProduction ? '生产环境操作确认' : '高风险脚本确认',
-      { type: 'warning', confirmButtonText: '确认执行' }
-    )
+    await confirmRiskOperation({
+      operation: `脚本执行：${selectedScript.value?.name || '-'}`,
+      targetSummary: selectedHosts.length ? selectedHosts.map((host) => host.hostName || host.sshIp || host.id).slice(0, 4).join('、') : '所选主机组',
+      targetCount: selectedHosts.length,
+      production: includesProduction,
+      destructive: highRisk
+    })
   }
 
   submitting.value = true

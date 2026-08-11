@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { confirmRiskOperation } from '../../composables/useRiskConfirm'
 import { queryAssetDatabaseList } from '../../api/asset'
 import DatabaseConnectionTree from './database/DatabaseConnectionTree.vue'
 import {
@@ -46,6 +47,7 @@ const createDatabaseVisible = ref(false)
 const creatingDatabase = ref(false)
 const charsetOptionsLoading = ref(false)
 const sqlConfirmVisible = ref(false)
+const sqlAcknowledgement = ref('')
 const activeTab = ref('data')
 const rowDialogMode = ref('insert')
 const redisKeyDialogMode = ref('create')
@@ -746,6 +748,15 @@ function selectedSQLText() {
   return selected || sqlText.value.trim()
 }
 
+function isProductionEnvironment(value) {
+  const environment = String(value || '').toLowerCase()
+  return environment.includes('prod') || environment.includes('生产')
+}
+
+function sqlConfirmationText() {
+  return isProductionEnvironment(sqlAnalysis.value?.environment) ? '生产环境' : '确认执行'
+}
+
 async function executeAnalyzedSQL(statement, confirmed = false) {
   const data = await executeDBMSSQL({
     databaseId: databaseId.value,
@@ -787,6 +798,7 @@ async function runSQL() {
     if (analysis.writeOperation) {
       pendingSQL.value = statement
       sqlAnalysis.value = analysis
+      sqlAcknowledgement.value = ''
       sqlConfirmVisible.value = true
       return
     }
@@ -797,6 +809,10 @@ async function runSQL() {
 }
 
 async function confirmSQLExecution() {
+  if (sqlAcknowledgement.value !== sqlConfirmationText()) {
+    ElMessage.warning(`请输入“${sqlConfirmationText()}”以确认执行`)
+    return
+  }
   sqlRunning.value = true
   try {
     await executeAnalyzedSQL(pendingSQL.value, true)
@@ -837,11 +853,12 @@ async function runRedisCommand() {
       commandText: redisCommandText.value.trim()
     })
     if (analysis.writeOperation) {
-      await ElMessageBox.confirm(
-        `即将执行 Redis 写命令 ${analysis.command}，该操作会修改数据。`,
-        '确认执行 Redis 命令',
-        { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' }
-      )
+      await confirmRiskOperation({
+        operation: `Redis 写命令：${analysis.command}`,
+        targetSummary: `${connection.value?.databaseName || connection.value?.name || databaseId.value}`,
+        production: isProductionEnvironment(connection.value?.environment),
+        destructive: true
+      })
     }
     await executeRedisCommandText(analysis.writeOperation)
   } catch (error) {
@@ -949,8 +966,11 @@ async function submitRedisKey() {
   }
   const action = redisKeyDialogMode.value === 'create' ? '新增' : '更新'
   try {
-    await ElMessageBox.confirm(`将${action} Redis Key “${redisKeyForm.key}”，该操作会直接修改数据。`, `确认${action} Key`, {
-      type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消'
+    await confirmRiskOperation({
+      operation: `${action} Redis Key`,
+      targetSummary: redisKeyForm.key,
+      production: isProductionEnvironment(connection.value?.environment),
+      destructive: redisKeyDialogMode.value === 'edit'
     })
   } catch {
     return
@@ -973,8 +993,11 @@ async function submitRedisKey() {
 
 async function deleteRedisKey(row) {
   try {
-    await ElMessageBox.confirm(`确定删除 Redis Key “${row.key}”吗？此操作不可恢复。`, '确认删除 Key', {
-      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+    await confirmRiskOperation({
+      operation: '删除 Redis Key',
+      targetSummary: row.key,
+      production: isProductionEnvironment(connection.value?.environment),
+      destructive: true
     })
   } catch {
     return
@@ -1096,6 +1119,12 @@ function openEditRow(row) {
 }
 
 async function submitRow() {
+  await confirmRiskOperation({
+    operation: rowDialogMode.value === 'insert' ? '新增表数据' : '更新表数据',
+    targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
+    production: isProductionEnvironment(connection.value?.environment),
+    destructive: rowDialogMode.value === 'update'
+  })
   if (rowDialogMode.value === 'insert') {
     await insertDBMSTableRow({
       databaseId: databaseId.value,
@@ -1119,7 +1148,12 @@ async function submitRow() {
 }
 
 async function handleDeleteRow(row) {
-  await ElMessageBox.confirm(`确认删除 ${selectedTable.value} 当前数据行吗？`, '提示', { type: 'warning' })
+  await confirmRiskOperation({
+    operation: '删除表数据行',
+    targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
+    production: isProductionEnvironment(connection.value?.environment),
+    destructive: true
+  })
   await deleteDBMSTableRow({
     databaseId: databaseId.value,
     schema: selectedSchema.value,
@@ -1273,6 +1307,18 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-loading="loading" class="dbms-page">
+    <header class="dbms-console-bar">
+      <div class="dbms-console-identity">
+        <span>DBMS WORKBENCH</span>
+        <strong>{{ connection?.name || connection?.databaseName || '数据库工作台' }}</strong>
+        <small>{{ connection?.host || connection?.address || '选择连接后可浏览对象、执行语句与查看结果' }}</small>
+      </div>
+      <div class="dbms-console-status">
+        <el-tag effect="plain">{{ (connection?.dbType || 'DBMS').toUpperCase() }}</el-tag>
+        <el-tag v-if="connection?.environment" type="info" effect="plain">{{ connection.environment }}</el-tag>
+        <el-tag :type="isReadOnly ? 'warning' : 'success'" effect="plain">{{ isReadOnly ? '只读连接' : '可写连接' }}</el-tag>
+      </div>
+    </header>
     <div class="dbms-layout">
       <aside class="dbms-sidebar page-card">
         <section class="sidebar-section connection-section">
@@ -1708,13 +1754,16 @@ onBeforeUnmount(() => {
           show-icon
         />
         <el-alert v-else title="请确认目标环境、数据库和 SQL 内容无误。写操作可能无法自动恢复。" type="warning" :closable="false" show-icon />
+        <el-form-item class="sql-acknowledgement" :label="`请输入“${sqlConfirmationText()}”确认`">
+          <el-input v-model="sqlAcknowledgement" :placeholder="sqlConfirmationText()" autocomplete="off" />
+        </el-form-item>
       </div>
       <template #footer>
         <el-button @click="sqlConfirmVisible = false">取消</el-button>
         <el-button
           type="danger"
           :loading="sqlRunning"
-          :disabled="sqlAnalysis?.accessMode === 'readonly'"
+          :disabled="sqlAnalysis?.accessMode === 'readonly' || sqlAcknowledgement !== sqlConfirmationText()"
           @click="confirmSQLExecution"
         >
           确认执行
@@ -1836,6 +1885,28 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 16px;
 }
+
+.dbms-console-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 72px;
+  padding: 14px 18px;
+  border: 1px solid #dce6f3;
+  border-left: 4px solid #4569d8;
+  border-radius: 12px;
+  background: linear-gradient(120deg, #ffffff, #f5f8ff);
+  box-shadow: 0 5px 14px rgba(35, 65, 115, .05);
+}
+
+.dbms-console-identity span,
+.dbms-console-identity strong,
+.dbms-console-identity small { display: block; }
+.dbms-console-identity span { color: #5871b2; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.dbms-console-identity strong { margin-top: 3px; color: #1c3154; font-size: 18px; }
+.dbms-console-identity small { margin-top: 3px; color: #75849b; font-size: 12px; }
+.dbms-console-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 .dbms-header,
 .dbms-sidebar,
@@ -2326,6 +2397,10 @@ onBeforeUnmount(() => {
   margin-bottom: 12px;
 }
 
+.sql-acknowledgement {
+  margin: 16px 0 0;
+}
+
 .redis-key-alert {
   margin-bottom: 18px;
 }
@@ -2364,7 +2439,7 @@ onBeforeUnmount(() => {
   padding-left: 20px;
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1080px) {
   .dbms-layout {
     grid-template-columns: 1fr;
   }
@@ -2372,5 +2447,8 @@ onBeforeUnmount(() => {
   .dbms-header {
     flex-direction: column;
   }
+
+  .dbms-console-bar { align-items: flex-start; flex-direction: column; }
+  .dbms-console-status { justify-content: flex-start; }
 }
 </style>

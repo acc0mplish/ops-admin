@@ -232,7 +232,7 @@ onMounted(async () => { await Promise.all([loadResourceOptions(), loadData()]) }
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑应用' : '新建应用'" width="min(1280px, 94vw)" top="4vh">
+    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑应用' : '新建应用'" width="min(1280px, 94vw)" top="4vh" class="app-project-dialog">
       <el-form :model="form" label-width="96px">
         <el-row :gutter="14">
           <el-col :span="12">
@@ -332,5 +332,19 @@ onMounted(async () => { await Promise.all([loadResourceOptions(), loadData()]) }
 .binding-header div { display: flex; align-items: baseline; gap: 12px; }
 .binding-header strong { color: #10213d; }
 .binding-header span { color: #7d8ba6; font-size: 13px; }
-.binding-row { display: grid; grid-template-columns: 120px repeat(7, minmax(130px, 1fr)) 52px; gap: 8px; margin-bottom: 10px; }
+.binding-row { display: grid; grid-template-columns: 110px repeat(7, minmax(110px, 1fr)) 48px; gap: 8px; margin-bottom: 10px; }
+:deep(.app-project-dialog) { overflow: hidden; border: 1px solid #d8e5f6; border-radius: 16px; box-shadow: 0 20px 48px rgba(20, 55, 105, .18); }
+:deep(.app-project-dialog .el-dialog__header) { position: relative; padding: 20px 24px 16px !important; border-bottom: 1px solid #e2eaf6; background: linear-gradient(118deg, #fff, #f3f8ff); }
+:deep(.app-project-dialog .el-dialog__header::before) { position: absolute; top: 0; left: 0; width: 100%; height: 3px; content: ''; background: linear-gradient(90deg, #2563eb, #4b86f2 58%, #ea580c 58%, #ea580c 66%, transparent 66%); }
+:deep(.app-project-dialog .el-dialog__title) { color: #183962; font-size: 18px; font-weight: 700; }
+:deep(.app-project-dialog .el-dialog__body) { max-height: calc(92vh - 150px); overflow: auto; padding: 20px 24px !important; background: #fbfdff; }
+:deep(.app-project-dialog .el-form > .el-row) { padding: 18px 18px 4px; border: 1px solid #dfe9f7; border-radius: 12px; background: #fff; }
+:deep(.app-project-dialog .el-form-item__label) { color: #526985; font-weight: 600; }
+:deep(.app-project-dialog .el-radio-button__inner) { min-width: 54px; border-radius: 7px !important; }
+:deep(.app-project-dialog .el-dialog__footer) { padding: 14px 24px 18px !important; border-top: 1px solid #e2eaf6; background: #fff; }
+:deep(.app-project-dialog .el-dialog__footer .el-button--primary) { min-width: 88px; }
+.binding-header { margin: 20px 0 0; padding: 16px 18px; border: 1px solid #dbe7f7; border-bottom: 0; border-radius: 12px 12px 0 0; background: linear-gradient(90deg, #f5f9ff, #fbfdff); }
+.binding-header strong { font-size: 16px; }
+.binding-row { padding: 12px; border: 1px solid #dbe7f7; border-top: 1px dashed #e3ebf7; background: #fff; }
+.binding-row:last-of-type { border-radius: 0 0 12px 12px; }
 </style>

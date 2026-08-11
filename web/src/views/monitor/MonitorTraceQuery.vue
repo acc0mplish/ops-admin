@@ -208,7 +208,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="trace-page">
+  <div class="trace-page trace-query-page">
     <div class="page-header"><div><h2>链路追踪</h2><p>通过 Jaeger 检索分布式调用链，定位服务调用耗时与异常 Span。</p></div></div>
     <el-alert v-if="!datasources.length" title="尚未配置 Jaeger 数据源" type="warning" :closable="false" show-icon>
       请先前往“数据源管理”新增并测试 Jaeger Query 服务地址。

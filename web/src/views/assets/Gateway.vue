@@ -254,7 +254,7 @@ onMounted(() => {
 
 <style scoped>
 .gateway-page {
-  padding: 24px;
+  padding: 0;
 }
 
 .page-hero,
@@ -262,20 +262,21 @@ onMounted(() => {
 .gateway-table {
   background: #fff;
   border: 1px solid #e4ebf7;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .page-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px;
+  padding: 20px;
   margin-bottom: 16px;
 }
 
 .page-hero h1 {
   margin: 0 0 8px;
-  font-size: 28px;
+  font-size: 22px;
+  font-weight: 650;
 }
 
 .page-hero p {
@@ -286,7 +287,8 @@ onMounted(() => {
 .toolbar {
   display: flex;
   gap: 12px;
-  padding: 16px;
+  padding: 12px;
+  background: #f9fafc;
   margin-bottom: 16px;
 }
 

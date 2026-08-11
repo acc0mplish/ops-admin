@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Check, Expand, Fold, Grid, House } from '@element-plus/icons-vue'
+import { ArrowDown, Check, Expand, Fold, Grid, House, Search } from '@element-plus/icons-vue'
 import { profile } from '../api/system'
 import {
   getMenus,
@@ -29,6 +29,8 @@ const layoutConfig = ref(getSystemConfig())
 const tagViews = ref(loadTags())
 const appDrawerVisible = ref(false)
 const appNavigationVisible = ref(false)
+const commandPaletteVisible = ref(false)
+const commandKeyword = ref('')
 const tagContextMenu = ref({
   visible: false,
   x: 0,
@@ -64,6 +66,10 @@ const sidebarMenus = computed(() => {
 })
 
 const breadcrumbs = computed(() => buildBreadcrumbs(sidebarMenus.value, route.path, currentTitle.value))
+const commandItems = computed(() => flattenMenus(sidebarMenus.value)
+  .filter((item) => item.path)
+  .filter((item) => `${item.title} ${item.path}`.toLowerCase().includes(commandKeyword.value.trim().toLowerCase()))
+  .slice(0, 12))
 
 const appNavigationAccent = {
   console: '#5b6cf9',
@@ -140,13 +146,15 @@ function trimTagViews(tags, protectedPath = '') {
 
 function normalizeBackendMenus(raw) {
   const menuList = (raw || [])
-    .filter((item) => !isAppEntryMenu(item) && !isApplicationRootPath(item.url || item.path))
+    // 控制台只应使用属于控制台的后端菜单。后端菜单中也包含各应用的
+    // 容器/资产等分支；只排除应用根路径会遗漏 /containers/k8s 这类子路径。
+    .filter((item) => !isAppEntryMenu(item) && isConsoleMenuPath(item.url || item.path))
     .map((item) => ({
       title: item.menuName,
       path: item.url || '',
       icon: item.icon || 'Menu',
       children: (item.menuSvoList || [])
-        .filter((child) => child.menuType !== 3 && !isAppEntryMenu(child) && !isApplicationRootPath(child.url || child.path))
+        .filter((child) => child.menuType !== 3 && !isAppEntryMenu(child) && isConsoleMenuPath(child.url || child.path))
         .map((child) => ({
           title: child.menuName,
           path: child.url || '',
@@ -154,6 +162,8 @@ function normalizeBackendMenus(raw) {
           children: []
         }))
     }))
+    // 没有控制台路由、也没有保留下级菜单的应用分组不应显示为空菜单项。
+    .filter((item) => item.path || item.children.length)
 
   if (!menuList.some((item) => item.path === '/dashboard')) {
     menuList.unshift({
@@ -199,8 +209,34 @@ function displayTitle(item) {
   return item.titleKey ? t(item.titleKey) : translateRoute(item.path, item.title)
 }
 
-function isApplicationRootPath(path) {
-  return ['/assets', '/ops', '/applications', '/notify', '/monitor'].includes(path)
+function flattenMenus(items = [], parentTitle = '') {
+  return items.flatMap((item) => {
+    const title = displayTitle(item)
+    const current = item.path ? [{ title, parentTitle, path: item.path, icon: item.icon || 'Document' }] : []
+    return current.concat(flattenMenus(item.children || [], title))
+  })
+}
+
+function openCommandPalette() {
+  commandKeyword.value = ''
+  commandPaletteVisible.value = true
+}
+
+function selectCommand(item) {
+  commandPaletteVisible.value = false
+  router.push(item.path)
+}
+
+function onGlobalKeydown(event) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    openCommandPalette()
+  }
+}
+
+function isConsoleMenuPath(path) {
+  const normalizedPath = String(path || '').trim()
+  return !normalizedPath || getAppByRoute(normalizedPath).key === 'console'
 }
 
 function buildBreadcrumbs(menuList, path, fallbackTitle) {
@@ -445,7 +481,10 @@ watch(
 onMounted(() => {
   applySystemTheme(layoutConfig.value)
   syncProfile()
+  window.addEventListener('keydown', onGlobalKeydown)
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 </script>
 
 <template>
@@ -555,6 +594,11 @@ onMounted(() => {
           </div>
 
           <div class="header-right">
+            <el-button class="command-trigger" @click="openCommandPalette">
+              <el-icon><Search /></el-icon>
+              <span>搜索页面与操作</span>
+              <kbd>⌘K</kbd>
+            </el-button>
             <el-dropdown trigger="click" @command="switchLocale">
               <div class="locale-box">
                 <span>{{ currentLocale === 'zh-CN' ? 'CN' : 'EN' }}</span>
@@ -657,6 +701,29 @@ onMounted(() => {
         <button type="button" @click="closeOtherTags">关闭其他标签页</button>
       </div>
     </div>
+
+    <el-dialog v-model="commandPaletteVisible" class="command-palette" width="640px" :show-close="false" :append-to-body="true">
+      <template #header>
+        <div class="command-palette-head">
+          <div>
+            <span>GLOBAL COMMAND</span>
+            <strong>快速跳转与检索</strong>
+          </div>
+          <kbd>ESC</kbd>
+        </div>
+      </template>
+      <el-input v-model="commandKeyword" autofocus placeholder="搜索页面、模块或路径" clearable>
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <div class="command-result-list">
+        <button v-for="item in commandItems" :key="item.path" type="button" class="command-result" @click="selectCommand(item)">
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span><b>{{ item.title }}</b><small>{{ item.parentTitle || currentAppLabel }} · {{ item.path }}</small></span>
+          <em>Enter</em>
+        </button>
+        <el-empty v-if="!commandItems.length" description="未找到匹配的页面或操作" :image-size="48" />
+      </div>
+    </el-dialog>
   </el-container>
 </template>
 
@@ -1032,6 +1099,10 @@ onMounted(() => {
   min-width: 0;
 }
 
+.command-trigger { height: 34px; border-color: #d8e1f0; background: #fff; color: #64748b; }
+.command-trigger:hover { border-color: #b9c8e9; background: #f3f6fd; color: #334155; }
+.command-trigger kbd, .command-palette-head kbd, .command-result em { margin-left: 6px; padding: 1px 5px; border: 1px solid #d8e1f0; border-radius: 4px; color: #8391a7; font-family: inherit; font-size: 10px; font-style: normal; }
+
 .collapse-button {
   border-color: #d9e0ef;
   color: #334155;
@@ -1313,4 +1384,9 @@ onMounted(() => {
     padding: 14px;
   }
 }
+:global(.command-palette.el-dialog) { overflow: hidden; border: 1px solid #dce6f3; border-top: 2px solid var(--app-primary); border-radius: 12px; background: #fff; box-shadow: 0 26px 70px rgba(24, 44, 78, .22); }
+:global(.command-palette .el-dialog__header) { margin: 0; padding: 16px 18px 12px; }
+:global(.command-palette .el-dialog__body) { padding: 0 18px 18px; }
+.command-palette-head { display: flex; align-items: center; justify-content: space-between; }.command-palette-head span, .command-palette-head strong { display: block; }.command-palette-head span { color: var(--app-primary); font-size: 10px; font-weight: 800; letter-spacing: .11em; }.command-palette-head strong { margin-top: 4px; color: #172b4d; font-size: 17px; }
+.command-result-list { display: grid; gap: 6px; max-height: 380px; margin-top: 12px; overflow: auto; }.command-result { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 8px; background: #f7f9fd; color: #40516d; text-align: left; cursor: pointer; }.command-result:hover { border-color: #c6d9ee; background: #eef4fc; }.command-result > span { display: grid; gap: 2px; min-width: 0; }.command-result b { color: #172b4d; font-size: 13px; }.command-result small { overflow: hidden; color: #8190a9; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.command-result em { margin-left: auto; }
 </style>
