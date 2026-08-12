@@ -64,6 +64,7 @@ type AssetTerminalSession struct {
 
 func New(db *gorm.DB) *Service {
 	svc := &Service{db: db, gatewaySSHClients: make(map[uint]*ssh.Client), k8sOverviewCache: make(map[uint]k8sOverviewCacheEntry)}
+	svc.ensureDefaultEnvironments()
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
 	svc.initDatabaseBackupScheduler()

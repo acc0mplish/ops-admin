@@ -31,6 +31,11 @@ type MonitorAlertActionPayload struct {
 }
 
 func (s *Service) ensureDefaultEnvironments() {
+	var count int64
+	if err := s.db.Model(&model.OpsEnvironment{}).Count(&count).Error; err != nil || count > 0 {
+		return
+	}
+
 	defaults := []model.OpsEnvironment{
 		{Name: "开发环境", Code: "dev", Sort: 10, Status: 1, Description: "开发联调与日常验证环境"},
 		{Name: "测试环境", Code: "test", Sort: 20, Status: 1, Description: "功能测试、集成测试与预发布验证环境"},
@@ -45,7 +50,6 @@ func (s *Service) ensureDefaultEnvironments() {
 }
 
 func (s *Service) ListOpsEnvironments(keyword, status string) ([]model.OpsEnvironment, error) {
-	s.ensureDefaultEnvironments()
 	query := s.db.Model(&model.OpsEnvironment{})
 	if keyword != "" {
 		query = query.Where("name LIKE ? OR code LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
