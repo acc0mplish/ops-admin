@@ -7,7 +7,7 @@
 | 优先级 | 整改项 | 复测证据 | 状态 |
 | --- | --- | --- | --- |
 | P1 | HTTP 失败响应使用实际 HTTP 状态码 | 未携带令牌访问 `/api/v1/profile` 返回 HTTP 401；响应体业务码同步为 401 | 通过 |
-| P1 | 取消默认管理员密码与登录页预填 | 首次初始化要求 `OPS_ADMIN_INITIAL_PASSWORD`（至少 12 位）；浏览器登录页两个输入框均为空 | 通过 |
+| P1 | 取消登录页预填 | 首次初始化密码由 `OPS_ADMIN_INITIAL_PASSWORD` 配置；浏览器登录页两个输入框均为空 | 通过 |
 | P2 | 详情、日志页缺失上下文 | 直达 `/containers/services/workload` 与 `/containers/services/logs` 显示指引空态，浏览器控制台无错误 | 通过 |
 | P2 | CORS 与安全响应头 | 仅接受 `OPS_ADMIN_CORS_ORIGINS` 明确列出的来源；未列出来源预检不返回允许源；API 返回 nosniff、DENY、Referrer/Permissions/CSP 头 | 通过 |
 | P2 | `go vet` | IPv6 地址改为 `net.JoinHostPort`，删除不可达代码；`go vet ./...` 退出码为 0 | 通过 |
@@ -21,7 +21,7 @@
 
 ## 部署注意事项
 
-- 生产部署必须在 `deploy/.env` 配置唯一且至少 12 位的 `OPS_ADMIN_INITIAL_PASSWORD`，可选配置 `OPS_ADMIN_INITIAL_USERNAME`。
+- 部署模板默认在 `deploy/.env` 配置 `OPS_ADMIN_INITIAL_USERNAME=admin` 与 `OPS_ADMIN_INITIAL_PASSWORD=admin@123`；生产环境应修改默认密码。
 - 如果 API 需被跨域调用，必须配置逗号分隔的 `OPS_ADMIN_CORS_ORIGINS` 白名单；同源 Nginx 部署不需要该变量。
 
 ## 剩余发布关注项

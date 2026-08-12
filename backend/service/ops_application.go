@@ -2164,11 +2164,12 @@ func (s *Service) remoteOpsAppCheckoutCommand(app model.OpsApplication, workspac
 	if strings.TrimSpace(branch) != "" {
 		branchArg = " -b " + shellQuote(branch)
 	}
-	checkoutCommand := "git pull --ff-only"
+	gitRetry := "git_retry() { attempts=3; attempt=1; until GIT_TERMINAL_PROMPT=0 git \"$@\"; do rc=$?; if [ $attempt -ge $attempts ]; then exit $rc; fi; echo \"Git command failed (attempt $attempt/$attempts), retrying in 3 seconds...\" >&2; sleep 3; attempt=$((attempt + 1)); done; }; "
+	checkoutCommand := "git_retry pull --ff-only"
 	if strings.TrimSpace(branch) != "" {
-		checkoutCommand = "git checkout " + shellQuote(branch) + " && git pull --ff-only"
+		checkoutCommand = "git checkout " + shellQuote(branch) + " && git_retry pull --ff-only"
 	}
-	return fmt.Sprintf("mkdir -p %s && if [ -d %s/.git ]; then cd %s && git fetch --all && %s; else git clone%s %s %s; fi", shellQuote(parent), shellQuote(target), shellQuote(target), checkoutCommand, branchArg, shellQuote(repoURL), shellQuote(target))
+	return fmt.Sprintf("%smkdir -p %s && if [ -d %s/.git ]; then cd %s && git_retry fetch --all --prune && %s; else git_retry clone%s %s %s; fi", gitRetry, shellQuote(parent), shellQuote(target), shellQuote(target), checkoutCommand, branchArg, shellQuote(repoURL), shellQuote(target))
 }
 
 func (s *Service) opsAppBuildEnvironment(execInfo opsBuildExecution, commitID, buildPath string) map[string]string {

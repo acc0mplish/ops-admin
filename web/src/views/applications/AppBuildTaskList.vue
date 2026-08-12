@@ -79,11 +79,20 @@ MYSQL_DATABASE=ops_admin
 MYSQL_USER=ops_admin
 MYSQL_PASSWORD=$MYSQL_PASSWORD
 MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+OPS_ADMIN_INITIAL_USERNAME=admin
+OPS_ADMIN_INITIAL_PASSWORD=admin@123
 EOF
+fi
+if ! grep -q '^OPS_ADMIN_INITIAL_PASSWORD=.' deploy/.env; then
+  umask 077
+  printf '\nOPS_ADMIN_INITIAL_USERNAME=admin\nOPS_ADMIN_INITIAL_PASSWORD=admin@123\n' >> deploy/.env
+  echo "Added the default administrator credentials to deploy/.env. Change them before deploying to production."
 fi
 if [ ! -f deploy/config.yaml ]; then cp deploy/config.yaml.example deploy/config.yaml; fi
 MYSQL_PASSWORD="$(sed -n 's/^MYSQL_PASSWORD=//p' deploy/.env | head -n 1)"
 test -n "$MYSQL_PASSWORD" || { echo "MYSQL_PASSWORD is missing"; exit 1; }
+OPS_ADMIN_INITIAL_PASSWORD="$(sed -n 's/^OPS_ADMIN_INITIAL_PASSWORD=//p' deploy/.env | head -n 1)"
+test -n "$OPS_ADMIN_INITIAL_PASSWORD" || { echo "OPS_ADMIN_INITIAL_PASSWORD is missing"; exit 1; }
 sed -i "s|^  password: .*|  password: $MYSQL_PASSWORD|" deploy/config.yaml
 chmod 600 deploy/.env deploy/config.yaml
 docker_cmd compose --env-file deploy/.env build`

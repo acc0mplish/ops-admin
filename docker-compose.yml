@@ -2,7 +2,7 @@ name: ops-admin
 
 services:
   mysql:
-    image: mysql:8.0
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/mysql:8.0
     container_name: ops-admin-mysql
     restart: unless-stopped
     environment:

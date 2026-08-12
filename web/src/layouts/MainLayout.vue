@@ -66,10 +66,35 @@ const sidebarMenus = computed(() => {
 })
 
 const breadcrumbs = computed(() => buildBreadcrumbs(sidebarMenus.value, route.path, currentTitle.value))
-const commandItems = computed(() => flattenMenus(sidebarMenus.value)
-  .filter((item) => item.path)
-  .filter((item) => `${item.title} ${item.path}`.toLowerCase().includes(commandKeyword.value.trim().toLowerCase()))
-  .slice(0, 12))
+const allCommandItems = computed(() => {
+  const seenPaths = new Set()
+
+  return appDefinitions.flatMap((app) => {
+    const menus = app.menuSource === 'backend'
+      ? normalizeBackendMenus(rawMenus.value)
+      : normalizeStaticMenus(app.menus || [])
+    const appLabel = t(app.labelKey || 'appConsole')
+
+    return flattenMenus(menus).map((item) => ({
+      ...item,
+      appKey: app.key,
+      appLabel
+    }))
+  }).filter((item) => {
+    if (!item.path || seenPaths.has(item.path)) {
+      return false
+    }
+    seenPaths.add(item.path)
+    return true
+  })
+})
+
+const commandItems = computed(() => {
+  const keyword = commandKeyword.value.trim().toLowerCase()
+  return allCommandItems.value
+    .filter((item) => `${item.appLabel} ${item.parentTitle} ${item.title} ${item.path}`.toLowerCase().includes(keyword))
+    .slice(0, 40)
+})
 
 const appNavigationAccent = {
   console: '#5b6cf9',
@@ -596,7 +621,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <div class="header-right">
             <el-button class="command-trigger" @click="openCommandPalette">
               <el-icon><Search /></el-icon>
-              <span>搜索页面与操作</span>
+              <span>全局搜索</span>
               <kbd>⌘K</kbd>
             </el-button>
             <el-dropdown trigger="click" @command="switchLocale">
@@ -712,13 +737,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <kbd>ESC</kbd>
         </div>
       </template>
-      <el-input v-model="commandKeyword" autofocus placeholder="搜索页面、模块或路径" clearable>
+      <el-input v-model="commandKeyword" autofocus placeholder="搜索全部应用的页面、模块或路径" clearable>
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <div class="command-result-list">
-        <button v-for="item in commandItems" :key="item.path" type="button" class="command-result" @click="selectCommand(item)">
+        <button v-for="item in commandItems" :key="`${item.appKey}:${item.path}`" type="button" class="command-result" @click="selectCommand(item)">
           <el-icon><component :is="item.icon" /></el-icon>
-          <span><b>{{ item.title }}</b><small>{{ item.parentTitle || currentAppLabel }} · {{ item.path }}</small></span>
+          <span><b>{{ item.title }}</b><small>{{ [item.appLabel, item.parentTitle].filter(Boolean).join(' / ') }} · {{ item.path }}</small></span>
           <em>Enter</em>
         </button>
         <el-empty v-if="!commandItems.length" description="未找到匹配的页面或操作" :image-size="48" />

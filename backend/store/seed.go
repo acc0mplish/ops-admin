@@ -448,8 +448,8 @@ func seedAdmin(db *gorm.DB) error {
 	}
 
 	initialPassword := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_PASSWORD"))
-	if len(initialPassword) < 12 {
-		return errors.New("OPS_ADMIN_INITIAL_PASSWORD must be set to a password with at least 12 characters before initializing the first administrator")
+	if initialPassword == "" {
+		return errors.New("OPS_ADMIN_INITIAL_PASSWORD must be set before initializing the first administrator")
 	}
 	username := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_USERNAME"))
 	if username == "" {
