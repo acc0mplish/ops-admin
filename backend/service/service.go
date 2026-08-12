@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1102,7 +1103,7 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 		"last_check_time": &now,
 	}
 
-	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
+	address := net.JoinHostPort(host.SSHIP, strconv.Itoa(host.SSHPort))
 	connectTimeout := remainingTimeout(deadline, 3*time.Second)
 	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
 		if connectTimeout > 0 {
@@ -1689,16 +1690,6 @@ func (s *Service) DeleteAssetHostGroup(id uint) error {
 	}
 	if childCount > 0 {
 		return errors.New("当前主机组下仍有子分组，不能删除")
-	}
-	return s.db.Delete(&model.AssetHostGroup{}, id).Error
-	var count int64
-	s.db.Model(&model.AssetHost{}).Where("group_id = ?", id).Count(&count)
-	if count > 0 {
-		return errors.New("主机组下存在主机，不能删除")
-	}
-	s.db.Model(&model.AssetHostGroup{}).Where("parent_id = ?", id).Count(&count)
-	if count > 0 {
-		return errors.New("主机组下存在子分组，不能删除")
 	}
 	return s.db.Delete(&model.AssetHostGroup{}, id).Error
 }
@@ -2550,7 +2541,7 @@ func (s *Service) newSSHClientWithTimeout(host model.AssetHost, timeout time.Dur
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         timeout,
 	}
-	address := fmt.Sprintf("%s:%d", host.SSHIP, host.SSHPort)
+	address := net.JoinHostPort(host.SSHIP, strconv.Itoa(host.SSHPort))
 	if normalizeConnectionMode(host.ConnectionMode) == "gateway" && host.GatewayID != nil && *host.GatewayID > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		conn, cleanup, err := s.dialThroughGateway(ctx, *host.GatewayID, "tcp", address)

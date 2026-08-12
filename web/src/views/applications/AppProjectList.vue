@@ -281,8 +281,8 @@ onMounted(async () => { await Promise.all([loadResourceOptions(), loadData()]) }
           <el-col :span="12">
             <el-form-item label="状态">
               <el-radio-group v-model="form.status">
-                <el-radio :label="1">启用</el-radio>
-                <el-radio :label="2">禁用</el-radio>
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="2">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>

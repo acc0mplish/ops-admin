@@ -9,6 +9,7 @@ const props = defineProps({ serviceId: { type: Number, default: 0 }, workloadTyp
 const emit = defineEmits(['show-logs'])
 const route = useRoute(); const router = useRouter(); const loading = ref(false); const data = ref({})
 const params = computed(() => ({ serviceId: props.serviceId || Number(route.query.serviceId), workloadType: props.workloadType || route.query.workloadType, workloadName: props.workloadName || route.query.workloadName }))
+const hasWorkloadContext = computed(() => Boolean(params.value.serviceId && params.value.workloadType && params.value.workloadName))
 const workload = computed(() => data.value.workload || {}); const services = computed(() => data.value.services || []); const replicaSets = computed(() => data.value.replicaSets || [])
 const isStatefulSet = computed(() => String(workload.value.type || params.value.workloadType || '').toLowerCase() === 'statefulset')
 const statefulSet = computed(() => data.value.statefulSet || null)
@@ -17,7 +18,7 @@ const rollbackSaving = ref(false)
 const canRollback = computed(() => String(workload.value.type || params.value.workloadType || '').toLowerCase() === 'deployment')
 function healthy(item) { if (typeof item?.healthy === 'boolean') return item.healthy; const [ready, expected] = String(item?.ready || '').split('/').map(Number); return expected > 0 && ready === expected && Number(item.available) >= expected }
 function viewLogs(pod) { const target = { ...params.value, podName: pod.name }; if (props.inline) emit('show-logs', target); else router.push({ path: '/containers/services/logs', query: target }) }
-async function load() { loading.value = true; try { data.value = await queryAssetServiceWorkloadTopology(params.value) } finally { loading.value = false } }
+async function load() { if (!hasWorkloadContext.value) { data.value = {}; return }; loading.value = true; try { data.value = await queryAssetServiceWorkloadTopology(params.value) } finally { loading.value = false } }
 async function rollbackRevision(row) { if (!row.revision || row.current || rollbackSaving.value) return; await ElMessageBox.confirm(`将 ${workload.value.name || params.value.workloadName} 回滚至 ReplicaSet ${row.name}（修订版本 ${row.revision}）。Kubernetes 会创建一次新的发布版本，确认继续？`, '确认回滚版本', { type: 'warning', confirmButtonText: '确认回滚', cancelButtonText: '取消' }); rollbackSaving.value = true; try { await rollbackAssetServiceWorkload({ ...params.value, revision: row.revision }); ElMessage.success(`已提交回滚到版本 ${row.revision}`); await load() } finally { rollbackSaving.value = false } }
 onMounted(load)
 </script>
@@ -25,7 +26,8 @@ onMounted(load)
 <template>
   <div class="service-detail" v-loading="loading">
     <div class="detail-toolbar"><span>&#26381;&#21153;&#36164;&#28304;&#35814;&#24773;</span><el-button link :icon="Refresh" @click="load">&#21047;&#26032;&#29366;&#24577;</el-button></div>
-    <section class="argo-canvas">
+    <el-empty v-if="!hasWorkloadContext" description="请选择服务和工作负载后查看运行时资源详情" />
+    <section v-else class="argo-canvas">
       <div class="argo-column root-column">
         <article class="argo-card root-card"><span class="resource-icon root-icon">&#9671;</span><div><b>{{ workload.name || params.workloadName }}</b><small>{{ workload.type || params.workloadType }}</small><span class="health-line"><i :class="healthy(workload) ? 'ok' : 'bad'"><template v-if="healthy(workload)">&#10003;</template><template v-else>!</template></i>{{ healthy(workload) ? 'Healthy' : 'Degraded' }}</span></div><em class="node-menu">&#8942;</em></article>
       </div>

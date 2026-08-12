@@ -11,7 +11,7 @@ func Success(c *gin.Context, data any) {
 }
 
 func Failed(c *gin.Context, code int, message string) {
-	c.JSON(200, gin.H{
+	c.JSON(code, gin.H{
 		"code":    code,
 		"message": message,
 		"data":    nil,

@@ -113,9 +113,9 @@ onMounted(loadData)
           </el-form-item>
           <el-form-item :label="t('logoType')">
             <el-radio-group v-model="form.logoType">
-              <el-radio label="text">{{ t('textLogo') }}</el-radio>
-              <el-radio label="upload">{{ t('uploadLogo') }}</el-radio>
-              <el-radio label="url">{{ t('imageUrl') }}</el-radio>
+              <el-radio value="text">{{ t('textLogo') }}</el-radio>
+              <el-radio value="upload">{{ t('uploadLogo') }}</el-radio>
+              <el-radio value="url">{{ t('imageUrl') }}</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item v-if="form.logoType === 'text'" :label="t('logoValue')">
@@ -154,8 +154,8 @@ onMounted(loadData)
           </el-form-item>
           <el-form-item :label="t('sidebarTheme')">
             <el-radio-group v-model="form.sidebarTheme">
-              <el-radio label="dark">{{ t('darkTheme') }}</el-radio>
-              <el-radio label="light">{{ t('lightTheme') }}</el-radio>
+              <el-radio value="dark">{{ t('darkTheme') }}</el-radio>
+              <el-radio value="light">{{ t('lightTheme') }}</el-radio>
             </el-radio-group>
           </el-form-item>
         </div>

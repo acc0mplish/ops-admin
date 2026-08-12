@@ -305,8 +305,8 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item label="处置类型">
           <el-radio-group v-model="actionForm.actionType">
-            <el-radio label="job">触发作业</el-radio>
-            <el-radio label="script">诊断脚本</el-radio>
+            <el-radio value="job">触发作业</el-radio>
+            <el-radio value="script">诊断脚本</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item :label="actionForm.actionType === 'job' ? '选择作业' : '选择脚本'" required>

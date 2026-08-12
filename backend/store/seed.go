@@ -2,6 +2,8 @@ package store
 
 import (
 	"errors"
+	"os"
+	"strings"
 	"time"
 
 	"ops-admin/backend/model"
@@ -445,6 +447,15 @@ func seedAdmin(db *gorm.DB) error {
 		return nil
 	}
 
+	initialPassword := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_PASSWORD"))
+	if len(initialPassword) < 12 {
+		return errors.New("OPS_ADMIN_INITIAL_PASSWORD must be set to a password with at least 12 characters before initializing the first administrator")
+	}
+	username := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_USERNAME"))
+	if username == "" {
+		username = "admin"
+	}
+
 	var dept model.Dept
 	var post model.Post
 	var role model.Role
@@ -461,8 +472,8 @@ func seedAdmin(db *gorm.DB) error {
 	admin := model.Admin{
 		PostID:    post.ID,
 		DeptID:    dept.ID,
-		Username:  "admin",
-		Password:  util.HashPassword("123456"),
+		Username:  username,
+		Password:  util.HashPassword(initialPassword),
 		Nickname:  "系统管理员",
 		Status:    1,
 		Email:     "admin@example.com",

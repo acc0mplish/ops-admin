@@ -33,8 +33,14 @@ http.interceptors.response.use(
     return res.data
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
-    return Promise.reject(error)
+    const res = error.response?.data
+    if (res?.code === 401) {
+      logout()
+      router.push('/login')
+    }
+    const message = res?.message || error.message || '网络错误'
+    ElMessage.error(message)
+    return Promise.reject(new Error(message))
   }
 )
 
