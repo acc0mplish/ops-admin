@@ -27,6 +27,7 @@ const graphReady = ref(false)
 const importDialogVisible = ref(false)
 const importTemplateId = ref()
 const selectedNodeId = ref('')
+const selectedEdgeId = ref('')
 const selectedCellIds = ref([])
 
 const scriptOptions = ref([])
@@ -259,6 +260,7 @@ function createGraphNode(data, position = {}) {
 
 function loadSelectedNode(nodeId) {
   selectedNodeId.value = nodeId || ''
+  selectedEdgeId.value = ''
   if (!graph || !nodeId) {
     Object.assign(selectedNodeForm, { id: '', type: 'script', label: '', config: {} })
     return
@@ -274,6 +276,30 @@ function loadSelectedNode(nodeId) {
   })
 }
 
+function loadSelectedEdge(edgeId) {
+  selectedNodeId.value = ''
+  selectedEdgeId.value = edgeId || ''
+}
+
+function showEdgeTools(edge) {
+  if (!edge) return
+  edge.addTools([
+    { name: 'source-arrowhead' },
+    { name: 'target-arrowhead' }
+  ])
+}
+
+function removeSelectedEdge() {
+  if (!graph || !selectedEdgeId.value) return
+  const edge = graph.getCellById(selectedEdgeId.value)
+  if (!edge?.isEdge?.()) return
+  graph.removeCell(edge)
+  graph.cleanSelection()
+  selectedCellIds.value = []
+  loadSelectedEdge('')
+  ElMessage.success('连线已删除')
+}
+
 function syncSelectionState() {
   if (!graph) return
   const selectedCells = graph.getSelectedCells()
@@ -281,6 +307,11 @@ function syncSelectionState() {
   const selectedNodes = selectedCells.filter((cell) => cell.isNode())
   if (selectedNodes.length === 1) {
     loadSelectedNode(selectedNodes[0].id)
+    return
+  }
+  const selectedEdges = selectedCells.filter((cell) => cell.isEdge())
+  if (selectedEdges.length === 1) {
+    loadSelectedEdge(selectedEdges[0].id)
     return
   }
   loadSelectedNode('')
@@ -322,6 +353,7 @@ function initGraph() {
       enabled: true,
       multiple: true,
       rubberband: true,
+      filter: ['node', 'edge'],
       showNodeSelectionBox: true,
       showEdgeSelectionBox: true
     },
@@ -340,6 +372,7 @@ function initGraph() {
             line: {
               stroke: '#4f73ff',
               strokeWidth: 2,
+              cursor: 'pointer',
               targetMarker: {
                 name: 'block',
                 width: 12,
@@ -361,6 +394,10 @@ function initGraph() {
     graph.cleanSelection()
     graph.select(cell)
     selectedCellIds.value = [cell.id]
+    if (cell.isEdge()) {
+      loadSelectedEdge(cell.id)
+      return
+    }
     loadSelectedNode('')
   })
   graph.on('node:selected', ({ node }) => {
@@ -368,9 +405,18 @@ function initGraph() {
   })
   graph.on('edge:selected', ({ edge }) => {
     selectedCellIds.value = [edge.id]
-    loadSelectedNode('')
+    loadSelectedEdge(edge.id)
+    showEdgeTools(edge)
+  })
+  graph.on('edge:click', ({ edge }) => {
+    graph.cleanSelection()
+    graph.select(edge)
+    selectedCellIds.value = [edge.id]
+    loadSelectedEdge(edge.id)
+    showEdgeTools(edge)
   })
   graph.on('blank:click', () => {
+    graph.getEdges().forEach((edge) => edge.removeTools())
     graph.cleanSelection()
     syncSelectionState()
   })
@@ -382,6 +428,12 @@ function initGraph() {
         strokeWidth: 2
       }
     })
+    graph.cleanSelection()
+    graph.select(edge)
+    selectedCellIds.value = [edge.id]
+    loadSelectedEdge(edge.id)
+    showEdgeTools(edge)
+    if (selectedEdgeId.value === edge.id) loadSelectedEdge(edge.id)
   })
   graphReady.value = true
 }
@@ -465,6 +517,7 @@ function loadDefinition(definition, graphJson = '') {
         line: {
           stroke: '#4f73ff',
           strokeWidth: 2,
+          cursor: 'pointer',
           targetMarker: {
             name: 'block',
             width: 12,
@@ -670,8 +723,8 @@ onBeforeUnmount(() => {
       </div>
       <div class="head-actions">
         <el-button @click="importDialogVisible = true">导入作业模板</el-button>
-        <el-button @click="removeSelectedNode" :disabled="!selectedCount && !selectedNodeId">
-          {{ selectedCount > 1 ? `删除选中项（${selectedCount}）` : '删除选中步骤' }}
+        <el-button @click="selectedEdgeId ? removeSelectedEdge() : removeSelectedNode()" :disabled="!selectedCount && !selectedNodeId && !selectedEdgeId">
+          {{ selectedEdgeId ? '删除选中连线' : (selectedCount > 1 ? `删除选中项（${selectedCount}）` : '删除选中步骤') }}
         </el-button>
         <el-button @click="clearCanvas" :disabled="!graphReady">清空画布</el-button>
         <el-button type="primary" :loading="saving" @click="save">{{ saveButtonText }}</el-button>
@@ -726,9 +779,10 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="page-card config-panel">
-        <div class="panel-title">步骤配置</div>
-        <el-empty v-if="!selectedNodeId" :image-size="68" description="点击画布中的步骤节点后，在这里编辑参数" />
-        <el-form v-else label-position="top">
+        <div class="panel-title">{{ selectedEdgeId ? '连线操作' : '步骤配置' }}</div>
+        <el-empty v-if="!selectedNodeId && !selectedEdgeId" :image-size="68" description="点击步骤节点编辑参数，或点击连线修改执行关系" />
+        <el-empty v-else-if="selectedEdgeId" :image-size="68" description="拖动连线两端的手柄，即可重新连接步骤" />
+        <el-form v-else-if="selectedNodeId" label-position="top">
           <el-form-item label="步骤名称">
             <el-input v-model="selectedNodeForm.label" />
           </el-form-item>
