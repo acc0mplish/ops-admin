@@ -83,10 +83,17 @@ OPS_ADMIN_INITIAL_USERNAME=admin
 OPS_ADMIN_INITIAL_PASSWORD=admin@123
 EOF
 fi
-if ! grep -q '^OPS_ADMIN_INITIAL_PASSWORD=.' deploy/.env; then
-  umask 077
-  printf '\nOPS_ADMIN_INITIAL_USERNAME=admin\nOPS_ADMIN_INITIAL_PASSWORD=admin@123\n' >> deploy/.env
-  echo "Added the default administrator credentials to deploy/.env. Change them before deploying to production."
+if grep -q '^OPS_ADMIN_INITIAL_PASSWORD=$' deploy/.env; then
+  sed -i 's/^OPS_ADMIN_INITIAL_PASSWORD=$/OPS_ADMIN_INITIAL_PASSWORD=admin@123/' deploy/.env
+  echo "Filled an empty OPS_ADMIN_INITIAL_PASSWORD in deploy/.env."
+elif ! grep -q '^OPS_ADMIN_INITIAL_PASSWORD=.' deploy/.env; then
+  printf '\nOPS_ADMIN_INITIAL_PASSWORD=admin@123\n' >> deploy/.env
+  echo "Added OPS_ADMIN_INITIAL_PASSWORD to deploy/.env."
+fi
+if grep -q '^OPS_ADMIN_INITIAL_USERNAME=$' deploy/.env; then
+  sed -i 's/^OPS_ADMIN_INITIAL_USERNAME=$/OPS_ADMIN_INITIAL_USERNAME=admin/' deploy/.env
+elif ! grep -q '^OPS_ADMIN_INITIAL_USERNAME=.' deploy/.env; then
+  printf '\nOPS_ADMIN_INITIAL_USERNAME=admin\n' >> deploy/.env
 fi
 if [ ! -f deploy/config.yaml ]; then cp deploy/config.yaml.example deploy/config.yaml; fi
 MYSQL_PASSWORD="$(sed -n 's/^MYSQL_PASSWORD=//p' deploy/.env | head -n 1)"
