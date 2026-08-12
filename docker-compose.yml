@@ -59,8 +59,12 @@ services:
     image: ops-admin-web:local
     container_name: ops-admin-web
     restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "8080:80"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
     networks:
       - ops-admin
     depends_on:
