@@ -8,6 +8,97 @@ defineProps({
 </script>
 
 <template>
+  <el-dialog
+    v-model="page.serviceEditVisible"
+    :title="`编辑服务 · ${page.serviceEditForm.name || '-'}`"
+    width="980px"
+    class="service-edit-dialog"
+    destroy-on-close
+  >
+    <div v-loading="page.serviceEditLoading" class="service-edit-content">
+      <div class="service-edit-summary">
+        <div><span>服务名称</span><strong>{{ page.serviceEditForm.name || '-' }}</strong></div>
+        <div><span>命名空间</span><strong>{{ page.serviceEditForm.namespace || '-' }}</strong></div>
+        <p>以结构化字段维护 Service 定义；保存时仅更新服务路由规则，不会变更工作负载。</p>
+      </div>
+
+      <el-form label-position="top" class="service-edit-form">
+        <section class="service-edit-section service-metadata-section">
+          <div class="service-edit-section-head"><strong>元数据</strong><span>标签用于筛选与关联，注解用于承载控制器或平台扩展配置。</span></div>
+          <div class="service-metadata-grid">
+            <div class="service-metadata-block">
+              <div class="service-metadata-block-head"><strong>标签</strong><el-button link type="primary" @click="page.addServiceMetadataEntry('labels')">+ 添加</el-button></div>
+              <div v-if="!page.serviceEditForm.labels.length" class="service-edit-empty">暂无标签</div>
+              <div v-else class="service-metadata-list">
+                <div v-for="(item, index) in page.serviceEditForm.labels" :key="index" class="service-metadata-row">
+                  <el-input v-model.trim="item.key" placeholder="例如 app.kubernetes.io/name" aria-label="标签键" />
+                  <el-input v-model.trim="item.value" placeholder="标签值" aria-label="标签值" />
+                  <el-button link type="danger" aria-label="删除标签" @click="page.removeServiceMetadataEntry('labels', index)">删除</el-button>
+                </div>
+              </div>
+            </div>
+            <div class="service-metadata-block">
+              <div class="service-metadata-block-head"><strong>注解</strong><el-button link type="primary" @click="page.addServiceMetadataEntry('annotations')">+ 添加</el-button></div>
+              <div v-if="!page.serviceEditForm.annotations.length" class="service-edit-empty">暂无注解</div>
+              <div v-else class="service-metadata-list">
+                <div v-for="(item, index) in page.serviceEditForm.annotations" :key="index" class="service-metadata-row annotation-metadata-row">
+                  <el-input v-model.trim="item.key" placeholder="例如 service.beta.kubernetes.io/..." aria-label="注解键" />
+                  <el-input v-model="item.value" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="注解值" aria-label="注解值" />
+                  <el-button link type="danger" aria-label="删除注解" @click="page.removeServiceMetadataEntry('annotations', index)">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="service-edit-section">
+          <div class="service-edit-section-head"><strong>服务类型</strong><span>决定服务在集群内、集群外或外部 DNS 的访问方式。</span></div>
+          <el-radio-group v-model="page.serviceEditForm.type" class="service-type-radio-group">
+            <el-radio-button value="ClusterIP">ClusterIP</el-radio-button>
+            <el-radio-button value="Headless">Headless</el-radio-button>
+            <el-radio-button value="NodePort">NodePort</el-radio-button>
+            <el-radio-button value="LoadBalancer">LoadBalancer</el-radio-button>
+            <el-radio-button value="ExternalName">ExternalName</el-radio-button>
+          </el-radio-group>
+          <div v-if="page.serviceEditForm.type === 'Headless'" class="service-headless-option"><div><strong>Headless 服务</strong><span>返回 Pod DNS 记录，不分配 Cluster IP。</span></div></div>
+          <el-form-item v-if="page.serviceEditForm.type === 'ExternalName'" label="外部 DNS 名称" required>
+            <el-input v-model.trim="page.serviceEditForm.externalName" placeholder="例如 mysql.example.com" />
+            <div class="service-edit-hint">ExternalName 不创建代理端点，DNS 将直接别名到此地址。</div>
+          </el-form-item>
+        </section>
+
+        <section v-if="page.serviceEditForm.type !== 'ExternalName'" class="service-edit-section">
+          <div class="service-edit-section-head with-action"><div><strong>选择器</strong><span>匹配标签的 Pod 会成为该服务的后端端点。</span></div><el-button link type="primary" @click="page.addServiceSelector">+ 添加选择器</el-button></div>
+          <div v-if="!page.serviceEditForm.selectors.length" class="service-edit-empty">尚未配置选择器；保存后该 Service 不会自动关联 Pod。</div>
+          <div v-else class="service-selector-list">
+            <div v-for="(item, index) in page.serviceEditForm.selectors" :key="index" class="service-selector-row">
+              <el-input v-model.trim="item.key" placeholder="标签键，例如 app" aria-label="选择器标签键" />
+              <el-input v-model.trim="item.value" placeholder="标签值，例如 api" aria-label="选择器标签值" />
+              <el-button link type="danger" aria-label="删除选择器" @click="page.removeServiceSelector(index)">删除</el-button>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="page.serviceEditForm.type !== 'ExternalName'" class="service-edit-section">
+          <div class="service-edit-section-head with-action"><div><strong>端口映射</strong><span>服务端口用于暴露访问入口，目标端口指向容器端口或命名端口。</span></div><el-button link type="primary" @click="page.addServicePort">+ 添加端口</el-button></div>
+          <div class="service-port-table-head" :class="{ 'has-node-port': page.serviceEditForm.type === 'NodePort' || page.serviceEditForm.type === 'LoadBalancer' }"><span>名称</span><span>协议</span><span>服务端口</span><span>目标端口</span><span v-if="page.serviceEditForm.type === 'NodePort' || page.serviceEditForm.type === 'LoadBalancer'">NodePort</span><span></span></div>
+          <div v-for="(port, index) in page.serviceEditForm.ports" :key="index" class="service-port-row" :class="{ 'has-node-port': page.serviceEditForm.type === 'NodePort' || page.serviceEditForm.type === 'LoadBalancer' }">
+            <el-input v-model.trim="port.name" placeholder="例如 http" aria-label="端口名称" />
+            <el-select v-model="port.protocol" aria-label="端口协议"><el-option label="TCP" value="TCP" /><el-option label="UDP" value="UDP" /><el-option label="SCTP" value="SCTP" /></el-select>
+            <el-input-number v-model="port.port" :min="1" :max="65535" controls-position="right" aria-label="服务端口" />
+            <el-input v-model.trim="port.targetPort" placeholder="例如 8080 或 http" aria-label="目标端口" />
+            <el-input-number v-if="page.serviceEditForm.type === 'NodePort' || page.serviceEditForm.type === 'LoadBalancer'" v-model="port.nodePort" :min="1" :max="65535" controls-position="right" placeholder="自动分配" aria-label="NodePort" />
+            <el-button link type="danger" :disabled="page.serviceEditForm.ports.length === 1" aria-label="删除端口" @click="page.removeServicePort(index)">删除</el-button>
+          </div>
+        </section>
+      </el-form>
+    </div>
+    <template #footer>
+      <el-button @click="page.serviceEditVisible = false">取消</el-button>
+      <el-button type="primary" :loading="page.serviceEditSaving" @click="page.submitServiceEdit">保存服务</el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="page.yamlDialogVisible" :title="page.yamlEditor.title" width="1180px" class="yaml-editor-dialog">
     <div class="yaml-workspace">
       <section class="yaml-pane editor">
@@ -332,6 +423,19 @@ defineProps({
     <template #footer>
       <el-button @click="page.scaleDialogVisible = false">{{ page.t('cancel') }}</el-button>
       <el-button type="primary" :loading="page.scaleLoading" @click="page.submitScale">{{ page.t('save') }}</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="page.batchScaleDialogVisible" title="批量伸缩工作负载" width="460px" destroy-on-close>
+    <div class="batch-workload-dialog-tip">将对当前选中的 {{ page.workloadSelectionCount }} 个工作负载统一设置副本数；不支持伸缩的资源会自动跳过。</div>
+    <el-form label-position="top">
+      <el-form-item label="目标副本数" required>
+        <el-input-number v-model="page.batchScaleForm.replicas" :min="0" :max="999" controls-position="right" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="page.batchScaleDialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="page.batchScaleSaving" @click="page.submitBatchScale">继续</el-button>
     </template>
   </el-dialog>
 

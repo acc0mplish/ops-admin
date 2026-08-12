@@ -307,21 +307,45 @@ type K8sServiceItem struct {
 	ExternalIP string `json:"externalIP"`
 	Ports      string `json:"ports"`
 	Endpoints  int    `json:"endpoints"`
+	Age        string `json:"age"`
 }
 
 type K8sServiceDetail struct {
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	Type        string            `json:"type"`
-	ClusterIP   string            `json:"clusterIP"`
-	ExternalIP  string            `json:"externalIP"`
-	Ports       []K8sKVTextItem   `json:"ports"`
-	Selector    map[string]string `json:"selector"`
-	Labels      map[string]string `json:"labels"`
-	Annotations map[string]string `json:"annotations"`
-	Endpoints   int               `json:"endpoints"`
-	Age         string            `json:"age"`
-	YAML        string            `json:"yaml"`
+	Name         string            `json:"name"`
+	Namespace    string            `json:"namespace"`
+	Type         string            `json:"type"`
+	ClusterIP    string            `json:"clusterIP"`
+	ExternalIP   string            `json:"externalIP"`
+	ExternalName string            `json:"externalName"`
+	Ports        []K8sKVTextItem   `json:"ports"`
+	PortSpecs    []K8sServicePort  `json:"portSpecs"`
+	Selector     map[string]string `json:"selector"`
+	Labels       map[string]string `json:"labels"`
+	Annotations  map[string]string `json:"annotations"`
+	Endpoints    int               `json:"endpoints"`
+	Age          string            `json:"age"`
+	YAML         string            `json:"yaml"`
+}
+
+type K8sServicePort struct {
+	Name       string `json:"name"`
+	Protocol   string `json:"protocol"`
+	Port       int    `json:"port"`
+	TargetPort string `json:"targetPort"`
+	NodePort   int    `json:"nodePort"`
+}
+
+type K8sServiceUpdatePayload struct {
+	ClusterID    uint              `json:"clusterId"`
+	Namespace    string            `json:"namespace"`
+	Name         string            `json:"name"`
+	Type         string            `json:"type"`
+	Headless     bool              `json:"headless"`
+	ExternalName string            `json:"externalName"`
+	Selector     map[string]string `json:"selector"`
+	Labels       map[string]string `json:"labels"`
+	Annotations  map[string]string `json:"annotations"`
+	Ports        []K8sServicePort  `json:"ports"`
 }
 
 type K8sIngressItem struct {

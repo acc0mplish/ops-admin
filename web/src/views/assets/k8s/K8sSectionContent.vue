@@ -1,6 +1,21 @@
 <script setup>
 import K8sNamespaceBoard from './K8sNamespaceBoard.vue'
 import K8sWorkloadBoard from './K8sWorkloadBoard.vue'
+import { Connection, CopyDocument } from '@element-plus/icons-vue'
+
+function serviceTypeTagType(type) {
+  return {
+    ClusterIP: 'success',
+    Headless: 'warning',
+    NodePort: 'warning',
+    LoadBalancer: 'primary',
+    ExternalName: 'info'
+  }[type] || 'info'
+}
+
+function servicePorts(ports) {
+  return String(ports || '').split(',').map((item) => item.trim()).filter(Boolean)
+}
 
 defineProps({
   page: {
@@ -163,17 +178,46 @@ defineProps({
 
   <section v-if="page.hasCluster && page.currentTab === 'services'" class="section-body service-workspace">
     <el-table v-if="page.hasItems(page.filteredServices)" :data="page.filteredServices" class="data-table service-resource-table">
-      <el-table-column prop="name" :label="page.t('k8sName')" min-width="160" />
-      <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="120" />
-      <el-table-column prop="type" :label="page.t('k8sType')" width="120" />
-      <el-table-column prop="clusterIP" :label="page.t('k8sClusterIp')" min-width="140" />
-      <el-table-column prop="externalIP" :label="page.t('k8sExternalIp')" min-width="150" />
-      <el-table-column prop="ports" :label="page.t('k8sPorts')" min-width="160" />
-      <el-table-column prop="endpoints" :label="page.t('k8sEndpoints')" width="110" />
-      <el-table-column :label="page.t('k8sActions')" width="180" fixed="right">
+      <el-table-column :label="page.t('k8sName')" min-width="220">
+        <template #default="{ row }">
+          <div class="service-name-cell">
+            <span class="service-name-icon"><el-icon><Connection /></el-icon></span>
+            <el-button link class="service-name-link" @click="page.openServiceDetail(row)">{{ row.name }}</el-button>
+            <el-tooltip content="复制服务名称" placement="top">
+              <el-button link class="service-copy-button" aria-label="复制服务名称" @click="page.copyServiceName(row)">
+                <el-icon><CopyDocument /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="namespace" :label="page.t('k8sNamespace')" min-width="130">
+        <template #default="{ row }"><el-tag class="service-namespace-tag" effect="plain">{{ row.namespace }}</el-tag></template>
+      </el-table-column>
+      <el-table-column :label="page.t('k8sType')" width="128">
+        <template #default="{ row }"><el-tag :type="serviceTypeTagType(row.type)" effect="light" round>{{ row.type }}</el-tag></template>
+      </el-table-column>
+      <el-table-column prop="clusterIP" :label="page.t('k8sClusterIp')" min-width="142">
+        <template #default="{ row }"><span class="service-ip-text">{{ row.clusterIP }}</span></template>
+      </el-table-column>
+      <el-table-column prop="externalIP" :label="page.t('k8sExternalIp')" min-width="142" />
+      <el-table-column :label="page.t('k8sPorts')" min-width="245">
+        <template #default="{ row }">
+          <div class="service-port-list">
+            <el-tag v-for="port in servicePorts(row.ports)" :key="port" size="small" effect="plain">{{ port }}</el-tag>
+            <span v-if="!servicePorts(row.ports).length" class="service-muted">—</span>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column :label="page.t('k8sEndpoints')" width="122" align="center">
+        <template #default="{ row }"><span class="service-endpoint-count" :class="{ 'is-empty': !row.endpoints }">{{ row.endpoints }}</span></template>
+      </el-table-column>
+      <el-table-column prop="age" :label="page.t('k8sAge')" width="116" />
+      <el-table-column :label="page.t('k8sActions')" width="210" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="page.openServiceDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-          <el-button link type="primary" @click="page.openServiceYAML(row)">{{ page.t('k8sYaml') }}</el-button>
+          <el-button link type="primary" @click="page.openServiceEdit(row)">编辑</el-button>
+          <el-button link @click="page.openServiceYAML(row)">{{ page.t('k8sYaml') }}</el-button>
         </template>
       </el-table-column>
     </el-table>

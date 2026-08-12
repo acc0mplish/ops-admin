@@ -9,17 +9,6 @@ defineProps({
 
 <template>
   <section class="kuboard-section namespace-workspace">
-    <div class="kuboard-resource-head">
-      <div>
-        <h3>{{ page.t('k8sNamespaces') }}</h3>
-        <p>{{ page.t('k8sNamespacesHint') }}</p>
-      </div>
-      <div class="kuboard-head-actions">
-        <el-button plain @click="page.refreshCurrentClusterData">{{ page.t('k8sRefresh') }}</el-button>
-        <el-button type="primary" @click="page.openNamespaceCreate">{{ page.t('k8sCreateNamespace') }}</el-button>
-      </div>
-    </div>
-
     <div class="kuboard-stat-row">
       <article class="kuboard-stat-card">
         <span>{{ page.t('k8sNamespacesTotal') }}</span>
@@ -41,16 +30,6 @@ defineProps({
         <span>{{ page.t('k8sWorkloadsCount') }}</span>
         <strong>{{ page.namespaceSummary.workloads }}</strong>
       </article>
-    </div>
-
-    <div class="kuboard-list-toolbar">
-      <el-input
-        :model-value="page.namespaceKeyword"
-        clearable
-        :placeholder="page.t('k8sSearchResources')"
-        class="resource-search"
-        @update:model-value="page.handleNamespaceKeywordChange"
-      />
     </div>
 
     <div class="kuboard-table-card">

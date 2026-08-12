@@ -31,6 +31,8 @@ export const queryK8sNamespaceEvents = (clusterId, namespace) =>
 export const queryK8sServiceDetail = (clusterId, namespace, serviceName) =>
   http.get('/api/v1/k8s/service/detail', { params: { clusterId, namespace, serviceName } })
 
+export const updateK8sService = (data) => http.put('/api/v1/k8s/service/update', data)
+
 export const queryK8sIngressDetail = (clusterId, namespace, ingressName) =>
   http.get('/api/v1/k8s/ingress/detail', { params: { clusterId, namespace, ingressName } })
 

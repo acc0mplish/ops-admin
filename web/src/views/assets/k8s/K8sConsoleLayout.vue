@@ -1,5 +1,5 @@
 <script setup>
-import { Connection, Grid, Histogram, Monitor, Promotion, Refresh, SetUp } from '@element-plus/icons-vue'
+import { ArrowDown, Connection, Grid, Histogram, Monitor, Promotion, Refresh, SetUp } from '@element-plus/icons-vue'
 
 defineProps({
   page: {
@@ -28,7 +28,7 @@ const iconMap = {
         <div class="kuboard-head-main">
           <div class="kuboard-head-title">
             <h2>{{ page.currentSection.title }}</h2>
-            <p v-if="page.currentTab !== 'workloads'">{{ page.currentSection.description }}</p>
+            <p>{{ page.currentSection.description }}</p>
           </div>
 
           <div class="kuboard-head-tools">
@@ -62,10 +62,12 @@ const iconMap = {
         </div>
 
         <div
-          v-if="page.hasCluster && page.currentTab !== 'workloads' && page.shouldShowNamespaceFilter(page.currentTab)"
+          v-if="page.hasCluster && (page.shouldShowNamespaceFilter(page.currentTab) || page.currentTab === 'namespaces' || page.currentTab === 'workloads')"
           class="kuboard-global-toolbar"
+          :class="{ 'is-actions-only': page.currentTab === 'namespaces' }"
         >
-          <el-select
+          <template v-if="page.shouldShowNamespaceFilter(page.currentTab)">
+            <el-select
             :model-value="page.namespaceFilter"
             filterable
             class="namespace-select"
@@ -78,22 +80,31 @@ const iconMap = {
               :label="item.label"
               :value="item.value"
             />
-          </el-select>
-          <el-input
+            </el-select>
+            <el-input
             :model-value="page.resourceKeyword"
             clearable
             :placeholder="page.t('k8sSearchResources')"
             class="resource-search"
             @update:model-value="page.handleResourceKeywordChange"
-          />
-          <div class="inline-scope-card">
+            />
+            <div class="inline-scope-card">
             <span>{{ page.t('k8sCurrentScope') }}</span>
             <strong>
               {{ page.namespaceFilter === '__all__' ? page.t('k8sAllNamespaces') : page.namespaceFilter }}
             </strong>
-          </div>
+            </div>
+          </template>
+          <el-input
+            v-if="page.currentTab === 'namespaces'"
+            :model-value="page.namespaceKeyword"
+            clearable
+            :placeholder="page.t('k8sSearchResources')"
+            class="resource-search namespace-resource-search"
+            @update:model-value="page.handleNamespaceKeywordChange"
+          />
           <el-button
-            v-if="['pods', 'config-storage'].includes(page.currentTab)"
+            v-if="['namespaces', 'pods', 'workloads', 'services', 'ingresses', 'advanced-network', 'config-storage'].includes(page.currentTab)"
             class="pod-list-refresh"
             plain
             :icon="Refresh"
@@ -101,6 +112,22 @@ const iconMap = {
             @click="page.refreshCurrentClusterData"
           >
             {{ page.t('k8sRefresh') }}
+          </el-button>
+          <el-dropdown v-if="page.currentTab === 'workloads'" trigger="click" @command="page.handleWorkloadBatchCommand">
+            <el-button class="workload-batch-trigger" :disabled="!page.workloadSelectionCount">
+              批量操作<span v-if="page.workloadSelectionCount">（{{ page.workloadSelectionCount }}）</span><el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="images">批量更新镜像版本</el-dropdown-item>
+                <el-dropdown-item command="scale">批量伸缩</el-dropdown-item>
+                <el-dropdown-item command="restart">批量重启</el-dropdown-item>
+                <el-dropdown-item command="delete" divided class="workload-batch-delete">批量删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button v-if="page.currentTab === 'namespaces'" type="primary" @click="page.openNamespaceCreate">
+            {{ page.t('k8sCreateNamespace') }}
           </el-button>
         </div>
       </header>

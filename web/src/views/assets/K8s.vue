@@ -22,6 +22,7 @@ import {
   queryK8sPodLogs,
   queryK8sWorkloadDetail,
   queryK8sServiceDetail,
+	updateK8sService,
   queryK8sIngressDetail,
   queryK8sIstioResourceDetail,
   queryK8sConfigMapDetail,
@@ -169,6 +170,20 @@ const currentPodQuery = reactive({
 const serviceDrawerVisible = ref(false)
 const serviceDrawerLoading = ref(false)
 const serviceDetail = ref(null)
+const serviceEditVisible = ref(false)
+const serviceEditLoading = ref(false)
+const serviceEditSaving = ref(false)
+const serviceEditForm = reactive({
+  name: '',
+  namespace: '',
+  type: 'ClusterIP',
+  headless: false,
+  externalName: '',
+  selectors: [],
+  labels: [],
+  annotations: [],
+  ports: []
+})
 
 const ingressDrawerVisible = ref(false)
 const ingressDrawerLoading = ref(false)
@@ -186,6 +201,9 @@ const scaleForm = reactive({
   workloadName: '',
   replicas: 1
 })
+const batchScaleDialogVisible = ref(false)
+const batchScaleSaving = ref(false)
+const batchScaleForm = reactive({ replicas: 1 })
 
 const imageVersionDialogVisible = ref(false)
 const imageVersionSaving = ref(false)
@@ -565,6 +583,91 @@ function openImageVersionDialog() {
   }
   imageVersionForm.version = ''
   imageVersionDialogVisible.value = true
+}
+
+function handleWorkloadBatchCommand(command) {
+  if (!selectedWorkloads.value.length) {
+    ElMessage.warning('请先选择工作负载')
+    return
+  }
+  if (command === 'images') return openImageVersionDialog()
+  if (command === 'scale') {
+    const first = selectedWorkloads.value[0]
+    const parts = String(first.ready || '').split('/')
+    batchScaleForm.replicas = Number(parts[1] || parts[0] || 1) || 1
+    batchScaleDialogVisible.value = true
+    return
+  }
+  if (command === 'restart') return submitBatchWorkloadRestart()
+  if (command === 'delete') return submitBatchWorkloadDelete()
+}
+
+async function submitBatchScale() {
+  if (!cluster.value?.id) return
+  const targets = selectedWorkloads.value.filter((item) => supportsScale(item))
+  if (!targets.length) {
+    ElMessage.warning('所选工作负载均不支持伸缩')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认将选中的 ${targets.length} 个工作负载统一伸缩至 ${batchScaleForm.replicas} 个副本？`, '确认批量伸缩', { type: 'warning', confirmButtonText: '确认伸缩', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
+  batchScaleSaving.value = true
+  try {
+    await Promise.all(targets.map((item) => scaleK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name, replicas: Number(batchScaleForm.replicas) })))
+    ElMessage.success(`已提交 ${targets.length} 个工作负载的伸缩操作`)
+    batchScaleDialogVisible.value = false
+    selectedWorkloads.value = []
+    await refreshCurrentClusterData()
+  } finally {
+    batchScaleSaving.value = false
+  }
+}
+
+async function submitBatchWorkloadRestart() {
+  if (!cluster.value?.id) return
+  const targets = selectedWorkloads.value.filter((item) => supportsRestart(item))
+  if (!targets.length) {
+    ElMessage.warning('所选工作负载均不支持重启')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认重启选中的 ${targets.length} 个工作负载？这会触发滚动更新。`, '确认批量重启', { type: 'warning', confirmButtonText: '确认重启', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
+  await Promise.all(targets.map((item) => restartK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name })))
+  ElMessage.success(`已提交 ${targets.length} 个工作负载的重启操作`)
+  selectedWorkloads.value = []
+  await refreshCurrentClusterData()
+}
+
+async function handleDeleteWorkload(row) {
+  if (!cluster.value?.id || !row?.namespace || !row?.name) return
+  try {
+    await ElMessageBox.confirm(`确认删除工作负载 ${row.namespace}/${row.name}？此操作不可恢复。`, '确认删除工作负载', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
+  await deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: row.namespace, name: row.name, workloadType: row.type })
+  ElMessage.success(`工作负载 ${row.name} 已删除`)
+  await refreshCurrentClusterData()
+}
+
+async function submitBatchWorkloadDelete() {
+  if (!cluster.value?.id) return
+  const targets = [...selectedWorkloads.value]
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${targets.length} 个工作负载？删除后不可恢复。`, '确认批量删除', { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消' })
+  } catch {
+    return
+  }
+  await Promise.all(targets.map((item) => deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: item.namespace, name: item.name, workloadType: item.type })))
+  ElMessage.success(`已删除 ${targets.length} 个工作负载`)
+  selectedWorkloads.value = []
+  await refreshCurrentClusterData()
 }
 
 async function submitWorkloadImageVersionUpdate() {
@@ -1210,6 +1313,105 @@ async function openIngressYAML(row) {
     name: detail.name,
     yaml: detail.yaml
   })
+}
+
+async function openServiceEdit(row) {
+  if (!cluster.value?.id) return
+  serviceEditVisible.value = true
+  serviceEditLoading.value = true
+  try {
+    const detail = await queryK8sServiceDetail(cluster.value.id, row.namespace, row.name)
+    serviceEditForm.name = detail.name
+    serviceEditForm.namespace = detail.namespace
+    serviceEditForm.type = detail.clusterIP === 'None' ? 'Headless' : (detail.type || 'ClusterIP')
+    serviceEditForm.headless = serviceEditForm.type === 'Headless'
+    serviceEditForm.externalName = detail.externalName || ''
+    serviceEditForm.selectors = Object.entries(detail.selector || {}).map(([key, value]) => ({ key, value }))
+    serviceEditForm.labels = Object.entries(detail.labels || {}).map(([key, value]) => ({ key, value }))
+    serviceEditForm.annotations = Object.entries(detail.annotations || {}).map(([key, value]) => ({ key, value }))
+    serviceEditForm.ports = (detail.portSpecs || []).map((port) => ({
+      name: port.name || '', protocol: port.protocol || 'TCP', port: port.port || 80,
+      targetPort: port.targetPort || String(port.port || 80), nodePort: port.nodePort || undefined
+    }))
+    if (!serviceEditForm.ports.length && serviceEditForm.type !== 'ExternalName') addServicePort()
+  } catch (error) {
+    serviceEditVisible.value = false
+  } finally {
+    serviceEditLoading.value = false
+  }
+}
+
+function addServiceSelector() {
+  serviceEditForm.selectors.push({ key: '', value: '' })
+}
+
+function removeServiceSelector(index) {
+  serviceEditForm.selectors.splice(index, 1)
+}
+
+function addServiceMetadataEntry(field) {
+  serviceEditForm[field].push({ key: '', value: '' })
+}
+
+function removeServiceMetadataEntry(field, index) {
+  serviceEditForm[field].splice(index, 1)
+}
+
+function addServicePort() {
+  serviceEditForm.ports.push({ name: '', protocol: 'TCP', port: 80, targetPort: '80', nodePort: undefined })
+}
+
+function removeServicePort(index) {
+  serviceEditForm.ports.splice(index, 1)
+}
+
+async function submitServiceEdit() {
+  if (!cluster.value?.id) return
+  if (serviceEditForm.type !== 'ExternalName' && !serviceEditForm.ports.length) {
+    ElMessage.warning('请至少保留一个服务端口')
+    return
+  }
+  const selector = Object.fromEntries(serviceEditForm.selectors
+    .filter((item) => item.key?.trim() && item.value?.trim())
+    .map((item) => [item.key.trim(), item.value.trim()]))
+  const metadataMap = (items) => Object.fromEntries(items
+    .filter((item) => item.key?.trim() && item.value?.trim())
+    .map((item) => [item.key.trim(), item.value.trim()]))
+  serviceEditSaving.value = true
+  try {
+    await updateK8sService({
+      clusterId: cluster.value.id,
+      namespace: serviceEditForm.namespace,
+      name: serviceEditForm.name,
+      type: serviceEditForm.type === 'Headless' ? 'ClusterIP' : serviceEditForm.type,
+      headless: serviceEditForm.type === 'Headless',
+      externalName: serviceEditForm.externalName,
+      selector,
+      labels: metadataMap(serviceEditForm.labels),
+      annotations: metadataMap(serviceEditForm.annotations),
+      ports: serviceEditForm.ports.map((port) => ({
+        name: port.name?.trim() || '', protocol: port.protocol || 'TCP', port: Number(port.port),
+        targetPort: String(port.targetPort || port.port), nodePort: Number(port.nodePort) || 0
+      }))
+    })
+    ElMessage.success(`服务 ${serviceEditForm.name} 已更新`)
+    serviceEditVisible.value = false
+    await refreshCurrentClusterData()
+    if (serviceDetail.value?.name === serviceEditForm.name && serviceDetail.value?.namespace === serviceEditForm.namespace) {
+      serviceDetail.value = await queryK8sServiceDetail(cluster.value.id, serviceEditForm.namespace, serviceEditForm.name)
+    }
+  } finally {
+    serviceEditSaving.value = false
+  }
+}
+
+async function copyServiceName(row) {
+  try {
+    await navigator.clipboard.writeText(row.name)
+    ElMessage.success(`已复制服务名称：${row.name}`)
+  } catch (error) {
+    ElMessage.warning('无法访问剪贴板，请手动复制服务名称')
+  }
 }
 
 function handlePodPageSizeChange(size) {
@@ -2289,6 +2491,10 @@ const page = reactive({
   serviceDrawerVisible,
   serviceDrawerLoading,
   serviceDetail,
+  serviceEditVisible,
+  serviceEditLoading,
+  serviceEditSaving,
+  serviceEditForm,
   ingressDrawerVisible,
   ingressDrawerLoading,
   ingressDetail,
@@ -2298,6 +2504,9 @@ const page = reactive({
   scaleDialogVisible,
   scaleLoading,
   scaleForm,
+  batchScaleDialogVisible,
+  batchScaleSaving,
+  batchScaleForm,
   imageVersionDialogVisible,
   imageVersionSaving,
   imageVersionForm,
@@ -2396,11 +2605,14 @@ const page = reactive({
 	removeWorkloadEnvironment,
 	openWorkloadYAML,
   handleWorkloadSelectionChange,
+  handleWorkloadBatchCommand,
   supportsScale,
   supportsRestart,
   openImageVersionDialog,
   openScaleDialog,
+  submitBatchScale,
   handleRestartWorkload,
+  handleDeleteWorkload,
   submitWorkloadImageVersionUpdate,
   openPodDetail,
   openPodLogs,
@@ -2412,6 +2624,15 @@ const page = reactive({
   refreshPodLogs,
   openServiceDetail,
   openServiceYAML,
+  openServiceEdit,
+  addServiceSelector,
+  removeServiceSelector,
+  addServiceMetadataEntry,
+  removeServiceMetadataEntry,
+  addServicePort,
+  removeServicePort,
+  submitServiceEdit,
+  copyServiceName,
   openIngressDetail,
   openIngressYAML,
   openIstioResourceDetail,

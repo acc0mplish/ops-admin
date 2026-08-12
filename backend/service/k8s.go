@@ -238,11 +238,12 @@ type kubeNamespace struct {
 type kubeService struct {
 	Metadata kubeMetadata `json:"metadata"`
 	Spec     struct {
-		Type        string            `json:"type"`
-		ClusterIP   string            `json:"clusterIP"`
-		ExternalIPs []string          `json:"externalIPs"`
-		Selector    map[string]string `json:"selector"`
-		Ports       []struct {
+		Type         string            `json:"type"`
+		ClusterIP    string            `json:"clusterIP"`
+		ExternalName string            `json:"externalName"`
+		ExternalIPs  []string          `json:"externalIPs"`
+		Selector     map[string]string `json:"selector"`
+		Ports        []struct {
 			Name       string      `json:"name"`
 			Port       int         `json:"port"`
 			NodePort   int         `json:"nodePort"`
@@ -1678,6 +1679,7 @@ func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceN
 	}
 
 	ports := make([]model.K8sKVTextItem, 0, len(service.Spec.Ports))
+	portSpecs := make([]model.K8sServicePort, 0, len(service.Spec.Ports))
 	for _, port := range service.Spec.Ports {
 		label := strconv.Itoa(port.Port)
 		if strings.TrimSpace(port.Name) != "" {
@@ -1691,22 +1693,148 @@ func (s *Service) GetK8sServiceDetail(clusterID uint, namespace string, serviceN
 			Label: label,
 			Value: formatServiceDetailPort(port.Port, port.NodePort, port.Protocol, target),
 		})
+		protocol := strings.TrimSpace(port.Protocol)
+		if protocol == "" {
+			protocol = "TCP"
+		}
+		portSpecs = append(portSpecs, model.K8sServicePort{Name: port.Name, Protocol: protocol, Port: port.Port, TargetPort: target, NodePort: port.NodePort})
 	}
 
 	return model.K8sServiceDetail{
-		Name:        service.Metadata.Name,
-		Namespace:   service.Metadata.Namespace,
-		Type:        fallbackText(service.Spec.Type),
-		ClusterIP:   fallbackText(service.Spec.ClusterIP),
-		ExternalIP:  serviceExternalIP(service),
-		Ports:       ports,
-		Selector:    service.Spec.Selector,
-		Labels:      service.Metadata.Labels,
-		Annotations: service.Metadata.Annotations,
-		Endpoints:   endpointCount,
-		Age:         humanizeAge(service.Metadata.CreationTimestamp),
-		YAML:        marshalK8sYAML(service),
+		Name:         service.Metadata.Name,
+		Namespace:    service.Metadata.Namespace,
+		Type:         serviceDisplayType(service),
+		ClusterIP:    fallbackText(service.Spec.ClusterIP),
+		ExternalIP:   serviceExternalIP(service),
+		ExternalName: service.Spec.ExternalName,
+		Ports:        ports,
+		PortSpecs:    portSpecs,
+		Selector:     service.Spec.Selector,
+		Labels:       service.Metadata.Labels,
+		Annotations:  service.Metadata.Annotations,
+		Endpoints:    endpointCount,
+		Age:          humanizeAge(service.Metadata.CreationTimestamp),
+		YAML:         marshalK8sYAML(service),
 	}, nil
+}
+
+func (s *Service) UpdateK8sService(payload model.K8sServiceUpdatePayload) (map[string]any, error) {
+	payload.Namespace = strings.TrimSpace(payload.Namespace)
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Type = strings.TrimSpace(payload.Type)
+	if payload.ClusterID == 0 || payload.Namespace == "" || payload.Name == "" {
+		return nil, errors.New("invalid service payload")
+	}
+	if payload.Type == "" {
+		payload.Type = "ClusterIP"
+	}
+	allowedTypes := map[string]bool{"ClusterIP": true, "NodePort": true, "LoadBalancer": true, "ExternalName": true}
+	if !allowedTypes[payload.Type] {
+		return nil, errors.New("unsupported service type")
+	}
+	if payload.Headless && payload.Type != "ClusterIP" {
+		return nil, errors.New("headless service must use ClusterIP")
+	}
+	if payload.Type == "ExternalName" && strings.TrimSpace(payload.ExternalName) == "" {
+		return nil, errors.New("external name is required")
+	}
+	if payload.Type != "ExternalName" && len(payload.Ports) == 0 {
+		return nil, errors.New("at least one service port is required")
+	}
+	for _, port := range payload.Ports {
+		if port.Port < 1 || port.Port > 65535 {
+			return nil, errors.New("service port must be between 1 and 65535")
+		}
+	}
+
+	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/api/v1/namespaces/%s/services/%s", payload.Namespace, payload.Name)
+	var current map[string]any
+	if err := k8sGetJSON(client, runtime, path, &current); err != nil {
+		return nil, errors.New(k8sClusterConnectError)
+	}
+	spec, ok := current["spec"].(map[string]any)
+	if !ok {
+		return nil, errors.New("invalid service resource")
+	}
+	spec["type"] = payload.Type
+	if payload.Type == "ExternalName" {
+		spec["externalName"] = strings.TrimSpace(payload.ExternalName)
+		delete(spec, "selector")
+		delete(spec, "clusterIP")
+		delete(spec, "clusterIPs")
+	} else {
+		delete(spec, "externalName")
+		selectors := make(map[string]any, len(payload.Selector))
+		for key, value := range payload.Selector {
+			key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+			if key != "" && value != "" {
+				selectors[key] = value
+			}
+		}
+		spec["selector"] = selectors
+		if payload.Headless {
+			spec["clusterIP"] = "None"
+			spec["clusterIPs"] = []string{"None"}
+		}
+	}
+	ports := make([]map[string]any, 0, len(payload.Ports))
+	for _, port := range payload.Ports {
+		protocol := strings.TrimSpace(port.Protocol)
+		if protocol == "" {
+			protocol = "TCP"
+		}
+		item := map[string]any{"port": port.Port, "protocol": protocol, "targetPort": serviceTargetPort(port.TargetPort, port.Port)}
+		if name := strings.TrimSpace(port.Name); name != "" {
+			item["name"] = name
+		}
+		if payload.Type == "NodePort" || payload.Type == "LoadBalancer" {
+			if port.NodePort > 0 {
+				item["nodePort"] = port.NodePort
+			}
+		}
+		ports = append(ports, item)
+	}
+	if payload.Type != "ExternalName" {
+		spec["ports"] = ports
+	}
+	metadata, _ := current["metadata"].(map[string]any)
+	labels := make(map[string]any, len(payload.Labels))
+	for key, value := range payload.Labels {
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if key != "" && value != "" {
+			labels[key] = value
+		}
+	}
+	annotations := make(map[string]any, len(payload.Annotations))
+	for key, value := range payload.Annotations {
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if key != "" && value != "" {
+			annotations[key] = value
+		}
+	}
+	request := map[string]any{"apiVersion": "v1", "kind": "Service", "metadata": map[string]any{"name": payload.Name, "namespace": payload.Namespace, "resourceVersion": metadata["resourceVersion"]}, "spec": spec}
+	requestMetadata := request["metadata"].(map[string]any)
+	requestMetadata["labels"] = labels
+	requestMetadata["annotations"] = annotations
+	if err := k8sPatchJSON(client, runtime, path, request, "application/merge-patch+json", nil); err != nil {
+		return nil, err
+	}
+	return map[string]any{"name": payload.Name, "namespace": payload.Namespace}, nil
+}
+
+func serviceTargetPort(value string, fallback int) any {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	if port, err := strconv.Atoi(value); err == nil {
+		return port
+	}
+	return value
 }
 
 func (s *Service) GetK8sIstioResourceDetail(clusterID uint, resourceType string, namespace string, name string) (model.K8sIstioResourceDetail, error) {
@@ -3456,11 +3584,12 @@ func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpoi
 		serviceItems = append(serviceItems, model.K8sServiceItem{
 			Name:       service.Metadata.Name,
 			Namespace:  service.Metadata.Namespace,
-			Type:       fallbackText(service.Spec.Type),
+			Type:       serviceDisplayType(service),
 			ClusterIP:  fallbackText(service.Spec.ClusterIP),
 			ExternalIP: serviceExternalIP(service),
 			Ports:      strings.Join(ports, ", "),
 			Endpoints:  endpointCounts[key],
+			Age:        humanizeAge(service.Metadata.CreationTimestamp),
 		})
 	}
 	sort.Slice(serviceItems, func(i, j int) bool {
@@ -3509,6 +3638,13 @@ func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpoi
 		Services:  serviceItems,
 		Ingresses: ingressItems,
 	}
+}
+
+func serviceDisplayType(service kubeService) string {
+	if strings.EqualFold(strings.TrimSpace(service.Spec.ClusterIP), "None") {
+		return "Headless"
+	}
+	return fallbackText(service.Spec.Type)
 }
 
 func persistentVolumeSource(item kubePersistentVolume) (sourceType, path, nfsServer string) {
