@@ -9,7 +9,8 @@ export default defineConfig({
     proxy: {
       '/api/v1': {
         target: 'http://127.0.0.1:8082',
-        changeOrigin: true
+        changeOrigin: true,
+        ws: true
       },
       '/uploads': {
         target: 'http://127.0.0.1:8082',

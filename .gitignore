@@ -2,3 +2,10 @@ backend/.gocache/
 backend/.gomodcache/
 web/node_modules/
 web/dist/
+AutoOps/
+.gocache/
+backend/runtime-backend.exe
+backend/runtime.stdout.log
+backend/runtime.stderr.log
+deploy/.env
+deploy/config.yaml

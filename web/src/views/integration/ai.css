@@ -1,0 +1,15 @@
+.ai-page { min-height: calc(100vh - 126px); color: #10213f; }
+.ai-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px 28px; margin-bottom: 18px; background: #fff; border: 1px solid #dfe7f3; border-radius: 8px; box-shadow: 0 10px 30px rgba(38, 69, 120, .06); }
+.ai-kicker { margin-bottom: 7px; color: #316bdc; font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.ai-hero h1 { margin: 0 0 7px; font-size: 28px; line-height: 1.2; }
+.ai-hero p { margin: 0; color: #6b7d9d; }
+.ai-panel { background: #fff; border: 1px solid #dfe7f3; border-radius: 8px; box-shadow: 0 8px 24px rgba(38, 69, 120, .05); }
+.ai-panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 18px; border-bottom: 1px solid #e6edf7; }
+.ai-panel-head h2 { margin: 0; font-size: 17px; }
+.ai-muted { color: #8090aa; font-size: 13px; }
+.ai-empty { display: grid; place-items: center; min-height: 280px; color: #8796ad; text-align: center; }
+.ai-empty strong { display: block; margin-bottom: 8px; color: #324663; font-size: 17px; }
+.ai-status-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #25bd78; box-shadow: 0 0 0 4px rgba(37,189,120,.12); }
+.ai-code { font-family: Consolas, 'SFMono-Regular', monospace; }
+.ai-table-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 900px) { .ai-hero { align-items: flex-start; flex-direction: column; } }

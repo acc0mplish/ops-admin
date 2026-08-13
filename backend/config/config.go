@@ -36,5 +36,10 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	// A temporary port is useful for local verification without interfering with
+	// an already running development server.
+	if port := os.Getenv("OPS_ADMIN_PORT"); port != "" {
+		cfg.App.Port = port
+	}
 	return &cfg, nil
 }

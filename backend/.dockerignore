@@ -1,0 +1,6 @@
+.gocache
+.gomodcache
+uploads
+runtime-backend.exe
+*.log
+config.yaml

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kubernetes Service Workload Detail",
+    "subtitle": "Service, Deployment, ReplicaSet and Pod runtime topology",
+    "output": "service-workload.html",
+    "viewBox": [1120, 620]
+  },
+  "components": [
+    { "id": "workload", "type": "backend", "label": "Workload", "sublabel": "Deployment", "pos": [70, 120] },
+    { "id": "service", "type": "cloud", "label": "Service", "sublabel": "ClusterIP / NodePort", "pos": [290, 120] },
+    { "id": "deployment", "type": "backend", "label": "Deployment", "sublabel": "desired replicas", "pos": [510, 120] },
+    { "id": "replicaset", "type": "messagebus", "label": "ReplicaSet", "sublabel": "current revision", "pos": [730, 120] },
+    { "id": "pod", "type": "cloud", "label": "Pod", "sublabel": "running instance", "pos": [930, 120] }
+  ],
+  "connections": [
+    { "from": "workload", "to": "service", "variant": "emphasis" },
+    { "from": "service", "to": "deployment" },
+    { "from": "deployment", "to": "replicaset" },
+    { "from": "replicaset", "to": "pod", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Healthy", "items": ["Ready replicas match desired replicas", "Running Pods expose latest logs"] }
+  ]
+}

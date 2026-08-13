@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ops Admin DevOps 平台架构",
+    "subtitle": "以 CMDB 为底座，统一承载运维、交付、可观测与消息通知能力",
+    "output": "ops-admin-platform.html",
+    "animation": "trace",
+    "viewBox": [1560, 860]
+  },
+  "components": [
+    {
+      "id": "operator",
+      "type": "external",
+      "label": "平台用户",
+      "sublabel": "DevOps / SRE / DBA",
+      "pos": [40, 305],
+      "size": [150, 66]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Vue Web 控制台",
+      "sublabel": "Vue 3 + Vite + Element Plus",
+      "tag": "浏览器单页应用",
+      "pos": [245, 295],
+      "size": [190, 86]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "Gin API 与访问控制",
+      "sublabel": "REST / WebSocket / JWT / RBAC / 审计",
+      "tag": "/api/v1",
+      "pos": [500, 285],
+      "size": [210, 106]
+    },
+    {
+      "id": "cmdb",
+      "type": "backend",
+      "label": "资产管理与 CMDB",
+      "sublabel": "主机 / 数据库 / K8s / 凭据 / 网关",
+      "tag": "基础设施事实数据源",
+      "pos": [790, 80],
+      "size": [230, 90]
+    },
+    {
+      "id": "automation",
+      "type": "backend",
+      "label": "标准运维与自动化",
+      "sublabel": "快速执行 / 定时任务 / 作业编排",
+      "tag": "SSH + Cron + 工作流",
+      "pos": [790, 215],
+      "size": [230, 90]
+    },
+    {
+      "id": "delivery",
+      "type": "backend",
+      "label": "应用中心与 CI/CD",
+      "sublabel": "应用 / 构建 / 流水线 / 应用拓扑",
+      "tag": "从 Git 或 SVN 到发布",
+      "pos": [790, 350],
+      "size": [230, 90]
+    },
+    {
+      "id": "observability",
+      "type": "backend",
+      "label": "监控中心与日志",
+      "sublabel": "查询 / 告警 / 聚合收敛 / 大屏",
+      "tag": "PromQL + Lucene + LogsQL",
+      "pos": [790, 485],
+      "size": [230, 90]
+    },
+    {
+      "id": "platform",
+      "type": "backend",
+      "label": "平台公共服务",
+      "sublabel": "消息通知 / LDAP / 集成导航",
+      "tag": "模板 + 规则 + 公开链接",
+      "pos": [790, 620],
+      "size": [230, 90]
+    },
+    {
+      "id": "metadata",
+      "type": "database",
+      "label": "Ops Admin MySQL",
+      "sublabel": "GORM 元数据与执行历史",
+      "tag": "utf8mb4_general_ci",
+      "pos": [500, 555],
+      "size": [210, 88]
+    },
+    {
+      "id": "managed",
+      "type": "cloud",
+      "label": "受管基础设施",
+      "sublabel": "Linux 主机 / MySQL / Kubernetes",
+      "tag": "直连或 SSH 网关访问",
+      "pos": [1135, 165],
+      "size": [230, 96]
+    },
+    {
+      "id": "datasources",
+      "type": "external",
+      "label": "可观测数据源",
+      "sublabel": "Prometheus / VictoriaMetrics / ES / VictoriaLogs",
+      "tag": "指标与日志",
+      "pos": [1135, 390],
+      "size": [250, 96]
+    },
+    {
+      "id": "integrations",
+      "type": "external",
+      "label": "外部系统集成",
+      "sublabel": "Git/SVN / LDAP/AD / 钉钉 / 企微 / 飞书",
+      "tag": "代码仓库与 Webhook",
+      "pos": [1135, 615],
+      "size": [250, 96]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Ops Admin 平台内部",
+      "wraps": ["web", "api", "cmdb", "automation", "delivery", "observability", "platform", "metadata"],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "受管环境与外部系统",
+      "wraps": ["managed", "datasources", "integrations"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "from": "operator",
+      "to": "web",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "from": "web",
+      "to": "api",
+      "label": "REST + WebSocket",
+      "variant": "emphasis",
+      "labelAt": [468, 405]
+    },
+    {
+      "from": "api",
+      "to": "cmdb",
+      "label": "资产接口",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "api",
+      "to": "automation",
+      "label": "执行任务",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "api",
+      "to": "delivery",
+      "label": "构建与发布",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "api",
+      "to": "observability",
+      "label": "查询与告警",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "api",
+      "to": "platform",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "api",
+      "to": "metadata",
+      "label": "GORM / MySQL",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [605, 405]
+    },
+    {
+      "from": "cmdb",
+      "to": "managed",
+      "label": "发现与访问",
+      "variant": "security"
+    },
+    {
+      "from": "automation",
+      "to": "managed",
+      "label": "SSH / 文件 / 命令",
+      "variant": "emphasis"
+    },
+    {
+      "from": "delivery",
+      "to": "managed",
+      "label": "部署 / K8s API",
+      "variant": "emphasis"
+    },
+    {
+      "from": "observability",
+      "to": "datasources",
+      "label": "PromQL / Lucene / LogsQL",
+      "variant": "emphasis",
+      "labelAt": [1078, 589]
+    },
+    {
+      "from": "delivery",
+      "to": "integrations",
+      "label": "Git / SVN 拉取",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "platform",
+      "to": "integrations",
+      "label": "LDAP 同步 / Webhook",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "前端与 API",
+      "items": [
+        "Vue 3 单页控制台按资产、运维、应用、通知和监控领域组织",
+        "Gin 对外提供鉴权 REST API 与终端 WebSocket 通道",
+        "JWT、RBAC 与操作审计共同约束平台操作"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "CMDB 与执行引擎",
+      "items": [
+        "CMDB 统一维护主机、数据库、K8s 集群、凭据和访问网关",
+        "SSH 网关为隔离网络中的基础设施提供受控访问入口",
+        "调度器驱动快速执行、作业、监控评估和数据库备份"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "交付与可观测",
+      "items": [
+        "应用构建在指定执行节点拉取 Git 或 SVN 代码",
+        "CI/CD 流水线将构建结果发布到主机或 Kubernetes 环境",
+        "指标与日志支持 Prometheus、VictoriaMetrics、Elasticsearch 和 VictoriaLogs"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "平台集成",
+      "items": [
+        "消息模板通过钉钉、企业微信、飞书或自定义 Webhook 发送",
+        "LDAP/AD 为系统用户提供目录同步能力",
+        "集成中心提供分组导航以及可选的免登录公开链接"
+      ]
+    }
+  ]
+}

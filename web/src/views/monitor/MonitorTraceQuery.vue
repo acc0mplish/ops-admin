@@ -1,0 +1,244 @@
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { queryMonitorDatasourceOptions, queryMonitorJaegerOperations, queryMonitorJaegerServices, queryMonitorTraces } from '../../api/monitor'
+
+const loading = ref(false)
+const serviceLoading = ref(false)
+const operationLoading = ref(false)
+const datasources = ref([])
+const services = ref([])
+const operations = ref([])
+const datasourceId = ref()
+const service = ref('')
+const operation = ref('')
+const tags = ref('')
+const traceId = ref('')
+const timeRange = ref('1h')
+const customDateRange = ref([])
+const items = ref([])
+const pageNum = ref(1)
+const pageSize = ref(20)
+const lastQueryWindow = ref(null)
+const router = useRouter()
+const route = useRoute()
+let restoringQuery = false
+
+const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
+const pagedItems = computed(() => {
+  const start = (pageNum.value - 1) * pageSize.value
+  return items.value.slice(start, start + pageSize.value)
+})
+function rangeTimestamps() {
+  if (timeRange.value === 'custom' && customDateRange.value?.length === 2) {
+    const [startAt, endAt] = customDateRange.value.map(Number)
+    if (Number.isFinite(startAt) && Number.isFinite(endAt) && startAt < endAt) return { startAt, endAt }
+  }
+  const endAt = Date.now()
+  const minutes = { '15m': 15, '1h': 60, '6h': 360, '24h': 1440, '7d': 10080 }[timeRange.value] || 60
+  return { startAt: endAt - minutes * 60000, endAt }
+}
+
+function formatTime(value) {
+  if (!value) return '-'
+  const time = Number(value) > 100000000000000 ? Number(value) / 1000 : Number(value)
+  const date = new Date(time)
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function formatDuration(value) {
+  const microseconds = Number(value || 0)
+  if (microseconds >= 1000000) return `${(microseconds / 1000000).toFixed(2)} s`
+  if (microseconds >= 1000) return `${(microseconds / 1000).toFixed(2)} ms`
+  return `${microseconds} μs`
+}
+
+function traceServices(trace) {
+  return [...new Set(Object.values(trace.processes || {}).map((item) => item.serviceName).filter(Boolean))].join(' → ') || '-'
+}
+
+function traceOperation(trace) {
+  const spans = trace.spans || []
+  const rootSpan = spans.find((span) => !(span.references || []).some((reference) => reference.refType === 'CHILD_OF'))
+  return rootSpan?.operationName || spans[0]?.operationName || '-'
+}
+
+function traceRootSpan(trace) {
+  const spans = trace.spans || []
+  return spans.find((span) => !(span.references || []).some((reference) => reference.refType === 'CHILD_OF')) || spans[0] || {}
+}
+
+function traceStatus(trace) {
+  const span = traceRootSpan(trace)
+  const tags = span.tags || []
+  const httpTag = tags.find((item) => ['http.status_code', 'http.response.status_code', 'http.status', 'http.statusCode'].includes(item.key))
+  if (httpTag) return String(httpTag.value ?? '-')
+  const hasError = (trace.spans || []).some((item) => (item.tags || []).some((tag) => {
+    if (tag.key === 'error') return String(tag.value).toLowerCase() !== 'false'
+    if (tag.key === 'status.code') return String(tag.value).toUpperCase() === 'ERROR'
+    return ['http.status_code', 'http.response.status_code'].includes(tag.key) && Number(tag.value) >= 400
+  }))
+  return hasError ? '异常' : '成功'
+}
+
+function traceStatusTagType(trace) {
+  const status = traceStatus(trace)
+  const code = Number(status)
+  if (code >= 200 && code < 400) return 'success'
+  if (code >= 500 || status === '异常' || status.toUpperCase() === 'ERROR') return 'danger'
+  if (code >= 400) return 'warning'
+  return status === '成功' ? 'success' : 'info'
+}
+
+function traceDuration(trace) {
+  const spans = trace.spans || []
+  if (!spans.length) return '-'
+  const started = Math.min(...spans.map((item) => Number(item.startTime || 0)))
+  const ended = Math.max(...spans.map((item) => Number(item.startTime || 0) + Number(item.duration || 0)))
+  return formatDuration(ended - started)
+}
+
+async function loadServices() {
+  services.value = []
+  operations.value = []
+  service.value = ''
+  operation.value = ''
+  if (!datasourceId.value) return
+  serviceLoading.value = true
+  try {
+    services.value = await queryMonitorJaegerServices({ datasourceId: datasourceId.value }) || []
+  } finally {
+    serviceLoading.value = false
+  }
+}
+
+async function loadOperations() {
+  operations.value = []
+  operation.value = ''
+  if (!datasourceId.value || !service.value) return
+  operationLoading.value = true
+  try {
+    operations.value = await queryMonitorJaegerOperations({ datasourceId: datasourceId.value, service: service.value }) || []
+  } finally {
+    operationLoading.value = false
+  }
+}
+
+async function loadDatasources() {
+  const options = await queryMonitorDatasourceOptions()
+  datasources.value = (options || []).filter((item) => item.type === 'jaeger')
+  datasourceId.value = datasources.value[0]?.id
+}
+
+function queryWindowFromRoute() {
+  const startAt = Number(route.query.startAt)
+  const endAt = Number(route.query.endAt)
+  return Number.isFinite(startAt) && Number.isFinite(endAt) && startAt < endAt ? { startAt, endAt } : null
+}
+
+function detailRouteQuery() {
+  const { startAt, endAt } = lastQueryWindow.value || rangeTimestamps()
+  return {
+    datasourceId: datasourceId.value, service: service.value || undefined, operation: operation.value || undefined,
+    tags: tags.value || undefined, timeRange: timeRange.value, startAt, endAt, page: pageNum.value, pageSize: pageSize.value
+  }
+}
+
+async function queryList(window = null, preservePage = false) {
+  if (!service.value) return ElMessage.warning('请选择服务，或直接输入 Trace ID 查询')
+  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的起止时间')
+  const { startAt, endAt } = window || rangeTimestamps()
+  lastQueryWindow.value = { startAt, endAt }
+  items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 1000 }) || []
+  if (!preservePage) pageNum.value = 1
+  const pageCount = Math.max(1, Math.ceil(items.value.length / pageSize.value))
+  pageNum.value = Math.min(Math.max(1, pageNum.value), pageCount)
+}
+
+async function restoreQueryState() {
+  const state = route.query
+  if (!state?.service) return false
+  restoringQuery = true
+  try {
+    datasourceId.value = datasources.value.find((item) => Number(item.id) === Number(state.datasourceId))?.id || datasources.value[0]?.id
+    await loadServices()
+    service.value = state.service || ''
+    await loadOperations()
+    operation.value = state.operation || ''
+    tags.value = state.tags || ''
+    timeRange.value = state.timeRange || '1h'
+    customDateRange.value = state.timeRange === 'custom' && queryWindowFromRoute() ? [String(state.startAt), String(state.endAt)] : []
+    pageSize.value = [20, 50, 100].includes(Number(state.pageSize)) ? Number(state.pageSize) : 20
+    pageNum.value = Math.max(1, Number(state.page) || 1)
+  } finally {
+    restoringQuery = false
+  }
+  return true
+}
+
+async function search() {
+  if (!datasourceId.value) return ElMessage.warning('请先在数据源管理中配置 Jaeger 数据源')
+  loading.value = true
+  try {
+    if (traceId.value.trim()) {
+      router.push({ path: `/monitor/traces/${encodeURIComponent(traceId.value.trim())}`, query: detailRouteQuery() })
+      return
+    } else {
+      await queryList()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+function openDetail(trace) {
+  router.push({ path: `/monitor/traces/${encodeURIComponent(trace.traceID)}`, query: detailRouteQuery() })
+}
+
+watch(datasourceId, () => { if (!restoringQuery) loadServices() })
+watch(service, () => { if (!restoringQuery) loadOperations() })
+onMounted(async () => {
+  await loadDatasources()
+  if (await restoreQueryState()) {
+    loading.value = true
+    try { await queryList(queryWindowFromRoute(), true) } finally { loading.value = false }
+  }
+})
+</script>
+
+<template>
+  <div class="trace-page trace-query-page">
+    <div class="page-header"><div><h2>链路追踪</h2><p>通过 Jaeger 检索分布式调用链，定位服务调用耗时与异常 Span。</p></div></div>
+    <el-alert v-if="!datasources.length" title="尚未配置 Jaeger 数据源" type="warning" :closable="false" show-icon>
+      请先前往“数据源管理”新增并测试 Jaeger Query 服务地址。
+    </el-alert>
+    <div class="toolbar">
+      <el-select v-model="datasourceId" filterable placeholder="选择 Jaeger 数据源" style="width: 220px"><el-option v-for="item in datasources" :key="item.id" :label="item.name" :value="item.id" /></el-select>
+      <el-select v-model="service" filterable clearable :loading="serviceLoading" placeholder="选择服务" style="width: 220px"><el-option v-for="item in services" :key="item" :label="item" :value="item" /></el-select>
+      <el-select v-model="operation" filterable clearable :loading="operationLoading" :disabled="!service" placeholder="选择 Operation（可选）" style="width: 230px"><el-option v-for="item in operations" :key="item" :label="item" :value="item" /></el-select>
+      <el-select v-model="timeRange" style="width: 130px"><el-option label="最近 15 分钟" value="15m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 7 天" value="7d" /><el-option label="自定义时间" value="custom" /></el-select>
+      <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="x" start-placeholder="开始时间" end-placeholder="结束时间" range-separator="至" style="width: 360px" />
+      <el-input v-model="tags" clearable placeholder='标签 JSON，例如 {"http.status_code":"500"}' style="width: 300px" @keyup.enter="search" />
+      <el-input v-model="traceId" clearable placeholder="Trace ID（可直接查询）" style="width: 280px" @keyup.enter="search" />
+      <el-button type="primary" :loading="loading" @click="search">查询</el-button>
+    </div>
+    <div class="hint">当前数据源：{{ activeDatasource?.name || '-' }}。标签筛选需填写 Jaeger 格式的 JSON 对象。</div>
+    <el-table v-loading="loading" :data="pagedItems" border empty-text="请选择服务并查询，或输入 Trace ID 直接定位调用链">
+      <el-table-column label="Trace ID" min-width="270"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.traceID }}</el-link></template></el-table-column>
+      <el-table-column label="服务链路" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ traceServices(row) }}</template></el-table-column>
+      <el-table-column label="Operation" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ traceOperation(row) }}</template></el-table-column>
+      <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag size="small" effect="light" :type="traceStatusTagType(row)">{{ traceStatus(row) }}</el-tag></template></el-table-column>
+      <el-table-column label="开始时间" width="190"><template #default="{ row }">{{ formatTime(row.spans?.[0]?.startTime) }}</template></el-table-column>
+      <el-table-column label="总耗时" width="120"><template #default="{ row }">{{ traceDuration(row) }}</template></el-table-column>
+      <el-table-column label="Span 数" width="110" align="center" sortable :sort-method="(left, right) => (left.spans?.length || 0) - (right.spans?.length || 0)"><template #default="{ row }">{{ row.spans?.length || 0 }}</template></el-table-column>
+      <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">详情</el-button></template></el-table-column>
+    </el-table>
+    <div class="trace-pagination"><span>每页展示 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :page-sizes="[20, 50, 100]" :total="items.length" layout="total, sizes, prev, pager, next, jumper" @size-change="pageNum = 1" /></div>
+  </div>
+</template>
+
+<style scoped>
+.trace-page { display: flex; flex-direction: column; gap: 18px; padding: 24px; background: #fff; border-radius: 18px; box-shadow: 0 12px 30px rgba(36, 54, 90, .08); }
+.page-header h2 { margin: 0 0 8px; font-size: 26px; color: #10213f; }.page-header p, .hint { margin: 0; color: #7282a0; }.toolbar { display: flex; flex-wrap: wrap; gap: 12px; }.hint { font-size: 13px; }.trace-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 14px 2px 0; color: #7b8ca5; font-size: 12px; } @media (max-width: 720px) { .trace-pagination { align-items: flex-end; flex-direction: column; } }
+</style>

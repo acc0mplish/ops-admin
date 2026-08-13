@@ -11,8 +11,8 @@ const router = useRouter()
 const loading = ref(false)
 const config = ref(getSystemConfig())
 const form = reactive({
-  username: 'admin',
-  password: '123456'
+  username: '',
+  password: ''
 })
 
 const logoText = computed(() => {

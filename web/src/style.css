@@ -1,8 +1,13 @@
 :root {
-  --app-primary: #5b6cf9;
-  --app-primary-soft: rgba(91, 108, 249, 0.16);
-  color: #14213d;
-  background: #eef1f8;
+  --app-primary: #356ae6;
+  --app-primary-soft: rgba(53, 106, 230, 0.12);
+  --ops-ink: #18243a;
+  --ops-muted: #66758d;
+  --ops-line: #e3e8f0;
+  --ops-surface: #ffffff;
+  --ops-canvas: #f5f7fb;
+  color: var(--ops-ink);
+  background: var(--ops-canvas);
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -18,11 +23,10 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(103, 167, 255, 0.14), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(61, 91, 211, 0.12), transparent 30%),
-    #eef1f8;
-  color: #14213d;
+  background: var(--ops-canvas);
+  color: var(--ops-ink);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -31,11 +35,11 @@ a {
 }
 
 .page-card {
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 22px;
-  padding: 22px;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
-  border: 1px solid #e9eef7;
+  background: var(--ops-surface);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 5px rgba(20, 34, 58, 0.035);
+  border: 1px solid var(--ops-line);
 }
 
 .toolbar {
@@ -54,15 +58,735 @@ a {
 }
 
 .page-title {
-  margin: 0 0 18px;
-  font-size: 24px;
-  font-weight: 700;
-  color: #14213d;
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ops-ink);
 }
 
 .page-subtitle {
-  margin: 0 0 20px;
-  color: #62748a;
+  margin: 0 0 16px;
+  color: var(--ops-muted);
+}
+
+/* Enterprise operations shell: quiet surfaces, compact controls, clear state hierarchy. */
+.layout-shell { background: var(--ops-canvas) !important; }
+.layout-aside {
+  background: #18243a !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+.theme-light .layout-aside { background: #1d2a42 !important; }
+.brand-box { padding: 15px 10px 11px !important; }
+.brand-mark, .brand-image { border-radius: 10px !important; box-shadow: none !important; }
+.brand-text strong { font-size: 15px !important; letter-spacing: -0.01em; }
+.brand-text span { font-size: 11px !important; }
+.platform-nav-trigger {
+  width: 36px !important; height: 36px !important; border-radius: 9px !important;
+  border-color: rgba(255,255,255,.12) !important; background: rgba(255,255,255,.08) !important;
+  box-shadow: none !important;
+}
+.platform-nav-trigger:hover { transform: none !important; background: rgba(255,255,255,.14) !important; box-shadow: none !important; }
+.sidebar-scroll { height: calc(100vh - 66px) !important; }
+.sidebar-menu .el-menu-item, .sidebar-menu .el-sub-menu__title {
+  height: 42px !important; line-height: 42px !important; margin: 3px 8px !important;
+  border-radius: 8px !important; font-size: 13px !important; font-weight: 500;
+}
+.sidebar-menu .el-menu-item .el-icon, .sidebar-menu .el-sub-menu__title .el-icon { font-size: 16px !important; }
+.sidebar-menu .el-menu-item.is-active {
+  background: #356ae6 !important; box-shadow: none !important;
+}
+.sidebar-menu .el-menu-item:hover, .sidebar-menu .el-sub-menu__title:hover { background: rgba(255,255,255,.075) !important; }
+.sidebar-menu .el-sub-menu > .el-menu {
+  margin: 2px 10px 7px 18px;
+  padding: 3px 0;
+  border-left: 1px solid rgba(255,255,255,.13);
+}
+.sidebar-menu .el-sub-menu .el-menu-item {
+  height: 37px !important;
+  min-width: 0 !important;
+  margin: 1px 0 1px 7px !important;
+  padding-right: 8px !important;
+  border-radius: 6px !important;
+  color: #b9c5d8 !important;
+  font-size: 12.5px !important;
+}
+.sidebar-menu .el-sub-menu .el-menu-item .el-icon {
+  width: 16px !important;
+  margin-right: 7px !important;
+  color: #91a0b8;
+  font-size: 14px !important;
+}
+.sidebar-menu .el-sub-menu .el-menu-item:hover { color: #f5f8ff !important; }
+.sidebar-menu .el-sub-menu .el-menu-item.is-active {
+  color: #fff !important;
+  background: rgba(53,106,230,.92) !important;
+  box-shadow: inset 3px 0 0 rgba(255,255,255,.45) !important;
+}
+.sidebar-menu .el-sub-menu .el-menu-item.is-active .el-icon { color: #fff !important; }
+.layout-aside.is-collapsed .sidebar-menu .el-sub-menu > .el-menu { margin: 0 !important; border-left: 0; }
+.layout-header {
+  padding: 11px 20px 8px !important; background: rgba(255,255,255,.97) !important;
+  border-bottom-color: var(--ops-line) !important; backdrop-filter: blur(14px) !important;
+}
+.header-left, .header-right { gap: 12px !important; }
+.collapse-button { width: 32px !important; height: 32px !important; box-shadow: none !important; }
+.el-breadcrumb { font-size: 13px !important; }
+.el-breadcrumb__inner, .el-breadcrumb__separator { color: #7a8799 !important; font-weight: 400 !important; }
+.el-breadcrumb__item:last-child .el-breadcrumb__inner { color: var(--ops-ink) !important; font-weight: 600 !important; }
+.command-trigger { height: 32px !important; border-color: var(--ops-line) !important; border-radius: 7px !important; box-shadow: none !important; }
+.locale-box { height: 30px !important; border-radius: 7px !important; border-color: var(--ops-line) !important; }
+.user-box { padding: 4px 8px !important; border-radius: 7px !important; font-size: 13px; }
+.user-avatar { width: 28px !important; height: 28px !important; background: #356ae6 !important; }
+.tabs-bar { gap: 6px !important; padding-top: 9px !important; }
+.tab-chip { padding: 6px 10px !important; border-radius: 7px !important; border-color: var(--ops-line) !important; font-size: 13px !important; }
+.tab-chip.active { background: #edf3ff !important; border-color: #c9d9fb !important; color: #2858c5 !important; font-weight: 600; }
+.layout-main { padding: 18px 20px 24px !important; }
+
+/* Element Plus components share the same visual language across every route. */
+.el-card, .el-dialog, .el-drawer, .el-popover.el-popper, .el-dropdown__popper .el-dropdown-menu {
+  border-color: var(--ops-line) !important;
+  box-shadow: 0 12px 32px rgba(20,34,58,.12) !important;
+}
+.el-card { border-radius: 12px !important; }
+.el-card__header { padding: 14px 18px !important; border-bottom-color: var(--ops-line) !important; }
+.el-card__body { padding: 18px !important; }
+.el-dialog { border-radius: 12px !important; overflow: hidden; }
+.el-dialog__header { margin-right: 0 !important; padding: 17px 20px 14px !important; border-bottom: 1px solid var(--ops-line); }
+.el-dialog__title { color: var(--ops-ink); font-size: 16px; font-weight: 650; }
+.el-dialog__body { padding: 18px 20px !important; }
+.el-dialog__footer { padding: 12px 20px 16px !important; border-top: 1px solid #edf0f5; }
+.el-drawer__header { margin-bottom: 0 !important; padding: 17px 20px !important; border-bottom: 1px solid var(--ops-line); color: var(--ops-ink); }
+.el-drawer__body { padding: 20px !important; background: #fbfcfe; }
+.el-button { border-radius: 7px !important; font-weight: 500; }
+.el-button--primary { --el-button-bg-color: #356ae6; --el-button-border-color: #356ae6; --el-button-hover-bg-color: #2e60ce; --el-button-hover-border-color: #2e60ce; }
+.el-input__wrapper, .el-textarea__inner, .el-select__wrapper { box-shadow: 0 0 0 1px #dce3ed inset !important; border-radius: 7px !important; }
+.el-input__wrapper.is-focus, .el-select__wrapper.is-focused { box-shadow: 0 0 0 1px #356ae6 inset !important; }
+.el-table { --el-table-border-color: #e8edf3; --el-table-header-bg-color: #f7f9fc; --el-table-row-hover-bg-color: #f7f9fd; color: #334155; }
+.el-table th.el-table__cell { color: #53627a; font-size: 12px; font-weight: 600; }
+.el-table td.el-table__cell, .el-table th.el-table__cell { padding: 11px 0 !important; }
+.el-tag { border-radius: 5px !important; font-weight: 500; }
+.el-pagination { --el-pagination-button-bg-color: #fff; --el-pagination-hover-color: #356ae6; }
+.el-message, .el-notification { border-radius: 9px !important; box-shadow: 0 12px 30px rgba(20,34,58,.14) !important; }
+
+/* Console dashboard: a sober control-plane surface, compact scope readout, and scannable metrics. */
+.dashboard-page { gap: 16px !important; }
+.hero-card { padding: 26px 30px !important; border-radius: 14px !important; background: linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), radial-gradient(circle at 88% 8%, rgba(24,168,160,.22), transparent 24%), #132640 !important; background-size: 24px 24px, 24px 24px, auto, auto !important; box-shadow: none !important; }
+.hero-card h1 { font-size: 30px !important; letter-spacing: -0.02em; }
+.hero-text { margin-top: 10px !important; line-height: 1.65 !important; }
+.hero-badge { gap: 8px !important; padding: 13px 14px !important; border: 1px solid rgba(192,214,239,.16) !important; border-radius: 10px !important; background: rgba(6,19,37,.32) !important; }
+.hero-badge span { padding: 0 !important; border-radius: 0 !important; background: transparent !important; }
+.stat-grid { gap: 14px !important; }
+.stat-card { padding: 18px 20px !important; border-radius: 10px !important; border-color: var(--ops-line) !important; box-shadow: 0 2px 5px rgba(20,34,58,.035) !important; }
+.stat-card strong { margin: 12px 0 7px !important; font-size: 30px !important; color: var(--ops-ink) !important; }
+.stat-card span { color: #58677e !important; font-size: 13px; }
+.stat-card small { color: #8a96a8 !important; }
+
+/* Console governance pages inherit the topology page's quiet card rhythm. */
+.console-card-page {
+  position: relative;
+  overflow: hidden;
+  padding: 22px !important;
+  border-color: #dfe8f5 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(37, 69, 114, .055) !important;
+}
+.console-card-page::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #5979ef, #7d62e8 58%, transparent 58%);
+  content: '';
+}
+.console-card-page > .page-title {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  margin: 0 0 18px !important;
+  color: #20395f !important;
+  font-size: 21px !important;
+}
+.console-card-page > .toolbar {
+  margin-bottom: 16px !important;
+  padding: 11px !important;
+  border: 1px solid #e5edf7;
+  border-radius: 10px;
+  background: #f8faff;
+}
+.console-card-page > .el-table {
+  border-color: #e2eaf4 !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.console-card-page .el-table th.el-table__cell { background: #f6f8fc !important; }
+.console-card-page .el-pagination { margin-top: 2px; }
+
+/* Asset management: the same composed card language, tuned to resource inventory. */
+.asset-card-page {
+  position: relative;
+  overflow: hidden;
+  padding: 22px !important;
+  border-color: #dce8e5 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(22, 94, 76, .05) !important;
+}
+.asset-card-page::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #0f9b78, #19b985 54%, transparent 54%);
+  content: '';
+}
+.asset-card-page > .page-title,
+.asset-card-page > .page-header {
+  position: relative;
+  z-index: 1;
+  min-height: 32px;
+  margin-bottom: 18px !important;
+}
+.asset-card-page > .page-title { color: #173f39 !important; font-size: 21px !important; }
+.asset-card-page > .toolbar {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 16px !important;
+  padding: 11px !important;
+  border: 1px solid #e1eeeb;
+  border-radius: 10px;
+  background: #f7fbfa;
+}
+.asset-card-page > .el-table {
+  position: relative;
+  z-index: 1;
+  border-color: #deebe8 !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.asset-card-page .el-table th.el-table__cell { background: #f5faf8 !important; }
+.asset-host-page .query-panel,
+.gateway-page .gateway-table,
+.database-tool-page .tool-panel,
+.terminal-page .asset-tree-card,
+.env-page .toolbar {
+  border-color: #dce8e5 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 7px 18px rgba(22, 94, 76, .045) !important;
+}
+
+/* Reusable page-family foundations. These cover the individual operational views
+   without changing their routes, data models, or interaction flows. */
+.ops-page, .notify-page, .monitor-page, .app-page, .ai-page, .finops-page,
+.asset-host-page, .gateway-page, .host-group-page, .database-page, .env-page,
+.cluster-manage-page, .terminal-page, .database-tool-page, .integration-page {
+  color: var(--ops-ink);
+}
+.ops-page .page-header, .notify-page .page-header, .monitor-page .page-header,
+.ops-page .page-head, .notify-page .page-head, .monitor-page .page-head,
+.app-header, .tool-header, .settings-head, .integration-header {
+  margin-bottom: 16px !important;
+}
+.ops-page .page-title, .notify-page .page-title, .monitor-page .page-title,
+.ops-page .page-head .page-title, .app-header h1, .tool-header h1,
+.settings-head h1, .integration-header h1 {
+  margin: 0 !important;
+  color: var(--ops-ink) !important;
+  font-size: 22px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.018em;
+}
+.ops-page .page-desc, .notify-page .page-desc, .monitor-page .page-desc,
+.app-header p, .tool-header p, .settings-head p, .integration-header p {
+  margin: 6px 0 0 !important;
+  color: var(--ops-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+}
+.ops-page .toolbar, .notify-page .toolbar, .monitor-page .toolbar,
+.app-page .toolbar, .database-tool-page .toolbar, .asset-host-page .toolbar,
+.gateway-page .toolbar, .host-group-page .toolbar, .cluster-manage-page .toolbar {
+  margin-bottom: 14px !important;
+  padding: 12px !important;
+  border: 1px solid #e8edf4;
+  border-radius: 9px;
+  background: #f9fafc;
+}
+.ops-page .pager, .notify-page .pager, .monitor-page .pager, .app-page .pager,
+.database-tool-page .pager, .asset-host-page .pager, .gateway-page .pager {
+  margin-top: 16px !important;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
+}
+.ops-page .el-table, .notify-page .el-table, .monitor-page .el-table,
+.app-page .el-table, .asset-host-page .el-table, .gateway-page .el-table,
+.host-group-page .el-table, .database-page .el-table, .cluster-manage-page .el-table {
+  border: 1px solid #e8edf3;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Asset and cluster workspaces. */
+.asset-overview-page .hero-card, .gateway-page .page-hero, .app-hero,
+.database-tool-page .tool-header, .cluster-manage-page .page-header {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+.asset-overview-page .summary-card, .asset-overview-page .panel-card,
+.asset-overview-page .detail-card, .asset-app-page .filter-card,
+.asset-app-page .table-card, .asset-host-page .query-panel, .gateway-page .gateway-table,
+.cluster-manage-page .table-panel, .terminal-page .asset-tree-card {
+  border: 1px solid var(--ops-line) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 5px rgba(20,34,58,.035) !important;
+}
+.asset-overview-page .summary-card, .asset-overview-page .panel-card,
+.asset-overview-page .detail-card { background: #fff !important; }
+.asset-detail-page .detail-header, .service-detail .detail-toolbar,
+.diagnosis-page .hero, .pod-terminal-page .terminal-head {
+  border-color: var(--ops-line) !important;
+  border-radius: 10px !important;
+}
+
+/* Application delivery, notification, and integration workspaces. */
+.app-header, .app-page .filter-panel, .app-page .table-card, .registry-card,
+.pipeline-tabs, .template-card, .integration-workspace, .group-panel,
+.navigation-panel, .ai-panel, .finops-panel, .notify-page .route-preview {
+  border-color: var(--ops-line) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 5px rgba(20,34,58,.035) !important;
+}
+.app-header, .app-page .filter-panel, .app-page .table-card, .registry-card,
+.template-card, .integration-workspace, .group-panel, .navigation-panel,
+.ai-panel, .finops-panel { background: #fff !important; }
+.app-page .filter-panel, .app-page .table-card, .app-page .history-list,
+.app-page .pipeline-tabs { overflow: hidden; }
+.notify-page .template-card, .notify-page .route-preview, .notify-page .delivery-heading,
+.integration-page .navigation-card, .integration-page .group-item {
+  border-color: var(--ops-line) !important;
+  box-shadow: none !important;
+}
+.ai-hero, .finops-dashboard-head, .finops-breakdown-head, .finops-head {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+/* Monitoring pages prioritize scanability and operational status. */
+.monitor-overview .overview-header, .monitor-page .page-header,
+.monitor-query .query-top, .log-search-panel, .trace-page .page-header {
+  border: 1px solid var(--ops-line) !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 5px rgba(20,34,58,.035) !important;
+}
+.monitor-overview .risk-card, .monitor-overview .panel, .monitor-page .template-card,
+.monitor-page .parameter-card, .instant-chart-panel, .line-chart-wrap,
+.histogram-panel, .field-panel, .waterfall-card, .inspector-card {
+  border-color: var(--ops-line) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 5px rgba(20,34,58,.035) !important;
+}
+.monitor-overview .panel-head, .monitor-page .template-head,
+.monitor-page .page-header, .monitor-query .query-top {
+  border-bottom-color: #edf0f5 !important;
+}
+.risk-card, .summary-card, .metric-card, .quality-card { box-shadow: 0 2px 5px rgba(20,34,58,.035) !important; }
+
+/* Container management: a blue, data-dense resource workspace shared by every
+   Kubernetes and service route.  It deliberately reuses the same quiet card
+   geometry as the console instead of introducing a second visual system. */
+.asset-app-page, .cluster-manage-page, .k8s-page, .diagnosis-page,
+.service-detail, .logs-page, .service-topology, .pod-terminal-page {
+  color: #172b4d;
+}
+.asset-app-page .app-hero, .cluster-manage-page .page-header,
+.k8s-page .kuboard-main-head, .diagnosis-page .hero,
+.service-topology .topology-header, .logs-page .logs-card,
+.pod-terminal-page .terminal-shell {
+  position: relative;
+  overflow: hidden;
+  border-color: #d8e4f4 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(29, 63, 112, .055) !important;
+}
+.asset-app-page .app-hero::before, .cluster-manage-page .page-header::before,
+.k8s-page .kuboard-main-head::before, .diagnosis-page .hero::before,
+.service-topology .topology-header::before, .logs-page .logs-card::before,
+.pod-terminal-page .terminal-shell::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, #2563eb, #5b75ee 56%, #d97706 56%, #d97706 64%, transparent 64%);
+}
+.asset-app-page .app-hero, .cluster-manage-page .page-header,
+.k8s-page .kuboard-main-head, .diagnosis-page .hero,
+.service-topology .topology-header {
+  background: linear-gradient(122deg, #fff 30%, #f2f7ff 100%) !important;
+}
+.asset-app-page .filter-card, .cluster-manage-page .table-panel,
+.k8s-page .workload-control-panel, .k8s-page .kuboard-table-card,
+.diagnosis-page .target-card, .diagnosis-page .diagnostic-card,
+.service-topology .topology-card, .service-topology .workload-card,
+.logs-page .logs-card, .service-detail .argo-canvas {
+  border-color: #dbe6f4 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 5px 16px rgba(29, 63, 112, .045) !important;
+}
+.asset-app-page .filter-card, .cluster-manage-page .header-actions,
+.k8s-page .kuboard-global-toolbar, .diagnosis-page .target-card,
+.logs-page .logs-card header {
+  background: #f7faff !important;
+}
+.asset-app-page .table-card, .cluster-manage-page .table-panel,
+.k8s-page .kuboard-table-card, .service-topology .workload-card {
+  background: #fff !important;
+}
+.asset-app-page .el-table th.el-table__cell, .cluster-manage-page .el-table th.el-table__cell,
+.k8s-page .el-table th.el-table__cell, .diagnosis-page .el-table th.el-table__cell,
+.service-topology .el-table th.el-table__cell {
+  background: #f6f9ff !important;
+  color: #536987 !important;
+}
+.asset-app-page .el-table td.el-table__cell, .cluster-manage-page .el-table td.el-table__cell,
+.k8s-page .el-table td.el-table__cell, .diagnosis-page .el-table td.el-table__cell,
+.service-topology .el-table td.el-table__cell { border-bottom-color: #edf2f8 !important; }
+.asset-app-page .el-tag--success, .cluster-manage-page .el-tag--success,
+.k8s-page .el-tag--success, .diagnosis-page .el-tag--success {
+  border-color: #ccebdc;
+  background: #effaf4;
+  color: #16814f;
+}
+.asset-app-page .el-button--primary, .cluster-manage-page .el-button--primary,
+.k8s-page .el-button--primary, .diagnosis-page .el-button--primary,
+.service-topology .el-button--primary {
+  --el-button-bg-color: #3569e8;
+  --el-button-border-color: #3569e8;
+  --el-button-hover-bg-color: #4b78eb;
+  --el-button-hover-border-color: #4b78eb;
+}
+.service-detail .detail-toolbar {
+  padding: 12px 14px !important;
+  border: 1px solid #dbe6f4 !important;
+  border-left: 3px solid #3569e8 !important;
+  border-radius: 10px !important;
+  background: #f7faff;
+}
+.logs-page .logs-card header { border-bottom: 1px solid #dfe9f6; }
+@media (max-width: 900px) {
+  .asset-app-page .app-hero, .cluster-manage-page .page-header,
+  .k8s-page .kuboard-main-head, .diagnosis-page .hero,
+  .service-topology .topology-header { border-radius: 12px !important; }
+}
+
+/* Standard operations: execution-oriented workspaces. Purple-blue identifies
+   automation, while green/amber/red stay reserved for run outcomes and risk. */
+.ops-page.page-card {
+  position: relative;
+  overflow: hidden;
+  padding: 20px !important;
+  border-color: #dce5f6 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(49, 54, 130, .055) !important;
+}
+.ops-page.page-card::before {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, #6d5ce8, #3569e8 58%, #d97706 58%, #d97706 66%, transparent 66%);
+}
+.ops-page.page-card > .page-header {
+  margin: -20px -20px 16px !important;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid #e2e9f6;
+  background: linear-gradient(120deg, #fff 28%, #f4f6ff 100%);
+}
+.ops-page .page-header .page-title { color: #1f2f59 !important; }
+.ops-page .page-header .page-desc { max-width: 760px; color: #71809a !important; }
+.ops-page > .toolbar {
+  margin: 0 0 16px !important;
+  padding: 12px !important;
+  border: 1px solid #e0e8f6;
+  border-radius: 10px;
+  background: #f8f9ff;
+}
+.ops-page > .el-table {
+  overflow: hidden;
+  border: 1px solid #dfe7f4 !important;
+  border-radius: 10px;
+}
+.ops-page > .el-table th.el-table__cell { background: #f6f8ff !important; color: #586987 !important; }
+.ops-page > .el-form {
+  padding: 20px 22px 4px;
+  border: 1px solid #e0e8f6;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff, #fbfcff);
+}
+.ops-page > .el-form .el-textarea__inner {
+  min-height: 220px !important;
+  color: #dce9ff;
+  border: 0;
+  background: #14213b;
+  box-shadow: inset 0 0 0 1px #253a5b !important;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  line-height: 1.65;
+}
+.ops-page > .el-form .el-textarea__inner::placeholder { color: #8da1c2; }
+.ops-page .pager { margin-top: 14px !important; }
+.ops-page .inline-hint { color: #74839a !important; }
+.ops-page .el-button--success { --el-button-bg-color: #23976a; --el-button-border-color: #23976a; }
+.ops-page .el-button--warning { --el-button-bg-color: #d97706; --el-button-border-color: #d97706; color: #fff; }
+
+/* The job designer remains a three-column workbench, not a collection of
+   unrelated forms. */
+.ops-job-page .page-card {
+  border-color: #dce5f6 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 18px rgba(49, 54, 130, .05) !important;
+}
+.ops-job-page .page-head {
+  position: relative;
+  overflow: hidden;
+  border-top: 3px solid #6d5ce8 !important;
+  background: linear-gradient(120deg, #fff, #f4f6ff) !important;
+}
+.ops-job-page .record-form { border-left: 3px solid #3569e8 !important; }
+.ops-job-page .left-palette { border-top: 3px solid #7c6ce7 !important; background: #fafaff !important; }
+.ops-job-page .canvas-panel { border-top: 3px solid #3569e8 !important; }
+.ops-job-page .config-panel { border-top: 3px solid #d97706 !important; background: #fffcf6 !important; }
+.ops-job-page .panel-title { color: #26385f !important; font-weight: 700 !important; }
+.ops-job-page .palette-btn { justify-content: flex-start; border-color: #e0e6f8 !important; background: #fff !important; }
+
+/* Specialized script source panels retain terminal contrast without turning
+   surrounding admin screens dark. */
+.ops-page .script-editor-shell { border-color: #203655 !important; border-radius: 10px !important; overflow: hidden; }
+.ops-page .script-editor-toolbar { background: #14213b !important; border-bottom-color: #253a5b !important; }
+.ops-page .script-editor-body, .ops-page .script-editor, .ops-page .script-highlight { background: #101b30 !important; }
+
+/* Application center: delivery blue carries project and pipeline context;
+   amber only marks release-facing moments.  These selectors map to the real
+   project, build, registry, history and topology screens without changing data. */
+.app-page, .history-page, .registry-page, .topology-page, .pipeline-page { color: #182b4a; }
+.app-page .app-header, .history-page .app-header, .registry-page .registry-hero,
+.topology-page .topology-header, .pipeline-page .hero-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: #d7e5f7 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(30, 79, 145, .055) !important;
+}
+.app-page .app-header::before, .history-page .app-header::before,
+.registry-page .registry-hero::before, .topology-page .topology-header::before,
+.pipeline-page .hero-panel::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, #2563eb, #3b82f6 58%, #ea580c 58%, #ea580c 66%, transparent 66%);
+}
+.app-page .app-header, .history-page .app-header, .registry-page .registry-hero,
+.topology-page .topology-header { background: linear-gradient(120deg, #fff 28%, #f1f7ff 100%) !important; }
+.app-page .filter-panel, .history-page .filter-panel, .pipeline-page .filter-panel {
+  border: 1px solid #dfeaf8 !important;
+  border-radius: 11px !important;
+  background: #f8fbff !important;
+}
+.app-page .table-card, .history-page .history-list, .registry-page .registry-card,
+.topology-page .topology-workspace, .pipeline-page .pipeline-tabs {
+  border-color: #d9e6f5 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 5px 16px rgba(30, 79, 145, .045) !important;
+}
+.app-page .table-card .el-table th.el-table__cell, .history-page .el-table th.el-table__cell,
+.registry-page .el-table th.el-table__cell, .pipeline-page .el-table th.el-table__cell {
+  background: #f4f8ff !important;
+  color: #526b8d !important;
+}
+.app-page .name-cell, .history-page .history-title, .pipeline-page .name-cell { color: #204a9c; }
+.app-page .path-code, .registry-page code, .history-page .branch {
+  border: 1px solid #dce9fb;
+  border-radius: 5px;
+  background: #f3f8ff !important;
+  color: #3762a9 !important;
+}
+.history-page .history-card { border-left: 3px solid #3b82f6 !important; border-radius: 10px !important; }
+.history-page .history-card.success { border-left-color: #19a974 !important; }
+.history-page .history-card.failed { border-left-color: #dc4d5b !important; }
+.registry-page .registry-card-head { background: #f7fbff !important; border-bottom: 1px solid #e2ebf8; }
+.registry-page .registry-hero > div > span { color: #4772bd !important; }
+.registry-page .registry-hero h1 { color: #183962 !important; }
+.registry-page .registry-hero p { color: #6b7f9d !important; }
+.registry-page .create-registry-button {
+  color: #fff !important;
+  background: #3569e8 !important;
+  box-shadow: 0 6px 14px rgba(53,105,232,.2) !important;
+}
+.registry-page .create-registry-button:hover { color: #fff !important; background: #2e60ce !important; }
+.topology-page .summary-card { border-color: #dbe7f7 !important; box-shadow: 0 4px 12px rgba(30,79,145,.04) !important; }
+.topology-page .topology-workspace { border-top: 3px solid #2563eb !important; }
+.pipeline-page .hero-panel { border-top: 0 !important; }
+.pipeline-page .hero-stats > * { border-color: #dce8f8 !important; box-shadow: 0 4px 12px rgba(30,79,145,.045) !important; }
+
+/* Notification center: compact routing surfaces, with magenta reserved for
+   delivery identity and semantic colors left intact for real send outcomes. */
+.notify-page.page-card {
+  position: relative;
+  overflow: hidden;
+  padding: 20px !important;
+  border-color: #e6ddef !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(107, 52, 128, .05) !important;
+}
+.notify-page.page-card::before {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, #b83b9a, #7d62e8 58%, #22a7c7 58%, #22a7c7 66%, transparent 66%);
+}
+.notify-page.page-card > .page-header {
+  margin: -20px -20px 16px !important;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid #eee6f4;
+  background: linear-gradient(118deg, #fff, #fcf7ff);
+}
+.notify-page .page-header .page-title { color: #4e285d !important; }
+.notify-page > .toolbar {
+  margin-bottom: 16px !important;
+  padding: 12px !important;
+  border: 1px solid #eee5f4;
+  border-radius: 10px;
+  background: #fdfaff;
+}
+.notify-page > .el-table {
+  overflow: hidden;
+  border: 1px solid #e9e1f0 !important;
+  border-radius: 10px;
+}
+.notify-page > .el-table th.el-table__cell { background: #fbf8fd !important; color: #72617f !important; }
+.notify-page .route-preview { border-left: 3px solid #b83b9a !important; background: #fcf8fe !important; }
+.notify-page .delivery-heading { border-left: 3px solid #22a7c7; background: #f5fbfc; }
+.notify-page .template-workbench { border: 1px solid #eadff0; border-radius: 12px; overflow: hidden; }
+.notify-page .editor-pane { border-right-color: #eadff0 !important; }
+
+/* Monitoring center: blue frames data, while amber/red remain reserved for
+   priority and action. This covers rules, events, query and trace pages. */
+.monitor-page .page-header, .monitor-query .query-top, .trace-page .page-header,
+.monitor-overview .overview-header {
+  position: relative;
+  overflow: hidden;
+  border-color: #d8e6f7 !important;
+  border-radius: 14px !important;
+  background: linear-gradient(120deg, #fff, #f3f8ff) !important;
+  box-shadow: 0 8px 22px rgba(30,79,145,.05) !important;
+}
+.monitor-page .page-header::before, .monitor-query .query-top::before,
+.trace-page .page-header::before, .monitor-overview .overview-header::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: '';
+  background: linear-gradient(90deg, #1e40af, #3b82f6 58%, #d97706 58%, #d97706 66%, transparent 66%);
+}
+.monitor-page .page-header h2, .monitor-query .query-top h2,
+.trace-page .page-header h2, .monitor-overview .overview-header h1 { color: #173b76 !important; }
+.monitor-page .toolbar, .monitor-query .query-editor, .trace-page .toolbar,
+.monitor-overview .risk-card, .monitor-overview .panel {
+  border-color: #dce8f7 !important;
+  box-shadow: 0 5px 16px rgba(30,79,145,.045) !important;
+}
+.monitor-page .toolbar, .trace-page .toolbar { border-radius: 10px; background: #f8fbff !important; }
+.monitor-page .el-table, .trace-page .el-table, .monitor-query .el-table { overflow: hidden; border: 1px solid #dce8f7; border-radius: 10px; }
+.monitor-page .el-table th.el-table__cell, .trace-page .el-table th.el-table__cell,
+.monitor-query .el-table th.el-table__cell { background: #f4f8ff !important; color: #526b8d !important; }
+.monitor-page .batch-toolbar { border-left: 3px solid #d97706; background: #fffbf4; }
+.monitor-overview .risk-card { border-top: 3px solid #3b82f6 !important; }
+.monitor-overview .risk-card.danger { border-top-color: #dc4d5b !important; }
+.monitor-overview .risk-card.warning { border-top-color: #d97706 !important; }
+.monitor-overview .quality-card { border-top: 2px solid #dbe8fa; }
+.monitor-query .instant-chart-panel, .monitor-query .line-chart-wrap,
+.trace-detail-page .waterfall-card, .trace-detail-page .inspector-card { border-color: #dbe8f7 !important; box-shadow: 0 5px 16px rgba(30,79,145,.045) !important; }
+
+/* Refinements for the monitoring page family after visual inspection.  These
+   deliberately remove the heavy title rendering and give logs/traces their
+   own query-workspace affordance rather than treating all screens as tables. */
+.monitor-page .page-header h2, .monitor-query .query-top h2,
+.trace-page .page-header h2, .monitor-overview .overview-header h1 {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
+  font-weight: 700 !important;
+  line-height: 1.22 !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 transparent !important;
+}
+.monitor-page .page-header p, .monitor-query .query-top p,
+.trace-page .page-header p, .monitor-overview .header-subtitle { color: #71829d !important; }
+.monitor-page .page-header .header-actions { position: relative; z-index: 2; }
+.log-page .log-search-panel {
+  position: relative;
+  overflow: hidden;
+  border-top: 3px solid #2563eb !important;
+  border-radius: 14px !important;
+  background: linear-gradient(120deg, #fff, #f5f9ff) !important;
+}
+.log-page .log-workspace { border-top: 3px solid #3b82f6 !important; border-radius: 14px !important; }
+.log-page .field-panel { background: #f8fbff !important; }
+.log-page .histogram-panel { background: linear-gradient(180deg, #fbfdff, #fff); }
+.trace-page { padding: 20px !important; border: 1px solid #dce8f7; border-radius: 14px; background: #f7faff; box-shadow: 0 8px 22px rgba(30,79,145,.05); }
+.trace-page .hint { padding: 10px 12px; border-left: 3px solid #3b82f6; border-radius: 7px; background: #f0f6ff; }
+.monitor-page .el-empty { color: #8291a8; }
+
+/* Per-screen monitoring workspaces: these are intentionally distinct rather
+   than a generic table skin, while preserving all current actions and data. */
+.monitor-datasource-page .page-header { border-left: 3px solid #2563eb !important; }
+.monitor-datasource-page .toolbar { border-left: 3px solid #60a5fa; }
+.monitor-datasource-page .el-table { border-top: 3px solid #2563eb !important; }
+.monitor-datasource-page .el-table td:nth-child(2) { color: #2c61b8; font-family: Consolas, monospace; }
+
+.trace-query-page .page-header { border-left: 3px solid #0ea5c9 !important; }
+.trace-query-page .toolbar { border-left: 3px solid #22a7c7; background: #f5fcff !important; }
+.trace-query-page .hint { border-left-color: #0ea5c9 !important; background: #f1fbfe !important; }
+.trace-query-page .el-table { border-top: 3px solid #0ea5c9 !important; }
+
+.monitor-alert-rule-page .page-header { border-left: 3px solid #d97706 !important; }
+.monitor-alert-rule-page .toolbar { border-left: 3px solid #f0a023; background: #fffaf3 !important; }
+.monitor-alert-rule-page .el-table { border-top: 3px solid #d97706 !important; }
+.monitor-alert-rule-page .parameter-card { border-color: #f2dfbb !important; background: #fffdf8 !important; }
+
+.monitor-alert-event-page .page-header { border-left: 3px solid #dc4d5b !important; }
+.monitor-alert-event-page .toolbar { border-left: 3px solid #e97b84; background: #fff8f8 !important; }
+.monitor-alert-event-page .el-table { border-top: 3px solid #dc4d5b !important; }
+.monitor-alert-event-page .event-detail .detail-summary { border-top: 3px solid #dc4d5b; }
+
+.monitor-silence-page .page-header { border-left: 3px solid #7c6ce7 !important; }
+.monitor-silence-page .toolbar { border-left: 3px solid #978ae9; background: #faf9ff !important; }
+.monitor-silence-page .el-table { border-top: 3px solid #7c6ce7 !important; }
+.monitor-silence-page .preview-summary { border-left: 3px solid #7c6ce7; background: #faf9ff; }
+
+.monitor-aggregation-page .page-header { border-left: 3px solid #149a91 !important; }
+.monitor-aggregation-page .toolbar { border-left: 3px solid #28b7a6; background: #f5fcfa !important; }
+.monitor-aggregation-page .el-table { border-top: 3px solid #149a91 !important; }
+.monitor-aggregation-page .tag { border-color: #c9eee8; background: #effbf8; color: #168278; }
+
+@media (max-width: 960px) {
+  .ops-page .toolbar, .notify-page .toolbar, .monitor-page .toolbar,
+  .app-page .toolbar, .database-tool-page .toolbar, .asset-host-page .toolbar { padding: 10px !important; }
 }
 
 .login-shell {
