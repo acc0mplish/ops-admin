@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, Monitor } from '@element-plus/icons-vue'
@@ -25,6 +25,10 @@ let term
 let socket
 let inputDisposable
 let resizeObserver
+let resizeFrame
+let terminalRoutePath = ''
+let terminalInitialization
+let terminalGeneration = 0
 
 function createTerminal() {
   term = new Terminal({
@@ -54,21 +58,35 @@ function createTerminal() {
 }
 
 function bindTerminalResize() {
-  if (!terminalBoxRef.value || !term) return
+  if (!terminalBoxRef.value || !terminalRef.value || !term) return
   resizeObserver = new ResizeObserver(() => {
-    syncTerminalSize()
+    scheduleTerminalSizeSync()
   })
   resizeObserver.observe(terminalBoxRef.value)
+  resizeObserver.observe(terminalRef.value)
   syncTerminalSize()
+  scheduleTerminalSizeSync()
+}
+
+function scheduleTerminalSizeSync() {
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(syncTerminalSize)
 }
 
 function syncTerminalSize() {
-  if (!term || !terminalBoxRef.value) return
-  const width = terminalBoxRef.value.clientWidth
-  const height = terminalBoxRef.value.clientHeight
+  if (!term || !terminalRef.value) return
+  const width = terminalRef.value.clientWidth
+  const height = terminalRef.value.clientHeight
   if (!width || !height) return
-  const cols = Math.max(80, Math.floor((width - 24) / 8.2))
-  const rows = Math.max(20, Math.floor((height - 24) / 18))
+
+  // xterm renders a cell height based on the active browser font.  Using a
+  // fixed 18px estimate leaves a visible unused area when that differs from
+  // the real value, so derive the next size from the rendered screen instead.
+  const screen = terminalRef.value.querySelector('.xterm-screen')
+  const cellWidth = screen?.clientWidth ? screen.clientWidth / term.cols : 8.2
+  const cellHeight = screen?.clientHeight ? screen.clientHeight / term.rows : 18
+  const cols = Math.max(80, Math.floor(width / cellWidth))
+  const rows = Math.max(20, Math.floor(height / cellHeight))
   if (term.cols !== cols || term.rows !== rows) {
     term.resize(cols, rows)
     if (socket?.readyState === WebSocket.OPEN) {
@@ -166,6 +184,9 @@ function goBack() {
 }
 
 function disposeTerminal() {
+  terminalGeneration += 1
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = undefined
   resizeObserver?.disconnect()
   resizeObserver = undefined
   inputDisposable?.dispose()
@@ -175,20 +196,54 @@ function disposeTerminal() {
   term = undefined
 }
 
-onMounted(async () => {
+async function initializeTerminal() {
+  if (terminalInitialization) return terminalInitialization
+  const generation = terminalGeneration
+  terminalInitialization = (async () => {
   await nextTick()
-  createTerminal()
+    if (generation !== terminalGeneration) return
+    if (!term) {
+      createTerminal()
+    }
   try {
-    await loadContainers()
-    if (selectedContainer.value) {
+      await loadContainers()
+      if (generation !== terminalGeneration) return
+      if (selectedContainer.value) {
       connectTerminal()
     }
   } catch (error) {
     ElMessage.error(error.message || '获取 Pod 容器失败')
   }
+  })()
+  try {
+    await terminalInitialization
+  } finally {
+    terminalInitialization = undefined
+  }
+}
+
+function handleTabClosed(event) {
+  if (event.detail?.path !== terminalRoutePath) return
+  disposeTerminal()
+}
+
+onMounted(() => {
+  terminalRoutePath = route.path
+  window.addEventListener('ops-admin:tab-closed', handleTabClosed)
+  initializeTerminal()
+})
+
+onActivated(() => {
+  if (term) {
+    scheduleTerminalSizeSync()
+    term.focus()
+    return
+  }
+  initializeTerminal()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('ops-admin:tab-closed', handleTabClosed)
   disposeTerminal()
 })
 </script>
@@ -238,13 +293,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pod-terminal-page {
-  min-height: calc(100vh - 190px);
+  display: flex;
+  height: calc(100vh - 190px);
+  min-height: 680px;
 }
 
 .terminal-shell {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  min-height: calc(100vh - 190px);
+  min-height: 0;
   border: 1px solid #dbe5f0;
   border-radius: 8px;
   background: #fff;
@@ -304,13 +362,22 @@ onBeforeUnmount(() => {
 }
 
 .terminal-stage {
+  display: flex;
   flex: 1;
-  min-height: 560px;
+  min-height: 0;
   padding: 12px;
   background: #07111f;
 }
 
 .terminal-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-body :deep(.xterm) {
   width: 100%;
   height: 100%;
 }

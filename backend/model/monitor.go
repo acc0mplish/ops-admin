@@ -82,6 +82,47 @@ func (MonitorAlertRule) TableName() string {
 	return "monitor_alert_rule"
 }
 
+// MonitorAlertTemplate stores reusable alert definitions. A template is never
+// scheduled directly; it becomes an executable alert only after it is applied
+// to a concrete datasource in an alert rule.
+type MonitorAlertTemplate struct {
+	ID                  uint      `json:"id" gorm:"primaryKey"`
+	GroupID             uint      `json:"groupId" gorm:"index"`
+	Name                string    `json:"name" gorm:"size:128;not null;index"`
+	Category            string    `json:"category" gorm:"size:64;index"`
+	Collector           string    `json:"collector" gorm:"size:128;index"`
+	ObjectType          string    `json:"objectType" gorm:"size:64;index"`
+	DatasourceType      string    `json:"datasourceType" gorm:"size:32;index"`
+	QueryText           string    `json:"queryText" gorm:"type:longtext;not null"`
+	Comparator          string    `json:"comparator" gorm:"size:16;default:>"`
+	Threshold           float64   `json:"threshold"`
+	ForSeconds          int       `json:"forSeconds" gorm:"default:300"`
+	EvalIntervalSeconds int       `json:"evalIntervalSeconds" gorm:"default:60"`
+	Severity            string    `json:"severity" gorm:"size:16;default:P2;index"`
+	LabelsJSON          string    `json:"labelsJson" gorm:"type:text"`
+	AnnotationsJSON     string    `json:"annotationsJson" gorm:"type:text"`
+	Description         string    `json:"description" gorm:"size:255"`
+	Source              string    `json:"source" gorm:"size:32;default:custom;index"`
+	Status              int       `json:"status" gorm:"default:1;index"`
+	CreatedAt           time.Time `json:"createTime"`
+	UpdatedAt           time.Time `json:"updateTime"`
+}
+
+func (MonitorAlertTemplate) TableName() string {
+	return "monitor_alert_template"
+}
+
+type MonitorAlertTemplateGroup struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ParentID  uint      `json:"parentId" gorm:"index"`
+	Name      string    `json:"name" gorm:"size:128;not null;index"`
+	Sort      int       `json:"sort" gorm:"default:0;index"`
+	CreatedAt time.Time `json:"createTime"`
+	UpdatedAt time.Time `json:"updateTime"`
+}
+
+func (MonitorAlertTemplateGroup) TableName() string { return "monitor_alert_template_group" }
+
 type MonitorAlertEvent struct {
 	ID                uint       `json:"id" gorm:"primaryKey"`
 	RuleID            uint       `json:"ruleId" gorm:"index;not null"`
@@ -162,6 +203,7 @@ type MonitorSilenceRule struct {
 	RuleIDsJSON     string     `json:"ruleIdsJson" gorm:"type:text"`
 	RuleNamePattern string     `json:"ruleNamePattern" gorm:"size:128;index"`
 	Severity        string     `json:"severity" gorm:"size:16;index"`
+	AlertType       string     `json:"alertType" gorm:"size:32;index"`
 	MatchersJSON    string     `json:"matchersJson" gorm:"type:text"`
 	StartsAt        *time.Time `json:"startsAt"`
 	EndsAt          *time.Time `json:"endsAt"`
@@ -183,6 +225,7 @@ type MonitorAggregationRule struct {
 	RuleIDsJSON           string    `json:"ruleIdsJson" gorm:"type:text"`
 	RuleNamePattern       string    `json:"ruleNamePattern" gorm:"size:128;index"`
 	Severity              string    `json:"severity" gorm:"size:16;index"`
+	AlertType             string    `json:"alertType" gorm:"size:32;index"`
 	GroupByJSON           string    `json:"groupByJson" gorm:"type:text"`
 	WindowSeconds         int       `json:"windowSeconds" gorm:"default:300"`
 	RepeatIntervalSeconds int       `json:"repeatIntervalSeconds" gorm:"default:1800"`

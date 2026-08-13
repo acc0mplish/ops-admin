@@ -254,7 +254,9 @@ onMounted(loadData)
       <el-table-column label="版本" width="90"><template #default="{ row }">v{{ row.currentVersion || 1 }}</template></el-table-column>
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'warning'" effect="light" :class="{ 'script-status-disabled': row.status !== 1 }">
+            {{ row.status === 1 ? '启用' : '禁用' }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
@@ -263,7 +265,7 @@ onMounted(loadData)
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openVersions(row)">版本</el-button>
-          <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="handleStatusChange(row)">
+          <el-button link :type="row.status === 1 ? 'warning' : 'success'" :class="{ 'disable-action': row.status === 1 }" @click="handleStatusChange(row)">
             {{ row.status === 1 ? '禁用' : '启用' }}
           </el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
@@ -429,6 +431,21 @@ onMounted(loadData)
   justify-content: flex-end;
 }
 
+.script-status-disabled {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.disable-action {
+  color: #e6a23c !important;
+  font-weight: 600;
+}
+
+.disable-action:hover,
+.disable-action:focus-visible {
+  color: #d68f24 !important;
+}
+
 .script-editor-shell {
   width: 100%;
   border: 1px solid #d7dfec;
@@ -535,8 +552,9 @@ onMounted(loadData)
   border: 0;
   resize: none;
   outline: none;
-  background: transparent;
-  color: transparent;
+  /* Keep the raw input readable even if syntax highlighting cannot render. */
+  background: #111827;
+  color: #e5e7eb;
   caret-color: #f8fafc;
   overflow: auto;
 }

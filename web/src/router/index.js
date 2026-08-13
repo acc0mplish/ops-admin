@@ -66,6 +66,7 @@ import MonitorLogQuery from '../views/monitor/MonitorLogQuery.vue'
 import MonitorTraceQuery from '../views/monitor/MonitorTraceQuery.vue'
 import MonitorTraceDetail from '../views/monitor/MonitorTraceDetail.vue'
 import MonitorAlertRule from '../views/monitor/MonitorAlertRule.vue'
+import MonitorAlertTemplate from '../views/monitor/MonitorAlertTemplate.vue'
 import MonitorAlertEvent from '../views/monitor/MonitorAlertEvent.vue'
 import MonitorSilenceRule from '../views/monitor/MonitorSilenceRule.vue'
 import MonitorAggregationRule from '../views/monitor/MonitorAggregationRule.vue'
@@ -147,7 +148,8 @@ const routes = [
         meta: {
           title: '终端登录',
           app: 'assets',
-          summary: '通过主机关联凭据发起 SSH Web 终端连接。'
+          summary: '通过主机关联凭据发起 SSH Web 终端连接。',
+          keepAlive: true
         }
       },
       {
@@ -239,7 +241,7 @@ const routes = [
         path: '/containers/k8s/pod-terminal/:clusterId/:namespace/:podName',
         name: 'K8sPodTerminal',
         component: K8sPodTerminal,
-        meta: { title: 'Pod 终端', app: 'containers' }
+        meta: { title: 'Pod 终端', app: 'containers', keepAlive: true }
       },
       { path: '/assets/k8s/:pathMatch(.*)*', redirect: (to) => `/containers/k8s/${to.params.pathMatch || ''}` },
       { path: '/assets/server/credentials/password', redirect: '/assets/server/credentials' },
@@ -491,6 +493,11 @@ const routes = [
         path: '/monitor/traces/:traceId',
         component: MonitorTraceDetail,
         meta: { title: 'Trace 详情', app: 'monitor', summary: '以时间轴方式查看分布式调用链详情。' }
+      },
+      {
+        path: '/monitor/alert-templates',
+        component: MonitorAlertTemplate,
+        meta: { title: '告警模板', app: 'monitor', summary: '沉淀可复用的告警条件，并基于模板快速创建告警规则。' }
       },
       {
         path: '/monitor/alert-rules',

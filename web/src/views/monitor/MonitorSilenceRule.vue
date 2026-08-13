@@ -52,6 +52,7 @@ const form = reactive({
   ruleIds: [],
   ruleNamePattern: '',
   severity: '',
+  alertType: '',
   matchersJson: '{}',
   startsAt: 0,
   endsAt: 0,
@@ -68,6 +69,7 @@ function resetForm() {
     ruleIds: [],
     ruleNamePattern: '',
     severity: '',
+    alertType: '',
     matchersJson: '{}',
     startsAt: 0,
     endsAt: 0,
@@ -145,6 +147,7 @@ function applySilenceTemplate(template) {
     ruleIds: template.ruleIds || [],
     ruleNamePattern: template.ruleNamePattern || '',
     severity: template.severity || '',
+    alertType: template.type === 'elasticsearch' ? 'log' : template.type,
     matchersJson: template.matchersJson,
     description: template.description
   })
@@ -192,6 +195,10 @@ async function submit() {
   if (start && end && new Date(end).getTime() <= new Date(start).getTime()) {
     ElMessage.warning('结束时间必须晚于开始时间')
     return
+  }
+  const isGlobalPermanentSilence = form.matchMode === 'select' && !form.ruleIds.length && !form.alertType && !form.severity && form.matchersJson.trim() === '{}' && !start && !end
+  if (isGlobalPermanentSilence) {
+    await ElMessageBox.confirm('该规则会立即屏蔽所有类型、所有等级的告警，且不会自动结束。建议限定告警类型、匹配范围或结束时间。确认仍要保存吗？', '高风险全局屏蔽', { type: 'warning', confirmButtonText: '仍要保存', cancelButtonText: '返回修改' })
   }
   saving.value = true
   try {
@@ -273,6 +280,7 @@ onMounted(async () => {
       <el-table-column prop="severity" label="等级" width="90">
         <template #default="{ row }">{{ row.severity || '全部' }}</template>
       </el-table-column>
+      <el-table-column prop="alertType" label="告警类型" width="130"><template #default="{ row }">{{ ({ metric: '监控', log: 'ES 日志', victorialogs: 'VictoriaLogs' }[row.alertType] || '全部') }}</template></el-table-column>
       <el-table-column prop="matchersJson" label="Label 匹配" min-width="220" show-overflow-tooltip />
       <el-table-column prop="startsAt" label="开始时间" width="180" />
       <el-table-column prop="endsAt" label="结束时间" width="180" />
@@ -316,6 +324,7 @@ onMounted(async () => {
             <el-option v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
+        <el-form-item label="告警类型"><el-select v-model="form.alertType" clearable placeholder="全部类型" style="width: 100%"><el-option label="监控告警" value="metric" /><el-option label="ES 日志告警" value="log" /><el-option label="VictoriaLogs 告警" value="victorialogs" /></el-select></el-form-item>
         <el-form-item label="Label 匹配">
           <el-input v-model="form.matchersJson" type="textarea" :rows="3" placeholder='例如：{"instance":"10.0.0.1","job":"node"}' />
         </el-form-item>

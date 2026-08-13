@@ -44,6 +44,7 @@ const form = reactive({
   ruleIds: [],
   ruleNamePattern: '',
   severity: '',
+  alertType: '',
   groupBy: ['instance'],
   windowSeconds: 300,
   repeatIntervalSeconds: 1800,
@@ -59,6 +60,7 @@ function resetForm() {
     ruleIds: [],
     ruleNamePattern: '',
     severity: '',
+    alertType: '',
     groupBy: ['instance'],
     windowSeconds: 300,
     repeatIntervalSeconds: 1800,
@@ -117,6 +119,7 @@ function applyAggregationTemplate(template) {
     ruleIds: template.ruleIds || [],
     ruleNamePattern: template.ruleNamePattern || '',
     severity: template.severity || '',
+    alertType: template.type === 'log' ? 'log' : 'metric',
     groupBy: template.groupBy,
     windowSeconds: template.windowSeconds,
     repeatIntervalSeconds: template.repeatIntervalSeconds,
@@ -223,6 +226,7 @@ onMounted(async () => {
       <el-table-column prop="severity" label="等级" width="90">
         <template #default="{ row }">{{ row.severity || '全部' }}</template>
       </el-table-column>
+      <el-table-column prop="alertType" label="告警类型" width="130"><template #default="{ row }">{{ ({ metric: '监控', log: 'ES 日志', victorialogs: 'VictoriaLogs' }[row.alertType] || '全部') }}</template></el-table-column>
       <el-table-column label="分组字段" min-width="220">
         <template #default="{ row }">
           <el-tag v-for="item in row.groupBy || []" :key="item" class="tag">{{ item }}</el-tag>
@@ -273,11 +277,13 @@ onMounted(async () => {
             <el-option v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
+        <el-form-item label="告警类型"><el-select v-model="form.alertType" clearable placeholder="全部类型" style="width: 100%"><el-option label="监控告警" value="metric" /><el-option label="ES 日志告警" value="log" /><el-option label="VictoriaLogs 告警" value="victorialogs" /></el-select></el-form-item>
         <el-form-item label="分组字段" required>
           <el-select v-model="form.groupBy" multiple filterable allow-create default-first-option style="width: 100%" placeholder="例如 instance、job、pod">
             <el-option v-for="item in ['instance','job','namespace','pod','service','cluster']" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
+        <el-alert type="warning" :closable="false" title="请只选择目标告警中稳定存在的 Label。缺失字段会按空值归组，可能把无关告警一起收敛。" />
         <el-form-item label="收敛窗口">
           <div class="number-with-unit">
             <el-input-number v-model="form.windowSeconds" :min="60" :max="86400" />

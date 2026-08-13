@@ -25,12 +25,12 @@ const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', channelType: '',
 const form = reactive({ id: undefined, name: '', channelType: 'dingtalk', scope: 'monitor', title: '', content: '', status: 1, description: '' })
 
 const scopeOptions = [
-  { label: '通用场景', value: 'all' },
   { label: '监控告警', value: 'monitor' },
   { label: '定时任务', value: 'schedule' },
   { label: '作业编排', value: 'job' },
   { label: 'CI/CD 流水线', value: 'pipeline' }
 ]
+const filterScopeOptions = scopeOptions
 
 const channelTypes = [
   { label: '钉钉机器人', value: 'dingtalk', tone: 'ding' },
@@ -51,7 +51,11 @@ const commonTemplates = [
   { id: 'feishu-job', scope: 'job', channelType: 'feishu', name: '飞书 - 作业编排通知卡片', title: '【作业通知】{{jobName}} · {{stepName}}', content: '**通知类型：** {{status}}\n\n**作业名称：** {{jobName}}\n**执行编号：** #{{jobHistoryId}}\n**当前步骤：** {{stepName}}\n**触发方式：** {{triggerType}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**通知摘要**\n{{summary}}\n\n{{detail}}', description: '飞书作业编排消息通知步骤专用卡片。' },
   { id: 'webhook-alert', scope: 'monitor', channelType: 'webhook', name: '通用 Webhook - 告警通知', title: '{{alertName}}', content: '状态：{{status}}\n摘要：{{summary}}\n数据源：{{datasourceName}}\n实例：{{instance}}\n当前值：{{value}}\n阈值：{{threshold}}\n详情：{{detail}}', description: '通用 HTTP Webhook 文本内容，后端会补充结构化事件字段。' },
   { id: 'webhook-schedule', scope: 'schedule', channelType: 'webhook', name: '通用 Webhook - 定时任务通知', title: '【定时任务】{{taskName}} -- {{status}}', content: '任务名称：{{taskName}}\n任务类型：{{taskType}}\nCron：{{cronExpr}}\n执行耗时：{{duration}}\n完成时间：{{finishedAt}}\n摘要：{{summary}}\n详情：{{detail}}', description: '通用 Webhook 定时任务执行结果通知。' },
-  { id: 'webhook-job', scope: 'job', channelType: 'webhook', name: '通用 Webhook - 作业编排通知', title: '【作业通知】{{jobName}} · {{stepName}}', content: '通知类型：{{status}}\n作业名称：{{jobName}}\n执行编号：{{jobHistoryId}}\n当前步骤：{{stepName}}\n触发方式：{{triggerType}}\n通知时间：{{notifyAt}}\n摘要：{{summary}}\n详情：{{detail}}', description: '通用 Webhook 作业编排消息通知步骤。' }
+  { id: 'webhook-job', scope: 'job', channelType: 'webhook', name: '通用 Webhook - 作业编排通知', title: '【作业通知】{{jobName}} · {{stepName}}', content: '通知类型：{{status}}\n作业名称：{{jobName}}\n执行编号：{{jobHistoryId}}\n当前步骤：{{stepName}}\n触发方式：{{triggerType}}\n通知时间：{{notifyAt}}\n摘要：{{summary}}\n详情：{{detail}}', description: '通用 Webhook 作业编排消息通知步骤。' },
+  { id: 'ding-pipeline', scope: 'pipeline', channelType: 'dingtalk', name: '钉钉 - CI/CD 流水线通知', title: '【{{status}}】{{appName}} · {{stageName}}', content: '### <font color={{statusColor}}>【{{status}}】{{appName}} · {{stageName}}</font>\n\n- 流水线：{{pipelineName}}\n- 运行编号：{{pipelineRunId}}\n- 环境：{{env}}\n- 分支：{{branch}}\n- 镜像版本：{{imageTag}}\n- 通知时间：{{notifyAt}}\n\n> {{summary}}\n\n{{detail}}', description: '用于 CI/CD 流水线阶段完成、失败或人工确认通知。' },
+  { id: 'wecom-pipeline', scope: 'pipeline', channelType: 'wecom', name: '企微 - CI/CD 流水线通知', title: '【{{status}}】{{appName}} · {{stageName}}', content: '# <font color="{{statusTone}}">【{{status}}】{{appName}} · {{stageName}}</font>\n\n> 流水线：{{pipelineName}}\n> 运行编号：{{pipelineRunId}}\n> 环境：{{env}}\n> 分支：{{branch}}\n> 镜像版本：{{imageTag}}\n\n**执行摘要**\n{{summary}}\n\n{{detail}}', description: '企业微信 Markdown 格式的流水线执行结果通知。' },
+  { id: 'feishu-pipeline', scope: 'pipeline', channelType: 'feishu', name: '飞书 - CI/CD 流水线通知卡片', title: '【{{status}}】{{appName}} · {{stageName}}', content: '**流水线：** {{pipelineName}}\n**运行编号：** #{{pipelineRunId}}\n**环境：** {{env}}\n**分支：** {{branch}}\n**镜像版本：** {{imageTag}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}', description: '飞书卡片样式，适用于构建、发布与阶段结果通知。' },
+  { id: 'webhook-pipeline', scope: 'pipeline', channelType: 'webhook', name: '通用 Webhook - CI/CD 流水线通知', title: '【{{status}}】{{appName}} · {{stageName}}', content: '流水线：{{pipelineName}}\n运行编号：{{pipelineRunId}}\n环境：{{env}}\n分支：{{branch}}\n镜像版本：{{imageTag}}\n阶段：{{stageName}}\n摘要：{{summary}}\n详情：{{detail}}', description: '通用 HTTP Webhook 的流水线结构化通知。' }
 ]
 
 const visibleTemplates = computed(() => commonTemplates.filter((item) =>
@@ -105,6 +109,8 @@ function resetForm() {
 }
 
 function scopeLabel(value) {
+  if (!value) return '未选择场景'
+  if (value === 'all') return '需指定场景'
   return scopeOptions.find((item) => item.value === value)?.label || value
 }
 
@@ -216,7 +222,7 @@ async function openCreate() {
 async function openEdit(row) {
   isEdit.value = true
   Object.assign(form, await notifyTemplateInfo(row.id))
-  form.scope = form.scope || 'all'
+  if (!form.scope || form.scope === 'all') form.scope = undefined
   await preparePreview()
   dialogVisible.value = true
 }
@@ -239,6 +245,10 @@ async function applyTemplate(template) {
 async function submit() {
   if (!form.name.trim() || !form.content.trim()) {
     ElMessage.warning('请填写模板名称和模板内容')
+    return
+  }
+  if (!form.scope || form.scope === 'all') {
+    ElMessage.warning('请为消息模板指定具体适用场景')
     return
   }
   saving.value = true
@@ -281,7 +291,7 @@ onMounted(loadData)
     <div class="toolbar">
       <el-input v-model="query.keyword" clearable placeholder="搜索模板名称 / 标题" style="width: 260px" @keyup.enter="loadData" />
       <el-select v-model="query.channelType" clearable placeholder="媒介类型" style="width: 180px"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select>
-      <el-select v-model="query.scope" clearable placeholder="适用场景" style="width: 150px"><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+      <el-select v-model="query.scope" clearable placeholder="适用场景" style="width: 150px"><el-option v-for="item in filterScopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       <el-select v-model="query.status" clearable placeholder="状态" style="width: 120px"><el-option label="启用" value="1" /><el-option label="禁用" value="2" /></el-select>
       <el-button type="primary" @click="loadData">搜索</el-button>
     </div>
@@ -289,7 +299,7 @@ onMounted(loadData)
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="name" label="模板名称" min-width="180" />
       <el-table-column label="媒介类型" width="180"><template #default="{ row }"><el-tag effect="light">{{ channelTypeLabel(row.channelType) }}</el-tag></template></el-table-column>
-      <el-table-column label="适用场景" width="120"><template #default="{ row }"><el-tag effect="plain" type="info">{{ scopeLabel(row.scope) }}</el-tag></template></el-table-column>
+      <el-table-column label="适用场景" width="120"><template #default="{ row }"><el-tag effect="plain" :type="row.scope === 'all' ? 'warning' : 'info'">{{ scopeLabel(row.scope) }}</el-tag></template></el-table-column>
       <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
       <el-table-column prop="description" label="说明" min-width="240" show-overflow-tooltip />
       <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag></template></el-table-column>
@@ -303,7 +313,7 @@ onMounted(loadData)
         <el-row :gutter="18">
           <el-col :span="8"><el-form-item label="模板名称" required><el-input v-model="form.name" placeholder="例如：生产环境 P1 告警" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="媒介类型"><el-select v-model="form.channelType" style="width: 100%"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="适用场景"><el-select v-model="form.scope" style="width: 100%"><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="适用场景" required><el-select v-model="form.scope" placeholder="请选择适用场景" style="width: 100%"><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
           <el-col :span="18"><el-form-item label="标题"><el-input v-model="form.title" /></el-form-item></el-col>
           <el-col :span="6"><el-form-item label="状态"><el-radio-group v-model="form.status"><el-radio :value="1">启用</el-radio><el-radio :value="2">禁用</el-radio></el-radio-group></el-form-item></el-col>
         </el-row>

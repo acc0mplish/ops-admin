@@ -314,6 +314,142 @@ func (ctl *Controller) GetMonitorQueryHistoryList(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetMonitorAlertTemplateList(c *gin.Context) {
+	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	data, err := ctl.service.ListMonitorAlertTemplates(pageNum, pageSize, c.Query("keyword"), c.Query("category"), c.Query("datasourceType"), c.Query("source"), uint(mustAtoi(c.Query("groupId"))))
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetMonitorAlertTemplateGroups(c *gin.Context) {
+	data, err := ctl.service.ListMonitorAlertTemplateGroups()
+	if err != nil {
+		httpx.Failed(c, 500, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) SaveMonitorAlertTemplateGroup(c *gin.Context) {
+	var payload service.MonitorAlertTemplateGroupPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid template group payload")
+		return
+	}
+	data, err := ctl.service.SaveMonitorAlertTemplateGroup(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+func (ctl *Controller) DeleteMonitorAlertTemplateGroup(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteMonitorAlertTemplateGroup(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) GetMonitorAlertTemplateInfo(c *gin.Context) {
+	data, err := ctl.service.GetMonitorAlertTemplate(uint(mustAtoi(c.Query("id"))))
+	if err != nil {
+		httpx.Failed(c, 404, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) SaveMonitorAlertTemplate(c *gin.Context) {
+	var payload service.MonitorAlertTemplatePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid alert template payload")
+		return
+	}
+	data, err := ctl.service.SaveMonitorAlertTemplate(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) DeleteMonitorAlertTemplate(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid delete payload")
+		return
+	}
+	if err := ctl.service.DeleteMonitorAlertTemplate(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) ParsePrometheusAlertTemplates(c *gin.Context) {
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "请粘贴 Prometheus Rule YAML")
+		return
+	}
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		httpx.Failed(c, 400, "请粘贴 Prometheus Rule YAML")
+		return
+	}
+	if len([]byte(content)) > 2*1024*1024 {
+		httpx.Failed(c, 400, "YAML 内容不能超过 2 MB")
+		return
+	}
+	data, err := service.ParsePrometheusAlertTemplates([]byte(content))
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) ImportPrometheusAlertTemplates(c *gin.Context) {
+	var payload service.MonitorAlertTemplateImportPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "无效的 Prometheus 模板导入参数")
+		return
+	}
+	data, err := ctl.service.ImportPrometheusAlertTemplates(payload)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) ExportPrometheusAlertTemplates(c *gin.Context) {
+	var payload service.MonitorAlertTemplateExportPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid alert template export payload")
+		return
+	}
+	content, err := ctl.service.ExportPrometheusAlertTemplates(payload.IDs)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	c.Header("Content-Type", "application/x-yaml; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename=ops-admin-alert-templates.yaml")
+	c.Data(200, "application/x-yaml; charset=utf-8", content)
+}
+
 func (ctl *Controller) GetMonitorAlertRuleList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))

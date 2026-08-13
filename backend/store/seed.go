@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 func Seed(db *gorm.DB) error {
 	steps := []func(*gorm.DB) error{
 		seedSystemConfig,
+		seedMonitorAlertTemplates,
 		seedDept,
 		seedPost,
 		seedRole,
@@ -26,6 +28,135 @@ func Seed(db *gorm.DB) error {
 	for _, step := range steps {
 		if err := step(db); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// seedMonitorAlertTemplates provides a reviewed starting library. They are
+// platform-owned definitions only; no datasource is bound and no alert is
+// enabled until an operator creates an alert rule from a template.
+func seedMonitorAlertTemplates(db *gorm.DB) error {
+	return db.Transaction(seedMonitorAlertTemplatesTx)
+}
+
+func seedMonitorAlertTemplatesTx(db *gorm.DB) error {
+	groupIDs := map[string]uint{}
+	for _, path := range [][]string{{"Linux", "node_exporter"}, {"Kubernetes", "kube-state-metrics"}, {"MySQL", "mysqld_exporter"}} {
+		parentID := uint(0)
+		for _, name := range path {
+			key := fmt.Sprintf("%d/%s", parentID, name)
+			var group model.MonitorAlertTemplateGroup
+			err := db.Where("parent_id = ? AND name = ?", parentID, name).First(&group).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				group = model.MonitorAlertTemplateGroup{ParentID: parentID, Name: name}
+				if err = db.Create(&group).Error; err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+			groupIDs[key] = group.ID
+			parentID = group.ID
+		}
+	}
+	makeTemplate := func(name, collector, query, comparator string, threshold float64, duration int, severity, domain, description string) model.MonitorAlertTemplate {
+		return model.MonitorAlertTemplate{Name: name, Category: "Linux", Collector: collector, ObjectType: "主机", DatasourceType: "prometheus", QueryText: query, Comparator: comparator, Threshold: threshold, ForSeconds: duration, EvalIntervalSeconds: 60, Severity: severity, LabelsJSON: fmt.Sprintf(`{"domain":%q}`, domain), AnnotationsJSON: fmt.Sprintf(`{"summary":%q}`, name), Description: description, Source: "platform", Status: 1}
+	}
+	templates := []model.MonitorAlertTemplate{
+		makeTemplate("主机 Exporter 离线", "node_exporter", `up{job=~"node.*|node_exporter"}`, "==", 0, 120, "P0", "availability", "采集目标连续不可达，优先确认网络、Exporter 进程与采集配置。"),
+		makeTemplate("主机 CPU 使用率过高", "node_exporter", `100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`, ">", 90, 300, "P1", "cpu", "CPU 使用率持续过高，结合系统负载和高消耗进程定位。"),
+		makeTemplate("主机内存可用率过低", "node_exporter", `node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100`, "<", 10, 300, "P1", "memory", "可用内存比例持续偏低，检查内存泄漏、缓存和容量水位。"),
+		makeTemplate("主机磁盘使用率过高", "node_exporter", `(100 - ((node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} * 100) / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}))`, ">", 85, 600, "P1", "disk", "磁盘分区容量接近上限，处理日志、临时文件或执行扩容。"),
+
+		makeTemplate("主机 TCP 连接数过高", "node_exporter", "node_netstat_Tcp_CurrEstab", ">", 20000, 300, "P1", "connection", "TCP 已建立连接数持续过高，检查连接泄漏、流量突增与短连接配置。"),
+		makeTemplate("主机 UDP 套接字数过高", "node_exporter", "node_sockstat_UDP_inuse", ">", 10000, 300, "P1", "connection", "UDP 正在使用的套接字数持续过高，检查异常流量与服务行为。"),
+		makeTemplate("主机用户态 CPU 使用率过高", "node_exporter", "avg by(instance) (rate(node_cpu_seconds_total{mode=\"user\"}[5m])) * 100", ">", 70, 300, "P1", "cpu", "用户态 CPU 使用率持续过高，定位高消耗应用进程。"),
+		makeTemplate("主机内核态 CPU 使用率过高", "node_exporter", "avg by(instance) (rate(node_cpu_seconds_total{mode=\"system\"}[5m])) * 100", ">", 50, 300, "P1", "cpu", "内核态 CPU 使用率持续过高，检查系统调用、网络和磁盘 I/O。"),
+		makeTemplate("主机根分区 inode 使用率过高", "node_exporter", `100 - (node_filesystem_files_free{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_files{mountpoint="/",fstype!~"tmpfs|overlay"} * 100)`, ">", 85, 600, "P1", "disk", "根分区 inode 使用率接近上限，检查大量小文件。"),
+		makeTemplate("主机磁盘读取速率过高", "node_exporter", "sum by(instance) (rate(node_disk_read_bytes_total[5m]))", ">", 104857600, 300, "P2", "disk_io", "磁盘读取速率持续超过 100 MiB/s。"),
+		makeTemplate("主机磁盘写入速率过高", "node_exporter", "sum by(instance) (rate(node_disk_written_bytes_total[5m]))", ">", 104857600, 300, "P2", "disk_io", "磁盘写入速率持续超过 100 MiB/s。"),
+		makeTemplate("主机磁盘读 IOPS 过高", "node_exporter", "sum by(instance) (rate(node_disk_reads_completed_total[5m]))", ">", 5000, 300, "P2", "disk_io", "磁盘读 IOPS 持续过高，检查热点请求与存储性能。"),
+		makeTemplate("主机磁盘写 IOPS 过高", "node_exporter", "sum by(instance) (rate(node_disk_writes_completed_total[5m]))", ">", 5000, 300, "P2", "disk_io", "磁盘写 IOPS 持续过高，检查写放大与批处理任务。"),
+		makeTemplate("主机 1 分钟平均负载过高", "node_exporter", "node_load1", ">", 8, 300, "P2", "load", "1 分钟平均负载持续偏高。"),
+		makeTemplate("主机 5 分钟平均负载过高", "node_exporter", "node_load5", ">", 8, 300, "P2", "load", "5 分钟平均负载持续偏高。"),
+		makeTemplate("主机 15 分钟平均负载过高", "node_exporter", "node_load15", ">", 8, 600, "P2", "load", "15 分钟平均负载持续偏高。"),
+		makeTemplate("主机 1 分钟负载比过高", "node_exporter", "node_load1 / count by(instance) (node_cpu_seconds_total{mode=\"idle\"})", ">", 1, 300, "P2", "load", "1 分钟系统负载与 CPU 核数比值超过 1。"),
+		makeTemplate("主机 5 分钟负载比过高", "node_exporter", "node_load5 / count by(instance) (node_cpu_seconds_total{mode=\"idle\"})", ">", 1, 300, "P2", "load", "5 分钟系统负载与 CPU 核数比值超过 1。"),
+		makeTemplate("主机 15 分钟负载比过高", "node_exporter", "node_load15 / count by(instance) (node_cpu_seconds_total{mode=\"idle\"})", ">", 1, 600, "P2", "load", "15 分钟系统负载与 CPU 核数比值超过 1。"),
+		makeTemplate("主机 Swap 使用率过高", "node_exporter", "(1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100", ">", 50, 300, "P2", "memory", "Swap 使用率持续偏高，检查内存压力。"),
+		makeTemplate("主机网络接收速率过高", "node_exporter", "sum by(instance) (rate(node_network_receive_bytes_total{device!~\"lo\"}[5m]))", ">", 104857600, 300, "P2", "network", "网络接收速率持续超过 100 MiB/s。"),
+		makeTemplate("主机网络发送速率过高", "node_exporter", "sum by(instance) (rate(node_network_transmit_bytes_total{device!~\"lo\"}[5m]))", ">", 104857600, 300, "P2", "network", "网络发送速率持续超过 100 MiB/s。"),
+		makeTemplate("主机最近重启", "node_exporter", "time() - node_boot_time_seconds", "<", 86400, 0, "P2", "service", "主机运行时间不足一天，确认是否为计划内重启。"),
+		makeTemplate("主机打开文件句柄数过高", "node_exporter", "node_filefd_allocated", ">", 100000, 300, "P2", "service", "打开文件句柄数持续过高，检查句柄泄漏与系统上限。"),
+		{Name: "Kubernetes 节点未就绪", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "节点", DatasourceType: "prometheus", QueryText: "kube_node_status_condition{condition=\"Ready\",status=\"true\"}", Comparator: "==", Threshold: 0, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Kubernetes 节点未就绪"}`, Description: "节点连续 5 分钟 NotReady，检查 kubelet、网络和节点资源。", Source: "platform", Status: 1},
+		{Name: "Kubernetes Pod 异常", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Pod", DatasourceType: "prometheus", QueryText: "sum by (namespace, pod, phase) (kube_pod_status_phase{phase=~\"Failed|Unknown|Pending\"})", Comparator: ">", Threshold: 0, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Pod 处于异常状态"}`, Description: "聚合 Failed、Unknown 与长期 Pending 的 Pod。", Source: "platform", Status: 1},
+		{Name: "Kubernetes Pod 重启频繁", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Pod", DatasourceType: "prometheus", QueryText: "sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[10m]))", Comparator: ">", Threshold: 3, ForSeconds: 0, EvalIntervalSeconds: 60, Severity: "P2", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Pod 在 10 分钟内重启频繁"}`, Description: "超过 3 次时检查 OOM、探针失败和应用错误。", Source: "platform", Status: 1},
+		{Name: "Deployment 副本不可用", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Deployment", DatasourceType: "prometheus", QueryText: "kube_deployment_status_replicas_unavailable", Comparator: ">", Threshold: 0, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Deployment 存在不可用副本"}`, Description: "工作负载副本无法就绪，检查镜像、资源、调度和事件。", Source: "platform", Status: 1},
+		{Name: "MySQL 服务不可用", Category: "MySQL", Collector: "mysqld_exporter", ObjectType: "数据库", DatasourceType: "prometheus", QueryText: "mysql_up", Comparator: "==", Threshold: 0, ForSeconds: 120, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"database"}`, AnnotationsJSON: `{"summary":"MySQL 采集目标不可用"}`, Description: "确认数据库进程、连接网络和 Exporter 凭据。", Source: "platform", Status: 1},
+		{Name: "MySQL 连接数过高", Category: "MySQL", Collector: "mysqld_exporter", ObjectType: "数据库", DatasourceType: "prometheus", QueryText: "mysql_global_status_threads_connected / mysql_global_variables_max_connections * 100", Comparator: ">", Threshold: 85, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P2", LabelsJSON: `{"domain":"database"}`, AnnotationsJSON: `{"summary":"MySQL 连接池接近上限"}`, Description: "持续 5 分钟超过 85%，检查连接泄漏、慢查询与连接池参数。", Source: "platform", Status: 1},
+	}
+	// The available-ratio definition replaces the old inverted usage-ratio name.
+	// Alert rules created from the old template are independent and remain intact.
+	if err := db.Where("source = ? AND name IN ?", "platform", []string{"主机内存使用率过高"}).Delete(&model.MonitorAlertTemplate{}).Error; err != nil {
+		return err
+	}
+	// This platform uses SSH for host access and node_exporter-compatible metrics
+	// from Prometheus/VictoriaMetrics for alert evaluation. It has no Agent data
+	// collection path, so remove the mistakenly seeded Agent-only platform rules.
+	if err := db.Where("source = ? AND collector = ?", "platform", "agent").Delete(&model.MonitorAlertTemplate{}).Error; err != nil {
+		return err
+	}
+	var linuxGroup, agentGroup model.MonitorAlertTemplateGroup
+	if err := db.Where("parent_id = ? AND name = ?", 0, "Linux").First(&linuxGroup).Error; err == nil {
+		if err := db.Where("parent_id = ? AND name = ?", linuxGroup.ID, "agent").First(&agentGroup).Error; err == nil {
+			var remaining int64
+			if err := db.Model(&model.MonitorAlertTemplate{}).Where("group_id = ?", agentGroup.ID).Count(&remaining).Error; err != nil {
+				return err
+			}
+			if remaining == 0 {
+				if err := db.Delete(&agentGroup).Error; err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, item := range templates {
+		root, collector := item.Category, item.Collector
+		rootID := groupIDs[fmt.Sprintf("%d/%s", uint(0), root)]
+		item.GroupID = groupIDs[fmt.Sprintf("%d/%s", rootID, collector)]
+		if rootID == 0 || item.GroupID == 0 {
+			return fmt.Errorf("resolve built-in alert template group failed: %s/%s", root, collector)
+		}
+		var count int64
+		if err := db.Model(&model.MonitorAlertTemplate{}).Where("name = ? AND source = ?", item.Name, "platform").Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			if err := db.Create(&item).Error; err != nil {
+				return err
+			}
+		} else {
+			updates := map[string]any{
+				"group_id":              item.GroupID,
+				"category":              item.Category,
+				"collector":             item.Collector,
+				"object_type":           item.ObjectType,
+				"datasource_type":       item.DatasourceType,
+				"query_text":            item.QueryText,
+				"comparator":            item.Comparator,
+				"threshold":             item.Threshold,
+				"for_seconds":           item.ForSeconds,
+				"eval_interval_seconds": item.EvalIntervalSeconds,
+				"severity":              item.Severity,
+				"labels_json":           item.LabelsJSON,
+				"annotations_json":      item.AnnotationsJSON,
+				"description":           item.Description,
+				"status":                item.Status,
+			}
+			if err := db.Model(&model.MonitorAlertTemplate{}).Where("name = ? AND source = ?", item.Name, "platform").Updates(updates).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -338,6 +469,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 				{"即时查询", "/monitor/query", "monitor:query", "Search"},
 				{"日志查询", "/monitor/logs", "monitor:logs", "Document"},
 				{"链路追踪", "/monitor/traces", "monitor:traces", "Share"},
+				{"告警模板", "/monitor/alert-templates", "monitor:alerttemplate:list", "CollectionTag"},
 				{"告警规则", "/monitor/alert-rules", "monitor:alertrule:list", "Bell"},
 				{"告警事件", "/monitor/alert-events", "monitor:alertevent:list", "Warning"},
 				{"告警屏蔽", "/monitor/silences", "monitor:silence:list", "MuteNotification"},
@@ -413,6 +545,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 
 		// Monitoring center
 		{"monitor:datasource:list", "新增数据源", "monitor:datasource:add"}, {"monitor:datasource:list", "编辑数据源", "monitor:datasource:edit"}, {"monitor:datasource:list", "删除数据源", "monitor:datasource:delete"}, {"monitor:datasource:list", "测试数据源", "monitor:datasource:test"},
+		{"monitor:alerttemplate:list", "新增告警模板", "monitor:alerttemplate:add"}, {"monitor:alerttemplate:list", "编辑告警模板", "monitor:alerttemplate:edit"}, {"monitor:alerttemplate:list", "删除告警模板", "monitor:alerttemplate:delete"},
 		{"monitor:alertrule:list", "新增告警规则", "monitor:alertrule:add"}, {"monitor:alertrule:list", "编辑告警规则", "monitor:alertrule:edit"}, {"monitor:alertrule:list", "删除告警规则", "monitor:alertrule:delete"}, {"monitor:alertrule:list", "批量更新告警规则", "monitor:alertrule:batch"},
 		{"monitor:alertevent:list", "认领告警", "monitor:alertevent:claim"}, {"monitor:alertevent:list", "关闭告警", "monitor:alertevent:close"}, {"monitor:alertevent:list", "删除告警事件", "monitor:alertevent:delete"},
 		{"monitor:silence:list", "新增屏蔽规则", "monitor:silence:add"}, {"monitor:silence:list", "编辑屏蔽规则", "monitor:silence:edit"}, {"monitor:silence:list", "删除屏蔽规则", "monitor:silence:delete"},

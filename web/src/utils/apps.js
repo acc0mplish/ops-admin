@@ -470,32 +470,16 @@ export const appDefinitions = [
         children: []
       },
       {
-        title: '告警规则',
-        titleKey: 'monitorAlertRules',
-        path: '/monitor/alert-rules',
+        title: '告警管理',
+        path: '/monitor/alert-management',
         icon: 'Bell',
-        children: []
-      },
-      {
-        title: '告警事件',
-        titleKey: 'monitorAlertEvents',
-        path: '/monitor/alert-events',
-        icon: 'Warning',
-        children: []
-      },
-      {
-        title: '告警屏蔽',
-        titleKey: 'monitorSilences',
-        path: '/monitor/silences',
-        icon: 'MuteNotification',
-        children: []
-      },
-      {
-        title: '聚合收敛',
-        titleKey: 'monitorAggregations',
-        path: '/monitor/aggregations',
-        icon: 'Filter',
-        children: []
+        children: [
+          { title: '告警模板', path: '/monitor/alert-templates', icon: 'CollectionTag', children: [] },
+          { title: '告警规则', titleKey: 'monitorAlertRules', path: '/monitor/alert-rules', icon: 'Bell', children: [] },
+          { title: '告警事件', titleKey: 'monitorAlertEvents', path: '/monitor/alert-events', icon: 'Warning', children: [] },
+          { title: '告警屏蔽', titleKey: 'monitorSilences', path: '/monitor/silences', icon: 'MuteNotification', children: [] },
+          { title: '聚合收敛', titleKey: 'monitorAggregations', path: '/monitor/aggregations', icon: 'Filter', children: [] }
+        ]
       },
       {
         title: '监控大屏',

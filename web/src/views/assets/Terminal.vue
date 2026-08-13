@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { ElMessage } from 'element-plus'
@@ -17,6 +17,8 @@ const query = reactive({ keyword: '' })
 let term
 let socket
 let inputDisposable
+let resizeObserver
+let resizeFrame
 
 async function loadTree() {
   loading.value = true
@@ -112,23 +114,66 @@ function createTerminal() {
       socket.send(data)
     }
   })
+  bindTerminalResize()
+}
+
+function bindTerminalResize() {
+  if (!terminalBoxRef.value || !terminalRef.value || !term) return
+  resizeObserver = new ResizeObserver(() => {
+    scheduleTerminalSizeSync()
+  })
+  resizeObserver.observe(terminalBoxRef.value)
+  resizeObserver.observe(terminalRef.value)
+  syncTerminalSize()
+  scheduleTerminalSizeSync()
+}
+
+function scheduleTerminalSizeSync() {
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(syncTerminalSize)
+}
+
+function syncTerminalSize() {
+  if (!term || !terminalRef.value) return
+  const { clientWidth, clientHeight } = terminalRef.value
+  const style = window.getComputedStyle(terminalRef.value)
+  const width = clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+  const height = clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+  if (!width || !height) return
+
+  // The actual cell dimensions depend on the browser font renderer. Deriving
+  // them from xterm's rendered screen keeps the terminal viewport flush with
+  // its surrounding panel instead of leaving unused space at the bottom.
+  const screen = terminalRef.value.querySelector('.xterm-screen')
+  const cellWidth = screen?.clientWidth ? screen.clientWidth / term.cols : 8.2
+  const cellHeight = screen?.clientHeight ? screen.clientHeight / term.rows : 18
+  const cols = Math.max(80, Math.floor(width / cellWidth))
+  const rows = Math.max(20, Math.floor(height / cellHeight))
+  if (term.cols !== cols || term.rows !== rows) {
+    term.resize(cols, rows)
+  }
 }
 
 function connectSocket(host) {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const token = encodeURIComponent(getToken())
-  const url = `${protocol}://${window.location.host}/api/v1/asset/terminal/ws?hostId=${host.id}&rows=34&cols=150&token=${token}`
-  socket = new WebSocket(url)
-  socket.onopen = () => {
+  const url = `${protocol}://${window.location.host}/api/v1/asset/terminal/ws?hostId=${host.id}&rows=${term?.rows || 34}&cols=${term?.cols || 150}&token=${token}`
+  const currentSocket = new WebSocket(url)
+  socket = currentSocket
+  currentSocket.onopen = () => {
+    if (socket !== currentSocket) return
     term?.writeln(`\x1b[32m欢迎使用SSH终端，正在连接 ${host.sshIp || host.hostName} ...\x1b[0m`)
   }
-  socket.onmessage = (event) => {
+  currentSocket.onmessage = (event) => {
+    if (socket !== currentSocket) return
     term?.write(event.data)
   }
-  socket.onerror = () => {
+  currentSocket.onerror = () => {
+    if (socket !== currentSocket) return
     term?.writeln('\r\n\x1b[31mSSH连接异常，请检查主机、端口和认证凭据。\x1b[0m')
   }
-  socket.onclose = () => {
+  currentSocket.onclose = () => {
+    if (socket !== currentSocket) return
     term?.writeln('\r\n\x1b[33m连接已断开。\x1b[0m')
   }
 }
@@ -158,9 +203,16 @@ function closePanel() {
 }
 
 function closeTerminal() {
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = undefined
+  resizeObserver?.disconnect()
+  resizeObserver = undefined
   inputDisposable?.dispose()
   inputDisposable = undefined
   if (socket) {
+    socket.onopen = null
+    socket.onmessage = null
+    socket.onerror = null
     socket.onclose = null
     socket.close()
     socket = undefined
@@ -169,8 +221,27 @@ function closeTerminal() {
   term = undefined
 }
 
-onMounted(loadTree)
-onBeforeUnmount(closeTerminal)
+function handleTabClosed(event) {
+  if (event.detail?.path !== '/assets/terminal') return
+  closeTerminal()
+  activeHost.value = undefined
+}
+
+onMounted(() => {
+  window.addEventListener('ops-admin:tab-closed', handleTabClosed)
+  loadTree()
+})
+
+onActivated(() => {
+  if (!term) return
+  scheduleTerminalSizeSync()
+  term.focus()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('ops-admin:tab-closed', handleTabClosed)
+  closeTerminal()
+})
 </script>
 
 <template>
@@ -233,7 +304,8 @@ onBeforeUnmount(closeTerminal)
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 12px;
-  min-height: calc(100vh - 190px);
+  height: calc(100vh - 190px);
+  min-height: 680px;
 }
 
 .asset-tree-card {
@@ -272,6 +344,9 @@ onBeforeUnmount(closeTerminal)
 }
 
 .terminal-window {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   border-radius: 12px 12px 0 0;
   background: #20384c;
@@ -306,10 +381,18 @@ onBeforeUnmount(closeTerminal)
 }
 
 .terminal-body {
-  height: calc(100vh - 330px);
-  min-height: 520px;
+  display: flex;
+  flex: 1;
+  min-height: 0;
   padding: 10px 12px;
+  box-sizing: border-box;
   background: #050000;
+  overflow: hidden;
+}
+
+.terminal-body :deep(.xterm) {
+  width: 100%;
+  height: 100%;
 }
 
 .terminal-empty {

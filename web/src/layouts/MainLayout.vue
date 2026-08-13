@@ -169,6 +169,15 @@ function trimTagViews(tags, protectedPath = '') {
   return result
 }
 
+function releaseTagResources(tag) {
+  window.dispatchEvent(new CustomEvent('ops-admin:tab-closed', {
+    detail: {
+      path: tag.path,
+      fullPath: tag.fullPath || tag.path
+    }
+  }))
+}
+
 function normalizeBackendMenus(raw) {
   const menuList = (raw || [])
     // 控制台只应使用属于控制台的后端菜单。后端菜单中也包含各应用的
@@ -329,7 +338,11 @@ function ensureTag(path, title, fullPath = path) {
     fullPath: fullPath || path,
     affix: path === '/dashboard'
   })
-  tagViews.value = trimTagViews(tagViews.value, path)
+  const nextTags = trimTagViews(tagViews.value, path)
+  tagViews.value
+    .filter((item) => !nextTags.some((nextItem) => nextItem.path === item.path))
+    .forEach(releaseTagResources)
+  tagViews.value = nextTags
   saveTags()
 }
 
@@ -349,6 +362,7 @@ function closeTag(tag) {
     return
   }
   const wasActive = route.path === tag.path
+  releaseTagResources(tag)
   tagViews.value.splice(index, 1)
   saveTags()
   if (wasActive) {
@@ -381,7 +395,9 @@ function closeLeftTags() {
     closeTagContextMenu()
     return
   }
-  const removedActive = tagViews.value.some((item, index) => index < targetIndex && !isPinnedTag(item) && item.path === route.path)
+  const removedTags = tagViews.value.filter((item, index) => index < targetIndex && !isPinnedTag(item))
+  const removedActive = removedTags.some((item) => item.path === route.path)
+  removedTags.forEach(releaseTagResources)
   tagViews.value = tagViews.value.filter((item, index) => index >= targetIndex || isPinnedTag(item))
   saveTags()
   closeTagContextMenu()
@@ -400,7 +416,9 @@ function closeRightTags() {
     closeTagContextMenu()
     return
   }
-  const removedActive = tagViews.value.some((item, index) => index > targetIndex && !isPinnedTag(item) && item.path === route.path)
+  const removedTags = tagViews.value.filter((item, index) => index > targetIndex && !isPinnedTag(item))
+  const removedActive = removedTags.some((item) => item.path === route.path)
+  removedTags.forEach(releaseTagResources)
   tagViews.value = tagViews.value.filter((item, index) => index <= targetIndex || isPinnedTag(item))
   saveTags()
   closeTagContextMenu()
@@ -415,6 +433,9 @@ function closeOtherTags() {
     return
   }
   const keepPath = target.path
+  tagViews.value
+    .filter((item) => !isPinnedTag(item) && item.path !== keepPath)
+    .forEach(releaseTagResources)
   tagViews.value = tagViews.value.filter((item) => isPinnedTag(item) || item.path === keepPath)
   saveTags()
   closeTagContextMenu()
@@ -681,7 +702,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
       <el-main class="layout-main">
         <router-view v-slot="{ Component, route: currentRoute }">
           <keep-alive>
-            <component :is="Component" v-if="currentRoute.meta.keepAlive" />
+            <component :is="Component" v-if="currentRoute.meta.keepAlive" :key="currentRoute.fullPath" />
           </keep-alive>
           <component :is="Component" v-if="!currentRoute.meta.keepAlive" />
         </router-view>

@@ -26,6 +26,17 @@ export const queryMonitorTraces = (data) => http.post('/api/v1/monitor/traces/qu
 export const queryMonitorTraceDetail = (params) => http.get('/api/v1/monitor/traces/detail', { params })
 export const queryMonitorQueryHistoryList = (params) => http.get('/api/v1/monitor/query/history', { params })
 
+export const queryMonitorAlertTemplateList = (params) => http.get('/api/v1/monitor/alert/template/list', { params })
+export const queryMonitorAlertTemplateGroups = () => http.get('/api/v1/monitor/alert/template/groups')
+export const saveMonitorAlertTemplateGroup = (data) => http.post('/api/v1/monitor/alert/template/group/save', data)
+export const deleteMonitorAlertTemplateGroup = (id) => http.delete('/api/v1/monitor/alert/template/group/delete', { data: { id } })
+export const monitorAlertTemplateInfo = (id) => http.get('/api/v1/monitor/alert/template/info', { params: { id } })
+export const saveMonitorAlertTemplate = (data) => http.post('/api/v1/monitor/alert/template/save', data)
+export const deleteMonitorAlertTemplate = (id) => http.delete('/api/v1/monitor/alert/template/delete', { data: { id } })
+export const parsePrometheusAlertTemplates = (content) => http.post('/api/v1/monitor/alert/template/prometheus/parse', { content })
+export const importPrometheusAlertTemplates = (data) => http.post('/api/v1/monitor/alert/template/prometheus/import', data)
+export const exportPrometheusAlertTemplates = (ids) => http.post('/api/v1/monitor/alert/template/prometheus/export', { ids }, { responseType: 'blob' })
+
 export const queryMonitorAlertRuleList = (params) => http.get('/api/v1/monitor/alert/rule/list', { params })
 export const monitorAlertRuleInfo = (id) => http.get('/api/v1/monitor/alert/rule/info', { params: { id } })
 export const saveMonitorAlertRule = (data) => http.post('/api/v1/monitor/alert/rule/save', data)
