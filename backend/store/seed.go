@@ -42,7 +42,7 @@ func seedMonitorAlertTemplates(db *gorm.DB) error {
 
 func seedMonitorAlertTemplatesTx(db *gorm.DB) error {
 	groupIDs := map[string]uint{}
-	for _, path := range [][]string{{"Linux", "node_exporter"}, {"Kubernetes", "kube-state-metrics"}, {"MySQL", "mysqld_exporter"}} {
+	for _, path := range [][]string{{"Linux", "node_exporter"}, {"Kubernetes", "kube-state-metrics"}, {"MySQL", "mysqld_exporter"}, {"Redis", "redis_exporter"}} {
 		parentID := uint(0)
 		for _, name := range path {
 			key := fmt.Sprintf("%d/%s", parentID, name)
@@ -62,6 +62,9 @@ func seedMonitorAlertTemplatesTx(db *gorm.DB) error {
 	}
 	makeTemplate := func(name, collector, query, comparator string, threshold float64, duration int, severity, domain, description string) model.MonitorAlertTemplate {
 		return model.MonitorAlertTemplate{Name: name, Category: "Linux", Collector: collector, ObjectType: "主机", DatasourceType: "prometheus", QueryText: query, Comparator: comparator, Threshold: threshold, ForSeconds: duration, EvalIntervalSeconds: 60, Severity: severity, LabelsJSON: fmt.Sprintf(`{"domain":%q}`, domain), AnnotationsJSON: fmt.Sprintf(`{"summary":%q}`, name), Description: description, Source: "platform", Status: 1}
+	}
+	makeDatabaseTemplate := func(category, collector, name, query, comparator string, threshold float64, duration int, severity, domain, description string) model.MonitorAlertTemplate {
+		return model.MonitorAlertTemplate{Name: name, Category: category, Collector: collector, ObjectType: "数据库", DatasourceType: "prometheus", QueryText: query, Comparator: comparator, Threshold: threshold, ForSeconds: duration, EvalIntervalSeconds: 60, Severity: severity, LabelsJSON: fmt.Sprintf(`{"domain":%q}`, domain), AnnotationsJSON: fmt.Sprintf(`{"summary":%q}`, name), Description: description, Source: "platform", Status: 1}
 	}
 	templates := []model.MonitorAlertTemplate{
 		makeTemplate("主机 Exporter 离线", "node_exporter", `up{job=~"node.*|node_exporter"}`, "==", 0, 120, "P0", "availability", "采集目标连续不可达，优先确认网络、Exporter 进程与采集配置。"),
@@ -93,8 +96,36 @@ func seedMonitorAlertTemplatesTx(db *gorm.DB) error {
 		{Name: "Kubernetes Pod 异常", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Pod", DatasourceType: "prometheus", QueryText: "sum by (namespace, pod, phase) (kube_pod_status_phase{phase=~\"Failed|Unknown|Pending\"})", Comparator: ">", Threshold: 0, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Pod 处于异常状态"}`, Description: "聚合 Failed、Unknown 与长期 Pending 的 Pod。", Source: "platform", Status: 1},
 		{Name: "Kubernetes Pod 重启频繁", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Pod", DatasourceType: "prometheus", QueryText: "sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[10m]))", Comparator: ">", Threshold: 3, ForSeconds: 0, EvalIntervalSeconds: 60, Severity: "P2", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Pod 在 10 分钟内重启频繁"}`, Description: "超过 3 次时检查 OOM、探针失败和应用错误。", Source: "platform", Status: 1},
 		{Name: "Deployment 副本不可用", Category: "Kubernetes", Collector: "kube-state-metrics", ObjectType: "Deployment", DatasourceType: "prometheus", QueryText: "kube_deployment_status_replicas_unavailable", Comparator: ">", Threshold: 0, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"kubernetes"}`, AnnotationsJSON: `{"summary":"Deployment 存在不可用副本"}`, Description: "工作负载副本无法就绪，检查镜像、资源、调度和事件。", Source: "platform", Status: 1},
-		{Name: "MySQL 服务不可用", Category: "MySQL", Collector: "mysqld_exporter", ObjectType: "数据库", DatasourceType: "prometheus", QueryText: "mysql_up", Comparator: "==", Threshold: 0, ForSeconds: 120, EvalIntervalSeconds: 60, Severity: "P1", LabelsJSON: `{"domain":"database"}`, AnnotationsJSON: `{"summary":"MySQL 采集目标不可用"}`, Description: "确认数据库进程、连接网络和 Exporter 凭据。", Source: "platform", Status: 1},
-		{Name: "MySQL 连接数过高", Category: "MySQL", Collector: "mysqld_exporter", ObjectType: "数据库", DatasourceType: "prometheus", QueryText: "mysql_global_status_threads_connected / mysql_global_variables_max_connections * 100", Comparator: ">", Threshold: 85, ForSeconds: 300, EvalIntervalSeconds: 60, Severity: "P2", LabelsJSON: `{"domain":"database"}`, AnnotationsJSON: `{"summary":"MySQL 连接池接近上限"}`, Description: "持续 5 分钟超过 85%，检查连接泄漏、慢查询与连接池参数。", Source: "platform", Status: 1},
+
+		// MySQL templates are derived from the MySQL monitoring dashboard. Rates
+		// use a five-minute window to avoid alerting on one-off spikes.
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 服务不可用", "mysql_up", "==", 0, 120, "P1", "mysql_availability", "采集目标连续不可达，确认 MySQL 进程、网络、账号和 Exporter。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 最近重启", "mysql_global_status_uptime", "<", 300, 0, "P2", "mysql_availability", "运行时长不足 5 分钟，确认是否为计划内重启或异常退出。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 连接数使用率过高", "(mysql_global_status_threads_connected / clamp_min(mysql_global_variables_max_connections, 1)) * 100", ">", 85, 300, "P1", "mysql_connection", "连接使用率持续超过 85%，检查连接泄漏、慢查询与连接池配置。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 活跃线程数过高", "mysql_global_status_threads_running", ">", 50, 300, "P2", "mysql_connection", "活跃执行线程持续偏高，检查慢 SQL、锁等待和突发流量。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 慢查询激增", "increase(mysql_global_status_slow_queries[5m])", ">", 10, 300, "P2", "mysql_query", "5 分钟内新增慢查询超过 10 条，排查执行计划、索引和热点 SQL。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 异常客户端断开", "increase(mysql_global_status_aborted_clients[5m])", ">", 10, 300, "P2", "mysql_connection", "客户端异常断开持续增加，检查网络、连接超时和应用连接池。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 异常连接失败", "increase(mysql_global_status_aborted_connects[5m])", ">", 10, 300, "P2", "mysql_connection", "连接失败持续增加，检查认证、网络、防火墙和连接数上限。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL InnoDB 脏页率过高", "(mysql_global_status_buffer_pool_bytes_dirty / clamp_min(mysql_global_status_buffer_pool_bytes_total, 1)) * 100", ">", 20, 300, "P2", "mysql_innodb", "Buffer Pool 脏页率持续偏高，检查磁盘 I/O、刷脏速度与写入压力。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL InnoDB 缓冲池命中率过低", "(1 - rate(mysql_global_status_innodb_buffer_pool_reads[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests[5m]), 1)) * 100", "<", 99, 600, "P2", "mysql_innodb", "缓冲池命中率持续低于 99%，检查内存配置、工作集与异常全表扫描。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 行锁等待过多", "increase(mysql_global_status_innodb_row_lock_waits[5m])", ">", 10, 300, "P2", "mysql_lock", "5 分钟内行锁等待次数过多，定位长事务和锁冲突 SQL。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 锁等待耗时过长", "increase(mysql_global_status_innodb_row_lock_time[5m]) / 1000", ">", 10, 300, "P1", "mysql_lock", "5 分钟累计行锁等待超过 10 秒，优先检查阻塞事务。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 临时表落盘比例过高", "(rate(mysql_global_status_created_tmp_disk_tables[5m]) / clamp_min(rate(mysql_global_status_created_tmp_tables[5m]), 1)) * 100", ">", 25, 600, "P2", "mysql_query", "磁盘临时表占比持续超过 25%，检查排序、分组 SQL 与临时表参数。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL 打开文件使用率过高", "(mysql_global_status_open_files / clamp_min(mysql_global_variables_open_files_limit, 1)) * 100", ">", 85, 300, "P1", "mysql_capacity", "打开文件使用率持续超过 85%，检查表数量、连接数和文件句柄上限。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL Prepared Statement 使用率过高", "(mysql_global_status_prepared_stmt_count / clamp_min(mysql_global_variables_max_prepared_stmt_count, 1)) * 100", ">", 85, 300, "P2", "mysql_capacity", "预处理语句使用率持续超过 85%，检查语句关闭和最大预处理语句配置。"),
+		makeDatabaseTemplate("MySQL", "mysqld_exporter", "MySQL Exporter 抓取耗时过长", "mysql_scrape_use_seconds", ">", 5, 300, "P2", "mysql_exporter", "Exporter 单次抓取持续超过 5 秒，检查数据库负载、网络与采集权限。"),
+
+		// Redis templates are derived from the Redis monitoring dashboard.
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 服务不可用", "redis_up", "==", 0, 120, "P1", "redis_availability", "采集目标连续不可达，确认 Redis 进程、网络、认证与 Exporter。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 最近重启", "redis_uptime_in_seconds", "<", 300, 0, "P2", "redis_availability", "运行时长不足 5 分钟，确认是否为计划内重启或异常退出。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 内存使用率过高", "100 * redis_memory_used_bytes / clamp_min((redis_memory_max_bytes > 0) or on(instance) redis_memory_used_peak_bytes, 1)", ">", 85, 300, "P1", "redis_memory", "内存使用率持续超过 85%，检查 maxmemory、淘汰策略与大 Key。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 缓存命中率过低", "100 * rate(redis_keyspace_hits_total[5m]) / clamp_min(rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]), 1)", "<", 80, 600, "P2", "redis_cache", "缓存命中率持续低于 80%，检查缓存预热、过期策略和访问模式。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis P95 响应延迟过高", "histogram_quantile(0.95, sum by (le, instance) (rate(redis_commands_latencies_usec_bucket[5m]))) / 1000", ">", 50, 300, "P2", "redis_latency", "P95 命令延迟持续超过 50ms，检查慢命令、CPU、网络和持久化压力。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 错误响应速率过高", "rate(redis_total_error_replies[5m])", ">", 1, 300, "P2", "redis_error", "错误响应速率持续超过 1 次/秒，检查命令错误、权限与客户端行为。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 拒绝连接", "increase(redis_rejected_connections_total[5m])", ">", 0, 0, "P1", "redis_connection", "出现被拒绝的连接，检查 maxclients、文件句柄和连接泄漏。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 阻塞客户端过多", "redis_blocked_clients", ">", 50, 300, "P2", "redis_connection", "阻塞客户端持续超过 50，检查阻塞命令、慢 Lua 脚本和下游依赖。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis Key 被淘汰", "increase(redis_evicted_keys_total[5m])", ">", 0, 0, "P1", "redis_memory", "发生 Key 淘汰，表示内存水位或淘汰策略已影响业务缓存。"),
+		makeDatabaseTemplate("Redis", "redis_exporter", "Redis 慢日志堆积", "redis_slowlog_length", ">", 10, 300, "P2", "redis_latency", "慢日志队列持续超过 10，检查慢命令、大 Key 与阻塞操作。"),
 	}
 	// The available-ratio definition replaces the old inverted usage-ratio name.
 	// Alert rules created from the old template are independent and remain intact.

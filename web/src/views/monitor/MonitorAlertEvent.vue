@@ -17,7 +17,7 @@ const detailLoading = ref(false)
 const detail = ref({ event: {}, timelines: [], actions: [], notifyLogs: [], notificationState: {} })
 const current = ref({})
 const selectedEventIds = ref([])
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '', severity: '' })
+const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', status: '', severity: '' })
 const actionForm = reactive({ actionType: 'job', targetId: undefined, operator: '系统管理员', summary: '' })
 
 function statusType(status) {
@@ -35,7 +35,17 @@ function statusText(status) {
 
 function formatTime(value) {
   if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  const pad = (item) => String(item).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function formatTriggerTime(value) {
+  const formatted = formatTime(value)
+  if (formatted === '-') return { date: '-', time: '' }
+  const [date, time] = formatted.split(' ')
+  return { date, time }
 }
 
 function prettyJSON(value) {
@@ -162,7 +172,7 @@ onMounted(async () => {
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="搜索规则 / 指标 / 摘要" style="width: 280px" @keyup.enter="loadData" />
+      <el-input v-model="query.keyword" clearable placeholder="搜索规则 / 指标" style="width: 280px" @keyup.enter="loadData" />
       <el-select v-model="query.status" clearable placeholder="状态" style="width: 140px">
         <el-option label="未认领" value="unclaimed" />
         <el-option label="等待持续" value="pending" />
@@ -220,8 +230,9 @@ onMounted(async () => {
         <template #default="{ row }">{{ Number(row.currentValue || 0).toFixed(4) }}</template>
       </el-table-column>
       <el-table-column prop="threshold" label="阈值" width="100" />
-      <el-table-column prop="summary" label="摘要" min-width="260" show-overflow-tooltip />
-      <el-table-column prop="lastTriggerAt" label="最近触发" width="180" />
+      <el-table-column label="最后触发时间" width="156">
+        <template #default="{ row }"><div class="trigger-time"><span>{{ formatTriggerTime(row.lastTriggerAt).date }}</span><small>{{ formatTriggerTime(row.lastTriggerAt).time }}</small></div></template>
+      </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">详情</el-button>
@@ -233,7 +244,7 @@ onMounted(async () => {
     </el-table>
 
     <div class="pager">
-      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
+      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
     <el-drawer v-model="detailVisible" title="告警事件详情" size="72%" destroy-on-close>
@@ -246,7 +257,6 @@ onMounted(async () => {
             </div>
             <el-tag :type="statusType(detail.event?.status)" effect="light">{{ statusText(detail.event?.status) }}</el-tag>
           </div>
-          <p>{{ detail.event?.summary || '暂无摘要' }}</p>
           <el-descriptions :column="4" border>
             <el-descriptions-item label="数据源">{{ detail.event?.datasourceName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="当前值">{{ Number(detail.event?.currentValue || 0).toFixed(4) }}</el-descriptions-item>
@@ -371,6 +381,9 @@ onMounted(async () => {
 .claim-info span { overflow: hidden; color: #64748b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .claim-info small { color: #98a4b7; font-size: 11px; }
 .claim-none strong, .claim-empty { color: #98a4b7; font-size: 12px; font-weight: 400; }
+.trigger-time { display: flex; flex-direction: column; gap: 3px; line-height: 1.2; }
+.trigger-time span { color: #35547d; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trigger-time small { color: #8494aa; font-size: 11px; font-variant-numeric: tabular-nums; }
 .pager {
   display: flex;
   justify-content: flex-end;

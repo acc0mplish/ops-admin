@@ -52,7 +52,7 @@ const templateKeyword = ref('')
 const selectedTemplateGroupId = ref(0)
 const previousAlertType = ref('metric')
 const queryDrafts = reactive({ metric: '', log: '', victorialogs: '' })
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '', severity: '', alertType: '' })
+const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', status: '', severity: '', alertType: '' })
 const form = reactive({
   id: undefined,
   name: '',
@@ -702,13 +702,14 @@ onMounted(async () => {
     <el-table ref="ruleTableRef" v-loading="loading" :data="rows" class="rule-table" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="52" fixed="left" />
       <el-table-column label="规则" min-width="255">
-        <template #default="{ row }"><div class="rule-name-cell"><strong>{{ row.name }}</strong><span><el-tag :type="alertTypeTag(row.alertType)" size="small" effect="plain">{{ alertTypeName(row.alertType) }}</el-tag><el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="plain">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></span></div></template>
+        <template #default="{ row }"><div class="rule-name-cell"><strong>{{ row.name }}</strong><span><el-tag :type="alertTypeTag(row.alertType)" size="small" effect="plain">{{ alertTypeName(row.alertType) }}</el-tag></span></div></template>
       </el-table-column>
       <el-table-column label="数据源范围" min-width="180"><template #default="{ row }"><div class="scope-cell"><strong>{{ row.datasourceName || '全部同类数据源' }}</strong><span>{{ row.datasourceScope === 'all' ? '动态匹配所有已启用数据源' : '指定数据源' }}</span></div></template></el-table-column>
       <el-table-column label="触发条件" min-width="320" show-overflow-tooltip><template #default="{ row }"><div class="condition-cell"><code>{{ row.promql }}</code><span>{{ row.comparator }} {{ row.threshold }} · {{ row.alertType === 'metric' ? `持续 ${row.forSeconds || 0} 秒` : `窗口 ${row.logTimeRangeSeconds || 300} 秒` }}</span></div></template></el-table-column>
       <el-table-column label="等级" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
       <el-table-column label="评估状态" min-width="155"><template #default="{ row }"><div class="eval-cell"><span><el-tag :type="evalStatusType(row.lastEvalStatus)" size="small" effect="light">{{ evalStatusText(row.lastEvalStatus) }}</el-tag><em>每 {{ row.evalIntervalSeconds }} 秒</em></span><el-tooltip v-if="row.lastEvalMessage" :content="row.lastEvalMessage" placement="top"><small>{{ formatEvalTime(row.lastEvalAt) }}</small></el-tooltip><small v-else>{{ formatEvalTime(row.lastEvalAt) }}</small></div></template></el-table-column>
-      <el-table-column label="通知" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag :type="row.notifyEnabled ? 'success' : 'info'" size="small" effect="plain">{{ row.notifyEnabled ? '已开启' : '未开启' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
+      <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
+      <el-table-column label="通知" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag class="notification-state" :class="row.notifyEnabled ? 'is-notify-enabled' : 'is-notify-disabled'" size="small" effect="plain">{{ row.notifyEnabled ? '已开启' : '未开启' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
       <el-table-column label="操作" width="168" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :loading="runningRuleId === row.id" @click="handleRun(row)">运行</el-button>
@@ -718,7 +719,7 @@ onMounted(async () => {
       </el-table-column>
     </el-table>
 
-    <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
+    <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(1040px, 94vw)" top="4vh" class="rule-editor-dialog" destroy-on-close>
@@ -780,7 +781,10 @@ onMounted(async () => {
 
         <section class="form-section"><div class="section-heading"><span>04</span><div><strong>通知与上下文</strong><small>补充事件标签、处置说明与消息发送策略。</small></div></div>
         <div class="json-grid"><el-form-item label="标签 JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" placeholder='例如：{"team":"game"}' /></el-form-item><el-form-item label="注解 JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" placeholder='例如：{"summary":"请及时处理"}' /></el-form-item></div>
-        <div class="notify-toggle"><span><strong>消息通知</strong><small>触发或恢复时通过消息通知应用发送。</small></span><el-switch v-model="form.notifyEnabled" /></div>
+        <div class="notify-toggle" :class="{ 'is-enabled': form.notifyEnabled }">
+          <div class="notify-toggle-copy"><div class="notify-toggle-icon"><el-icon><Bell /></el-icon></div><span><strong>消息通知</strong><small>{{ form.notifyEnabled ? '规则触发或恢复后，将按通知策略发送消息。' : '当前未发送消息；开启后可配置通知策略。' }}</small></span></div>
+          <div class="notify-toggle-action"><el-tag :type="form.notifyEnabled ? 'success' : 'info'" effect="light">{{ form.notifyEnabled ? '已开启' : '未开启' }}</el-tag><el-switch v-model="form.notifyEnabled" /></div>
+        </div>
         <div v-if="form.notifyEnabled" class="notify-settings"><el-form-item label="通知规则" required><el-select v-model="form.notifyRuleId" filterable style="width: 100%"><el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><div class="form-grid"><el-form-item label="重复通知间隔"><div class="parameter-number"><el-input-number v-model="form.notifyRepeatIntervalMinutes" :min="1" :max="10080" controls-position="right" /><b>分钟</b></div></el-form-item><el-form-item label="最大发送次数"><el-input-number v-model="form.maxNotifyCount" :min="0" :max="1000" controls-position="right" /><div class="form-tip">0 表示不限制次数。</div></el-form-item></div><el-form-item label="恢复通知"><el-switch v-model="form.notifyRecoveryEnabled" /></el-form-item></div>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="补充影响范围、处置建议或值班说明" /></el-form-item></section>
       </el-form>
@@ -865,4 +869,55 @@ onMounted(async () => {
 .template-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 14px; }.template-dialog-head strong, .template-dialog-head span { display: block; }.template-dialog-head strong { color: #1e3155; }.template-dialog-head span { margin-top: 5px; color: #8491a9; font-size: 12px; }.template-library-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 520px; overflow: hidden; border: 1px solid #e1e9f5; border-radius: 12px; background: #fff; }.template-groups { padding: 12px; border-right: 1px solid #e1e9f5; background: #f8faff; }.template-groups > button { display: flex; align-items: center; width: 100%; gap: 8px; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: #506785; cursor: pointer; transition: background-color .18s, color .18s; }.template-groups > button:hover { background: #eef4ff; }.template-groups > button.active { background: #e5efff; color: #2769d8; font-weight: 700; }.template-groups > button span { flex: 1; text-align: left; }.template-groups :deep(.el-tree) { margin-top: 8px; background: transparent; }.template-groups :deep(.el-tree-node__content) { height: 34px; border-radius: 7px; }.template-group-node { display: flex; width: 100%; min-width: 0; gap: 6px; padding-right: 6px; }.template-group-node > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.template-group-node small { margin-left: auto; color: #8a99af; }.rule-template-list { min-width: 0; padding: 12px; background: #fff; }.template-select-table { overflow: hidden; border: 1px solid #e4ebf5; border-radius: 10px; }.template-select-table :deep(.el-table__header th) { height: 44px; background: #f5f8fc; color: #526681; font-size: 12px; }.template-select-table :deep(.el-table__row td) { padding: 10px 0; }.template-select-table :deep(.el-table__row:hover > td) { background: #f7faff; }.template-name-cell { display: flex; min-width: 0; flex-direction: column; gap: 4px; }.template-name-cell strong { overflow: hidden; color: #1b3559; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }.template-name-cell span { overflow: hidden; color: #8492a8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.template-datasource { color: #536b8b; font-size: 12px; }.template-query { display: block; overflow: hidden; color: #4264c2; font: 12px/1.45 Consolas, Monaco, monospace; text-overflow: ellipsis; white-space: nowrap; }.template-dialog-footer { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 16px; }.template-dialog-footer > div:last-child { display: flex; gap: 8px; }.template-selection-summary { display: flex; align-items: center; gap: 10px; color: #71819a; font-size: 13px; }.template-selection-summary b { color: #2f67d8; font-size: 16px; }.batch-dialog-tip { margin: 0 0 18px; color: #7282a0; line-height: 1.65; }
 @media (max-width: 1000px) { .header-metrics { display: none; }.toolbar { align-items: flex-start; }.refresh-button { margin-left: 0; }.template-library-layout { grid-template-columns: 1fr; }.template-groups { max-height: 190px; overflow: auto; border-right: 0; border-bottom: 1px solid #e1e9f5; }.template-dialog-head { align-items: flex-start; flex-direction: column; }.template-dialog-head :deep(.el-input) { width: 100% !important; } }
 @media (max-width: 700px) { .page-header { align-items: flex-start; flex-wrap: wrap; }.header-actions { width: 100%; margin-left: 0; }.form-grid, .json-grid, .rule-parameters, .preview-metrics { grid-template-columns: 1fr; }.rule-editor-footer, .template-dialog-footer { align-items: flex-end; flex-direction: column; gap: 10px; }.rule-editor-footer > span, .template-selection-summary { align-self: flex-start; } }
+/* Rule editor refinements: keep the trigger controls compact and scannable. */
+.rule-editor-dialog .rule-parameters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 4px 0 18px;
+}
+.rule-editor-dialog .parameter-card {
+  min-height: 150px;
+  padding: 16px;
+  gap: 12px;
+  border-color: #f1d39c;
+  border-radius: 14px;
+  background: #fffdf8;
+  box-shadow: 0 8px 22px rgba(181, 129, 39, .06);
+}
+.rule-editor-dialog .parameter-card > span { color: #425675; font-size: 14px; }
+.rule-editor-dialog .parameter-card small { margin-top: auto; color: #7184a3; }
+.rule-editor-dialog .notify-toggle {
+  gap: 16px;
+  min-height: 74px;
+  margin: 2px 0 14px;
+  padding: 14px 16px;
+  border-color: #cfdced;
+  border-radius: 12px;
+  background: #f7faff;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.rule-editor-dialog .notify-toggle.is-enabled {
+  border-color: #96c1f5;
+  background: linear-gradient(100deg, #eff7ff 0%, #f8fbff 100%);
+  box-shadow: 0 8px 20px rgba(58, 124, 207, .10);
+}
+.notify-toggle-copy, .notify-toggle-action { display: flex; align-items: center; }
+.notify-toggle-copy { min-width: 0; gap: 12px; }
+.notify-toggle-copy > span { min-width: 0; }
+.notify-toggle-icon { display: grid; flex: none; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: #e8f1ff; color: #3477df; font-size: 18px; }
+.notify-toggle.is-enabled .notify-toggle-icon { background: #dff1e7; color: #2c9b62; }
+.notify-toggle strong { color: #244267; font-size: 14px; }
+.notify-toggle small { line-height: 1.5; }
+.notify-toggle-action { flex: none; gap: 12px; }
+.rule-editor-dialog .notify-settings { margin: -2px 0 18px; padding: 16px; border-color: #bcd7f6; border-radius: 12px; background: #f7fbff; box-shadow: inset 3px 0 0 #6aa8f8; }
+.rule-table :deep(.notification-state.is-notify-enabled) { color: #23834b !important; border-color: #9bd7ad !important; background: #ecf9f0 !important; font-weight: 600; }
+.rule-table :deep(.notification-state.is-notify-disabled) { color: #b7791f !important; border-color: #edcf8a !important; background: #fff8e8 !important; font-weight: 600; }
+@media (max-width: 980px) {
+  .rule-editor-dialog .rule-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .rule-editor-dialog .rule-parameters { grid-template-columns: 1fr; }
+  .rule-editor-dialog .notify-toggle { align-items: flex-start; flex-direction: column; }
+  .notify-toggle-action { width: 100%; justify-content: space-between; }
+}
 </style>
