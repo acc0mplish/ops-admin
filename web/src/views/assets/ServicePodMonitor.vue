@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { queryAssetServiceWorkloadMetrics } from '../../api/asset'
+import { queryK8sWorkloadMetrics } from '../../api/k8s'
 
-const props = defineProps({ serviceId: Number, workloadType: String, workloadName: String })
+const props = defineProps({ serviceId: Number, clusterId: Number, namespace: String, workloadType: String, workloadName: String, compact: Boolean })
 const range = ref('1h')
 const loading = ref(false)
 const status = ref('idle')
@@ -22,12 +23,15 @@ const memoryChart = computed(() => chartModel(memorySeries.value))
 const wssChart = computed(() => chartModel(wssSeries.value))
 const networkSeries = computed(() => [...networkInSeries.value, ...networkOutSeries.value].map((item) => ({ ...item, name: `${item.direction === 'out' ? '出' : '入'}流：${item.name}` })))
 const networkChart = computed(() => chartModel(networkSeries.value))
-const metricCards = computed(() => [
+const metricCards = computed(() => (props.compact ? [
+  { key: 'cpu', title: 'Pod CPU 核使用', unit: '单位：核', chart: cpuChart.value, hover: cpuHover.value },
+  { key: 'memory', title: 'Pod 内存使用', unit: 'Working Set', chart: memoryChart.value, hover: memoryHover.value }
+] : [
   { key: 'cpu', title: 'Pod CPU 核使用', unit: '单位：核', chart: cpuChart.value, hover: cpuHover.value },
   { key: 'memory', title: 'Pod 内存使用', unit: 'RSS', chart: memoryChart.value, hover: memoryHover.value },
   { key: 'wss', title: 'Pod 内存使用率', unit: 'Working Set / 内存限制', chart: wssChart.value, hover: wssHover.value },
   { key: 'network', title: 'Pod 每秒网络带宽', unit: '入 / 出流量', chart: networkChart.value, hover: networkHover.value }
-])
+]))
 const hasData = computed(() => cpuSeries.value.length || memorySeries.value.length || wssSeries.value.length || networkInSeries.value.length || networkOutSeries.value.length)
 
 function normalizeSeries(series) {
@@ -76,10 +80,13 @@ function updateHover(kind, event, chart) {
 function clearHover(kind) { const target = { cpu: cpuHover, memory: memoryHover, wss: wssHover, network: networkHover }[kind]; target.value = { visible: false } }
 
 async function load() {
-  if (!props.serviceId || !props.workloadType || !props.workloadName) return
+  const isServiceView = Boolean(props.serviceId)
+  if ((!isServiceView && (!props.clusterId || !props.namespace)) || !props.workloadType || !props.workloadName) return
   loading.value = true; status.value = 'loading'; cpuSeries.value = []; memorySeries.value = []; wssSeries.value = []; networkInSeries.value = []; networkOutSeries.value = []
   try {
-    const data = await queryAssetServiceWorkloadMetrics({ serviceId: props.serviceId, workloadType: props.workloadType, workloadName: props.workloadName, range: range.value })
+    const data = isServiceView
+      ? await queryAssetServiceWorkloadMetrics({ serviceId: props.serviceId, workloadType: props.workloadType, workloadName: props.workloadName, range: range.value })
+      : await queryK8sWorkloadMetrics(props.clusterId, props.namespace, props.workloadType, props.workloadName, range.value)
     cpuSeries.value = normalizeSeries(data?.metrics?.cpu?.series)
     memorySeries.value = normalizeSeries(data?.metrics?.memory?.series)
     wssSeries.value = normalizeSeries(data?.metrics?.wss?.series)
@@ -89,7 +96,7 @@ async function load() {
   } catch (error) { console.warn('Failed to load service pod metrics', error); status.value = 'unavailable' } finally { loading.value = false }
 }
 
-watch(() => [props.serviceId, props.workloadType, props.workloadName, range.value], load, { immediate: true })
+watch(() => [props.serviceId, props.clusterId, props.namespace, props.workloadType, props.workloadName, range.value], load, { immediate: true })
 </script>
 
 <template>

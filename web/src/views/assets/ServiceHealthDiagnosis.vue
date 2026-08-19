@@ -1,8 +1,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, Download, Refresh, Search, Upload } from '@element-plus/icons-vue'
-import { queryAssetServiceList, queryAssetServiceRuntimeTopology, queryAssetServiceWorkloadRuntime, queryAssetServiceDiagnosisEnvironment, queryAssetServiceDiagnosisProcesses, queryAssetServiceDiagnosisRun, downloadAssetServiceArthas, uploadAssetServiceArthas } from '../../api/asset'
+import { Check, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { queryAssetServiceList, queryAssetServiceRuntimeTopology, queryAssetServiceWorkloadRuntime, queryAssetServiceDiagnosisEnvironment, queryAssetServiceDiagnosisProcesses, queryAssetServiceDiagnosisRun, uploadAssetServiceArthas } from '../../api/asset'
 import { queryK8sPodContainers } from '../../api/k8s'
 
 const loading = ref(false)
@@ -85,7 +85,6 @@ function changeProcess() {
 function reset(level) { if (level === 'service') target.value.workloadKey = ''; if (level === 'service' || level === 'workload') { target.value.podName = ''; runtime.value = {} }; if (level !== 'pod') containers.value = []; target.value.container = ''; target.value.pid = ''; processes.value = []; environment.value = null; diagnostic.value = null; clearFlameResults() }
 async function refreshProcesses() { if (!canInspect.value) return ElMessage.warning('请先选择服务、工作负载、Pod 和容器'); clearFlameResults(); actionLoading.value = true; try { const data = await queryAssetServiceDiagnosisProcesses(params.value); processes.value = data.processes || []; target.value.pid = ''; environment.value = await queryAssetServiceDiagnosisEnvironment(params.value); ElMessage.success(`已加载 ${processes.value.length} 个 Java 进程，并完成环境检查`) } finally { actionLoading.value = false } }
 async function checkEnvironment() { if (!canInspect.value) return ElMessage.warning('请先选择诊断目标'); actionLoading.value = true; try { environment.value = await queryAssetServiceDiagnosisEnvironment(params.value) } finally { actionLoading.value = false } }
-async function downloadArthas() { if (!canInspect.value) return ElMessage.warning('请先选择诊断目标'); actionLoading.value = true; try { environment.value = await downloadAssetServiceArthas(params.value); ElMessage.success('Arthas 下载完成') } finally { actionLoading.value = false } }
 async function uploadArthas(file) { if (!canInspect.value) { ElMessage.warning('请先选择诊断目标'); return false }; actionLoading.value = true; try { const form = new FormData(); form.append('file', file.raw); Object.entries(params.value).forEach(([key, value]) => form.append(key, value || '')); environment.value = await uploadAssetServiceArthas(form); ElMessage.success('Arthas 已上传') } finally { actionLoading.value = false }; return false }
 async function runDiagnostic(operation, extra = {}) {
   if (!target.value.pid) return ElMessage.warning('请先刷新并选择 Java 进程 PID')
@@ -158,7 +157,7 @@ onBeforeUnmount(clearFlameResults)
         <label>容器<el-select v-model="target.container" :disabled="!target.podName" placeholder="选择容器" @change="changeContainer"><el-option v-for="item in containers" :key="item" :label="item" :value="item"/></el-select></label>
         <label>进程<el-select v-model="target.pid" :disabled="!processes.length" placeholder="刷新进程后选择" @change="changeProcess"><el-option v-for="item in processes" :key="item.pid" :label="`PID ${item.pid} · ${item.name}`" :value="item.pid"/></el-select></label>
       </div>
-      <div class="target-actions"><el-button type="success" :loading="actionLoading" :icon="Check" @click="checkEnvironment">检查环境</el-button><el-button type="primary" :loading="actionLoading" :icon="Refresh" @click="refreshProcesses">刷新进程</el-button><el-button color="#7658d5" :loading="actionLoading" :icon="Download" @click="downloadArthas">下载</el-button><el-upload :show-file-list="false" accept=".jar" :auto-upload="false" :on-change="uploadArthas"><el-button type="warning" :loading="actionLoading" :icon="Upload">上传</el-button></el-upload></div>
+      <div class="target-actions"><el-button type="success" :loading="actionLoading" :icon="Check" @click="checkEnvironment">检查环境</el-button><el-button type="primary" :loading="actionLoading" :icon="Refresh" @click="refreshProcesses">刷新进程</el-button><el-upload :show-file-list="false" accept=".jar" :auto-upload="false" :on-change="uploadArthas"><el-button type="warning" :loading="actionLoading" :icon="Upload">上传 Arthas</el-button></el-upload></div>
     </section>
     <el-alert v-if="environment" :type="environment.ready ? 'success' : 'warning'" :closable="false" show-icon class="environment"><template #title>Arthas 环境：{{ environment.ready ? '已就绪，可以开始诊断' : '未就绪，请完成环境准备' }}</template><p>{{ environment.message }}</p></el-alert>
     <section class="diagnostic-card">

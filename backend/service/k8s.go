@@ -1089,6 +1089,22 @@ func (s *Service) GetK8sPodMetrics(clusterID uint, namespace string, podName str
 	return response, nil
 }
 
+// GetK8sWorkloadMetrics compares the runtime Pods that currently belong to a workload.
+func (s *Service) GetK8sWorkloadMetrics(clusterID uint, namespace, workloadType, workloadName, rangeKey string) (map[string]any, error) {
+	if clusterID == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(workloadType) == "" || strings.TrimSpace(workloadName) == "" {
+		return nil, errors.New("invalid workload metrics query")
+	}
+	detail, err := s.GetK8sWorkloadDetail(clusterID, namespace, workloadType, workloadName)
+	if err != nil {
+		return nil, err
+	}
+	podNames := make([]string, 0, len(detail.Pods))
+	for _, pod := range detail.Pods {
+		podNames = append(podNames, pod.Name)
+	}
+	return s.getK8sPodMetricComparison(clusterID, namespace, podNames, rangeKey)
+}
+
 func (s *Service) getK8sPodMetricComparison(clusterID uint, namespace string, podNames []string, rangeKey string) (map[string]any, error) {
 	cluster, err := s.GetK8sCluster(clusterID)
 	if err != nil {

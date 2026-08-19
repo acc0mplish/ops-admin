@@ -427,6 +427,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/k8s/storage/detail", ctl.GetK8sStorageDetail)
 		authGroup.GET("/k8s/pod/detail", ctl.GetK8sPodDetail)
 		authGroup.GET("/k8s/pod/metrics", ctl.GetK8sPodMetrics)
+		authGroup.GET("/k8s/workload/metrics", ctl.GetK8sWorkloadMetrics)
 		authGroup.GET("/k8s/pod/containers", ctl.GetK8sPodContainers)
 		authGroup.GET("/k8s/pod/logs", ctl.GetK8sPodLogs)
 		authGroup.GET("/k8s/pod/events", ctl.GetK8sPodEvents)

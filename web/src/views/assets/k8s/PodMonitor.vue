@@ -18,6 +18,8 @@ const loading = ref(false)
 const status = ref('idle')
 const cpuPoints = ref([])
 const memoryPoints = ref([])
+const cpuHover = ref({ visible: false })
+const memoryHover = ref({ visible: false })
 
 const rangeSeconds = { '1h': 3600, '6h': 21600, '24h': 86400 }
 const cpuChart = computed(() => buildChart(cpuPoints.value))
@@ -72,6 +74,19 @@ function timeText(timestamp) {
   return timestamp ? new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--'
 }
 
+function chartY(chart, value) { return 10 + (1 - (value - chart.min) / (chart.max - chart.min || 1)) * 120 }
+function closestPoint(points, timestamp) { return points.reduce((closest, point) => !closest || Math.abs(point[0] - timestamp) < Math.abs(closest[0] - timestamp) ? point : closest, null) }
+function updateHover(kind, event, chart, points) {
+  if (!points.length) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  const time = chart.start + (chart.end - chart.start) * ratio
+  const point = closestPoint(points, time)
+  const target = kind === 'cpu' ? cpuHover : memoryHover
+  target.value = { visible: true, x: Math.max(12, Math.min(88, ratio * 100)), chartX: 10 + ratio * 480, time: point?.[0] || time, value: point?.[1], y: point ? chartY(chart, point[1]) : 0 }
+}
+function clearHover(kind) { (kind === 'cpu' ? cpuHover : memoryHover).value = { visible: false } }
+
 async function loadMetrics() {
   const namespace = String(props.pod?.namespace || '').trim()
   const podName = String(props.pod?.name || '').trim()
@@ -117,18 +132,20 @@ watch(() => [props.clusterId, props.pod?.namespace, props.pod?.name, range.value
       <div v-if="hasData" class="pod-monitor-charts">
         <article class="pod-monitor-card cpu">
           <div class="pod-monitor-card-head"><span>CPU</span><b>{{ formatCPU(latestCPU) }}</b></div>
-          <svg viewBox="0 0 500 140" preserveAspectRatio="none" role="img" aria-label="Pod CPU 使用趋势">
+          <div class="pod-chart-wrap"><svg viewBox="0 0 500 140" preserveAspectRatio="none" role="img" aria-label="Pod CPU 使用趋势" @mousemove="updateHover('cpu', $event, cpuChart, cpuPoints)" @mouseleave="clearHover('cpu')">
             <line v-for="line in 4" :key="line" x1="10" x2="490" :y1="10 + (line - 1) * 40" :y2="10 + (line - 1) * 40" />
             <path :d="cpuChart.path" />
-          </svg>
+            <template v-if="cpuHover.visible"><line class="hover-line" :x1="cpuHover.chartX" :x2="cpuHover.chartX" y1="10" y2="130" /><circle :cx="cpuHover.chartX" :cy="cpuHover.y" r="3.5" /></template>
+          </svg><div v-if="cpuHover.visible" class="pod-chart-tooltip" :style="{ left: `${cpuHover.x}%` }"><strong>{{ timeText(cpuHover.time) }}</strong><span>CPU</span><b>{{ formatCPU(cpuHover.value) }}</b></div></div>
           <div class="pod-monitor-axis"><span>{{ timeText(cpuChart.start) }}</span><span>{{ timeText(cpuChart.end) }}</span></div>
         </article>
         <article class="pod-monitor-card memory">
           <div class="pod-monitor-card-head"><span>内存</span><b>{{ formatBytes(latestMemory) }}</b></div>
-          <svg viewBox="0 0 500 140" preserveAspectRatio="none" role="img" aria-label="Pod 内存使用趋势">
+          <div class="pod-chart-wrap"><svg viewBox="0 0 500 140" preserveAspectRatio="none" role="img" aria-label="Pod 内存使用趋势" @mousemove="updateHover('memory', $event, memoryChart, memoryPoints)" @mouseleave="clearHover('memory')">
             <line v-for="line in 4" :key="line" x1="10" x2="490" :y1="10 + (line - 1) * 40" :y2="10 + (line - 1) * 40" />
             <path :d="memoryChart.path" />
-          </svg>
+            <template v-if="memoryHover.visible"><line class="hover-line" :x1="memoryHover.chartX" :x2="memoryHover.chartX" y1="10" y2="130" /><circle :cx="memoryHover.chartX" :cy="memoryHover.y" r="3.5" /></template>
+          </svg><div v-if="memoryHover.visible" class="pod-chart-tooltip" :style="{ left: `${memoryHover.x}%` }"><strong>{{ timeText(memoryHover.time) }}</strong><span>内存</span><b>{{ formatBytes(memoryHover.value) }}</b></div></div>
           <div class="pod-monitor-axis"><span>{{ timeText(memoryChart.start) }}</span><span>{{ timeText(memoryChart.end) }}</span></div>
         </article>
       </div>
@@ -151,11 +168,15 @@ watch(() => [props.clusterId, props.pod?.namespace, props.pod?.name, range.value
 .pod-monitor-card { padding: 12px; border: 1px solid #e4eaf5; border-radius: 8px; background: #fff; }
 .pod-monitor-card-head { justify-content: space-between; color: #60728c; font-size: 13px; }
 .pod-monitor-card-head b { color: #1e3b67; font-size: 16px; }
-.pod-monitor-card svg { display: block; width: 100%; height: 132px; margin-top: 8px; }
+.pod-chart-wrap { position: relative; }
+.pod-monitor-card svg { display: block; width: 100%; height: 132px; margin-top: 8px; cursor: crosshair; }
 .pod-monitor-card line { stroke: #e8eef7; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.pod-monitor-card .hover-line { stroke: #7d8fa9; stroke-dasharray: 3 3; }
 .pod-monitor-card path { fill: none; stroke-width: 2.4; vector-effect: non-scaling-stroke; }
+.pod-monitor-card circle { stroke: #fff; stroke-width: 1.5; }.pod-monitor-card.cpu circle { fill: #3c77e8; }.pod-monitor-card.memory circle { fill: #20a581; }
 .pod-monitor-card.cpu path { stroke: #3c77e8; }
 .pod-monitor-card.memory path { stroke: #20a581; }
+.pod-chart-tooltip { position: absolute; z-index: 2; top: 12px; min-width: 112px; padding: 8px 9px; border: 1px solid #d6e1ef; border-radius: 7px; background: rgba(255,255,255,.96); box-shadow: 0 7px 18px rgba(42,69,104,.18); color: #63758f; font-size: 11px; pointer-events: none; transform: translateX(-50%); }.pod-chart-tooltip strong { display: block; margin-bottom: 4px; color: #294b79; font-size: 12px; }.pod-chart-tooltip span { margin-right: 8px; }.pod-chart-tooltip b { color: #294b79; }
 .pod-monitor-axis { justify-content: space-between; color: #8b98ac; font-size: 11px; }
 @media (max-width: 900px) { .pod-monitor-charts { grid-template-columns: 1fr; } .pod-monitor-head { align-items: flex-start; flex-direction: column; } }
 </style>

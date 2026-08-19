@@ -54,6 +54,9 @@ export const queryK8sPodDetail = (clusterId, namespace, podName) =>
 export const queryK8sPodMetrics = (clusterId, namespace, podName, range = '1h') =>
   http.get('/api/v1/k8s/pod/metrics', { params: { clusterId, namespace, podName, range } })
 
+export const queryK8sWorkloadMetrics = (clusterId, namespace, workloadType, workloadName, range = '1h') =>
+  http.get('/api/v1/k8s/workload/metrics', { params: { clusterId, namespace, workloadType, workloadName, range } })
+
 export const queryK8sPodContainers = (clusterId, namespace, podName) =>
   http.get('/api/v1/k8s/pod/containers', { params: { clusterId, namespace, podName } })
 

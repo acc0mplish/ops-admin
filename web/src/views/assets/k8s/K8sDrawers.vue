@@ -1,5 +1,6 @@
 <script setup>
 import PodMonitor from './PodMonitor.vue'
+import ServicePodMonitor from '../ServicePodMonitor.vue'
 
 defineProps({
   page: {
@@ -161,6 +162,14 @@ defineProps({
             </el-table-column>
           </el-table>
         </div>
+
+        <ServicePodMonitor
+          compact
+          :cluster-id="page.cluster?.id"
+          :namespace="page.workloadDetail.namespace"
+          :workload-type="page.workloadDetail.type"
+          :workload-name="page.workloadDetail.name"
+        />
 
         <div class="drawer-section">
           <strong>{{ page.t('k8sRelatedPods') }}</strong>
