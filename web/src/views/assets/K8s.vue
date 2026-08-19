@@ -77,6 +77,7 @@ const namespaceFilter = ref('__all__')
 const resourceKeyword = ref('')
 const namespaceKeyword = ref('')
 const workloadTypeFilter = ref('all')
+const podWorkloadFilter = ref('__all__')
 const podScopedNames = ref([])
 const selectedWorkloads = ref([])
 const workloadImageMap = reactive({})
@@ -320,6 +321,34 @@ const namespaceOptions = computed(() => {
   return options
 })
 
+function podWorkloadFilterValue(pod) {
+  const name = String(pod?.workloadName || '').trim()
+  if (!name) return '__standalone__'
+  const type = String(pod?.workloadType || 'Workload').trim()
+  return `${type}/${name}`
+}
+
+const podWorkloadOptions = computed(() => {
+  const grouped = new Map()
+  for (const pod of pods.value || []) {
+    if (namespaceFilter.value !== '__all__' && pod.namespace !== namespaceFilter.value) continue
+    const value = podWorkloadFilterValue(pod)
+    const item = grouped.get(value) || {
+      value,
+      label: pod.workloadName || '独立 Pod',
+      count: 0
+    }
+    item.count += 1
+    grouped.set(value, item)
+  }
+  return [
+    { value: '__all__', label: '全部工作负载' },
+    ...Array.from(grouped.values())
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .map((item) => ({ ...item, label: `${item.label}（${item.count}）` }))
+  ]
+})
+
 const filteredPods = computed(() => filterList(pods.value))
 const pagedPods = computed(() => {
   const start = (podPage.value - 1) * podPageSize.value
@@ -498,12 +527,17 @@ function filterList(list) {
   if (list === pods.value && podScopedNames.value.length) {
     result = result.filter((item) => podScopedNames.value.includes(item.name))
   }
+  if (list === pods.value && podWorkloadFilter.value !== '__all__') {
+    result = result.filter((item) => podWorkloadFilterValue(item) === podWorkloadFilter.value)
+  }
   const keyword = resourceKeyword.value.trim().toLowerCase()
   if (!keyword) return result
   return result.filter((item) => {
     const values = [
       item.name,
       item.namespace,
+      item.workloadName,
+      item.workloadType,
       item.type,
       item.host,
       item.address,
@@ -529,9 +563,16 @@ function restoreNamespaceFilter() {
 
 function handleNamespaceFilterChange(value) {
   namespaceFilter.value = value || '__all__'
+  podWorkloadFilter.value = '__all__'
   podScopedNames.value = []
   podPage.value = 1
   localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
+}
+
+function handlePodWorkloadFilterChange(value) {
+  podWorkloadFilter.value = value || '__all__'
+  podScopedNames.value = []
+  podPage.value = 1
 }
 
 function handleResourceKeywordChange(value) {
@@ -549,6 +590,7 @@ function openNamespaceWorkloads(row) {
   namespaceFilter.value = row.name
   resourceKeyword.value = ''
   workloadTypeFilter.value = 'all'
+  podWorkloadFilter.value = '__all__'
   podScopedNames.value = []
   localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
   handleTabChange('workloads')
@@ -558,12 +600,22 @@ async function openWorkloadPods(row) {
   if (!cluster.value?.id || !row?.name) return
   namespaceFilter.value = row.namespace || '__all__'
   localStorage.setItem(NAMESPACE_FILTER_KEY, namespaceFilter.value)
-  const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
-  const relatedPods = Array.isArray(detail?.pods) ? detail.pods.map((item) => item.name).filter(Boolean) : []
-  podScopedNames.value = relatedPods
+  const workloadFilter = podWorkloadFilterValue({ workloadName: row.name, workloadType: row.type })
+  const hasResolvedWorkload = pods.value.some((pod) => podWorkloadFilterValue(pod) === workloadFilter)
+  podWorkloadFilter.value = hasResolvedWorkload ? workloadFilter : '__all__'
+  podScopedNames.value = []
   podPage.value = 1
-  resourceKeyword.value = relatedPods.length ? '' : row.name
+  resourceKeyword.value = ''
   handleTabChange('pods')
+  try {
+    const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
+    const relatedPods = Array.isArray(detail?.pods) ? detail.pods.map((item) => item.name).filter(Boolean) : []
+    if (relatedPods.length) {
+      podScopedNames.value = relatedPods
+    }
+  } catch (error) {
+    console.warn('Failed to load workload pods', error)
+  }
 }
 
 function handleWorkloadTypeChange(value) {
@@ -2446,6 +2498,7 @@ const page = reactive({
   namespaceFilter,
   resourceKeyword,
   namespaceKeyword,
+  podWorkloadFilter,
   podScopedNames,
   configMapDrawerVisible,
   configMapDrawerLoading,
@@ -2527,6 +2580,7 @@ const page = reactive({
   hasCluster,
   statusType,
   namespaceOptions,
+  podWorkloadOptions,
   configStorageCreateTitle,
   storageAccessModeOptions,
   pvcStorageClassOptions,
@@ -2573,6 +2627,7 @@ const page = reactive({
   handleClusterChange,
   handleTabChange,
   handleNamespaceFilterChange,
+  handlePodWorkloadFilterChange,
   handleResourceKeywordChange,
   handleNamespaceKeywordChange,
   openNamespaceWorkloads,

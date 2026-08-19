@@ -690,6 +690,12 @@ func (s *Service) DeleteMonitorDatasource(id uint) error {
 	if count > 0 {
 		return errors.New("数据源已被监控大屏引用，不能删除")
 	}
+	if err := s.db.Model(&model.K8sCluster{}).Where("monitor_datasource_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("数据源已被 K8s 集群监控绑定，不能删除")
+	}
 	return s.db.Delete(&model.MonitorDatasource{}, id).Error
 }
 

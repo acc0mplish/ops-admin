@@ -1,4 +1,6 @@
 <script setup>
+import PodMonitor from './PodMonitor.vue'
+
 defineProps({
   page: {
     type: Object,
@@ -376,6 +378,8 @@ defineProps({
             </el-tag>
           </div>
         </div>
+
+        <PodMonitor :cluster-id="page.cluster?.id" :pod="page.podDetail" />
 
         <div class="drawer-section">
           <strong>{{ page.t('k8sEvents') }}</strong>

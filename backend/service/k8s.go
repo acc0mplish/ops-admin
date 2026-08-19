@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -619,6 +620,7 @@ type k8sFetchedData struct {
 	PVCs                  []kubePersistentVolumeClaim
 	PVs                   []kubePersistentVolume
 	Deployments           []kubeDeployment
+	ReplicaSets           []kubeReplicaSet
 	StatefulSet           []kubeStatefulSet
 	DaemonSets            []kubeDaemonSet
 	Jobs                  []kubeJob
@@ -650,7 +652,7 @@ type k8sManifestIdentity struct {
 
 func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
 	var list []model.K8sCluster
-	if err := s.db.Preload("Gateway").Order("id asc").Find(&list).Error; err != nil {
+	if err := s.db.Preload("Gateway").Preload("MonitorDatasource").Order("id asc").Find(&list).Error; err != nil {
 		return nil, err
 	}
 
@@ -663,21 +665,26 @@ func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
 
 func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 	var cluster model.K8sCluster
-	if err := s.db.Preload("Gateway").First(&cluster, id).Error; err != nil {
+	if err := s.db.Preload("Gateway").Preload("MonitorDatasource").First(&cluster, id).Error; err != nil {
 		return cluster, err
 	}
 	return cluster, nil
 }
 
 func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
+	monitorDatasourceID, err := s.resolveK8sMonitorDatasource(payload.MonitorDatasourceID)
+	if err != nil {
+		return model.K8sCluster{}, err
+	}
 	cluster := model.K8sCluster{
-		Name:           strings.TrimSpace(payload.Name),
-		Description:    strings.TrimSpace(payload.Description),
-		KubeConfig:     strings.TrimSpace(payload.KubeConfig),
-		Env:            normalizeEnvCode(payload.Env),
-		Tags:           normalizeAssetTags(payload.Tags),
-		ConnectionMode: normalizeConnectionMode(payload.ConnectionMode),
-		GatewayID:      optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
+		Name:                strings.TrimSpace(payload.Name),
+		Description:         strings.TrimSpace(payload.Description),
+		KubeConfig:          strings.TrimSpace(payload.KubeConfig),
+		Env:                 normalizeEnvCode(payload.Env),
+		Tags:                normalizeAssetTags(payload.Tags),
+		ConnectionMode:      normalizeConnectionMode(payload.ConnectionMode),
+		GatewayID:           optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
+		MonitorDatasourceID: monitorDatasourceID,
 	}
 	if err := validateK8sClusterPayload(cluster); err != nil {
 		return cluster, err
@@ -723,6 +730,11 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	cluster.Tags = normalizeAssetTags(payload.Tags)
 	cluster.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
 	cluster.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
+	monitorDatasourceID, err := s.resolveK8sMonitorDatasource(payload.MonitorDatasourceID)
+	if err != nil {
+		return cluster, err
+	}
+	cluster.MonitorDatasourceID = monitorDatasourceID
 
 	if err := validateK8sClusterPayload(cluster); err != nil {
 		return cluster, err
@@ -870,7 +882,7 @@ func (s *Service) getK8sClusterDetailUncached(clusterID uint) (model.K8sClusterD
 		},
 		Nodes:      buildNodeItems(data.Nodes, data.Pods),
 		Namespaces: buildNamespaceItems(data.Namespaces, namespaceCounts),
-		Pods:       buildPodItems(data.Pods),
+		Pods:       buildPodItemsWithWorkloads(data),
 		Workloads:  workloads,
 		Network:    buildNetworkSection(data.Services, data.Ingresses, endpointCounts),
 		AdvancedNetwork: buildAdvancedNetworkSection(
@@ -1014,6 +1026,227 @@ func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName stri
 		CreatedAt:      formatTimestamp(pod.Metadata.CreationTimestamp),
 		YAML:           marshalK8sYAML(pod),
 	}, nil
+}
+
+// GetK8sPodMetrics returns the basic CPU and memory history for one Pod. The
+// datasource stays server-side so kube pages never expose monitoring endpoint
+// credentials or need to choose a datasource themselves.
+func (s *Service) GetK8sPodMetrics(clusterID uint, namespace string, podName string, rangeKey string) (map[string]any, error) {
+	if clusterID == 0 || strings.TrimSpace(namespace) == "" || strings.TrimSpace(podName) == "" {
+		return nil, errors.New("invalid pod metrics query")
+	}
+	cluster, err := s.GetK8sCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	startAt, endAt, stepSeconds, normalizedRange := resolveK8sPodMetricRange(rangeKey)
+	response := map[string]any{
+		"status": "unavailable",
+		"range":  map[string]any{"key": normalizedRange, "startAt": startAt.Unix(), "endAt": endAt.Unix(), "stepSeconds": stepSeconds},
+		"metrics": map[string]any{
+			"cpu":    map[string]any{"latest": nil, "points": []map[string]any{}},
+			"memory": map[string]any{"latest": nil, "points": []map[string]any{}},
+		},
+	}
+
+	if cluster.MonitorDatasourceID == nil || *cluster.MonitorDatasourceID == 0 {
+		response["status"] = "not_configured"
+		return response, nil
+	}
+	var datasource model.MonitorDatasource
+	if err := s.db.First(&datasource, *cluster.MonitorDatasourceID).Error; err != nil {
+		response["status"] = "not_configured"
+		return response, nil
+	}
+	if datasource.Status != 1 || !isMonitorMetricDatasource(datasource.Type) {
+		response["status"] = "not_configured"
+		return response, nil
+	}
+	selector := fmt.Sprintf(`namespace=%q,pod=%q,container!="",container!="POD"`, namespace, podName)
+	queries := map[string]string{
+		"cpu":    fmt.Sprintf("sum(rate(container_cpu_usage_seconds_total{%s}[5m]))", selector),
+		"memory": fmt.Sprintf("sum(container_memory_working_set_bytes{%s})", selector),
+	}
+	metrics := response["metrics"].(map[string]any)
+	queryErrors := make(map[string]string)
+	for name, query := range queries {
+		result, err := s.prometheusRangeQuery(datasource, query, startAt, endAt, stepSeconds)
+		if err != nil {
+			queryErrors[name] = err.Error()
+			continue
+		}
+		points := k8sPodMetricPoints(result)
+		metrics[name] = map[string]any{"latest": k8sPodMetricLatest(points), "points": points}
+	}
+	if len(queryErrors) > 0 {
+		response["errors"] = queryErrors
+	}
+	if len(queryErrors) == len(queries) {
+		response["status"] = "query_failed"
+	} else {
+		response["status"] = "available"
+	}
+	return response, nil
+}
+
+func (s *Service) getK8sPodMetricComparison(clusterID uint, namespace string, podNames []string, rangeKey string) (map[string]any, error) {
+	cluster, err := s.GetK8sCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	startAt, endAt, stepSeconds, normalizedRange := resolveK8sPodMetricRange(rangeKey)
+	response := map[string]any{
+		"status": "unavailable",
+		"range":  map[string]any{"key": normalizedRange, "startAt": startAt.Unix(), "endAt": endAt.Unix(), "stepSeconds": stepSeconds},
+		"metrics": map[string]any{
+			"cpu":        map[string]any{"series": []map[string]any{}},
+			"memory":     map[string]any{"series": []map[string]any{}},
+			"wss":        map[string]any{"series": []map[string]any{}},
+			"networkIn":  map[string]any{"series": []map[string]any{}},
+			"networkOut": map[string]any{"series": []map[string]any{}},
+		},
+	}
+	if cluster.MonitorDatasourceID == nil || *cluster.MonitorDatasourceID == 0 || len(podNames) == 0 {
+		response["status"] = "not_configured"
+		return response, nil
+	}
+	var datasource model.MonitorDatasource
+	if err := s.db.First(&datasource, *cluster.MonitorDatasourceID).Error; err != nil || datasource.Status != 1 || !isMonitorMetricDatasource(datasource.Type) {
+		response["status"] = "not_configured"
+		return response, nil
+	}
+	quotedNames := make([]string, 0, len(podNames))
+	for _, name := range podNames {
+		if name = strings.TrimSpace(name); name != "" {
+			quotedNames = append(quotedNames, regexp.QuoteMeta(name))
+		}
+	}
+	if len(quotedNames) == 0 {
+		return response, nil
+	}
+	selector := fmt.Sprintf(`namespace=%q,pod=~%q,container!="",container!="POD"`, namespace, "^("+strings.Join(quotedNames, "|")+")$")
+	queries := map[string]string{
+		"cpu":    fmt.Sprintf("sum by (pod) (rate(container_cpu_usage_seconds_total{%s}[5m]))", selector),
+		"memory": fmt.Sprintf("sum by (pod) (container_memory_rss{%s})", selector),
+		"wss": fmt.Sprintf(
+			"100 * (sum by (pod) (container_memory_working_set_bytes{%s}) / on (pod) sum by (pod) (kube_pod_container_resource_limits{namespace=%q,pod=~%q,resource=\"memory\"}))",
+			selector, namespace, "^("+strings.Join(quotedNames, "|")+")$",
+		),
+		"networkIn":  fmt.Sprintf("sum by (pod) (rate(container_network_receive_bytes_total{namespace=%q,pod=~%q}[5m]))", namespace, "^("+strings.Join(quotedNames, "|")+")$"),
+		"networkOut": fmt.Sprintf("sum by (pod) (rate(container_network_transmit_bytes_total{namespace=%q,pod=~%q}[5m]))", namespace, "^("+strings.Join(quotedNames, "|")+")$"),
+	}
+	metrics := response["metrics"].(map[string]any)
+	queryErrors := make(map[string]string)
+	for name, query := range queries {
+		result, queryErr := s.prometheusRangeQuery(datasource, query, startAt, endAt, stepSeconds)
+		if queryErr != nil {
+			queryErrors[name] = queryErr.Error()
+			continue
+		}
+		metrics[name] = map[string]any{"series": k8sPodMetricSeries(result)}
+	}
+	if len(queryErrors) > 0 {
+		response["errors"] = queryErrors
+	}
+	if len(queryErrors) == len(queries) {
+		response["status"] = "query_failed"
+	} else {
+		response["status"] = "available"
+	}
+	return response, nil
+}
+
+func k8sPodMetricSeries(result *PromQueryResult) []map[string]any {
+	series := make([]map[string]any, 0)
+	if result == nil {
+		return series
+	}
+	for _, sample := range result.Data.Result {
+		points := make([]map[string]any, 0, len(sample.Values))
+		for _, pair := range sample.Values {
+			if len(pair) < 2 {
+				continue
+			}
+			timestamp, timestampErr := strconv.ParseFloat(fmt.Sprint(pair[0]), 64)
+			value, valueErr := strconv.ParseFloat(fmt.Sprint(pair[1]), 64)
+			if timestampErr == nil && valueErr == nil {
+				points = append(points, map[string]any{"timestamp": int64(timestamp * 1000), "value": value})
+			}
+		}
+		if len(points) > 0 {
+			series = append(series, map[string]any{"name": sample.Metric["pod"], "latest": points[len(points)-1]["value"], "points": points})
+		}
+	}
+	sort.Slice(series, func(left, right int) bool {
+		return fmt.Sprint(series[left]["name"]) < fmt.Sprint(series[right]["name"])
+	})
+	return series
+}
+
+func resolveK8sPodMetricRange(rangeKey string) (time.Time, time.Time, int, string) {
+	definitions := map[string]struct {
+		duration time.Duration
+		step     int
+	}{
+		"1h":  {duration: time.Hour, step: 30},
+		"6h":  {duration: 6 * time.Hour, step: 120},
+		"24h": {duration: 24 * time.Hour, step: 300},
+	}
+	definition, ok := definitions[rangeKey]
+	if !ok {
+		rangeKey = "1h"
+		definition = definitions[rangeKey]
+	}
+	endAt := time.Now()
+	return endAt.Add(-definition.duration), endAt, definition.step, rangeKey
+}
+
+func k8sPodMetricPoints(result *PromQueryResult) []map[string]any {
+	values := make(map[int64]float64)
+	if result != nil {
+		for _, sample := range result.Data.Result {
+			for _, pair := range sample.Values {
+				if len(pair) < 2 {
+					continue
+				}
+				timestamp, timestampErr := strconv.ParseFloat(fmt.Sprint(pair[0]), 64)
+				value, valueErr := strconv.ParseFloat(fmt.Sprint(pair[1]), 64)
+				if timestampErr == nil && valueErr == nil {
+					values[int64(timestamp*1000)] += value
+				}
+			}
+		}
+	}
+	points := make([]map[string]any, 0, len(values))
+	for timestamp, value := range values {
+		points = append(points, map[string]any{"timestamp": timestamp, "value": value})
+	}
+	sort.Slice(points, func(left, right int) bool {
+		return points[left]["timestamp"].(int64) < points[right]["timestamp"].(int64)
+	})
+	return points
+}
+
+func k8sPodMetricLatest(points []map[string]any) any {
+	if len(points) == 0 {
+		return nil
+	}
+	return points[len(points)-1]["value"]
+}
+
+func (s *Service) resolveK8sMonitorDatasource(datasourceID uint) (*uint, error) {
+	if datasourceID == 0 {
+		return nil, nil
+	}
+	var datasource model.MonitorDatasource
+	if err := s.db.First(&datasource, datasourceID).Error; err != nil {
+		return nil, errors.New("监控数据源不存在")
+	}
+	if datasource.Status != 1 || !isMonitorMetricDatasource(datasource.Type) {
+		return nil, errors.New("请选择已启用的 Prometheus 或 VictoriaMetrics 数据源")
+	}
+	id := datasource.ID
+	return &id, nil
 }
 
 func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string, container string, tailLines int) (map[string]any, error) {
@@ -2318,6 +2551,11 @@ func fetchK8sData(client *http.Client, runtime kubeClusterRuntime) (k8sFetchedDa
 		data.Deployments = deploymentResp.Items
 	}
 
+	var replicaSetResp kubeReplicaSetListResponse
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/replicasets", &replicaSetResp); err == nil {
+		data.ReplicaSets = replicaSetResp.Items
+	}
+
 	var statefulSetResp kubeStatefulSetListResponse
 	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/statefulsets", &statefulSetResp); err == nil {
 		data.StatefulSet = statefulSetResp.Items
@@ -2876,7 +3114,135 @@ func buildNamespaceItems(namespaces []kubeNamespace, counts map[string]struct {
 	return items
 }
 
+type podWorkloadRef struct {
+	Name string
+	Type string
+}
+
+func podWorkloadKey(namespace, podName string) string {
+	return namespace + "/" + podName
+}
+
+func buildPodItemsWithWorkloads(data k8sFetchedData) []model.K8sPodItem {
+	refs := make(map[string]podWorkloadRef)
+	workloadsByNamespace := make(map[string][]podWorkloadRef)
+	addWorkload := func(namespace, name, workloadType string) {
+		if name == "" {
+			return
+		}
+		workloadsByNamespace[namespace] = append(workloadsByNamespace[namespace], podWorkloadRef{Name: name, Type: workloadType})
+	}
+	for _, item := range data.Deployments {
+		addWorkload(item.Metadata.Namespace, item.Metadata.Name, "Deployment")
+	}
+	for _, item := range data.StatefulSet {
+		addWorkload(item.Metadata.Namespace, item.Metadata.Name, "StatefulSet")
+	}
+	for _, item := range data.DaemonSets {
+		addWorkload(item.Metadata.Namespace, item.Metadata.Name, "DaemonSet")
+	}
+	for _, item := range data.Jobs {
+		addWorkload(item.Metadata.Namespace, item.Metadata.Name, "Job")
+	}
+	for _, item := range data.CronJobs {
+		addWorkload(item.Metadata.Namespace, item.Metadata.Name, "CronJob")
+	}
+
+	replicaSetRefs := make(map[string]podWorkloadRef)
+	for _, item := range data.ReplicaSets {
+		for _, owner := range item.Metadata.OwnerReferences {
+			if strings.EqualFold(owner.Kind, "Deployment") && owner.Name != "" {
+				replicaSetRefs[podWorkloadKey(item.Metadata.Namespace, item.Metadata.Name)] = podWorkloadRef{Name: owner.Name, Type: "Deployment"}
+				break
+			}
+		}
+	}
+	jobRefs := make(map[string]podWorkloadRef)
+	for _, item := range data.Jobs {
+		for _, owner := range item.Metadata.OwnerReferences {
+			if strings.EqualFold(owner.Kind, "CronJob") && owner.Name != "" {
+				jobRefs[podWorkloadKey(item.Metadata.Namespace, item.Metadata.Name)] = podWorkloadRef{Name: owner.Name, Type: "CronJob"}
+				break
+			}
+		}
+	}
+	for _, pod := range data.Pods {
+		for _, owner := range pod.Metadata.OwnerReferences {
+			var ref podWorkloadRef
+			switch {
+			case strings.EqualFold(owner.Kind, "ReplicaSet"):
+				ref = replicaSetRefs[podWorkloadKey(pod.Metadata.Namespace, owner.Name)]
+			case strings.EqualFold(owner.Kind, "Job"):
+				ref = jobRefs[podWorkloadKey(pod.Metadata.Namespace, owner.Name)]
+				if ref.Name == "" {
+					ref = podWorkloadRef{Name: owner.Name, Type: "Job"}
+				}
+			case strings.EqualFold(owner.Kind, "StatefulSet"), strings.EqualFold(owner.Kind, "DaemonSet"):
+				ref = podWorkloadRef{Name: owner.Name, Type: owner.Kind}
+			}
+			if ref.Name != "" {
+				refs[podWorkloadKey(pod.Metadata.Namespace, pod.Metadata.Name)] = ref
+				break
+			}
+		}
+	}
+	assignBySelector := func(namespace, name, workloadType string, selector map[string]string) {
+		for _, pod := range data.Pods {
+			key := podWorkloadKey(namespace, pod.Metadata.Name)
+			if pod.Metadata.Namespace == namespace && refs[key].Name == "" && len(selector) > 0 && matchLabels(pod.Metadata.Labels, selector) {
+				refs[key] = podWorkloadRef{Name: name, Type: workloadType}
+			}
+		}
+	}
+	for _, item := range data.Deployments {
+		assignBySelector(item.Metadata.Namespace, item.Metadata.Name, "Deployment", item.Spec.Selector.MatchLabels)
+	}
+	for _, item := range data.StatefulSet {
+		assignBySelector(item.Metadata.Namespace, item.Metadata.Name, "StatefulSet", item.Spec.Selector.MatchLabels)
+	}
+	for _, item := range data.DaemonSets {
+		assignBySelector(item.Metadata.Namespace, item.Metadata.Name, "DaemonSet", item.Spec.Selector.MatchLabels)
+	}
+	for _, item := range data.Jobs {
+		selector := map[string]string{"job-name": item.Metadata.Name}
+		if item.Spec.Selector != nil && len(item.Spec.Selector.MatchLabels) > 0 {
+			selector = item.Spec.Selector.MatchLabels
+		}
+		assignBySelector(item.Metadata.Namespace, item.Metadata.Name, "Job", selector)
+	}
+	for _, item := range data.CronJobs {
+		for _, pod := range data.Pods {
+			if pod.Metadata.Namespace != item.Metadata.Namespace {
+				continue
+			}
+			for _, owner := range pod.Metadata.OwnerReferences {
+				if refs[podWorkloadKey(pod.Metadata.Namespace, pod.Metadata.Name)].Name == "" && strings.EqualFold(owner.Kind, "Job") && strings.HasPrefix(owner.Name, item.Metadata.Name+"-") {
+					refs[podWorkloadKey(pod.Metadata.Namespace, pod.Metadata.Name)] = podWorkloadRef{Name: item.Metadata.Name, Type: "CronJob"}
+				}
+			}
+		}
+	}
+	for _, pod := range data.Pods {
+		key := podWorkloadKey(pod.Metadata.Namespace, pod.Metadata.Name)
+		if refs[key].Name != "" {
+			continue
+		}
+		// 部分受限集群不会返回 ownerReferences；在这种情况下按 Kubernetes
+		// 控制器生成的 Pod 名称前缀兜底，并优先选择最长的工作负载名称。
+		for _, candidate := range workloadsByNamespace[pod.Metadata.Namespace] {
+			if strings.HasPrefix(pod.Metadata.Name, candidate.Name+"-") && len(candidate.Name) > len(refs[key].Name) {
+				refs[key] = candidate
+			}
+		}
+	}
+	return buildPodItemsWithRefs(data.Pods, refs)
+}
+
 func buildPodItems(pods []kubePod) []model.K8sPodItem {
+	return buildPodItemsWithRefs(pods, nil)
+}
+
+func buildPodItemsWithRefs(pods []kubePod, refs map[string]podWorkloadRef) []model.K8sPodItem {
 	items := make([]model.K8sPodItem, 0, len(pods))
 	for _, pod := range pods {
 		restarts := 0
@@ -2884,15 +3250,19 @@ func buildPodItems(pods []kubePod) []model.K8sPodItem {
 			restarts += status.RestartCount
 		}
 
+		workload := refs[podWorkloadKey(pod.Metadata.Namespace, pod.Metadata.Name)]
+		if workload.Name == "" {
+			for _, owner := range pod.Metadata.OwnerReferences {
+				if owner.Name != "" && (owner.Kind == "StatefulSet" || owner.Kind == "DaemonSet" || owner.Kind == "Job") {
+					workload = podWorkloadRef{Name: owner.Name, Type: owner.Kind}
+					break
+				}
+			}
+		}
 		items = append(items, model.K8sPodItem{
-			Name:      pod.Metadata.Name,
-			Namespace: pod.Metadata.Namespace,
-			Status:    fallbackText(pod.Status.Phase),
-			Node:      fallbackText(pod.Spec.NodeName),
-			NodeIP:    fallbackText(pod.Status.HostIP),
-			Restarts:  restarts,
-			Age:       humanizeAge(pod.Metadata.CreationTimestamp),
-			IP:        fallbackText(pod.Status.PodIP),
+			Name: pod.Metadata.Name, Namespace: pod.Metadata.Namespace, WorkloadName: workload.Name, WorkloadType: workload.Type,
+			Status: fallbackText(pod.Status.Phase), Node: fallbackText(pod.Spec.NodeName), NodeIP: fallbackText(pod.Status.HostIP),
+			Restarts: restarts, Age: humanizeAge(pod.Metadata.CreationTimestamp), IP: fallbackText(pod.Status.PodIP),
 		})
 	}
 
@@ -3778,22 +4148,24 @@ func calculateK8sAggregateMetrics(nodes []kubeNode, pods []kubePod) k8sAggregate
 
 func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 	return model.K8sClusterView{
-		ID:             cluster.ID,
-		Name:           cluster.Name,
-		Status:         cluster.Status,
-		StatusText:     k8sStatusText(cluster.Status),
-		APIServer:      cluster.APIServer,
-		Version:        cluster.Version,
-		NodeCount:      cluster.NodeCount,
-		Env:            cluster.Env,
-		Tags:           cluster.Tags,
-		ConnectionMode: normalizeConnectionMode(cluster.ConnectionMode),
-		GatewayID:      cluster.GatewayID,
-		GatewayName:    cluster.Gateway.Name,
-		Description:    cluster.Description,
-		LastSyncAt:     cluster.LastSyncAt,
-		CreatedAt:      cluster.CreatedAt,
-		UpdatedAt:      cluster.UpdatedAt,
+		ID:                    cluster.ID,
+		Name:                  cluster.Name,
+		Status:                cluster.Status,
+		StatusText:            k8sStatusText(cluster.Status),
+		APIServer:             cluster.APIServer,
+		Version:               cluster.Version,
+		NodeCount:             cluster.NodeCount,
+		Env:                   cluster.Env,
+		Tags:                  cluster.Tags,
+		ConnectionMode:        normalizeConnectionMode(cluster.ConnectionMode),
+		GatewayID:             cluster.GatewayID,
+		GatewayName:           cluster.Gateway.Name,
+		MonitorDatasourceID:   cluster.MonitorDatasourceID,
+		MonitorDatasourceName: cluster.MonitorDatasource.Name,
+		Description:           cluster.Description,
+		LastSyncAt:            cluster.LastSyncAt,
+		CreatedAt:             cluster.CreatedAt,
+		UpdatedAt:             cluster.UpdatedAt,
 	}
 }
 

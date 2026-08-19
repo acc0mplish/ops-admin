@@ -129,6 +129,14 @@ defineProps({
     <el-table v-if="page.hasItems(page.filteredPods)" :data="page.pagedPods" class="data-table pod-management-table">
       <el-table-column prop="name" :label="page.t('k8sPodName')" min-width="260" />
       <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="140" />
+      <el-table-column label="工作负载" min-width="200">
+        <template #default="{ row }">
+          <div v-if="row.workloadName" class="pod-workload-cell">
+            <el-tag size="small" effect="plain" class="pod-workload-type">{{ row.workloadName }}</el-tag>
+          </div>
+          <span v-else class="pod-workload-empty">独立 Pod</span>
+        </template>
+      </el-table-column>
       <el-table-column :label="page.t('k8sStatus')" width="110">
         <template #default="{ row }">
           <el-tag :type="page.podStatusTagType(row.status)" effect="light" round>{{ row.status || '-' }}</el-tag>

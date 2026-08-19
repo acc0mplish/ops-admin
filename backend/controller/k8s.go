@@ -162,6 +162,25 @@ func (ctl *Controller) GetK8sPodDetail(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetK8sPodMetrics(c *gin.Context) {
+	var query struct {
+		ClusterID uint   `form:"clusterId"`
+		Namespace string `form:"namespace"`
+		PodName   string `form:"podName"`
+		Range     string `form:"range"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil || query.ClusterID == 0 || query.Namespace == "" || query.PodName == "" {
+		httpx.Failed(c, http.StatusBadRequest, "invalid pod metrics query")
+		return
+	}
+	data, err := ctl.service.GetK8sPodMetrics(query.ClusterID, query.Namespace, query.PodName, query.Range)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetK8sPodLogs(c *gin.Context) {
 	var query struct {
 		ClusterID uint   `form:"clusterId"`
