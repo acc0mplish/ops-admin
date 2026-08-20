@@ -6,11 +6,15 @@ import { Connection, CopyDocument } from '@element-plus/icons-vue'
 function serviceTypeTagType(type) {
   return {
     ClusterIP: 'success',
-    Headless: 'warning',
+    Headless: 'info',
     NodePort: 'warning',
     LoadBalancer: 'primary',
     ExternalName: 'info'
   }[type] || 'info'
+}
+
+function serviceTypeTagClass(type) {
+  return type === 'Headless' ? 'service-type-headless' : ''
 }
 
 function servicePorts(ports) {
@@ -203,7 +207,7 @@ defineProps({
         <template #default="{ row }"><el-tag class="service-namespace-tag" effect="plain">{{ row.namespace }}</el-tag></template>
       </el-table-column>
       <el-table-column :label="page.t('k8sType')" width="128">
-        <template #default="{ row }"><el-tag :type="serviceTypeTagType(row.type)" effect="light" round>{{ row.type }}</el-tag></template>
+        <template #default="{ row }"><el-tag :type="serviceTypeTagType(row.type)" :class="serviceTypeTagClass(row.type)" effect="light" round>{{ row.type }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="clusterIP" :label="page.t('k8sClusterIp')" min-width="142">
         <template #default="{ row }"><span class="service-ip-text">{{ row.clusterIP }}</span></template>

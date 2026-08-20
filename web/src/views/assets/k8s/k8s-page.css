@@ -52,6 +52,7 @@
 .service-copy-button { margin-left: 0 !important; padding: 2px; color: #8a99ae; opacity: 0; transition: opacity .18s ease; }
 .service-name-cell:hover .service-copy-button, .service-copy-button:focus-visible { opacity: 1; }
 .service-namespace-tag { border-color: #dce5f2; color: #52657f; background: #f8faff; }
+.service-type-headless.el-tag { border-color: #d9c6ff; color: #7047c7; background: #f4efff; }
 .service-ip-text { font-variant-numeric: tabular-nums; color: #40536d; }
 .service-port-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .service-port-list .el-tag { border-color: #dce7ff; background: #f2f6ff; color: #4167be; font-variant-numeric: tabular-nums; }
