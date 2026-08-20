@@ -1321,6 +1321,30 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	if query == "" {
 		query = "*"
 	}
+	startedAt := time.Now()
+	items, err := s.queryVictoriaLogsRows(ds, query, startAt, endAt, pageNum, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
+	// VictoriaLogs 的 /query 和 /hits 在起始时间边界上偶发不一致：
+	// /hits 已计入一条记录，但 /query 返回空行。仅在这个异常分支把起点
+	// 向前补偿一秒重试，避免页面出现“命中 1 条却没有日志”的假空结果。
+	if len(items) == 0 && total > 0 && pageNum == 1 && startAt > 1000 {
+		if retryItems, retryErr := s.queryVictoriaLogsRows(ds, query, startAt-1000, endAt, pageNum, pageSize); retryErr == nil {
+			items = retryItems
+		}
+	}
+	if total == 0 && len(items) > 0 {
+		total = int64(len(items))
+	}
+	return map[string]any{
+		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
+		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
+	}, nil
+}
+
+func (s *Service) queryVictoriaLogsRows(ds model.MonitorDatasource, query string, startAt, endAt int64, pageNum, pageSize int) ([]map[string]any, error) {
 	form := url.Values{}
 	form.Set("query", query)
 	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
@@ -1333,7 +1357,6 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	applyMonitorDatasourceAuth(request, ds)
-	startedAt := time.Now()
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
 		return nil, err
@@ -1355,14 +1378,7 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 		}
 		items = append(items, formatMonitorLogItem(source, "", ""))
 	}
-	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
-	if total == 0 && len(items) > 0 {
-		total = int64(len(items))
-	}
-	return map[string]any{
-		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
-		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
-	}, nil
+	return items, nil
 }
 
 func normalizeMonitorLogPagination(pageNum, pageSize int) (int, int) {
@@ -1499,7 +1515,7 @@ func monitorLogFieldValue(source map[string]any, path string) string {
 	return monitorSourceString(current)
 }
 
-func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	if datasourceID == 0 {
 		return nil, errors.New("请选择 VictoriaLogs 数据源")
 	}
@@ -1511,6 +1527,7 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 		return nil, errors.New("当前数据源不是 VictoriaLogs")
 	}
 	field = firstNonEmpty(strings.TrimSpace(field), "kafka_topic")
+	limit = normalizeMonitorLogFieldValueLimit(limit)
 	end := time.UnixMilli(endAt)
 	if endAt <= 0 {
 		end = time.Now()
@@ -1528,6 +1545,8 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 	form.Set("field", field)
 	form.Set("start", start.UTC().Format(time.RFC3339Nano))
 	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	// 不向 VictoriaLogs field_values 透传 limit。部分版本在携带该参数时仍会
+	// 返回字段值，但 hits 会全部变成 0；在收到带真实命中数的结果后再统一截取。
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/field_values", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -1559,6 +1578,17 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 		}
 		items = append(items, map[string]any{"value": item.Value, "hits": item.Hits, "field": field})
 	}
+	sort.Slice(items, func(i, j int) bool {
+		left, _ := items[i]["hits"].(int64)
+		right, _ := items[j]["hits"].(int64)
+		if left == right {
+			return monitorSourceString(items[i]["value"]) < monitorSourceString(items[j]["value"])
+		}
+		return left > right
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	return items, nil
 }
 
@@ -1580,7 +1610,7 @@ func (s *Service) ListMonitorLogFields(datasourceID uint, index, query string, s
 	}
 }
 
-func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	if datasourceID == 0 {
 		return nil, errors.New("请选择日志数据源")
 	}
@@ -1591,7 +1621,7 @@ func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, que
 			return nil, err
 		}
 		if normalizeMonitorDatasourceType(ds.Type) == "victorialogs" && isSafeVictoriaLogsField(field) {
-			return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+			return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt, limit)
 		}
 	}
 	if !isCommonMonitorLogField(field) {
@@ -1603,12 +1633,22 @@ func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, que
 	}
 	switch normalizeMonitorDatasourceType(ds.Type) {
 	case "elasticsearch":
-		return s.elasticsearchLogFieldValues(*ds, index, field, query, startAt, endAt)
+		return s.elasticsearchLogFieldValues(*ds, index, field, query, startAt, endAt, limit)
 	case "victorialogs":
-		return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+		return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt, limit)
 	default:
 		return nil, errors.New("日志字段仅支持 Elasticsearch 或 VictoriaLogs 数据源")
 	}
+}
+
+func normalizeMonitorLogFieldValueLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
 }
 
 func isCommonMonitorLogField(field string) bool {
@@ -1635,7 +1675,7 @@ func isSafeVictoriaLogsField(field string) bool {
 	return true
 }
 
-func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	index = firstNonEmpty(strings.TrimSpace(index), "_all")
 	if strings.Contains(index, "/") || strings.Contains(index, "\\") {
 		return nil, errors.New("索引不能包含路径分隔符")
@@ -1742,6 +1782,10 @@ func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index,
 		}
 		return left > right
 	})
+	limit = normalizeMonitorLogFieldValueLimit(limit)
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	return items, nil
 }
 

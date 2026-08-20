@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,7 +20,7 @@ func GenerateToken(userID uint, username string) (string, error) {
 		UserID:   userID,
 		Username: username,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -39,4 +40,12 @@ func ParseToken(tokenString string) (*Claims, error) {
 		return nil, jwt.ErrTokenInvalidClaims
 	}
 	return claims, nil
+}
+
+// TokenErrorMessage returns a user-facing message without exposing JWT details.
+func TokenErrorMessage(err error) string {
+	if errors.Is(err, jwt.ErrTokenExpired) {
+		return "登录已过期，请重新登录"
+	}
+	return "登录凭证无效，请重新登录"
 }

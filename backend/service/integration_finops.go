@@ -66,22 +66,29 @@ type FinOpsRecommendationGeneratePayload struct {
 }
 
 type FinOpsMonthSyncResult struct {
-	Month       string  `json:"month"`
-	Status      string  `json:"status"`
-	RecordCount int     `json:"recordCount"`
-	TotalAmount float64 `json:"totalAmount"`
-	Error       string  `json:"error,omitempty"`
+	Month             string  `json:"month"`
+	Status            string  `json:"status"`
+	SourceRecordCount int     `json:"sourceRecordCount"`
+	SourceTotalAmount float64 `json:"sourceTotalAmount"`
+	RecordCount       int     `json:"recordCount"`
+	TotalAmount       float64 `json:"totalAmount"`
+	DeduplicatedCount int     `json:"deduplicatedCount"`
+	SnapshotVerified  bool    `json:"snapshotVerified"`
+	Error             string  `json:"error,omitempty"`
 }
 
 type FinOpsSyncResult struct {
-	AccountID   uint                    `json:"accountId"`
-	Provider    string                  `json:"provider"`
-	StartMonth  string                  `json:"startMonth"`
-	EndMonth    string                  `json:"endMonth"`
-	Status      string                  `json:"status"`
-	RecordCount int                     `json:"recordCount"`
-	TotalAmount float64                 `json:"totalAmount"`
-	Months      []FinOpsMonthSyncResult `json:"months"`
+	AccountID         uint                    `json:"accountId"`
+	Provider          string                  `json:"provider"`
+	StartMonth        string                  `json:"startMonth"`
+	EndMonth          string                  `json:"endMonth"`
+	Status            string                  `json:"status"`
+	SourceRecordCount int                     `json:"sourceRecordCount"`
+	SourceTotalAmount float64                 `json:"sourceTotalAmount"`
+	RecordCount       int                     `json:"recordCount"`
+	TotalAmount       float64                 `json:"totalAmount"`
+	DeduplicatedCount int                     `json:"deduplicatedCount"`
+	Months            []FinOpsMonthSyncResult `json:"months"`
 }
 
 type finOpsRecommendationAggregate struct {
@@ -380,8 +387,11 @@ func (s *Service) SyncFinOpsAccountMonths(accountID uint, trigger, startMonth, e
 	for month := start; !month.After(end); month = month.AddDate(0, 1, 0) {
 		monthly := s.syncFinOpsAccountMonth(account, trigger, month)
 		result.Months = append(result.Months, monthly)
+		result.SourceRecordCount += monthly.SourceRecordCount
+		result.SourceTotalAmount += monthly.SourceTotalAmount
 		result.RecordCount += monthly.RecordCount
 		result.TotalAmount += monthly.TotalAmount
+		result.DeduplicatedCount += monthly.DeduplicatedCount
 	}
 	failed := 0
 	for _, monthly := range result.Months {
@@ -414,39 +424,91 @@ func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount,
 		result.Error = err.Error()
 		return result
 	}
-	finish := func(status, message string, count int, amount float64) {
+	finish := func(status, message string, sourceCount int, sourceAmount float64, count int, amount float64, snapshotVerified bool) {
 		finished := time.Now()
-		logEntry.Status, logEntry.Message, logEntry.RecordCount, logEntry.TotalAmount, logEntry.FinishedAt = status, message, count, amount, &finished
+		deduplicatedCount := 0
+		if snapshotVerified && sourceCount > count {
+			deduplicatedCount = sourceCount - count
+		}
+		logEntry.Status, logEntry.Message, logEntry.SourceRecordCount, logEntry.SourceTotalAmount = status, message, sourceCount, sourceAmount
+		logEntry.RecordCount, logEntry.TotalAmount, logEntry.DeduplicatedCount, logEntry.SnapshotVerified, logEntry.FinishedAt = count, amount, deduplicatedCount, snapshotVerified, &finished
 		_ = s.db.Save(&logEntry).Error
 	}
 	records, err := s.fetchFinOpsCostsForMonth(context.Background(), account, monthText, 10)
 	if err != nil {
 		result.Error = err.Error()
-		finish("failed", result.Error, 0, 0)
+		finish("failed", result.Error, 0, 0, 0, 0, false)
 		return result
 	}
 	if len(records) == 0 {
 		// An empty provider response can be a legitimate zero-cost month, but it
 		// must never erase a previously successful snapshot.  Keep old data and
 		// make the condition explicit in the execution history.
-		result.Status = "success"
-		finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText+"（未返回账单明细，未覆盖历史数据）", 0, 0)
+		count, amount, statErr := s.finOpsMonthSnapshot(account.ID, month)
+		if statErr != nil {
+			result.Error = statErr.Error()
+			finish("failed", result.Error, 0, 0, 0, 0, false)
+			return result
+		}
+		result.Status, result.RecordCount, result.TotalAmount, result.SnapshotVerified = "success", count, amount, true
+		finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText+"（未返回账单明细，保留现有入库快照）", 0, 0, count, amount, true)
 		return result
 	}
-	count, amount, err := s.upsertFinOpsCosts(account, records)
+	sourceCount, sourceAmount := finOpsInputSummary(records)
+	_, _, err = s.upsertFinOpsCosts(account, records)
 	if err != nil {
 		result.Error = err.Error()
-		finish("failed", result.Error, 0, 0)
+		result.SourceRecordCount, result.SourceTotalAmount = sourceCount, sourceAmount
+		finish("failed", result.Error, sourceCount, sourceAmount, 0, 0, false)
 		return result
 	}
 	if err := s.removeStaleFinOpsCostsForMonth(account.ID, month, records); err != nil {
 		result.Error = err.Error()
-		finish("failed", result.Error, 0, 0)
+		result.SourceRecordCount, result.SourceTotalAmount = sourceCount, sourceAmount
+		finish("failed", result.Error, sourceCount, sourceAmount, 0, 0, false)
 		return result
 	}
-	result.Status, result.RecordCount, result.TotalAmount = "success", count, amount
-	finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText, count, amount)
+	count, amount, err := s.finOpsMonthSnapshot(account.ID, month)
+	if err != nil {
+		result.Error = err.Error()
+		result.SourceRecordCount, result.SourceTotalAmount = sourceCount, sourceAmount
+		finish("failed", result.Error, sourceCount, sourceAmount, 0, 0, false)
+		return result
+	}
+	deduplicatedCount := sourceCount - count
+	if deduplicatedCount < 0 {
+		deduplicatedCount = 0
+	}
+	result.Status, result.SourceRecordCount, result.SourceTotalAmount = "success", sourceCount, sourceAmount
+	result.RecordCount, result.TotalAmount, result.DeduplicatedCount, result.SnapshotVerified = count, amount, deduplicatedCount, true
+	finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText, sourceCount, sourceAmount, count, amount, true)
 	return result
+}
+
+func finOpsInputSummary(inputs []FinOpsCostInput) (int, float64) {
+	total := 0.0
+	for _, input := range inputs {
+		amount := input.ActualPayment
+		if amount == 0 {
+			amount = input.Amount
+		}
+		total += amount
+	}
+	return len(inputs), total
+}
+
+func (s *Service) finOpsMonthSnapshot(accountID uint, month time.Time) (int, float64, error) {
+	start := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, month.Location())
+	end := start.AddDate(0, 1, 0)
+	var summary struct {
+		RecordCount int
+		TotalAmount float64
+	}
+	err := s.db.Model(&model.IntegrationFinOpsCostRecord{}).
+		Select("COUNT(*) AS record_count, COALESCE(SUM(amount), 0) AS total_amount").
+		Where("account_id = ? AND billing_date >= ? AND billing_date < ?", accountID, start, end).
+		Scan(&summary).Error
+	return summary.RecordCount, summary.TotalAmount, err
 }
 
 // removeStaleFinOpsCostsForMonth keeps a monthly sync as a complete snapshot.
@@ -1119,7 +1181,8 @@ func (s *Service) ListFinOpsSyncLogs(accountID uint) ([]map[string]any, error) {
 		result = append(result, map[string]any{
 			"id": row.ID, "accountId": row.AccountID, "accountName": accountNames[row.AccountID], "provider": row.Provider,
 			"trigger": trigger, "triggerType": row.TriggerType, "billingMonth": month, "status": row.Status,
-			"recordCount": row.RecordCount, "totalAmount": row.TotalAmount, "message": row.Message,
+			"sourceRecordCount": row.SourceRecordCount, "sourceTotalAmount": row.SourceTotalAmount,
+			"recordCount": row.RecordCount, "totalAmount": row.TotalAmount, "deduplicatedCount": row.DeduplicatedCount, "snapshotVerified": row.SnapshotVerified, "message": row.Message,
 			"startedAt": row.StartedAt, "finishedAt": finishedAt, "durationSeconds": durationSeconds,
 		})
 	}

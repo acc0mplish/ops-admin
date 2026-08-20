@@ -152,7 +152,10 @@ func (s *Service) fetchAliCloudMonthlyInstanceBill(ctx context.Context, account 
 		if declaredCount > 0 && len(items) == 0 {
 			return nil, fmt.Errorf("阿里云账单接口声明 %d 条记录，但响应结构未解析到明细", declaredCount)
 		}
-		all = append(all, finOpsAliCloudEstimatedDailyRecords(items, account, cycle)...)
+		// The instance bill does not always return a unique RecordID for every
+		// detail row. Prefix every source row with its page and row position so a
+		// missing/repeated RecordID cannot overwrite another charge during upsert.
+		all = append(all, finOpsAliCloudEstimatedDailyRecordsWithPrefix(items, account, cycle, fmt.Sprintf("page:%d", page))...)
 		nextToken = finOpsFirst(finOpsMap(payload["Data"]), "NextToken")
 		if nextToken == "" {
 			break
@@ -291,6 +294,10 @@ func finOpsAliCloudExternalID(item map[string]any, cycle string) string {
 }
 
 func finOpsAliCloudEstimatedDailyRecords(items []map[string]any, account model.IntegrationFinOpsAccount, cycle string) []FinOpsCostInput {
+	return finOpsAliCloudEstimatedDailyRecordsWithPrefix(items, account, cycle, "")
+}
+
+func finOpsAliCloudEstimatedDailyRecordsWithPrefix(items []map[string]any, account model.IntegrationFinOpsAccount, cycle, sourcePrefix string) []FinOpsCostInput {
 	month, err := time.ParseInLocation("2006-01", cycle, time.Local)
 	if err != nil {
 		return nil
@@ -304,7 +311,7 @@ func finOpsAliCloudEstimatedDailyRecords(items []map[string]any, account model.I
 		return nil
 	}
 	records := make([]FinOpsCostInput, 0, len(items)*days)
-	for _, item := range items {
+	for itemIndex, item := range items {
 		instanceID := finOpsFirst(item, "InstanceID", "InstanceId", "ResourceId")
 		resourceName := finOpsFirst(item, "InstanceName", "ResourceName", "InstanceID", "InstanceId")
 		actual, hasCashAmount := finOpsOptionalFloat(item, "CashAmount")
@@ -317,9 +324,10 @@ func finOpsAliCloudEstimatedDailyRecords(items []map[string]any, account model.I
 		}
 		discount := original - actual
 		resourceConfig := finOpsFirst(item, "InstanceSpec", "InstanceType", "Specification")
+		lineID := fmt.Sprintf("%s|line:%s:%d", finOpsAliCloudExternalID(item, cycle), sourcePrefix, itemIndex)
 		for day := month; !day.After(lastDay); day = day.AddDate(0, 0, 1) {
 			records = append(records, FinOpsCostInput{
-				ExternalID: finOpsAliCloudExternalID(item, cycle) + "|estimated|" + day.Format("2006-01-02"), BillingDate: day.Format("2006-01-02"),
+				ExternalID: lineID + "|estimated|" + day.Format("2006-01-02"), BillingDate: day.Format("2006-01-02"),
 				Service: finOpsFirst(item, "ProductName", "ProductDetail", "ProductCode"), Region: finOpsFirst(item, "Region", "RegionName", "RegionId"),
 				ResourceID: instanceID, ResourceName: resourceName, ResourceType: finOpsFirst(item, "ProductCode", "ProductType", "ProductName"), ResourceConfig: resourceConfig,
 				Amount: actual / float64(days), OriginalPrice: original / float64(days), Discount: discount / float64(days), ActualPayment: actual / float64(days), Currency: finOpsFirst(item, "Currency", "CurrencyCode"),

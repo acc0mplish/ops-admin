@@ -230,7 +230,7 @@ func (ctl *Controller) GetMonitorElasticsearchIndices(c *gin.Context) {
 func (ctl *Controller) GetMonitorVictoriaLogsStreams(c *gin.Context) {
 	data, err := ctl.service.ListMonitorVictoriaLogsStreams(
 		uint(mustAtoi(c.Query("datasourceId"))), c.Query("field"), c.Query("query"),
-		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")),
+		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")), mustAtoi(c.Query("limit")),
 	)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
@@ -254,7 +254,7 @@ func (ctl *Controller) GetMonitorLogFields(c *gin.Context) {
 func (ctl *Controller) GetMonitorLogFieldValues(c *gin.Context) {
 	data, err := ctl.service.ListMonitorLogFieldValues(
 		uint(mustAtoi(c.Query("datasourceId"))), c.Query("index"), c.Query("field"), c.Query("query"),
-		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")),
+		monitorQueryInt64(c.Query("startAt")), monitorQueryInt64(c.Query("endAt")), mustAtoi(c.Query("limit")),
 	)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())

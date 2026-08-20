@@ -41,6 +41,8 @@ const selectedHistogramBucket = ref(null)
 const total = ref(0)
 const pageNum = ref(1)
 const pageSize = 200
+const maxVisibleFields = 80
+const fieldValueLimit = 100
 const took = ref(0)
 const logView = ref('table')
 const activeLog = ref(null)
@@ -59,6 +61,7 @@ const isVictoriaLogs = computed(() => activeDatasource.value?.type === 'victoria
 const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '常用' })))
 const opLogIgnoredFields = new Set(['@timestamp', 'kafka_topic', 'source_type', 'timestamp', 'ts'])
 const hasSelectedOpLogStream = computed(() => isVictoriaLogs.value && selectedTopics.value.some((topic) => String(topic).toLowerCase().includes('op.log')))
+const isContextlessLogSelection = computed(() => isVictoriaLogs.value && selectedTopics.value.length > 0 && selectedTopics.value.every((topic) => /(?:op|err)\.log/i.test(String(topic))))
 const opLogFields = computed(() => {
   const counts = new Map()
   for (const item of items.value) {
@@ -75,11 +78,16 @@ const opLogFields = computed(() => {
 })
 const fields = computed(() => {
   const phrase = fieldKeyword.value.trim().toLowerCase()
-  const base = opLogFieldDrilldownEnabled.value && hasSelectedOpLogStream.value
-    ? [...fallbackFields.value, ...opLogFields.value.filter((item) => !fallbackFields.value.some((field) => field.name === item.name))]
+  const defaultFields = isContextlessLogSelection.value
+    ? fallbackFields.value.filter((field) => !['kubernetes.pod_namespace', 'kubernetes.container_name'].includes(field.name))
     : fallbackFields.value
+  const base = opLogFieldDrilldownEnabled.value && hasSelectedOpLogStream.value
+    ? [...defaultFields, ...opLogFields.value.filter((item) => !defaultFields.some((field) => field.name === item.name))]
+    : defaultFields
   return phrase ? base.filter((item) => item.name.toLowerCase().includes(phrase)) : base
 })
+const visibleFields = computed(() => fields.value.slice(0, maxVisibleFields))
+const hiddenFieldCount = computed(() => Math.max(0, fields.value.length - visibleFields.value.length))
 const maxBucketCount = computed(() => Math.max(1, ...histogram.value.map((item) => Number(item.doc_count || 0))))
 const histogramTicks = computed(() => {
   const buckets = histogram.value
@@ -205,8 +213,18 @@ async function handleTopicChange() {
   keyword.value = ''
   selectedHistogramBucket.value = null
   if (!hasSelectedOpLogStream.value) opLogFieldDrilldownEnabled.value = false
-  await loadStreams()
+  // Stream 列表只依赖数据源、时间范围和手动输入的 LogsQL；切换当前项
+  // 不应重复触发一次全时间范围的 field_values 聚合。
   await search(1)
+}
+
+async function refreshAll() {
+  // 手动刷新代表当前工作台的完整数据刷新：Stream 统计与日志明细并行更新。
+  // 选择 Stream 时仍仅刷新明细，避免每次筛选都触发一次全范围聚合。
+  await Promise.all([
+    isVictoriaLogs.value ? loadStreams() : Promise.resolve(),
+    search(pageNum.value)
+  ])
 }
 
 async function search(targetPage = 1) {
@@ -273,6 +291,7 @@ async function openFieldValues(field) {
       index: isVictoriaLogs.value ? '_all' : index.value,
       field: selectedFieldQuery.value,
       query: effectiveQuery(),
+      limit: fieldValueLimit,
       ...rangeTimestamps()
     })
   } finally {
@@ -390,7 +409,7 @@ onBeforeUnmount(() => {
         <el-tag v-else effect="plain" type="success">LogsQL</el-tag>
         <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">OP 日志下钻</el-button>
         <span class="source-status">{{ activeDatasource?.url || '未选择数据源' }}</span>
-        <div class="search-actions"><el-switch v-model="autoRefresh" active-text="自动刷新" /><el-button :loading="loading" @click="search">刷新</el-button></div>
+        <div class="search-actions"><el-switch v-model="autoRefresh" active-text="自动刷新" /><el-button :loading="loading || streamLoading" @click="refreshAll">刷新</el-button></div>
       </div>
       <div class="query-line">
         <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? '支持 LogsQL，例如 kubernetes.pod_namespace:default AND _msg:error' : '支持 Lucene query_string，例如 kubernetes.pod_namespace:default AND (ERROR OR WARN)'" @keyup.enter="search" />
@@ -417,9 +436,10 @@ onBeforeUnmount(() => {
         <template v-if="!fieldsCollapsed">
           <el-input v-model="fieldKeyword" size="small" clearable placeholder="搜索字段" />
           <div class="field-list">
-            <button v-for="field in fields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field)">
+            <button v-for="field in visibleFields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field)">
               <span>{{ field.name }}</span><b>›</b>
             </button>
+            <p v-if="hiddenFieldCount" class="field-limit-tip">已展示前 {{ maxVisibleFields }} 个字段；搜索可继续筛选其余 {{ hiddenFieldCount }} 个字段</p>
           </div>
         </template>
       </aside>
@@ -441,20 +461,20 @@ onBeforeUnmount(() => {
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
             <el-table-column label="时间" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
             <el-table-column label="级别" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
-            <el-table-column prop="namespace" label="命名空间" width="126" show-overflow-tooltip />
-            <el-table-column prop="container" label="容器" width="108" show-overflow-tooltip />
+            <el-table-column v-if="!isContextlessLogSelection" prop="namespace" label="命名空间" width="126" show-overflow-tooltip />
+            <el-table-column v-if="!isContextlessLogSelection" prop="container" label="容器" width="108" show-overflow-tooltip />
             <el-table-column prop="message" label="日志内容" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
             <el-table-column label="操作" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
           </el-table>
           <div class="log-pagination"><span>每页 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </div>
         <template v-else>
-          <div v-loading="loading" class="raw-log-view">
+          <div v-loading="loading" :class="['raw-log-view', { 'op-log-selection': isContextlessLogSelection }]">
             <div v-if="!items.length" class="raw-log-empty">当前查询条件下没有日志</div>
             <button v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" type="button" :class="['raw-log-item', levelClass(row.level)]" @click="showDetail(row)">
               <time>{{ formatRawLogTime(row.logTime || row.timestamp) }}</time>
               <span class="raw-log-level">{{ String(row.level || 'INFO').toUpperCase() }}</span>
-              <span class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
+              <span v-if="!isContextlessLogSelection" class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
               <code>{{ displayLogContent(row) }}</code>
               <span class="raw-log-open">详情</span>
             </button>
@@ -475,7 +495,7 @@ onBeforeUnmount(() => {
     </el-drawer>
 
     <el-dialog v-model="fieldValueVisible" :title="`筛选字段：${selectedField}`" width="min(640px, 92vw)" destroy-on-close>
-      <p class="field-value-tip">展示当前时间范围、数据源和查询条件下可用的字段值。点击任意值即可追加筛选条件。</p>
+      <p class="field-value-tip">展示当前时间范围、数据源和查询条件下命中最多的前 {{ fieldValueLimit }} 个字段值。点击任意值即可追加筛选条件。</p>
       <el-input v-model="fieldValueKeyword" clearable placeholder="搜索字段值" />
       <div v-loading="fieldValueLoading" class="field-value-list">
         <el-empty v-if="!fieldValueLoading && !fieldValues.length" description="当前条件下没有可选值" :image-size="72" />
@@ -500,9 +520,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .log-page{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 115px);padding:24px;background:#f6f8fc;color:#24364e}.log-search-panel,.log-workspace{border:1px solid #e0e8f4;border-radius:12px;background:#fff;box-shadow:0 8px 22px rgba(49,78,125,.06)}.source-line,.query-line,.shortcut-line{display:flex;align-items:center;gap:12px}.log-search-panel{padding:16px}.query-line,.shortcut-line{margin-top:12px}.source-line label,.shortcut-line>span{color:#51627f;font-weight:600;white-space:nowrap}.source-status{overflow:hidden;color:#8491a7;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.search-actions{display:flex;align-items:center;gap:10px;margin-left:auto;white-space:nowrap}.query-input{flex:1}.shortcut-line{flex-wrap:wrap}.shortcut-button{border-color:#d9e3f3;color:#4f6384;background:#f7f9fd}.index-option,.stream-option{display:flex;justify-content:space-between;gap:16px}.index-option small,.stream-option small{color:#8491a7}.stream-option{width:100%;min-width:0}.stream-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.log-workspace{display:grid;grid-template-columns:230px minmax(0,1fr);overflow:hidden}.field-panel{display:flex;flex-direction:column;gap:8px;padding:14px;border-right:1px solid #e5ebf4;background:#fbfcff}.panel-title{display:flex;justify-content:space-between;color:#263a59}.panel-title span{color:#8291aa}.field-item{display:flex;justify-content:space-between;width:100%;padding:9px 8px;border:0;border-radius:5px;color:#536784;background:transparent;text-align:left;cursor:pointer}.field-item:hover{color:#3567d6;background:#eef4ff}.log-main{min-width:0}.result-summary{display:flex;align-items:center;gap:16px;min-height:55px;padding:10px 16px;border-bottom:1px solid #e5ebf4;color:#71809b;font-size:13px}.result-summary :deep(.el-radio-button__inner){padding:6px 12px;color:#62738d;font-size:13px}.result-summary :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner){color:#fff;background:#4298f6;border-color:#4298f6;box-shadow:-1px 0 0 0 #4298f6}.histogram-panel{height:150px;padding:12px 16px;border-bottom:1px solid #e5ebf4}.histogram{display:flex;align-items:flex-end;gap:4px;height:100%}.histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-bar{width:100%;min-height:2px;border-radius:2px 2px 0 0;background:#5a6df1;opacity:.88}.log-message{font-family:Consolas,Monaco,monospace;color:#3b4e6b}.raw-log-view{height:540px;overflow:auto;padding:8px 0;background:#fff;border-top:1px solid #e8eef7}.raw-log-item{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:start;gap:13px;width:100%;padding:5px 18px;border:0;color:#213b5c;background:transparent;text-align:left;cursor:pointer}.raw-log-item:hover{background:#f3f7fd}.raw-log-index{color:#8293aa;font:12px/1.75 Consolas,Monaco,monospace;text-align:right}.raw-log-item code{display:-webkit-box;overflow:hidden;color:#182d47;font:12px/1.75 Consolas,Monaco,monospace;letter-spacing:.05px;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:3}.raw-log-detail{align-self:center;margin-top:2px}.raw-log-empty{padding:28px;color:#93a5bf;text-align:center}.detail-meta{display:flex;flex-wrap:wrap;gap:8px;color:#73849a;font-size:13px}.detail-meta span{padding:4px 8px;border-radius:4px;background:#f2f5f9}.message-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.message-fields>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e5ebf3;border-radius:6px}.message-fields small{color:#8491a7}.message-fields strong{overflow:hidden;color:#24364e;text-overflow:ellipsis;white-space:nowrap}.detail-message,.detail-json{overflow:auto;padding:14px;border-radius:6px;color:#dce6f5;background:#111827;font:12px/1.65 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.raw-log-line{margin:14px 0;color:#60748d}.raw-log-line summary{cursor:pointer}.raw-log-line pre{overflow:auto;max-height:180px;padding:12px;border-radius:6px;color:#c9d4e3;background:#202936;font:12px/1.6 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-word}.level{display:inline-flex;min-width:48px;justify-content:center;padding:3px 5px;border-radius:3px;font-size:11px;font-weight:700}.level-error{color:#d94c5b;background:#fff0f1}.level-warn{color:#bd7c11;background:#fff7e8}.level-info{color:#3978c6;background:#eef6ff}.level-debug{color:#6c7788;background:#f1f4f7}:deep(.el-table){--el-table-header-bg-color:#f6f8fc;--el-table-header-text-color:#71809b;--el-table-row-hover-bg-color:#f4f7fc;--el-table-border-color:#e7edf6}@media(max-width:1000px){.log-workspace{grid-template-columns:1fr}.field-panel{display:none}.source-line,.query-line{align-items:stretch;flex-wrap:wrap}.search-actions{margin-left:0}.query-input{flex-basis:100%}.message-fields{grid-template-columns:1fr}}
-.log-workspace.fields-collapsed{grid-template-columns:44px minmax(0,1fr)}.field-panel{min-width:0}.panel-title{align-items:center;gap:4px}.collapse-button{margin-left:auto;font-size:18px}.field-list{display:flex;min-height:80px;flex-direction:column;gap:3px}.field-item{gap:6px;min-width:0}.field-item span{overflow:hidden;flex:1;text-overflow:ellipsis;white-space:nowrap}.field-item small{flex:0 0 auto;color:#8b98aa;font-size:10px}.field-item b{flex:0 0 auto;color:#5c75a1;font-weight:500}.fields-collapsed .field-panel{padding:14px 8px}.fields-collapsed .collapse-button{margin:auto}.field-value-tip{margin:0 0 12px;color:#7282a0;font-size:13px}.field-value-list{display:flex;flex-direction:column;gap:4px;min-height:100px;max-height:420px;margin-top:12px;overflow:auto}.field-value-item{display:flex;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:1px solid #e3e9f4;border-radius:6px;background:#fff;color:#354864;text-align:left;cursor:pointer}.field-value-item:hover{border-color:#9db8f4;background:#f3f7ff;color:#3567d6}.field-value-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.field-value-item small{flex:0 0 auto;color:#8291aa}
+.log-workspace.fields-collapsed{grid-template-columns:44px minmax(0,1fr)}.field-panel{min-width:0}.panel-title{align-items:center;gap:4px}.collapse-button{margin-left:auto;font-size:18px}.field-list{display:flex;min-height:80px;flex-direction:column;gap:3px}.field-item{gap:6px;min-width:0}.field-item span{overflow:hidden;flex:1;text-overflow:ellipsis;white-space:nowrap}.field-item small{flex:0 0 auto;color:#8b98aa;font-size:10px}.field-item b{flex:0 0 auto;color:#5c75a1;font-weight:500}.field-limit-tip{margin:6px 8px 0;color:#8b98aa;font-size:11px;line-height:1.45}.fields-collapsed .field-panel{padding:14px 8px}.fields-collapsed .collapse-button{margin:auto}.field-value-tip{margin:0 0 12px;color:#7282a0;font-size:13px}.field-value-list{display:flex;flex-direction:column;gap:4px;min-height:100px;max-height:420px;margin-top:12px;overflow:auto}.field-value-item{display:flex;justify-content:space-between;gap:16px;width:100%;padding:10px 12px;border:1px solid #e3e9f4;border-radius:6px;background:#fff;color:#354864;text-align:left;cursor:pointer}.field-value-item:hover{border-color:#9db8f4;background:#f3f7ff;color:#3567d6}.field-value-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.field-value-item small{flex:0 0 auto;color:#8291aa}
 .histogram-panel{height:176px;padding:10px 16px 12px}.histogram-head{display:flex;align-items:center;gap:10px;height:26px;color:#51627f;font-size:13px}.histogram-head>span{font-weight:700}.histogram-head small{color:#91a0b5}.histogram-head strong{margin-left:auto;padding:3px 8px;border-radius:4px;color:#4562b5;background:#edf2ff;font-size:12px;font-weight:600}.histogram{gap:3px;height:calc(100% - 26px);padding-top:4px}.histogram-bar-wrap{padding:0;border:0;border-radius:3px 3px 0 0;background:linear-gradient(to top,#edf1f7 1px,transparent 1px);background-size:100% 34px;cursor:pointer}.histogram-bar-wrap:hover .histogram-bar,.histogram-bar-wrap.selected .histogram-bar{background:#3858dd;opacity:1}.histogram-bar-wrap:focus-visible{outline:2px solid #5a6df1;outline-offset:1px}.histogram-bar{transition:height .16s,background .16s}.histogram-tooltip{display:grid;gap:4px;min-width:138px}.histogram-tooltip b,.histogram-tooltip span{font-size:12px}
 .histogram{display:block;position:relative;padding-top:4px}.histogram-bars{display:flex;align-items:flex-end;gap:3px;height:calc(100% - 22px)}.histogram-bars .histogram-bar-wrap{display:flex;flex:1;align-items:flex-end;height:100%;min-width:4px}.histogram-axis{position:relative;height:22px;margin:0 1px;color:#8291a7;font-size:11px}.histogram-axis span{position:absolute;top:5px;transform:translateX(-50%);white-space:nowrap}.histogram-axis span:first-child{transform:none}.histogram-axis span:last-child{transform:translateX(-100%)}
-.raw-log-view{height:540px;padding:0;background:#fff;border-top:0}.raw-log-item{display:grid;grid-template-columns:178px 60px minmax(150px,220px) minmax(0,1fr) auto;align-items:start;gap:12px;width:100%;min-height:42px;padding:9px 16px 9px 12px;border:0;border-left:3px solid #4d8be4;color:#263d5d;background:#fff;text-align:left;cursor:pointer;transition:background .14s,border-color .14s}.raw-log-item:hover{background:#f6f8ff}.raw-log-item.level-error{border-left-color:#e05261}.raw-log-item.level-warn{border-left-color:#df9b27}.raw-log-item.level-debug{border-left-color:#97a3b5}.raw-log-item time{padding-top:2px;color:#60738f;font:12px/1.55 Consolas,Monaco,monospace;white-space:nowrap}.raw-log-level{justify-self:start;padding:2px 5px;border-radius:3px;color:#3978c6;background:#eef6ff;font:700 11px/1.35 Consolas,Monaco,monospace}.raw-log-item.level-error .raw-log-level{color:#d94c5b;background:#fff0f1}.raw-log-item.level-warn .raw-log-level{color:#bd7c11;background:#fff7e8}.raw-log-item.level-debug .raw-log-level{color:#6c7788;background:#f1f4f7}.raw-log-source{overflow:hidden;padding-top:2px;color:#596f91;font:12px/1.55 Consolas,Monaco,monospace;text-overflow:ellipsis;white-space:nowrap}.raw-log-item code{display:-webkit-box;overflow:hidden;padding-top:1px;color:#243954;font:12px/1.55 Consolas,Monaco,monospace;letter-spacing:0;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:2}.raw-log-open{padding-top:2px;color:#4a83dd;font-size:12px;white-space:nowrap}.raw-log-empty{padding:48px;color:#93a5bf;text-align:center}@media(max-width:1200px){.raw-log-item{grid-template-columns:164px 54px minmax(0,1fr) auto}.raw-log-source{display:none}}@media(max-width:720px){.raw-log-item{grid-template-columns:54px minmax(0,1fr) auto;gap:8px;padding-right:10px}.raw-log-item time{display:none}.raw-log-source{display:none}.raw-log-level{font-size:10px}.raw-log-item code{-webkit-line-clamp:3}}
+.raw-log-view{height:540px;padding:0;background:#fff;border-top:0}.raw-log-item{display:grid;grid-template-columns:178px 60px minmax(150px,220px) minmax(0,1fr) auto;align-items:start;gap:12px;width:100%;min-height:42px;padding:9px 16px 9px 12px;border:0;border-left:3px solid #4d8be4;color:#263d5d;background:#fff;text-align:left;cursor:pointer;transition:background .14s,border-color .14s}.op-log-selection .raw-log-item{grid-template-columns:178px 60px minmax(0,1fr) auto}.raw-log-item:hover{background:#f6f8ff}.raw-log-item.level-error{border-left-color:#e05261}.raw-log-item.level-warn{border-left-color:#df9b27}.raw-log-item.level-debug{border-left-color:#97a3b5}.raw-log-item time{padding-top:2px;color:#60738f;font:12px/1.55 Consolas,Monaco,monospace;white-space:nowrap}.raw-log-level{justify-self:start;padding:2px 5px;border-radius:3px;color:#3978c6;background:#eef6ff;font:700 11px/1.35 Consolas,Monaco,monospace}.raw-log-item.level-error .raw-log-level{color:#d94c5b;background:#fff0f1}.raw-log-item.level-warn .raw-log-level{color:#bd7c11;background:#fff7e8}.raw-log-item.level-debug .raw-log-level{color:#6c7788;background:#f1f4f7}.raw-log-source{overflow:hidden;padding-top:2px;color:#3978c6;font:12px/1.55 Consolas,Monaco,monospace;text-overflow:ellipsis;white-space:nowrap}.raw-log-item.level-error .raw-log-source{color:#d94c5b}.raw-log-item.level-warn .raw-log-source{color:#bd7c11}.raw-log-item.level-debug .raw-log-source{color:#6c7788}.raw-log-item code{display:-webkit-box;overflow:hidden;padding-top:1px;color:#243954;font:12px/1.55 Consolas,Monaco,monospace;letter-spacing:0;text-overflow:ellipsis;white-space:normal;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:2}.raw-log-open{padding-top:2px;color:#4a83dd;font-size:12px;white-space:nowrap}.raw-log-empty{padding:48px;color:#93a5bf;text-align:center}@media(max-width:1200px){.raw-log-item,.op-log-selection .raw-log-item{grid-template-columns:164px 54px minmax(0,1fr) auto}.raw-log-source{display:none}}@media(max-width:720px){.raw-log-item,.op-log-selection .raw-log-item{grid-template-columns:54px minmax(0,1fr) auto;gap:8px;padding-right:10px}.raw-log-item time{display:none}.raw-log-source{display:none}.raw-log-level{font-size:10px}.raw-log-item code{-webkit-line-clamp:3}}
 .log-pagination{display:flex;align-items:center;justify-content:flex-end;gap:14px;min-height:58px;padding:0 16px;border-top:1px solid #e7edf6;background:#fff}.log-pagination>span{color:#7d8da4;font-size:12px;white-space:nowrap}@media(max-width:720px){.log-pagination{align-items:flex-end;flex-direction:column;padding:10px}.log-pagination :deep(.el-pagination){justify-content:flex-end}}
 </style>

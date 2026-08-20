@@ -924,8 +924,12 @@ func (ctl *Controller) BatchSyncAssetHosts(c *gin.Context) {
 
 func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	token := c.Query("token")
+	if strings.TrimSpace(token) == "" {
+		httpx.Failed(c, http.StatusUnauthorized, "请先登录")
+		return
+	}
 	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, 401, "token invalid")
+		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
 		return
 	}
 

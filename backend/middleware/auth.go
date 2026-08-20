@@ -13,7 +13,7 @@ func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {
-			httpx.Failed(c, 401, "未登录或 token 缺失")
+			httpx.Failed(c, 401, "请先登录")
 			c.Abort()
 			return
 		}
@@ -21,7 +21,7 @@ func Auth() gin.HandlerFunc {
 		tokenString := strings.TrimPrefix(header, "Bearer ")
 		claims, err := auth.ParseToken(tokenString)
 		if err != nil {
-			httpx.Failed(c, 401, "token 无效")
+			httpx.Failed(c, 401, auth.TokenErrorMessage(err))
 			c.Abort()
 			return
 		}

@@ -86,8 +86,14 @@ type IntegrationFinOpsSyncLog struct {
 	FinishedAt   *time.Time `json:"finishedAt"`
 	RecordCount  int        `json:"recordCount" gorm:"not null;default:0"`
 	TotalAmount  float64    `json:"totalAmount" gorm:"type:decimal(20,6);not null;default:0"`
-	Message      string     `json:"message" gorm:"type:text"`
-	CreatedAt    time.Time  `json:"createTime"`
+	// Source* describes the provider response. RecordCount and TotalAmount are
+	// the final persisted monthly snapshot, the same basis used by the dashboard.
+	SourceRecordCount int       `json:"sourceRecordCount" gorm:"not null;default:0"`
+	SourceTotalAmount float64   `json:"sourceTotalAmount" gorm:"type:decimal(20,6);not null;default:0"`
+	DeduplicatedCount int       `json:"deduplicatedCount" gorm:"not null;default:0"`
+	SnapshotVerified  bool      `json:"snapshotVerified" gorm:"not null;default:false"`
+	Message           string    `json:"message" gorm:"type:text"`
+	CreatedAt         time.Time `json:"createTime"`
 }
 
 func (IntegrationFinOpsSyncLog) TableName() string { return "integration_finops_sync_log" }

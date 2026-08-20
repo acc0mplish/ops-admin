@@ -259,8 +259,12 @@ func (ctl *Controller) GetK8sPodContainers(c *gin.Context) {
 
 func (ctl *Controller) K8sPodTerminalWS(c *gin.Context) {
 	token := c.Query("token")
+	if strings.TrimSpace(token) == "" {
+		httpx.Failed(c, http.StatusUnauthorized, "请先登录")
+		return
+	}
 	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, http.StatusUnauthorized, "token invalid")
+		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
 		return
 	}
 
