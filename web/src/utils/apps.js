@@ -496,6 +496,43 @@ export const appDefinitions = [
         children: []
       }
     ]
+  },
+  {
+    key: 'domains',
+    name: '域名管理',
+    labelKey: 'appDomains',
+    icon: 'Connection',
+    defaultRoute: '/domains/public',
+    menus: [
+      {
+        title: '公网域名',
+        path: '/domains/public',
+        icon: 'Position',
+        children: [
+          { title: '域名列表', path: '/domains/public', icon: 'List', children: [] },
+          { title: 'DNS 账号', path: '/domains/public/accounts', icon: 'Key', children: [] },
+          { title: 'SSL 证书', path: '/domains/public/certificates', icon: 'Lock', children: [] }
+        ]
+      },
+      {
+        title: '内网域名',
+        path: '/domains/internal',
+        icon: 'OfficeBuilding',
+        children: [
+          { title: 'Zone 管理', path: '/domains/internal', icon: 'Collection', children: [] },
+          { title: 'DNS 设置', path: '/domains/internal/settings', icon: 'Setting', children: [] }
+        ]
+      },
+      {
+        title: '诊断与审计',
+        path: '/domains/query-test',
+        icon: 'DataAnalysis',
+        children: [
+          { title: '解析测试', path: '/domains/query-test', icon: 'Search', children: [] },
+          { title: '操作审计', path: '/domains/audit', icon: 'Memo', children: [] }
+        ]
+      }
+    ]
   }
 ]
 
@@ -524,6 +561,9 @@ export function getAppByRoute(path) {
   }
   if (path.startsWith('/integration')) {
     return getAppByKey('integration')
+  }
+  if (path.startsWith('/domains')) {
+    return getAppByKey('domains')
   }
   return getAppByKey('console')
 }

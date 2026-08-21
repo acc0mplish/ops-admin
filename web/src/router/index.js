@@ -85,6 +85,17 @@ import FinOpsBreakdown from '../views/integration/finops/FinOpsBreakdown.vue'
 import FinOpsRecommendations from '../views/integration/finops/FinOpsRecommendations.vue'
 import FinOpsResources from '../views/integration/finops/FinOpsResources.vue'
 import FinOpsSync from '../views/integration/finops/FinOpsSync.vue'
+import DomainLayout from '../views/domains/DomainLayout.vue'
+import PublicDomains from '../views/domains/PublicDomains.vue'
+import DNSAccounts from '../views/domains/DNSAccounts.vue'
+import PublicRecords from '../views/domains/PublicRecords.vue'
+import InternalZones from '../views/domains/InternalZones.vue'
+import InternalRecords from '../views/domains/InternalRecords.vue'
+import InternalDNSSettings from '../views/domains/InternalDNSSettings.vue'
+import DNSQueryTest from '../views/domains/DNSQueryTest.vue'
+import DNSAudit from '../views/domains/DNSAudit.vue'
+import SSLCertificates from '../views/domains/SSLCertificates.vue'
+import SSLCertificateDetail from '../views/domains/SSLCertificateDetail.vue'
 import { getToken } from '../utils/auth'
 
 const moduleCards = {
@@ -113,6 +124,24 @@ const routes = [
       { path: '/system/post', component: Post, meta: { title: '岗位信息', app: 'console' } },
       { path: '/system/settings', component: SystemSettings, meta: { title: '系统设置', app: 'console' } },
       { path: '/system/basic-config', redirect: '/system/settings' },
+      {
+        path: '/domains',
+        component: DomainLayout,
+        redirect: '/domains/public',
+        meta: { title: '域名管理', app: 'domains' },
+        children: [
+          { path: '/domains/public', component: PublicDomains, meta: { title: '公网域名', app: 'domains' } },
+          { path: '/domains/public/accounts', component: DNSAccounts, meta: { title: 'DNS 账号', app: 'domains' } },
+          { path: '/domains/public/certificates', component: SSLCertificates, meta: { title: 'SSL 证书', app: 'domains' } },
+          { path: '/domains/public/certificates/:id', component: SSLCertificateDetail, meta: { title: '证书详情', app: 'domains' } },
+          { path: '/domains/public/:accountId/:domain/records', component: PublicRecords, meta: { title: '公网解析记录', app: 'domains' } },
+          { path: '/domains/internal', component: InternalZones, meta: { title: 'Zone 管理', app: 'domains' } },
+          { path: '/domains/internal/zones/:zoneId/records', component: InternalRecords, meta: { title: '内网解析记录', app: 'domains' } },
+          { path: '/domains/internal/settings', component: InternalDNSSettings, meta: { title: 'DNS 设置', app: 'domains' } },
+          { path: '/domains/query-test', component: DNSQueryTest, meta: { title: '解析测试', app: 'domains' } },
+          { path: '/domains/audit', component: DNSAudit, meta: { title: '操作审计', app: 'domains' } }
+        ]
+      },
       { path: '/logs/login', component: LoginLog, meta: { title: '登录日志', app: 'console' } },
       { path: '/logs/operation', component: OperationLog, meta: { title: '操作日志', app: 'console' } },
 

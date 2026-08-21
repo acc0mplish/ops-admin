@@ -1,0 +1,45 @@
+.domain-page { display: flex; flex-direction: column; gap: 16px; }
+.domain-panel { border: 1px solid #e4ecfc; border-radius: 14px; background: #fff; box-shadow: 0 8px 26px rgba(30, 64, 175, .06); }
+.domain-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.domain-page-head h2 { margin: 0; color: #0f172a; font-size: 22px; line-height: 1.25; }
+.domain-page-head p { max-width: 720px; margin: 7px 0 0; color: #64748b; line-height: 1.6; }
+.domain-eyebrow { margin-bottom: 5px; color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.domain-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px; border: 1px solid #e4ecfc; border-radius: 12px; background: #f8faff; }
+.domain-toolbar__filters, .domain-toolbar__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.domain-table-wrap { overflow-x: auto; border: 1px solid #e4ecfc; border-radius: 12px; }
+.domain-table-wrap .el-table { min-width: 900px; }
+.domain-pager { display: flex; justify-content: flex-end; padding-top: 4px; }
+.domain-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.domain-stat { min-height: 92px; padding: 16px; border: 1px solid #e4ecfc; border-radius: 12px; background: #fff; }
+.domain-stat__label { color: #64748b; font-size: 12px; }
+.domain-stat__value { margin-top: 8px; color: #0f172a; font-size: 24px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.domain-empty { padding: 42px 16px; text-align: center; }
+.domain-empty strong { display: block; color: #0f172a; font-size: 16px; }
+.domain-empty p { margin: 8px 0 16px; color: #64748b; }
+.dns-setup-notice { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; border: 1px solid #fde68a; border-radius: 12px; background: #fffbeb; }
+.dns-setup-notice strong { display: block; color: #92400e; font-size: 14px; }
+.dns-setup-notice p { margin: 4px 0 0; color: #a16207; font-size: 13px; line-height: 1.5; }
+.dns-state { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 10px; border-radius: 999px; color: #475569; background: #f1f5f9; font-size: 12px; font-weight: 650; }
+.dns-state::before { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; content: ''; }
+.dns-state.is-running { color: #047857; background: #ecfdf5; }
+.dns-state.is-running::before { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, .14); }
+.dns-state.is-error { color: #b91c1c; background: #fef2f2; }
+.dns-state.is-error::before { background: #ef4444; }
+.domain-form-tip { margin-top: 5px; color: #64748b; font-size: 12px; line-height: 1.55; }
+.domain-batch-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; }
+.domain-batch-bar strong { color: #1d4ed8; }
+.domain-result-list { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+.domain-result-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 8px; background: #f8fafc; }
+.domain-mono { font-family: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) { .domain-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .domain-page-head { flex-direction: column; }
+  .domain-page-head .el-button, .domain-page-head .el-button-group { width: 100%; }
+  .domain-toolbar, .domain-toolbar__filters, .domain-toolbar__actions { align-items: stretch; width: 100%; }
+  .domain-toolbar__filters > *, .domain-toolbar__actions > * { flex: 1 1 100%; width: 100% !important; }
+  .domain-stat-grid { grid-template-columns: 1fr; }
+  .domain-pager { justify-content: flex-start; overflow-x: auto; }
+  .domain-batch-bar { align-items: flex-start; flex-direction: column; }
+  .dns-setup-notice { align-items: stretch; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { .domain-panel, .dns-state { transition: none !important; } }

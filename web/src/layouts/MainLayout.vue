@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Check, Expand, Fold, Grid, House, Search } from '@element-plus/icons-vue'
-import { profile } from '../api/system'
+import { logoutSession, profile } from '../api/system'
 import {
   getMenus,
   getSidebarCollapsed,
@@ -104,7 +104,8 @@ const appNavigationAccent = {
   applications: '#3b82f6',
   notify: '#ec4899',
   integration: '#14b8a6',
-  monitor: '#6366f1'
+  monitor: '#6366f1',
+  domains: '#8b5cf6'
 }
 
 const appNavigationSoftAccent = {
@@ -115,7 +116,8 @@ const appNavigationSoftAccent = {
   applications: 'rgba(59, 130, 246, 0.13)',
   notify: 'rgba(236, 72, 153, 0.13)',
   integration: 'rgba(20, 184, 166, 0.13)',
-  monitor: 'rgba(99, 102, 241, 0.13)'
+  monitor: 'rgba(99, 102, 241, 0.13)',
+  domains: 'rgba(139, 92, 246, 0.13)'
 }
 
 function countAppMenus(app) {
@@ -450,6 +452,7 @@ function toggleCollapsed() {
 }
 
 function handleLogout() {
+  logoutSession().catch(() => {})
   logout()
   router.push('/login')
 }

@@ -42,6 +42,21 @@ db:
 
 `config.yaml` 可能包含本地开发凭据；不要将真实生产密码、云密钥或模型密钥提交到仓库。生产环境应使用受控的配置注入和最小权限数据库账号。
 
+生产环境必须通过 `OPS_ADMIN_JWT_SECRET` 环境变量注入随机 JWT 签名密钥。登录会话采用 60 分钟 Access Token、连续 6 小时无操作超时和 7 天最长周期；前端会在 Access Token 到期前 5 分钟静默刷新。
+
+域名管理使用 `config.yaml` 中的 `security.credential-key` 对公网 DNS 凭据和 SSL Private Key 进行 AES-GCM 加密；生产环境必须设置至少 32 字节的稳定独立随机密钥。内网 DNS 默认关闭。Linux 上监听 53 端口时不要让整个平台以 root 运行，可为二进制授予最小能力：
+
+```bash
+setcap 'cap_net_bind_service=+ep' /path/to/ops-admin
+```
+
+systemd 也可以使用：
+
+```ini
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+```
+
 ## 本地开发
 
 ```powershell

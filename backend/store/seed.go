@@ -509,6 +509,18 @@ func seedApplicationMenus(db *gorm.DB) error {
 				{"巡检大屏", "/monitor/inspections", "monitor:inspection:list", "Tickets"},
 			},
 		},
+		{
+			name: "域名管理", url: "/domains", value: "domains", icon: "Connection",
+			children: []menuSeed{
+				{"公网域名", "/domains/public", "domains:public:list", "Position"},
+				{"公网 DNS 账号", "/domains/public/accounts", "domains:account:list", "Key"},
+				{"SSL 证书", "/domains/public/certificates", "domains:ssl:view", "Lock"},
+				{"内网域名", "/domains/internal", "domains:internal:list", "OfficeBuilding"},
+				{"DNS 设置", "/domains/internal/settings", "domains:settings:view", "Setting"},
+				{"解析测试", "/domains/query-test", "domains:query:test", "Search"},
+				{"操作审计", "/domains/audit", "domains:audit:list", "Memo"},
+			},
+		},
 	}
 
 	menuByValue := make(map[string]model.Menu)
@@ -582,6 +594,13 @@ func seedApplicationMenus(db *gorm.DB) error {
 		{"monitor:silence:list", "新增屏蔽规则", "monitor:silence:add"}, {"monitor:silence:list", "编辑屏蔽规则", "monitor:silence:edit"}, {"monitor:silence:list", "删除屏蔽规则", "monitor:silence:delete"},
 		{"monitor:aggregation:list", "新增收敛规则", "monitor:aggregation:add"}, {"monitor:aggregation:list", "编辑收敛规则", "monitor:aggregation:edit"}, {"monitor:aggregation:list", "删除收敛规则", "monitor:aggregation:delete"},
 		{"monitor:dashboard:list", "创建监控大屏", "monitor:dashboard:add"}, {"monitor:dashboard:list", "编辑监控大屏", "monitor:dashboard:edit"}, {"monitor:dashboard:list", "删除监控大屏", "monitor:dashboard:delete"},
+
+		// Domain management
+		{"domains:account:list", "新增 DNS 账号", "domains:account:add"}, {"domains:account:list", "编辑 DNS 账号", "domains:account:edit"}, {"domains:account:list", "删除 DNS 账号", "domains:account:delete"}, {"domains:account:list", "测试 DNS 账号", "domains:account:test"},
+		{"domains:public:list", "同步公网域名", "domains:public:sync"}, {"domains:public:list", "管理公网解析记录", "domains:public:record"}, {"domains:public:list", "批量操作公网记录", "domains:public:batch"},
+		{"domains:ssl:view", "同步 SSL 证书", "domains:ssl:sync"}, {"domains:ssl:view", "申请 SSL 证书", "domains:ssl:apply"}, {"domains:ssl:view", "上传 SSL 证书", "domains:ssl:upload"}, {"domains:ssl:view", "续签 SSL 证书", "domains:ssl:renew"}, {"domains:ssl:view", "删除 SSL 证书", "domains:ssl:delete"}, {"domains:ssl:view", "下载 SSL 证书", "domains:ssl:download"}, {"domains:ssl:view", "下载证书私钥", "domains:ssl:download-key"}, {"domains:ssl:view", "修改自动续签", "domains:ssl:settings"},
+		{"domains:internal:list", "新增内网 Zone", "domains:internal:zone:add"}, {"domains:internal:list", "编辑内网 Zone", "domains:internal:zone:edit"}, {"domains:internal:list", "删除内网 Zone", "domains:internal:zone:delete"}, {"domains:internal:list", "管理内网解析记录", "domains:internal:record"},
+		{"domains:settings:view", "保存 DNS 设置", "domains:settings:save"},
 	}
 
 	for sort, button := range buttons {

@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"ops-admin/backend/config"
 	"ops-admin/backend/router"
 	"ops-admin/backend/store"
+	"ops-admin/backend/util"
 )
 
 func main() {
@@ -13,6 +19,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)
 	}
+	util.ConfigureCredentialKey(cfg.Security.CredentialKey)
 
 	db, err := store.NewDB(cfg)
 	if err != nil {
@@ -27,8 +34,20 @@ func main() {
 		log.Fatalf("seed data failed: %v", err)
 	}
 
-	engine := router.New(cfg, db)
-	if err := engine.Run(":" + cfg.App.Port); err != nil {
-		log.Fatalf("start server failed: %v", err)
+	engine, svc := router.New(cfg, db)
+	server := &http.Server{Addr: ":" + cfg.App.Port, Handler: engine, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("start server failed: %v", err)
+		}
+	}()
+	stop, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancelSignal()
+	<-stop.Done()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = svc.Shutdown(ctx)
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
 	}
 }

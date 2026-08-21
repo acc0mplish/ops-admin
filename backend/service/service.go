@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 	"ops-admin/backend/auth"
+	"ops-admin/backend/internal/domain/dnsserver"
 	"ops-admin/backend/model"
 	"ops-admin/backend/util"
 )
@@ -35,6 +36,9 @@ type Service struct {
 	finOpsSchedulerOnce  sync.Once
 	notifyDispatcherOnce sync.Once
 	notifyConcurrency    chan struct{}
+	dnsManager           *dnsserver.Manager
+	certificateConfig    CertificateRuntimeConfig
+	certificateOnce      sync.Once
 	monitorNotifyMu      sync.Mutex
 	// Gateway SSH connections are multiplexed by ssh.Client. Keeping one client
 	// per gateway avoids repeating the public-network SSH handshake on every
@@ -64,7 +68,8 @@ type AssetTerminalSession struct {
 }
 
 func New(db *gorm.DB) *Service {
-	svc := &Service{db: db, gatewaySSHClients: make(map[uint]*ssh.Client), k8sOverviewCache: make(map[uint]k8sOverviewCacheEntry)}
+	svc := &Service{db: db, gatewaySSHClients: make(map[uint]*ssh.Client), k8sOverviewCache: make(map[uint]k8sOverviewCacheEntry), certificateConfig: defaultCertificateRuntimeConfig()}
+	svc.dnsManager = dnsserver.NewManager(db)
 	svc.ensureDefaultEnvironments()
 	svc.initOpsScheduler()
 	svc.initMonitorScheduler()
@@ -324,24 +329,44 @@ type profileRow struct {
 	PostName string `gorm:"column:post_name"`
 }
 
-func (s *Service) Login(req LoginRequest, ip string, browser string, osName string) (map[string]any, error) {
+func (s *Service) Login(req LoginRequest, ip string, browser string, osName string) (map[string]any, string, error) {
 	var admin model.Admin
 	if err := s.db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
 		s.createLoginLog(req.Username, ip, browser, osName, 2, "用户名或密码错误")
-		return nil, errors.New("用户名或密码错误")
+		return nil, "", errors.New("用户名或密码错误")
 	}
 	if admin.Status != 1 {
 		s.createLoginLog(req.Username, ip, browser, osName, 2, "账号已停用")
-		return nil, errors.New("账号已停用")
+		return nil, "", errors.New("账号已停用")
 	}
 	if !util.CheckPassword(admin.Password, req.Password) {
 		s.createLoginLog(req.Username, ip, browser, osName, 2, "用户名或密码错误")
-		return nil, errors.New("用户名或密码错误")
+		return nil, "", errors.New("用户名或密码错误")
 	}
 
-	token, err := auth.GenerateToken(admin.ID, admin.Username)
+	sessionID, err := auth.NewOpaqueToken()
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	refreshToken, err := auth.NewOpaqueToken()
+	if err != nil {
+		return nil, "", err
+	}
+	now := time.Now()
+	session := model.AuthSession{
+		ID:               sessionID,
+		AdminID:          admin.ID,
+		RefreshTokenHash: auth.HashOpaqueToken(refreshToken),
+		LastActivityAt:   now,
+		ExpiresAt:        now.Add(auth.SessionMaxTTL),
+	}
+	if err := s.db.Create(&session).Error; err != nil {
+		return nil, "", err
+	}
+	token, accessExpiresAt, err := auth.GenerateToken(admin.ID, admin.Username, session.ID)
+	if err != nil {
+		_ = s.db.Delete(&session).Error
+		return nil, "", err
 	}
 	s.createLoginLog(req.Username, ip, browser, osName, 1, "登录成功")
 
@@ -349,12 +374,61 @@ func (s *Service) Login(req LoginRequest, ip string, browser string, osName stri
 	config, _ := s.GetSystemConfig()
 
 	return map[string]any{
-		"token":          token,
-		"sysAdmin":       admin,
-		"leftMenuList":   s.CurrentMenus(roleID),
-		"permissionList": s.CurrentPermissions(roleID),
-		"systemConfig":   config,
-	}, nil
+		"token":                token,
+		"accessTokenExpiresAt": accessExpiresAt.UnixMilli(),
+		"sessionExpiresAt":     session.ExpiresAt.UnixMilli(),
+		"sysAdmin":             admin,
+		"leftMenuList":         s.CurrentMenus(roleID),
+		"permissionList":       s.CurrentPermissions(roleID),
+		"systemConfig":         config,
+	}, refreshToken, nil
+}
+
+func (s *Service) RefreshSession(refreshToken string, reportedActivityAt time.Time) (map[string]any, string, error) {
+	if strings.TrimSpace(refreshToken) == "" {
+		return nil, "", errors.New("刷新凭证缺失")
+	}
+	var session model.AuthSession
+	if err := s.db.Where("refresh_token_hash = ?", auth.HashOpaqueToken(refreshToken)).First(&session).Error; err != nil {
+		return nil, "", errors.New("登录会话无效")
+	}
+	now := time.Now()
+	lastActivityAt := session.LastActivityAt
+	if reportedActivityAt.After(lastActivityAt) && !reportedActivityAt.After(now.Add(time.Minute)) {
+		lastActivityAt = reportedActivityAt
+	}
+	if session.RevokedAt != nil || !now.Before(session.ExpiresAt) || now.Sub(lastActivityAt) >= auth.SessionIdleTTL {
+		return nil, "", errors.New("登录已过期")
+	}
+
+	var admin model.Admin
+	if err := s.db.First(&admin, session.AdminID).Error; err != nil || admin.Status != 1 {
+		return nil, "", errors.New("账号不可用")
+	}
+	if err := s.db.Model(&model.AuthSession{}).Where("id = ? AND revoked_at IS NULL", session.ID).Updates(map[string]any{
+		"last_activity_at": lastActivityAt,
+	}).Error; err != nil {
+		return nil, "", err
+	}
+	accessToken, accessExpiresAt, err := auth.GenerateToken(admin.ID, admin.Username, session.ID)
+	if err != nil {
+		return nil, "", err
+	}
+	return map[string]any{
+		"token":                accessToken,
+		"accessTokenExpiresAt": accessExpiresAt.UnixMilli(),
+		"sessionExpiresAt":     session.ExpiresAt.UnixMilli(),
+	}, refreshToken, nil
+}
+
+func (s *Service) RevokeSession(refreshToken string) {
+	if strings.TrimSpace(refreshToken) == "" {
+		return
+	}
+	now := time.Now()
+	_ = s.db.Model(&model.AuthSession{}).
+		Where("refresh_token_hash = ? AND revoked_at IS NULL", auth.HashOpaqueToken(refreshToken)).
+		Update("revoked_at", &now).Error
 }
 
 func (s *Service) GetProfile(userID uint) (map[string]any, error) {

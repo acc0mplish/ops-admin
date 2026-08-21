@@ -20,7 +20,7 @@ cp deploy/config.yaml.example deploy/config.yaml
 chmod 600 deploy/.env deploy/config.yaml
 ```
 
-编辑 `deploy/.env`，设置两个不同的高强度随机密码。然后把 `deploy/config.yaml` 中 `db.password` 改为与 `MYSQL_PASSWORD` 完全相同的值。
+编辑 `deploy/.env`，设置两个不同的高强度随机密码。然后把 `deploy/config.yaml` 中 `db.password` 改为与 `MYSQL_PASSWORD` 完全相同的值，并将 `security.credential-key` 替换为至少 32 字节的独立随机密钥。该密钥投入使用后禁止更换。
 
 启动：
 
