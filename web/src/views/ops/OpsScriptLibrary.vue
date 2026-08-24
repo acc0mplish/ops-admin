@@ -25,6 +25,13 @@ const versionVisible = ref(false)
 const versionLoading = ref(false)
 const versionList = ref([])
 const versionScript = ref(null)
+const scriptTimeoutPresets = [
+  { label: '30 秒', value: 30 },
+  { label: '1 分钟', value: 60 },
+  { label: '5 分钟（推荐）', value: 300 },
+  { label: '10 分钟', value: 600 },
+  { label: '30 分钟', value: 1800 }
+]
 
 const query = reactive({
   pageNum: 1,
@@ -40,6 +47,7 @@ const form = reactive({
   interpreter: 'bash',
   content: '',
   defaultParams: '',
+  variables: [],
   timeoutSeconds: 300,
   status: 1,
   description: '',
@@ -52,6 +60,18 @@ const scriptLineNumbers = computed(() => {
 })
 
 const highlightedScript = computed(() => highlightScript(form.content || '', form.scriptType))
+const timeoutPreset = computed({
+  get: () => scriptTimeoutPresets.some((item) => item.value === form.timeoutSeconds) ? form.timeoutSeconds : 'custom',
+  set: (value) => {
+    if (value !== 'custom') form.timeoutSeconds = Number(value)
+  }
+})
+const timeoutDescription = computed(() => {
+  const seconds = Number(form.timeoutSeconds) || 0
+  if (seconds < 60) return `${seconds} 秒`
+  if (seconds % 60 === 0) return `${seconds / 60} 分钟`
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+})
 
 function resetForm() {
   Object.assign(form, {
@@ -61,11 +81,31 @@ function resetForm() {
     interpreter: 'bash',
     content: '',
     defaultParams: '',
+    variables: [],
     timeoutSeconds: 300,
     status: 1,
     description: '',
     changeSummary: ''
   })
+}
+
+function compatibleInterpreter(scriptType, interpreter) {
+  const allowed = scriptType === 'python' ? ['python', 'python3'] : ['bash', 'sh']
+  return allowed.includes(interpreter) ? interpreter : (scriptType === 'python' ? 'python' : 'bash')
+}
+
+function handleScriptTypeChange(scriptType) {
+  form.interpreter = scriptType === 'python' ? 'python' : 'bash'
+}
+
+function addVariable() {
+  form.variables.push({ name: '', defaultValue: '', description: '', required: false, secret: false })
+}
+
+function removeVariable(index) { form.variables.splice(index, 1) }
+
+function normalizeVariableName(variable) {
+  variable.name = String(variable.name || '').toUpperCase().replace(/[^A-Z0-9_]/g, '')
 }
 
 watch(
@@ -151,13 +191,15 @@ function openCreate() {
 async function openEdit(row) {
   isEdit.value = true
   const data = await opsScriptInfo(row.id)
+  const scriptType = data.scriptType || 'shell'
   Object.assign(form, {
     id: data.id,
     name: data.name || '',
-    scriptType: data.scriptType || 'shell',
-    interpreter: data.interpreter || 'bash',
+    scriptType,
+    interpreter: compatibleInterpreter(scriptType, data.interpreter),
     content: data.content || '',
     defaultParams: data.defaultParams || '',
+    variables: (data.variables || []).map((item) => ({ name: item.name || '', defaultValue: item.secret ? '' : (item.defaultValue || ''), description: item.description || '', required: Boolean(item.required), secret: Boolean(item.secret) })),
     timeoutSeconds: data.timeoutSeconds || 300,
     status: data.status || 1,
     description: data.description || '',
@@ -294,7 +336,7 @@ onMounted(loadData)
           </el-col>
           <el-col :span="6">
             <el-form-item label="脚本类型">
-              <el-select v-model="form.scriptType" style="width: 100%">
+              <el-select v-model="form.scriptType" style="width: 100%" @change="handleScriptTypeChange">
                 <el-option label="Shell" value="shell" />
                 <el-option label="Python" value="python" />
               </el-select>
@@ -303,9 +345,14 @@ onMounted(loadData)
           <el-col :span="6">
             <el-form-item label="解释器">
               <el-select v-model="form.interpreter" style="width: 100%">
-                <el-option label="bash" value="bash" />
-                <el-option label="sh" value="sh" />
-                <el-option label="python3" value="python3" />
+                <template v-if="form.scriptType === 'python'">
+                  <el-option label="python（默认）" value="python" />
+                  <el-option label="python3" value="python3" />
+                </template>
+                <template v-else>
+                  <el-option label="bash（默认）" value="bash" />
+                  <el-option label="sh" value="sh" />
+                </template>
               </el-select>
             </el-form-item>
           </el-col>
@@ -342,17 +389,35 @@ onMounted(loadData)
             </el-form-item>
           </el-col>
 
+          <el-col :span="24">
+            <div class="variables-panel">
+              <div class="variables-heading"><div><h3>构建参数</h3><p>参数会以环境变量注入脚本，可使用 <code>$VARIABLE_NAME</code> 或 <code>${VARIABLE_NAME}</code>。</p></div><el-button type="primary" @click="addVariable">新增参数</el-button></div>
+              <div v-if="!form.variables.length" class="variables-empty">暂无自定义参数，可按需新增构建变量。</div>
+              <div v-else class="variables-list">
+                <div v-for="(variable, index) in form.variables" :key="index" class="variable-row">
+                  <div class="variable-name"><span>VARIABLE_</span><el-input v-model="variable.name" placeholder="ENV" @input="normalizeVariableName(variable)" /></div>
+                  <el-input v-model="variable.defaultValue" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :disabled="variable.secret" :placeholder="variable.secret ? '保密变量不保存默认值' : '默认值（可选）'" />
+                  <el-input v-model="variable.description" placeholder="说明（可选）" />
+                  <el-checkbox v-model="variable.required">必填</el-checkbox>
+                  <el-checkbox v-model="variable.secret" @change="variable.secret && (variable.defaultValue = '')">保密</el-checkbox>
+                  <el-button link type="danger" @click="removeVariable(index)">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </el-col>
           <el-col :span="12">
-            <el-form-item label="默认参数">
-              <el-input v-model="form.defaultParams" placeholder="例如：--env prod --force" />
+            <el-form-item label="执行超时">
+              <div class="timeout-control">
+                <el-select v-model="timeoutPreset" class="timeout-preset" aria-label="常用超时时长">
+                  <el-option v-for="item in scriptTimeoutPresets" :key="item.value" :label="item.label" :value="item.value" />
+                  <el-option label="自定义" value="custom" />
+                </el-select>
+                <el-input-number v-model="form.timeoutSeconds" :min="30" :max="3600" :step="30" controls-position="right" aria-label="超时秒数" />
+              </div>
+              <div class="timeout-tip">{{ timeoutDescription }} · 最长 60 分钟</div>
             </el-form-item>
           </el-col>
-          <el-col :span="6">
-            <el-form-item label="超时(秒)">
-              <el-input-number v-model="form.timeoutSeconds" :min="30" :max="3600" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="状态">
               <el-radio-group v-model="form.status">
                 <el-radio :value="1">启用</el-radio>
@@ -445,6 +510,44 @@ onMounted(loadData)
 .disable-action:focus-visible {
   color: #d68f24 !important;
 }
+
+.timeout-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d7dfec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.timeout-control:focus-within {
+  border-color: #4f7df3;
+  box-shadow: 0 0 0 3px rgba(79, 125, 243, 0.12);
+}
+
+.timeout-control :deep(.el-select__wrapper),
+.timeout-control :deep(.el-input__wrapper) {
+  min-height: 34px;
+  box-shadow: none !important;
+}
+
+.timeout-preset {
+  border-right: 1px solid #e3eaf4;
+}
+
+.timeout-tip {
+  margin-top: 6px;
+  color: #8090a8;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.variables-panel { margin: 2px 0 18px; padding: 18px; border: 1px solid #d7e4fb; border-radius: 10px; background: linear-gradient(135deg, #fbfdff, #f5f8ff); }
+.variables-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }.variables-heading h3 { margin: 0 0 4px; color: #172b4d; font-size: 16px; }.variables-heading p { margin: 0; color: #7184a2; font-size: 13px; }.variables-heading code { color: #456ee8; font-family: 'JetBrains Mono', Consolas, monospace; }
+.variables-empty { padding: 16px 18px; border: 1px dashed #bdd2fa; border-radius: 7px; color: #7184a2; font-size: 13px; }
+.variables-list { display: flex; flex-direction: column; gap: 9px; }.variable-row { display: grid; grid-template-columns: 1.25fr 1fr 1.2fr auto auto auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid #e0e8f5; border-radius: 8px; background: #fff; }.variable-name { display: flex; align-items: center; overflow: hidden; border: 1px solid #d7dfec; border-radius: 6px; }.variable-name span { padding: 0 8px; color: #5473a5; font: 12px 'JetBrains Mono', Consolas, monospace; white-space: nowrap; }.variable-name :deep(.el-input__wrapper) { box-shadow: none; }.variable-row :deep(.el-checkbox) { margin-right: 0; white-space: nowrap; }
+@media (max-width: 900px) { .variable-row { grid-template-columns: 1fr 1fr; }.variables-heading { align-items: flex-start; flex-direction: column; } }
 
 .script-editor-shell {
   width: 100%;

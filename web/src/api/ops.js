@@ -44,6 +44,7 @@ export const queryOpsJobList = (params) => http.get('/api/v1/ops/job/list', { pa
 export const opsJobInfo = (id) => http.get('/api/v1/ops/job/info', { params: { id } })
 export const addOpsJob = (data) => http.post('/api/v1/ops/job/add', data)
 export const updateOpsJob = (data) => http.put('/api/v1/ops/job/update', data)
+export const updateOpsJobStatus = (data) => http.put('/api/v1/ops/job/status', data)
 export const runOpsJob = (id) => http.post('/api/v1/ops/job/run', { id })
 export const deleteOpsJob = (id) => http.delete('/api/v1/ops/job/delete', { data: { id } })
 
@@ -57,6 +58,7 @@ export const queryOpsJobTemplateOptions = () => http.get('/api/v1/ops/job/templa
 export const opsJobTemplateInfo = (id) => http.get('/api/v1/ops/job/template/info', { params: { id } })
 export const addOpsJobTemplate = (data) => http.post('/api/v1/ops/job/template/add', data)
 export const updateOpsJobTemplate = (data) => http.put('/api/v1/ops/job/template/update', data)
+export const updateOpsJobTemplateStatus = (data) => http.put('/api/v1/ops/job/template/status', data)
 export const deleteOpsJobTemplate = (id) => http.delete('/api/v1/ops/job/template/delete', { data: { id } })
 
 export const queryOpsApplicationList = (params) => http.get('/api/v1/ops/application/list', { params })

@@ -19,7 +19,6 @@ let pollTimer = null
 const form = reactive({
   title: '',
   commandText: '',
-  parameters: '',
   hostIds: [],
   groupId: undefined,
   concurrency: 5,
@@ -76,7 +75,6 @@ async function submit() {
     const data = await executeOpsCommand({
       title: form.title,
       commandText: form.commandText,
-      parameters: form.parameters,
       hostIds: form.hostIds,
       groupIds: form.groupId ? [form.groupId] : [],
       concurrency: form.concurrency,
@@ -143,9 +141,6 @@ onBeforeUnmount(stopPolling)
       </el-form-item>
       <el-form-item label="执行命令" required>
         <el-input v-model="form.commandText" type="textarea" :rows="10" placeholder="例如：systemctl restart nginx" />
-      </el-form-item>
-      <el-form-item label="执行参数">
-        <el-input v-model="form.parameters" placeholder="例如：--env prod" />
       </el-form-item>
       <OpsTargetSelector
         :host-options="hostOptions"

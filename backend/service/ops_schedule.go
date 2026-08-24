@@ -12,50 +12,51 @@ import (
 	"time"
 
 	"ops-admin/backend/model"
+	"ops-admin/backend/util"
 
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
 type OpsScheduleTemplatePayload struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	TaskType       string `json:"taskType"`
-	ScriptID       uint   `json:"scriptId"`
-	Parameters     string `json:"parameters"`
-	HTTPMethod     string `json:"httpMethod"`
-	URL            string `json:"url"`
-	HeadersJSON    string `json:"headersJson"`
-	Body           string `json:"body"`
-	ExpectedStatus int    `json:"expectedStatus"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
-	CronExpr       string `json:"cronExpr"`
-	Description    string `json:"description"`
-	Status         int    `json:"status"`
+	ID             uint              `json:"id"`
+	Name           string            `json:"name"`
+	TaskType       string            `json:"taskType"`
+	ScriptID       uint              `json:"scriptId"`
+	Variables      map[string]string `json:"variables"`
+	HTTPMethod     string            `json:"httpMethod"`
+	URL            string            `json:"url"`
+	HeadersJSON    string            `json:"headersJson"`
+	Body           string            `json:"body"`
+	ExpectedStatus int               `json:"expectedStatus"`
+	TimeoutSeconds int               `json:"timeoutSeconds"`
+	CronExpr       string            `json:"cronExpr"`
+	Description    string            `json:"description"`
+	Status         int               `json:"status"`
 }
 
 type OpsScheduleTaskPayload struct {
-	ID                  uint   `json:"id"`
-	Name                string `json:"name"`
-	TaskType            string `json:"taskType"`
-	TemplateID          uint   `json:"templateId"`
-	ScriptID            uint   `json:"scriptId"`
-	Parameters          string `json:"parameters"`
-	HostIDs             []uint `json:"hostIds"`
-	GroupIDs            []uint `json:"groupIds"`
-	Concurrency         int    `json:"concurrency"`
-	HTTPMethod          string `json:"httpMethod"`
-	URL                 string `json:"url"`
-	HeadersJSON         string `json:"headersJson"`
-	Body                string `json:"body"`
-	ExpectedStatus      int    `json:"expectedStatus"`
-	TimeoutSeconds      int    `json:"timeoutSeconds"`
-	CronExpr            string `json:"cronExpr"`
-	Description         string `json:"description"`
-	Status              int    `json:"status"`
-	NotifyEnabled       bool   `json:"notifyEnabled"`
-	NotifyRuleID        uint   `json:"notifyRuleId"`
-	NotifyOnFailureOnly bool   `json:"notifyOnFailureOnly"`
+	ID                  uint              `json:"id"`
+	Name                string            `json:"name"`
+	TaskType            string            `json:"taskType"`
+	TemplateID          uint              `json:"templateId"`
+	ScriptID            uint              `json:"scriptId"`
+	Variables           map[string]string `json:"variables"`
+	HostIDs             []uint            `json:"hostIds"`
+	GroupIDs            []uint            `json:"groupIds"`
+	Concurrency         int               `json:"concurrency"`
+	HTTPMethod          string            `json:"httpMethod"`
+	URL                 string            `json:"url"`
+	HeadersJSON         string            `json:"headersJson"`
+	Body                string            `json:"body"`
+	ExpectedStatus      int               `json:"expectedStatus"`
+	TimeoutSeconds      int               `json:"timeoutSeconds"`
+	CronExpr            string            `json:"cronExpr"`
+	Description         string            `json:"description"`
+	Status              int               `json:"status"`
+	NotifyEnabled       bool              `json:"notifyEnabled"`
+	NotifyRuleID        uint              `json:"notifyRuleId"`
+	NotifyOnFailureOnly bool              `json:"notifyOnFailureOnly"`
 }
 
 type OpsScheduleTaskStatusPayload struct {
@@ -127,6 +128,76 @@ func decodeUintList(raw string) []uint {
 	var list []uint
 	_ = json.Unmarshal([]byte(value), &list)
 	return list
+}
+
+// resolveScheduleScriptVariables validates task/template values against the
+// selected script and encrypts values declared as secret before persistence.
+// Empty secret inputs preserve an existing configured value on edit.
+func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string]string, existing model.OpsScriptVariableValues) (model.OpsScriptVariableValues, map[string]string, error) {
+	if supplied == nil {
+		supplied = map[string]string{}
+	}
+	declared := make(map[string]model.OpsScriptVariable, len(script.Variables))
+	for _, variable := range script.Variables {
+		declared[variable.Name] = variable
+	}
+	for name := range supplied {
+		if _, ok := declared[name]; !ok {
+			return nil, nil, fmt.Errorf("变量 VARIABLE_%s 未在脚本中声明", name)
+		}
+	}
+	stored := model.OpsScriptVariableValues{}
+	runtimeValues := map[string]string{}
+	for name, variable := range declared {
+		rawValue, suppliedValue := supplied[name]
+		value := strings.TrimSpace(rawValue)
+		if existingValue := strings.TrimSpace(existing[name]); existingValue != "" && (!suppliedValue || (variable.Secret && value == "")) {
+			if variable.Secret {
+				plain, err := util.DecryptSecret(existingValue)
+				if err != nil {
+					return nil, nil, fmt.Errorf("读取变量 VARIABLE_%s 失败: %w", name, err)
+				}
+				value = plain
+			} else {
+				value = existingValue
+			}
+		}
+		if value == "" {
+			value = variable.DefaultValue
+		}
+		if variable.Required && value == "" {
+			return nil, nil, fmt.Errorf("请配置必填变量 VARIABLE_%s", name)
+		}
+		if value == "" {
+			continue
+		}
+		runtimeValues[name] = value
+		if variable.Secret {
+			encrypted, err := util.EncryptSecret(value)
+			if err != nil {
+				return nil, nil, err
+			}
+			stored[name] = encrypted
+		} else {
+			stored[name] = value
+		}
+	}
+	return stored, runtimeValues, nil
+}
+
+// scheduleVariableResponse never sends encrypted values (or plaintext secrets)
+// back to the browser. An empty value means a secret is already configured.
+func scheduleVariableResponse(script *model.OpsScript, stored model.OpsScriptVariableValues) map[string]string {
+	if script == nil || len(stored) == 0 {
+		return map[string]string{}
+	}
+	result := map[string]string{}
+	for _, variable := range script.Variables {
+		if value, ok := stored[variable.Name]; ok && !variable.Secret {
+			result[variable.Name] = value
+		}
+	}
+	return result
 }
 
 func normalizeHeadersJSON(raw string) (string, error) {
@@ -326,7 +397,13 @@ func (s *Service) GetOpsScheduleTask(id uint) (map[string]any, error) {
 	if err := s.db.First(&item, id).Error; err != nil {
 		return nil, err
 	}
-	return mapScheduleTaskItem(item), nil
+	result := mapScheduleTaskItem(item)
+	if item.ScriptID > 0 {
+		if script, err := s.GetOpsScript(item.ScriptID); err == nil {
+			result["variables"] = scheduleVariableResponse(script, item.Variables)
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, existing *model.OpsScheduleTask) (map[string]any, error) {
@@ -347,7 +424,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		"name":                   name,
 		"task_type":              taskType,
 		"template_id":            payload.TemplateID,
-		"parameters":             strings.TrimSpace(payload.Parameters),
+		"parameters":             "",
 		"host_ids_json":          encodeUintList(payload.HostIDs),
 		"group_ids_json":         encodeUintList(payload.GroupIDs),
 		"concurrency":            normalizeOpsConcurrency(payload.Concurrency),
@@ -386,6 +463,16 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		}
 		updates["script_id"] = script.ID
 		updates["script_name"] = script.Name
+		variables, _, err := resolveScheduleScriptVariables(script, payload.Variables, func() model.OpsScriptVariableValues {
+			if existing == nil {
+				return model.OpsScriptVariableValues{}
+			}
+			return existing.Variables
+		}())
+		if err != nil {
+			return nil, err
+		}
+		updates["variables"] = variables
 		updates["timeout_seconds"] = normalizeOpsTimeout(script.TimeoutSeconds)
 		updates["http_method"] = ""
 		updates["url"] = ""
@@ -398,6 +485,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
+		updates["variables"] = model.OpsScriptVariableValues{}
 		updates["host_ids_json"] = "[]"
 		updates["group_ids_json"] = "[]"
 		updates["concurrency"] = 1
@@ -555,10 +643,16 @@ func (s *Service) GetOpsScheduleTemplate(id uint) (map[string]any, error) {
 	if err := s.db.First(&item, id).Error; err != nil {
 		return nil, err
 	}
-	return mapScheduleTemplateItem(item), nil
+	result := mapScheduleTemplateItem(item)
+	if item.ScriptID > 0 {
+		if script, err := s.GetOpsScript(item.ScriptID); err == nil {
+			result["variables"] = scheduleVariableResponse(script, item.Variables)
+		}
+	}
+	return result, nil
 }
 
-func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePayload) (map[string]any, error) {
+func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePayload, existing *model.OpsScheduleTemplate) (map[string]any, error) {
 	taskType := normalizeScheduleTaskType(payload.TaskType)
 	name := Trimmed(payload.Name)
 	if name == "" {
@@ -576,7 +670,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	updates := map[string]any{
 		"name":            name,
 		"task_type":       taskType,
-		"parameters":      strings.TrimSpace(payload.Parameters),
+		"parameters":      "",
 		"http_method":     normalizeHTTPMethod(payload.HTTPMethod),
 		"url":             strings.TrimSpace(payload.URL),
 		"headers_json":    headersJSON,
@@ -598,6 +692,16 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 		}
 		updates["script_id"] = script.ID
 		updates["script_name"] = script.Name
+		variables, _, err := resolveScheduleScriptVariables(script, payload.Variables, func() model.OpsScriptVariableValues {
+			if existing == nil {
+				return model.OpsScriptVariableValues{}
+			}
+			return existing.Variables
+		}())
+		if err != nil {
+			return nil, err
+		}
+		updates["variables"] = variables
 		updates["timeout_seconds"] = normalizeOpsTimeout(script.TimeoutSeconds)
 		updates["http_method"] = ""
 		updates["url"] = ""
@@ -610,6 +714,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
+		updates["variables"] = model.OpsScriptVariableValues{}
 	default:
 		return nil, errors.New("不支持的模板类型")
 	}
@@ -617,7 +722,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 }
 
 func (s *Service) CreateOpsScheduleTemplate(payload OpsScheduleTemplatePayload) error {
-	updates, err := s.buildOpsScheduleTemplateUpdates(payload)
+	updates, err := s.buildOpsScheduleTemplateUpdates(payload, nil)
 	if err != nil {
 		return err
 	}
@@ -625,7 +730,11 @@ func (s *Service) CreateOpsScheduleTemplate(payload OpsScheduleTemplatePayload) 
 }
 
 func (s *Service) UpdateOpsScheduleTemplate(payload OpsScheduleTemplatePayload) error {
-	updates, err := s.buildOpsScheduleTemplateUpdates(payload)
+	var existing model.OpsScheduleTemplate
+	if err := s.db.First(&existing, payload.ID).Error; err != nil {
+		return err
+	}
+	updates, err := s.buildOpsScheduleTemplateUpdates(payload, &existing)
 	if err != nil {
 		return err
 	}
@@ -852,7 +961,7 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 		Title:          fmt.Sprintf("定时任务 - %s", task.Name),
 		ScriptID:       script.ID,
 		ScriptName:     script.Name,
-		Parameters:     task.Parameters,
+		Parameters:     "",
 		Concurrency:    normalizeOpsConcurrency(task.Concurrency),
 		TimeoutSeconds: normalizeOpsTimeout(script.TimeoutSeconds),
 		Status:         "running",
@@ -865,11 +974,11 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 		TargetSnapshot: opsTargetSnapshot(hosts),
 	}
 	data, err := s.runOpsTaskLegacy(execTask, hosts, func(host model.AssetHost) model.OpsExecTargetResult {
-		params := strings.TrimSpace(task.Parameters)
-		if params == "" {
-			params = strings.TrimSpace(script.DefaultParams)
+		_, variables, resolveErr := resolveScheduleScriptVariables(script, nil, task.Variables)
+		if resolveErr != nil {
+			return model.OpsExecTargetResult{HostID: host.ID, HostName: host.HostName, SSHIP: host.SSHIP, Status: "failed", ErrorText: resolveErr.Error()}
 		}
-		return s.execScriptOnHost(host, *script, params, execTask.TimeoutSeconds)
+		return s.execScriptOnHost(host, *script, "", variables, execTask.TimeoutSeconds)
 	})
 	if err != nil {
 		return "failed", err.Error(), err.Error(), 0

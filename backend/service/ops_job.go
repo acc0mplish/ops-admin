@@ -32,6 +32,11 @@ type OpsJobTemplatePayload struct {
 	DefinitionJSON string `json:"definitionJson"`
 }
 
+type OpsJobStatusPayload struct {
+	ID     uint `json:"id"`
+	Status int  `json:"status"`
+}
+
 type OpsJobHistoryApprovalPayload struct {
 	HistoryID uint   `json:"historyId"`
 	StepID    string `json:"stepId"`
@@ -103,6 +108,83 @@ func parseOpsJobDefinition(raw string) (*OpsJobDefinition, error) {
 	return &definition, nil
 }
 
+func stringConfigMap(value any) map[string]string {
+	result := map[string]string{}
+	values, ok := value.(map[string]any)
+	if !ok {
+		return result
+	}
+	for key, raw := range values {
+		if text, ok := raw.(string); ok {
+			result[key] = text
+		}
+	}
+	return result
+}
+
+func (s *Service) normalizeOpsJobDefinitionVariables(raw, existingRaw string) (string, error) {
+	definition, err := parseOpsJobDefinition(raw)
+	if err != nil {
+		return "", err
+	}
+	existingNodes := map[string]OpsJobNode{}
+	if strings.TrimSpace(existingRaw) != "" {
+		if existing, parseErr := parseOpsJobDefinition(existingRaw); parseErr == nil {
+			for _, node := range existing.Nodes {
+				existingNodes[node.ID] = node
+			}
+		}
+	}
+	for index := range definition.Nodes {
+		node := &definition.Nodes[index]
+		if node.Type != "script" {
+			continue
+		}
+		scriptID := uint(numberConfig(node.Config, "scriptId"))
+		if scriptID == 0 {
+			continue
+		}
+		script, err := s.GetOpsScript(scriptID)
+		if err != nil {
+			return "", err
+		}
+		var existingValues model.OpsScriptVariableValues
+		if existing, ok := existingNodes[node.ID]; ok {
+			existingValues = model.OpsScriptVariableValues(stringConfigMap(existing.Config["variables"]))
+		}
+		stored, _, err := resolveScheduleScriptVariables(script, stringConfigMap(node.Config["variables"]), existingValues)
+		if err != nil {
+			return "", fmt.Errorf("步骤“%s”：%w", node.Label, err)
+		}
+		delete(node.Config, "parameters")
+		node.Config["variables"] = map[string]string(stored)
+	}
+	data, err := json.Marshal(definition)
+	return string(data), err
+}
+
+func (s *Service) jobDefinitionForView(raw string) string {
+	definition, err := parseOpsJobDefinition(raw)
+	if err != nil {
+		return raw
+	}
+	for index := range definition.Nodes {
+		node := &definition.Nodes[index]
+		if node.Type != "script" || uint(numberConfig(node.Config, "scriptId")) == 0 {
+			continue
+		}
+		if script, err := s.GetOpsScript(uint(numberConfig(node.Config, "scriptId"))); err == nil {
+			node.Config["variables"] = scheduleVariableResponse(script, model.OpsScriptVariableValues(stringConfigMap(node.Config["variables"])))
+		}
+		delete(node.Config, "parameters")
+	}
+	data, err := json.Marshal(definition)
+	if err != nil {
+		return raw
+	}
+	return string(data)
+}
+
 func (s *Service) ListOpsJobs(pageNum, pageSize int, keyword, status string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
@@ -142,11 +224,21 @@ func (s *Service) GetOpsJob(id uint) (*model.OpsJob, error) {
 	return &item, nil
 }
 
+func (s *Service) GetOpsJobForView(id uint) (*model.OpsJob, error) {
+	item, err := s.GetOpsJob(id)
+	if err != nil {
+		return nil, err
+	}
+	item.DefinitionJSON = s.jobDefinitionForView(item.DefinitionJSON)
+	return item, nil
+}
+
 func (s *Service) CreateOpsJob(payload OpsJobPayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("作业名称不能为空")
 	}
-	if _, err := parseOpsJobDefinition(payload.DefinitionJSON); err != nil {
+	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, "")
+	if err != nil {
 		return err
 	}
 	item := model.OpsJob{
@@ -157,7 +249,7 @@ func (s *Service) CreateOpsJob(payload OpsJobPayload) error {
 		NotifyEnabled:  payload.NotifyEnabled,
 		NotifyRuleID:   payload.NotifyRuleID,
 		GraphJSON:      strings.TrimSpace(payload.GraphJSON),
-		DefinitionJSON: strings.TrimSpace(payload.DefinitionJSON),
+		DefinitionJSON: definitionJSON,
 	}
 	return s.db.Create(&item).Error
 }
@@ -169,7 +261,12 @@ func (s *Service) UpdateOpsJob(payload OpsJobPayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("作业名称不能为空")
 	}
-	if _, err := parseOpsJobDefinition(payload.DefinitionJSON); err != nil {
+	var existing model.OpsJob
+	if err := s.db.First(&existing, payload.ID).Error; err != nil {
+		return err
+	}
+	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, existing.DefinitionJSON)
+	if err != nil {
 		return err
 	}
 	return s.db.Model(&model.OpsJob{}).Where("id = ?", payload.ID).Updates(map[string]any{
@@ -180,12 +277,19 @@ func (s *Service) UpdateOpsJob(payload OpsJobPayload) error {
 		"notify_enabled":  payload.NotifyEnabled,
 		"notify_rule_id":  payload.NotifyRuleID,
 		"graph_json":      strings.TrimSpace(payload.GraphJSON),
-		"definition_json": strings.TrimSpace(payload.DefinitionJSON),
+		"definition_json": definitionJSON,
 	}).Error
 }
 
 func (s *Service) DeleteOpsJob(id uint) error {
 	return s.db.Delete(&model.OpsJob{}, id).Error
+}
+
+func (s *Service) UpdateOpsJobStatus(payload OpsJobStatusPayload) error {
+	if payload.ID == 0 {
+		return errors.New("作业 ID 不能为空")
+	}
+	return s.db.Model(&model.OpsJob{}).Where("id = ?", payload.ID).Update("status", normalizeJobStatus(payload.Status)).Error
 }
 
 func (s *Service) ListOpsJobTemplates(pageNum, pageSize int, keyword, status string) (map[string]any, error) {
@@ -235,11 +339,21 @@ func (s *Service) GetOpsJobTemplate(id uint) (*model.OpsJobTemplate, error) {
 	return &item, nil
 }
 
+func (s *Service) GetOpsJobTemplateForView(id uint) (*model.OpsJobTemplate, error) {
+	item, err := s.GetOpsJobTemplate(id)
+	if err != nil {
+		return nil, err
+	}
+	item.DefinitionJSON = s.jobDefinitionForView(item.DefinitionJSON)
+	return item, nil
+}
+
 func (s *Service) CreateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("作业模板名称不能为空")
 	}
-	if _, err := parseOpsJobDefinition(payload.DefinitionJSON); err != nil {
+	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, "")
+	if err != nil {
 		return err
 	}
 	item := model.OpsJobTemplate{
@@ -247,7 +361,7 @@ func (s *Service) CreateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 		Description:    Trimmed(payload.Description),
 		Status:         normalizeJobStatus(payload.Status),
 		GraphJSON:      strings.TrimSpace(payload.GraphJSON),
-		DefinitionJSON: strings.TrimSpace(payload.DefinitionJSON),
+		DefinitionJSON: definitionJSON,
 	}
 	return s.db.Create(&item).Error
 }
@@ -259,7 +373,12 @@ func (s *Service) UpdateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("作业模板名称不能为空")
 	}
-	if _, err := parseOpsJobDefinition(payload.DefinitionJSON); err != nil {
+	var existing model.OpsJobTemplate
+	if err := s.db.First(&existing, payload.ID).Error; err != nil {
+		return err
+	}
+	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, existing.DefinitionJSON)
+	if err != nil {
 		return err
 	}
 	return s.db.Model(&model.OpsJobTemplate{}).Where("id = ?", payload.ID).Updates(map[string]any{
@@ -267,12 +386,19 @@ func (s *Service) UpdateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 		"description":     Trimmed(payload.Description),
 		"status":          normalizeJobStatus(payload.Status),
 		"graph_json":      strings.TrimSpace(payload.GraphJSON),
-		"definition_json": strings.TrimSpace(payload.DefinitionJSON),
+		"definition_json": definitionJSON,
 	}).Error
 }
 
 func (s *Service) DeleteOpsJobTemplate(id uint) error {
 	return s.db.Delete(&model.OpsJobTemplate{}, id).Error
+}
+
+func (s *Service) UpdateOpsJobTemplateStatus(payload OpsJobStatusPayload) error {
+	if payload.ID == 0 {
+		return errors.New("作业模板 ID 不能为空")
+	}
+	return s.db.Model(&model.OpsJobTemplate{}).Where("id = ?", payload.ID).Update("status", normalizeJobStatus(payload.Status)).Error
 }
 
 func (s *Service) ListOpsJobHistories(pageNum, pageSize int, keyword, status string) (map[string]any, error) {
@@ -630,7 +756,7 @@ func (s *Service) executeOpsJobScriptNode(stepName string, config map[string]any
 		if finalParams == "" {
 			finalParams = strings.TrimSpace(script.DefaultParams)
 		}
-		return s.execScriptOnHost(host, *script, finalParams, task.TimeoutSeconds)
+		return s.execScriptOnHost(host, *script, finalParams, nil, task.TimeoutSeconds)
 	})
 	if err != nil {
 		return "failed", err.Error(), "", 0, err

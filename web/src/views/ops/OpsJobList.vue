@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteOpsJob, queryOpsJobList, runOpsJob } from '../../api/ops'
+import { deleteOpsJob, queryOpsJobList, runOpsJob, updateOpsJobStatus } from '../../api/ops'
 
 const router = useRouter()
 const loading = ref(false)
@@ -54,6 +54,14 @@ async function handleDelete(row) {
   loadData()
 }
 
+async function toggleStatus(row) {
+  const enabled = Number(row.status) === 1
+  await ElMessageBox.confirm(`确认${enabled ? '禁用' : '启用'}作业“${row.name}”吗？`, '提示', { type: 'warning' })
+  await updateOpsJobStatus({ id: row.id, status: enabled ? 2 : 1 })
+  ElMessage.success(enabled ? '作业已禁用' : '作业已启用')
+  await loadData()
+}
+
 function statusLabel(status) {
   return Number(status) === 1 ? '启用' : '禁用'
 }
@@ -95,10 +103,11 @@ onMounted(loadData)
         </template>
       </el-table-column>
       <el-table-column prop="updateTime" label="更新时间" width="180" />
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="success" @click="handleRun(row)">运行</el-button>
           <el-button link type="primary" @click="openEdit(row)">编排</el-button>
+          <el-button link :class="Number(row.status) === 1 ? 'job-action-disable' : 'job-action-enable'" @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '禁用' : '启用' }}</el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -124,4 +133,7 @@ onMounted(loadData)
 .page-desc { margin: 0; color: #7282a0; }
 .toolbar-left { display: flex; gap: 12px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; }
+.job-action-disable { color: #c87506 !important; font-weight: 600; }
+.job-action-disable:hover { color: #9a5a00 !important; }
+.job-action-enable { color: #49a828 !important; font-weight: 600; }
 </style>

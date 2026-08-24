@@ -21,7 +21,7 @@ func (ctl *Controller) GetOpsJobList(c *gin.Context) {
 }
 
 func (ctl *Controller) GetOpsJobInfo(c *gin.Context) {
-	data, err := ctl.service.GetOpsJob(uint(mustAtoi(c.Query("id"))))
+	data, err := ctl.service.GetOpsJobForView(uint(mustAtoi(c.Query("id"))))
 	if err != nil {
 		httpx.Failed(c, 404, err.Error())
 		return
@@ -62,6 +62,19 @@ func (ctl *Controller) DeleteOpsJob(c *gin.Context) {
 		return
 	}
 	if err := ctl.service.DeleteOpsJob(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateOpsJobStatus(c *gin.Context) {
+	var payload service.OpsJobStatusPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid job status payload")
+		return
+	}
+	if err := ctl.service.UpdateOpsJobStatus(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
@@ -148,7 +161,7 @@ func (ctl *Controller) GetOpsJobTemplateOptions(c *gin.Context) {
 }
 
 func (ctl *Controller) GetOpsJobTemplateInfo(c *gin.Context) {
-	data, err := ctl.service.GetOpsJobTemplate(uint(mustAtoi(c.Query("id"))))
+	data, err := ctl.service.GetOpsJobTemplateForView(uint(mustAtoi(c.Query("id"))))
 	if err != nil {
 		httpx.Failed(c, 404, err.Error())
 		return
@@ -189,6 +202,19 @@ func (ctl *Controller) DeleteOpsJobTemplate(c *gin.Context) {
 		return
 	}
 	if err := ctl.service.DeleteOpsJobTemplate(payload.ID); err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, true)
+}
+
+func (ctl *Controller) UpdateOpsJobTemplateStatus(c *gin.Context) {
+	var payload service.OpsJobStatusPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid job template status payload")
+		return
+	}
+	if err := ctl.service.UpdateOpsJobTemplateStatus(payload); err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}

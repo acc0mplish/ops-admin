@@ -21,9 +21,11 @@ const form = reactive({
   title: '',
   scriptId: undefined,
   parameters: '',
+  variables: {},
   hostIds: [],
   groupId: undefined,
-  concurrency: 5
+  concurrency: 5,
+  timeoutSeconds: 300
 })
 
 const selectedScript = computed(() => scriptOptions.value.find((item) => Number(item.id) === Number(form.scriptId || 0)) || null)
@@ -39,6 +41,8 @@ watch(
     if (!form.title.trim()) {
       form.title = selectedScript.value.name || ''
     }
+    form.timeoutSeconds = selectedScriptTimeout.value
+    form.variables = Object.fromEntries((selectedScript.value.variables || []).filter((item) => !item.secret).map((item) => [item.name, item.defaultValue || '']))
   }
 )
 
@@ -60,6 +64,11 @@ async function submit() {
   }
   if (!form.hostIds.length && !form.groupId) {
     ElMessage.warning('请选择目标主机或主机组')
+    return
+  }
+  const requiredVariable = (selectedScript.value?.variables || []).find((item) => item.required && !String(form.variables[item.name] || '').trim())
+  if (requiredVariable) {
+    ElMessage.warning(`请填写执行变量 VARIABLE_${requiredVariable.name}`)
     return
   }
   const highRisk = /rm\s+-rf|mkfs|shutdown|reboot|init\s+[06]|dd\s+if=|iptables\s+-f|systemctl\s+stop|userdel|drop\s+database|truncate\s+table/i.test(selectedScript.value?.content || '')
@@ -97,9 +106,11 @@ async function submit() {
       title: form.title,
       scriptId: form.scriptId,
       parameters: form.parameters,
+      variables: form.variables,
       hostIds: form.hostIds,
       groupIds: form.groupId ? [form.groupId] : [],
       concurrency: form.concurrency,
+      timeoutSeconds: form.timeoutSeconds,
       riskConfirmed: confirmationRequired
     })
     resultTask.value = data.task || null
@@ -167,8 +178,14 @@ onBeforeUnmount(stopPolling)
         </el-select>
       </el-form-item>
 
-      <el-form-item label="执行参数">
-        <el-input v-model="form.parameters" placeholder="为空时使用脚本默认参数" />
+      <el-form-item v-if="selectedScript" label="执行变量">
+        <div class="execution-variables">
+          <div class="execution-variable-head"><span>变量会注入为 <code>VARIABLE_NAME</code>，脚本中使用 <code>$VARIABLE_NAME</code> 读取。</span></div>
+          <el-empty v-if="!(selectedScript.variables || []).length" :image-size="40" description="该脚本未定义执行变量" />
+          <div v-else class="execution-variable-grid">
+            <label v-for="variable in selectedScript.variables" :key="variable.name" class="execution-variable-item"><span><b>VARIABLE_{{ variable.name }}</b><em v-if="variable.required">必填</em><small>{{ variable.description || '执行时注入的变量' }}</small></span><el-input v-model="form.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '请输入保密值' : (variable.defaultValue || '请输入值')" /></label>
+          </div>
+        </div>
       </el-form-item>
 
       <OpsTargetSelector
@@ -185,8 +202,10 @@ onBeforeUnmount(stopPolling)
       </el-form-item>
 
       <el-form-item label="超时时间">
-        <el-input :model-value="`${selectedScriptTimeout} 秒`" readonly />
-        <span class="inline-hint">使用脚本库中的超时秒数，这里不可修改</span>
+        <div class="timeout-field">
+          <el-input-number v-model="form.timeoutSeconds" :min="10" :max="3600" :step="10" controls-position="right" />
+          <span class="timeout-unit">秒，超时后自动终止执行</span>
+        </div>
       </el-form-item>
 
       <el-form-item>
@@ -223,9 +242,16 @@ onBeforeUnmount(stopPolling)
   color: #7282a0;
 }
 
-.inline-hint {
-  margin-left: 12px;
+.timeout-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeout-unit {
   color: #7282a0;
   font-size: 13px;
 }
+
+.execution-variables { width: 100%; padding: 14px 16px; border: 1px solid #d7e4fb; border-radius: 9px; background: #fafcff; }.execution-variable-head { margin-bottom: 12px; color: #7184a2; font-size: 13px; }.execution-variable-head code { color: #456ee8; font-family: 'JetBrains Mono', Consolas, monospace; }.execution-variable-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }.execution-variable-item { display: grid; grid-template-columns: minmax(140px, .9fr) minmax(0, 1.1fr); align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid #e0e8f5; border-radius: 7px; background: #fff; }.execution-variable-item b { display: block; color: #25446e; font: 12px 'JetBrains Mono', Consolas, monospace; }.execution-variable-item small { display: block; margin-top: 3px; color: #8492a8; font-size: 12px; }.execution-variable-item em { margin-left: 6px; color: #e55858; font-size: 12px; font-style: normal; } @media (max-width: 900px) { .execution-variable-grid { grid-template-columns: 1fr; }.execution-variable-item { grid-template-columns: 1fr; } }
 </style>

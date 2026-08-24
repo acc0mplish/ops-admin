@@ -150,7 +150,6 @@ onMounted(loadData)
       </el-table-column>
       <el-table-column prop="summary" label="摘要" min-width="180" />
       <el-table-column prop="operator" label="发起人" width="120"><template #default="{ row }">{{ row.operator || 'system' }}</template></el-table-column>
-      <el-table-column prop="sourceIp" label="来源 IP" min-width="140" />
       <el-table-column label="风险" width="90"><template #default="{ row }"><el-tag :type="row.riskLevel === 'high' ? 'danger' : 'info'" effect="plain">{{ row.riskLevel === 'high' ? '高风险' : '普通' }}</el-tag></template></el-table-column>
       <el-table-column prop="createTime" label="创建时间" min-width="180" />
       <el-table-column label="操作" width="190" fixed="right">
@@ -184,7 +183,7 @@ onMounted(loadData)
           <div class="summary-item"><span>执行摘要</span><strong>{{ detailTask.summary || '-' }}</strong></div>
           <div class="summary-item"><span>并发数</span><strong>{{ detailTask.concurrency }}</strong></div>
           <div class="summary-item"><span>创建时间</span><strong>{{ detailTask.createTime }}</strong></div>
-          <div class="summary-item"><span>发起人 / IP</span><strong>{{ detailTask.operator || 'system' }} / {{ detailTask.sourceIp || '-' }}</strong></div>
+          <div class="summary-item"><span>发起人</span><strong>{{ detailTask.operator || 'system' }}</strong></div>
           <div class="summary-item"><span>脚本版本</span><strong>{{ detailTask.scriptVersion ? `v${detailTask.scriptVersion}` : '-' }}</strong></div>
         </div>
 

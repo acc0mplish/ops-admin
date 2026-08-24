@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryOpsScriptOptions, queryOpsScheduleTemplateList, addOpsScheduleTemplate, updateOpsScheduleTemplate, deleteOpsScheduleTemplate, opsScheduleTemplateInfo } from '../../api/ops'
 import OpsCronEditor from './components/OpsCronEditor.vue'
@@ -25,7 +25,7 @@ const form = reactive({
   name: '',
   taskType: 'script',
   scriptId: undefined,
-  parameters: '',
+  variables: {},
   httpMethod: 'GET',
   url: '',
   headersJson: '{\n  "User-Agent": "OpsAdmin-Scheduler"\n}',
@@ -42,13 +42,26 @@ const selectedScriptTimeout = computed(() => {
   return current?.timeoutSeconds || 300
 })
 
+const selectedScriptVariables = computed(() => {
+  const current = scriptOptions.value.find((item) => Number(item.id) === Number(form.scriptId))
+  return current?.variables || []
+})
+
+function syncScriptVariables(values = {}) {
+  const next = {}
+  selectedScriptVariables.value.forEach((variable) => {
+    next[variable.name] = values[variable.name] ?? (variable.secret ? '' : (variable.defaultValue || ''))
+  })
+  form.variables = next
+}
+
 function resetForm() {
   Object.assign(form, {
     id: undefined,
     name: '',
     taskType: 'script',
     scriptId: undefined,
-    parameters: '',
+    variables: {},
     httpMethod: 'GET',
     url: '',
     headersJson: '{\n  "User-Agent": "OpsAdmin-Scheduler"\n}',
@@ -101,7 +114,7 @@ async function openEdit(row) {
     name: data.name || '',
     taskType: data.taskType || 'script',
     scriptId: data.scriptId || undefined,
-    parameters: data.parameters || '',
+    variables: data.variables || {},
     httpMethod: data.httpMethod || 'GET',
     url: data.url || '',
     headersJson: data.headersJson || '{}',
@@ -112,8 +125,13 @@ async function openEdit(row) {
     description: data.description || '',
     status: data.status || 1
   })
+  syncScriptVariables(data.variables || {})
   dialogVisible.value = true
 }
+
+watch(() => form.scriptId, () => {
+  if (form.taskType === 'script') syncScriptVariables(form.variables)
+})
 
 async function submit() {
   if (!form.name.trim()) {
@@ -268,9 +286,18 @@ onMounted(async () => {
               </el-form-item>
             </el-col>
             <el-col :span="24">
-              <el-form-item label="默认参数">
-                <el-input v-model="form.parameters" placeholder="例如：--env prod" />
-              </el-form-item>
+              <div class="variable-panel">
+                <div class="variable-panel__title">模板变量</div>
+                <div class="variable-panel__hint">保存后，变量会随模板带入任务，并以 <code>VARIABLE_变量名</code> 注入脚本。</div>
+                <div v-if="!selectedScriptVariables.length" class="variable-panel__empty">此脚本未声明变量，无需配置。</div>
+                <div v-else class="variable-grid">
+                  <div v-for="variable in selectedScriptVariables" :key="variable.name" class="variable-field">
+                    <div class="variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">必填</el-tag></div>
+                    <el-input v-model="form.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '敏感值保存后不回显' : (variable.defaultValue || '请输入变量值')" />
+                    <div v-if="variable.description" class="variable-field__desc">{{ variable.description }}</div>
+                  </div>
+                </div>
+              </div>
             </el-col>
           </template>
 
@@ -337,4 +364,12 @@ onMounted(async () => {
   font-size: 15px;
   font-weight: 700;
 }
+.variable-panel { padding: 16px; border: 1px solid #d9e6ff; border-radius: 10px; background: linear-gradient(135deg, #f8fbff, #fff); }
+.variable-panel__title { color: #172744; font-size: 15px; font-weight: 700; }
+.variable-panel__hint, .variable-field__desc { margin-top: 4px; color: #7282a0; font-size: 12px; }
+.variable-panel code, .variable-field__label code { color: #3869d9; }
+.variable-panel__empty { margin-top: 14px; padding: 12px; color: #8190aa; border: 1px dashed #cbdcff; border-radius: 7px; }
+.variable-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.variable-field__label { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13px; font-weight: 600; }
+@media (max-width: 720px) { .variable-grid { grid-template-columns: 1fr; } }
 </style>

@@ -63,6 +63,22 @@ const selectedScriptTimeout = computed(() => {
   const script = scriptOptions.value.find((item) => Number(item.id) === Number(selectedNodeForm.config?.scriptId))
   return script?.timeoutSeconds || 300
 })
+const selectedScriptVariables = computed(() => {
+  const script = scriptOptions.value.find((item) => Number(item.id) === Number(selectedNodeForm.config?.scriptId))
+  return script?.variables || []
+})
+
+function syncSelectedScriptVariables(values = {}) {
+  const variables = {}
+  selectedScriptVariables.value.forEach((variable) => {
+    variables[variable.name] = values[variable.name] ?? (variable.secret ? '' : (variable.defaultValue || ''))
+  })
+  selectedNodeForm.config = { ...selectedNodeForm.config, variables }
+}
+
+function handleSelectedScriptChange() {
+  syncSelectedScriptVariables(selectedNodeForm.config?.variables || {})
+}
 
 watch(
   () => [selectedNodeForm.label, JSON.stringify(selectedNodeForm.config || {})],
@@ -184,7 +200,7 @@ function createDefaultConfig(type) {
     default:
       return {
         scriptId: undefined,
-        parameters: '',
+        variables: {},
         hostIds: [],
         groupIds: [],
         concurrency: 5
@@ -789,13 +805,22 @@ onBeforeUnmount(() => {
 
           <template v-if="selectedNodeForm.type === 'script'">
             <el-form-item label="脚本">
-              <el-select v-model="selectedNodeForm.config.scriptId" filterable placeholder="选择脚本">
+              <el-select v-model="selectedNodeForm.config.scriptId" filterable placeholder="选择脚本" @change="handleSelectedScriptChange">
                 <el-option v-for="item in scriptOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="执行参数">
-              <el-input v-model="selectedNodeForm.config.parameters" placeholder="例如：--env prod" />
-            </el-form-item>
+            <div class="job-variable-panel">
+              <div class="job-variable-panel__title">步骤变量</div>
+              <div class="job-variable-panel__hint">运行时将以 <code>VARIABLE_变量名</code> 注入脚本；敏感值保存后不会回显。</div>
+              <div v-if="!selectedScriptVariables.length" class="job-variable-panel__empty">此脚本未声明变量。</div>
+              <div v-else class="job-variable-list">
+                <div v-for="variable in selectedScriptVariables" :key="variable.name" class="job-variable-field">
+                  <div class="job-variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">必填</el-tag></div>
+                  <el-input v-model="selectedNodeForm.config.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '已配置时留空可保留原值' : (variable.defaultValue || '请输入变量值')" />
+                  <div v-if="variable.description" class="job-variable-field__desc">{{ variable.description }}</div>
+                </div>
+              </div>
+            </div>
             <el-form-item label="并发数">
               <el-input-number v-model="selectedNodeForm.config.concurrency" :min="1" :max="10" style="width: 100%" />
             </el-form-item>
@@ -958,6 +983,14 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.6;
 }
+
+.job-variable-panel { padding: 13px; border: 1px solid #d9e6ff; border-radius: 10px; background: linear-gradient(135deg, #f8fbff, #fff); }
+.job-variable-panel__title { color: #172744; font-size: 14px; font-weight: 700; }
+.job-variable-panel__hint, .job-variable-field__desc { margin-top: 4px; color: #7282a0; font-size: 12px; line-height: 1.55; }
+.job-variable-panel code, .job-variable-field__label code { color: #3869d9; }
+.job-variable-panel__empty { margin-top: 12px; padding: 9px; color: #8190aa; border: 1px dashed #cbdcff; border-radius: 7px; font-size: 12px; }
+.job-variable-list { display: grid; gap: 12px; margin-top: 12px; }
+.job-variable-field__label { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; font-size: 12px; font-weight: 600; }
 
 .graph-container {
   width: 100%;
