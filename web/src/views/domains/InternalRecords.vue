@@ -159,7 +159,7 @@ onMounted(load)
       </div>
       <div>
         <el-button class="back-zone-button" @click="router.push('/domains/internal')">返回 Zone</el-button>
-        <el-dropdown trigger="click" @command="handleBatchCommand">
+        <el-dropdown v-permission="'domains:internal:record'" trigger="click" @command="handleBatchCommand">
           <el-button>批量操作<span class="batch-dropdown-caret">⌄</span></el-button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -171,7 +171,7 @@ onMounted(load)
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button type="primary" @click="create">新增解析记录</el-button>
+        <el-button v-permission="'domains:internal:record'" type="primary" @click="create">新增解析记录</el-button>
       </div>
     </div>
 
@@ -197,8 +197,8 @@ onMounted(load)
         <el-table-column prop="value" label="记录值" min-width="220"><template #default="{row}"><span class="domain-mono">{{ row.value }}</span></template></el-table-column>
         <el-table-column prop="ttl" label="TTL" width="90" />
         <el-table-column label="状态" width="100"><template #default="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag></template></el-table-column>
-        <el-table-column label="操作" width="140" fixed="right"><template #default="{row}"><el-button link type="primary" @click="edit(row)">编辑</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></template></el-table-column>
-        <template #empty><div class="domain-empty"><strong>该 Zone 暂无解析记录</strong><p>可单条新增；如需一次录入多条，请使用右上角“批量操作”。</p><el-button type="primary" @click="create">新增解析记录</el-button></div></template>
+        <el-table-column label="操作" width="140" fixed="right"><template #default="{row}"><span v-permission="'domains:internal:record'"><el-button link type="primary" @click="edit(row)">编辑</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></span></template></el-table-column>
+        <template #empty><div class="domain-empty"><strong>该 Zone 暂无解析记录</strong><p>可单条新增；如需一次录入多条，请使用右上角“批量操作”。</p><el-button v-permission="'domains:internal:record'" type="primary" @click="create">新增解析记录</el-button></div></template>
       </el-table>
     </div>
 

@@ -46,6 +46,15 @@ func TestInternalMissReturnsNXDOMAINWithoutForward(t *testing.T) {
 		t.Fatalf("rcode=%d want NXDOMAIN", response.Rcode)
 	}
 }
+
+func TestExistingInternalNameMissingTypeReturnsNODATA(t *testing.T) {
+	manager := &Manager{cache: map[string]cacheEntry{}}
+	manager.snapshot.Store(snapshotWithRecords("192.168.10.20", false))
+	response := manager.Resolve(context.Background(), query("grafana.ops.internal", dns.TypeAAAA))
+	if response.Rcode != dns.RcodeSuccess || len(response.Answer) != 0 {
+		t.Fatalf("response=%#v want NOERROR/NODATA", response)
+	}
+}
 func TestSnapshotSwapMakesChangesImmediate(t *testing.T) {
 	manager := &Manager{cache: map[string]cacheEntry{}}
 	manager.ReplaceSnapshot(snapshotWithRecords("192.168.10.20", false))
@@ -146,5 +155,33 @@ func TestUDPAndTCPServerLifecycle(t *testing.T) {
 	}
 	if manager.Status()["running"].(bool) {
 		t.Fatal("server still running after disable")
+	}
+}
+
+func TestFailedReplacementKeepsExistingDNSServerRunning(t *testing.T) {
+	activePort := freePort(t)
+	manager := &Manager{cache: map[string]cacheEntry{}}
+	manager.snapshot.Store(snapshotWithRecords("192.168.10.20", false))
+	if err := manager.Start(Settings{Enabled: true, ListenAddress: "127.0.0.1", ListenPort: activePort, TimeoutSeconds: 1}); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Stop(context.Background())
+
+	occupied, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	occupiedPort := occupied.LocalAddr().(*net.UDPAddr).Port
+	if err := manager.Start(Settings{Enabled: true, ListenAddress: "127.0.0.1", ListenPort: occupiedPort, TimeoutSeconds: 1}); err == nil {
+		t.Fatal("replacement unexpectedly succeeded on an occupied port")
+	}
+	if !manager.Status()["running"].(bool) {
+		t.Fatal("healthy DNS server was stopped after replacement failed")
+	}
+	client := &dns.Client{Net: "udp", Timeout: time.Second}
+	response, _, err := client.Exchange(query("grafana.ops.internal", dns.TypeA), fmt.Sprintf("127.0.0.1:%d", activePort))
+	if err != nil || len(response.Answer) != 1 {
+		t.Fatalf("original server unavailable after failed replacement: %v %#v", err, response)
 	}
 }

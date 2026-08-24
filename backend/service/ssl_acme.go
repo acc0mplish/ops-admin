@@ -322,7 +322,7 @@ func (s *Service) runAutomaticCertificateMaintenance() {
 }
 
 func (s *Service) resumeCertificateTasks() {
-	_ = s.db.Model(&model.SSLCertificateTask{}).Where("status = ?", certificateTaskRunning).Updates(map[string]any{"status": certificateTaskPending, "stage": "RECOVERED_AFTER_RESTART"}).Error
+	_ = s.db.Model(&model.SSLCertificateTask{}).Where("status = ?", certificateTaskRunning).Update("status", certificateTaskPending).Error
 	var tasks []model.SSLCertificateTask
 	if s.db.Where("status = ?", certificateTaskPending).Order("id asc").Find(&tasks).Error != nil {
 		return

@@ -201,6 +201,7 @@ func (SSLCertificateVersion) TableName() string { return "ssl_certificate_versio
 type SSLCertificateTask struct {
 	ID            uint       `json:"id" gorm:"primaryKey"`
 	CertificateID uint       `json:"certificateId" gorm:"index;not null"`
+	ActiveKey     *string    `json:"-" gorm:"size:191;uniqueIndex"`
 	AdminID       uint       `json:"adminId" gorm:"index"`
 	Username      string     `json:"username" gorm:"size:64"`
 	IPAddress     string     `json:"ipAddress" gorm:"size:64"`

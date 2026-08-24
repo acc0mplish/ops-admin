@@ -75,6 +75,17 @@ func TestPublicDNSProviderPartialFailureIsVisible(t *testing.T) {
 		t.Fatalf("partial results lost: %#v", results)
 	}
 }
+
+func TestFindProviderRecordRejectsRecordOutsideCurrentDomain(t *testing.T) {
+	mock := &mockDNSProvider{}
+	record, err := findProviderRecord(context.Background(), mock, "example.com", "1")
+	if err != nil || record.ID != "1" {
+		t.Fatalf("expected current-domain record, got %#v err=%v", record, err)
+	}
+	if _, err := findProviderRecord(context.Background(), mock, "example.com", "other-domain-record"); err == nil {
+		t.Fatal("record outside the current domain was accepted")
+	}
+}
 func TestCNAMECycleDetection(t *testing.T) {
 	edges := map[string]string{"a.ops.internal.": "b.ops.internal.", "b.ops.internal.": "a.ops.internal."}
 	if !cnameHasLoop(edges, "a.ops.internal.") {

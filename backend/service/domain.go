@@ -107,16 +107,13 @@ func (s *Service) ListPublicDNSAccounts(pageNum, pageSize int, keyword, provider
 	return map[string]any{"list": list, "total": total}, nil
 }
 func (s *Service) PublicDNSAccountOptions() ([]map[string]any, error) {
-	data, err := s.ListPublicDNSAccounts(1, 100, "", "")
-	if err != nil {
+	var accounts []model.PublicDNSAccount
+	if err := s.db.Where("status = ?", 1).Order("name asc,id asc").Find(&accounts).Error; err != nil {
 		return nil, err
 	}
-	raw := data["list"].([]map[string]any)
-	result := []map[string]any{}
-	for _, item := range raw {
-		if item["status"] == 1 {
-			result = append(result, item)
-		}
+	result := make([]map[string]any, 0, len(accounts))
+	for _, item := range accounts {
+		result = append(result, map[string]any{"id": item.ID, "name": item.Name, "provider": item.Provider, "status": item.Status})
 	}
 	return result, nil
 }
@@ -180,6 +177,13 @@ func (s *Service) DeletePublicDNSAccount(id uint, actor DNSAuditActor) error {
 	var item model.PublicDNSAccount
 	if err := s.db.First(&item, id).Error; err != nil {
 		return err
+	}
+	var certificateCount int64
+	if err := s.db.Model(&model.SSLCertificate{}).Where("dns_account_id = ?", id).Count(&certificateCount).Error; err != nil {
+		return err
+	}
+	if certificateCount > 0 {
+		return fmt.Errorf("该 DNS 账号仍关联 %d 张 SSL 证书，请先迁移或删除关联证书", certificateCount)
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("account_id = ?", id).Delete(&model.PublicDomainSnapshot{}).Error; err != nil {
@@ -306,19 +310,35 @@ func (s *Service) ListPublicRecords(accountID uint, domain string) ([]provider.D
 	if err != nil {
 		return nil, err
 	}
+	domain, err = s.requirePublicDomainSnapshot(accountID, domain)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	return p.ListRecords(ctx, strings.TrimSpace(domain))
+	return p.ListRecords(ctx, domain)
 }
 func (s *Service) MutatePublicRecord(action string, accountID uint, req provider.RecordRequest, actor DNSAuditActor) error {
 	p, account, err := s.publicProvider(accountID)
 	if err != nil {
 		return err
 	}
-	req.Domain = strings.TrimSpace(req.Domain)
+	action = strings.ToLower(strings.TrimSpace(action))
+	req.Domain, err = s.requirePublicDomainSnapshot(accountID, req.Domain)
+	if err != nil {
+		return err
+	}
 	req.Type = strings.ToUpper(strings.TrimSpace(req.Type))
 	if req.Domain == "" || req.RecordID == "" && action != "create" {
 		return errors.New("域名或记录 ID 缺失")
+	}
+	var oldValue string
+	if action != "create" {
+		current, lookupErr := findProviderRecord(context.Background(), p, req.Domain, req.RecordID)
+		if lookupErr != nil {
+			return lookupErr
+		}
+		oldValue = current.Value
 	}
 	if req.TTL == 0 {
 		req.TTL = 600
@@ -326,7 +346,7 @@ func (s *Service) MutatePublicRecord(action string, accountID uint, req provider
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	err = executeProviderAction(ctx, p, action, req)
-	s.writeDNSAudit(actor, "公网解析记录"+action, account.Provider, "", req.Domain, req.Type, "", req.Value, err)
+	s.writeDNSAudit(actor, "公网解析记录"+action, account.Provider, "", req.Domain, req.Type, oldValue, req.Value, err)
 	return err
 }
 func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditActor) map[string]any {
@@ -334,9 +354,34 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 	if err != nil {
 		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": err.Error()}
 	}
+	payload.Action = strings.ToLower(strings.TrimSpace(payload.Action))
+	payload.Domain, err = s.requirePublicDomainSnapshot(payload.AccountID, payload.Domain)
+	if err != nil {
+		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": err.Error()}
+	}
+	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "enable": true, "disable": true, "ttl": true, "value": true}
+	if !allowedActions[payload.Action] {
+		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "不支持的批量操作"}
+	}
+	currentByID := map[string]provider.DNSRecord{}
+	if payload.Action != "create" {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		current, listErr := p.ListRecords(ctx, payload.Domain)
+		cancel()
+		if listErr != nil {
+			return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": listErr.Error()}
+		}
+		for _, record := range current {
+			currentByID[record.ID] = record
+		}
+	}
 	types := map[string]struct{}{}
 	for _, item := range payload.Records {
-		types[strings.ToUpper(item.Type)] = struct{}{}
+		if current, ok := currentByID[item.RecordID]; ok {
+			types[strings.ToUpper(current.Type)] = struct{}{}
+		} else {
+			types[strings.ToUpper(item.Type)] = struct{}{}
+		}
 	}
 	if payload.Action == "value" && len(types) > 1 {
 		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "批量修改记录值要求所选记录类型一致"}
@@ -345,6 +390,14 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 	success := 0
 	for _, item := range payload.Records {
 		item.Domain = payload.Domain
+		current, exists := currentByID[item.RecordID]
+		if payload.Action != "create" && !exists {
+			results = append(results, map[string]any{"recordId": item.RecordID, "host": item.Host, "success": false, "error": "记录不存在或不属于当前域名"})
+			continue
+		}
+		if payload.Action == "delete" || payload.Action == "enable" || payload.Action == "disable" || payload.Action == "ttl" || payload.Action == "value" {
+			item = provider.RecordRequest{Domain: payload.Domain, RecordID: current.ID, Host: current.Host, Type: current.Type, Value: current.Value, TTL: current.TTL, Line: current.Line}
+		}
 		if payload.Action == "ttl" {
 			item.TTL = payload.TTL
 		}
@@ -368,6 +421,36 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 		results = append(results, entry)
 	}
 	return map[string]any{"successCount": success, "failureCount": len(payload.Records) - success, "results": results}
+}
+
+func (s *Service) requirePublicDomainSnapshot(accountID uint, domain string) (string, error) {
+	domain = normalizePublicName(domain)
+	if accountID == 0 || domain == "" {
+		return "", errors.New("DNS 账号或域名不能为空")
+	}
+	var count int64
+	if err := s.db.Model(&model.PublicDomainSnapshot{}).Where("account_id = ? AND domain = ?", accountID, domain).Count(&count).Error; err != nil {
+		return "", err
+	}
+	if count == 0 {
+		return "", errors.New("该域名不存在或不属于当前 DNS 账号，请先刷新域名列表")
+	}
+	return domain, nil
+}
+
+func findProviderRecord(parent context.Context, p provider.PublicDNSProvider, domain, recordID string) (*provider.DNSRecord, error) {
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	defer cancel()
+	records, err := p.ListRecords(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+	for index := range records {
+		if records[index].ID == recordID {
+			return &records[index], nil
+		}
+	}
+	return nil, errors.New("记录不存在或不属于当前域名")
 }
 
 func executeProviderAction(ctx context.Context, p provider.PublicDNSProvider, action string, req provider.RecordRequest) error {
@@ -398,6 +481,10 @@ func (s *Service) SaveInternalDNSSettings(payload InternalDNSSettingsPayload, ac
 	// DNS uses the standard port by product definition. Never trust a client
 	// supplied port, including direct API calls that bypass the UI.
 	payload.ListenPort = 53
+	oldSettings, loadErr := dnsserver.LoadSettings(s.db)
+	if loadErr != nil {
+		return loadErr
+	}
 	settings := dnsserver.Settings{Enabled: payload.Enabled, ListenAddress: payload.ListenAddress, ListenPort: 53, Upstreams: payload.Upstreams, TimeoutSeconds: payload.TimeoutSeconds}
 	data, _ := json.Marshal(payload.Upstreams)
 	item := model.InternalDNSSetting{ID: 1, Enabled: payload.Enabled, ListenAddress: payload.ListenAddress, ListenPort: 53, UpstreamsJSON: string(data), TimeoutSeconds: payload.TimeoutSeconds}
@@ -412,6 +499,9 @@ func (s *Service) SaveInternalDNSSettings(payload InternalDNSSettingsPayload, ac
 		updates["last_started_at"] = &now
 	}
 	err := s.db.Model(&model.InternalDNSSetting{}).Where("id = ?", 1).Updates(updates).Error
+	if err != nil {
+		_ = s.dnsManager.Apply(oldSettings)
+	}
 	s.writeDNSAudit(actor, "保存内网 DNS 设置", "internal", "", "", "", "", "", err)
 	return err
 }
@@ -538,10 +628,13 @@ func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAud
 				return err
 			}
 		} else {
-			if err := tx.First(&old, payload.ID).Error; err != nil {
+			if err := tx.Where("id = ? AND zone_id = ?", payload.ID, payload.ZoneID).First(&old).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errors.New("解析记录不存在或不属于当前 Zone")
+				}
 				return err
 			}
-			if err := tx.Model(&model.InternalDNSRecord{}).Where("id = ?", payload.ID).Updates(map[string]any{"host": item.Host, "type": item.Type, "value": item.Value, "ttl": item.TTL, "status": item.Status}).Error; err != nil {
+			if err := tx.Model(&model.InternalDNSRecord{}).Where("id = ? AND zone_id = ?", payload.ID, payload.ZoneID).Updates(map[string]any{"host": item.Host, "type": item.Type, "value": item.Value, "ttl": item.TTL, "status": item.Status}).Error; err != nil {
 				return err
 			}
 		}

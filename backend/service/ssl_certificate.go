@@ -336,8 +336,20 @@ func (s *Service) QueueCertificateCloudSync(accountID uint, actor DNSAuditActor)
 	}
 	ids := []uint{}
 	for _, account := range accounts {
-		task := model.SSLCertificateTask{CertificateID: 0, AdminID: actor.AdminID, Username: actor.Username, IPAddress: actor.IP, TaskType: "SYNC", Status: certificateTaskPending, Provider: account.Provider, Stage: fmt.Sprintf("ACCOUNT:%d", account.ID)}
+		key := fmt.Sprintf("account:%d:sync", account.ID)
+		var existing model.SSLCertificateTask
+		if err := s.db.Where("active_key = ?", key).First(&existing).Error; err == nil {
+			ids = append(ids, existing.ID)
+			continue
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ids, err
+		}
+		task := model.SSLCertificateTask{CertificateID: 0, ActiveKey: &key, AdminID: actor.AdminID, Username: actor.Username, IPAddress: actor.IP, TaskType: "SYNC", Status: certificateTaskPending, Provider: account.Provider, Stage: fmt.Sprintf("ACCOUNT:%d", account.ID)}
 		if err := s.db.Create(&task).Error; err != nil {
+			if lookupErr := s.db.Where("active_key = ?", key).First(&existing).Error; lookupErr == nil {
+				ids = append(ids, existing.ID)
+				continue
+			}
 			return ids, err
 		}
 		ids = append(ids, task.ID)
@@ -355,22 +367,36 @@ func (s *Service) QueueCertificateTask(certificateID uint, taskType string, acto
 	if err := s.db.First(&cert, certificateID).Error; err != nil {
 		return 0, err
 	}
-	var count int64
-	if err := s.db.Model(&model.SSLCertificateTask{}).Where("certificate_id = ? AND task_type IN ? AND status IN ?", certificateID, []string{"APPLY", "RENEW"}, []string{certificateTaskPending, certificateTaskRunning}).Count(&count).Error; err != nil {
-		return 0, err
-	}
-	if count > 0 && (taskType == "APPLY" || taskType == "RENEW") {
-		return 0, errors.New("该证书已有申请或续签任务正在执行")
-	}
 	if taskType == "RENEW" && cert.Source != model.SSLCertificateSourceACME {
 		return 0, errors.New("只有平台 ACME 申请的证书支持续签")
 	}
-	task := model.SSLCertificateTask{CertificateID: certificateID, AdminID: actor.AdminID, Username: actor.Username, IPAddress: actor.IP, TaskType: taskType, Status: certificateTaskPending, Provider: cert.Provider, Stage: "QUEUED"}
+	keyType := strings.ToLower(taskType)
+	if taskType == "APPLY" || taskType == "RENEW" {
+		keyType = "issuance"
+	}
+	key := fmt.Sprintf("certificate:%d:%s", certificateID, keyType)
+	var existing model.SSLCertificateTask
+	if err := s.db.Where("active_key = ?", key).First(&existing).Error; err == nil {
+		return 0, certificateTaskConflictError(taskType)
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	task := model.SSLCertificateTask{CertificateID: certificateID, ActiveKey: &key, AdminID: actor.AdminID, Username: actor.Username, IPAddress: actor.IP, TaskType: taskType, Status: certificateTaskPending, Provider: cert.Provider, Stage: "QUEUED"}
 	if err := s.db.Create(&task).Error; err != nil {
+		if lookupErr := s.db.Where("active_key = ?", key).First(&existing).Error; lookupErr == nil {
+			return 0, certificateTaskConflictError(taskType)
+		}
 		return 0, err
 	}
 	go s.runCertificateTask(task.ID)
 	return task.ID, nil
+}
+
+func certificateTaskConflictError(taskType string) error {
+	if taskType == "APPLY" || taskType == "RENEW" {
+		return errors.New("该证书已有申请或续签任务正在执行")
+	}
+	return errors.New("该证书已有相同任务正在执行")
 }
 
 func (s *Service) ListSSLCertificateTasks(certificateID uint, limit int) ([]model.SSLCertificateTask, error) {
@@ -401,7 +427,7 @@ func (s *Service) runCertificateTask(taskID uint) {
 			err = fmt.Errorf("证书任务异常: %v", recovered)
 		}
 		finished := time.Now()
-		updates := map[string]any{"status": certificateTaskSuccess, "stage": "COMPLETED", "progress": 100, "finished_at": &finished, "error_message": ""}
+		updates := map[string]any{"status": certificateTaskSuccess, "stage": "COMPLETED", "progress": 100, "finished_at": &finished, "error_message": "", "active_key": nil}
 		if err != nil {
 			updates["status"] = certificateTaskFailed
 			updates["stage"] = "FAILED"
@@ -606,7 +632,24 @@ func (s *Service) deleteCertificateTask(task model.SSLCertificateTask) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := cloud.DeleteCertificate(ctx, cert.CloudCertificateID); err != nil {
-		return fmt.Errorf("云端删除失败，本地证书已保留: %w", err)
+		// The process may have stopped after the cloud deletion succeeded but
+		// before the local transaction ran. Confirm absence so a recovered task
+		// remains idempotent even when the provider reports "not found".
+		checkCtx, checkCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		items, checkErr := cloud.ListCertificates(checkCtx)
+		checkCancel()
+		stillExists := checkErr != nil
+		if checkErr == nil {
+			for _, item := range items {
+				if item.ID == cert.CloudCertificateID {
+					stillExists = true
+					break
+				}
+			}
+		}
+		if stillExists {
+			return fmt.Errorf("云端删除失败，本地证书已保留: %w", err)
+		}
 	}
 	s.updateCertificateTask(task.ID, "DELETING_LOCAL", 80)
 	domains := s.loadCertificateDomainNames(cert.ID)

@@ -21,7 +21,7 @@ onMounted(loadData)
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div><div class="domain-eyebrow">PUBLIC DNS CREDENTIALS</div><h2>公网 DNS 账号</h2><p>接入阿里云 DNS 与腾讯云 DNSPod。凭据加密保存，页面仅展示脱敏标识。</p></div>
-      <el-button type="primary" @click="openCreate">新增 DNS 账号</el-button>
+      <el-button v-permission="'domains:account:add'" type="primary" @click="openCreate">新增 DNS 账号</el-button>
     </div>
     <div class="domain-toolbar" role="search">
       <div class="domain-toolbar__filters"><el-input v-model="query.keyword" clearable placeholder="搜索账号名称" style="width:240px" @keyup.enter="loadData"/><el-select v-model="query.provider" clearable placeholder="服务商" style="width:160px"><el-option label="阿里云 DNS" value="aliyun"/><el-option label="腾讯云 DNSPod" value="tencent"/></el-select><el-button @click="loadData">查询</el-button></div>
@@ -32,8 +32,8 @@ onMounted(loadData)
         <el-table-column prop="accessKeyHint" label="凭据标识" min-width="160"><template #default="{row}"><span class="domain-mono">{{row.accessKeyHint}}</span></template></el-table-column>
         <el-table-column label="连接状态" width="140"><template #default="{row}"><span class="dns-state" :class="{'is-running':row.lastConnectionStatus==='success','is-error':row.lastConnectionStatus==='failed'}">{{row.lastConnectionStatus==='success'?'连接正常':row.lastConnectionStatus==='failed'?'连接失败':'尚未测试'}}</span></template></el-table-column>
         <el-table-column label="账号状态" width="100"><template #default="{row}"><el-tag :type="row.status===1?'success':'info'">{{row.status===1?'启用':'停用'}}</el-tag></template></el-table-column>
-        <el-table-column prop="lastConnectionAt" label="最近测试" width="180"/><el-table-column label="操作" width="210" fixed="right"><template #default="{row}"><el-button link type="primary" :loading="testingId===row.id" @click="test(row)">测试连接</el-button><el-button link @click="openEdit(row)">编辑</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></template></el-table-column>
-        <template #empty><div class="domain-empty"><strong>尚未配置公网 DNS 账号</strong><p>添加云厂商账号后才能同步公网域名。</p><el-button type="primary" @click="openCreate">新增 DNS 账号</el-button></div></template>
+        <el-table-column prop="lastConnectionAt" label="最近测试" width="180"/><el-table-column label="操作" width="210" fixed="right"><template #default="{row}"><el-button v-permission="'domains:account:test'" link type="primary" :loading="testingId===row.id" @click="test(row)">测试连接</el-button><el-button v-permission="'domains:account:edit'" link @click="openEdit(row)">编辑</el-button><el-button v-permission="'domains:account:delete'" link type="danger" @click="remove(row)">删除</el-button></template></el-table-column>
+        <template #empty><div class="domain-empty"><strong>尚未配置公网 DNS 账号</strong><p>添加云厂商账号后才能同步公网域名。</p><el-button v-permission="'domains:account:add'" type="primary" @click="openCreate">新增 DNS 账号</el-button></div></template>
       </el-table>
     </div>
     <div class="domain-pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" layout="total, sizes, prev, pager, next" :total="total" @current-change="loadData" @size-change="loadData"/></div>

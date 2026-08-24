@@ -144,6 +144,12 @@ func (m *Manager) ReplaceSnapshot(snapshot *Snapshot) {
 	m.mu.Unlock()
 }
 
+func (m *Manager) clearCacheLocked() {
+	m.cacheMu.Lock()
+	m.cache = make(map[string]cacheEntry)
+	m.cacheMu.Unlock()
+}
+
 func BuildSnapshot(db *gorm.DB) (*Snapshot, error) {
 	var zones []model.InternalDNSZone
 	if err := db.Where("status = ?", 1).Find(&zones).Error; err != nil {
@@ -201,10 +207,17 @@ func (m *Manager) Start(settings Settings) error {
 	if !settings.Enabled {
 		return nil
 	}
-	if err := m.stopLocked(); err != nil {
-		return err
-	}
 	address := net.JoinHostPort(settings.ListenAddress, strconv.Itoa(settings.ListenPort))
+	currentAddress := net.JoinHostPort(m.settings.ListenAddress, strconv.Itoa(m.settings.ListenPort))
+	if m.running && m.udp != nil && m.tcp != nil && address == currentAddress {
+		m.settings = settings
+		m.lastError = ""
+		m.clearCacheLocked()
+		return nil
+	}
+
+	// Bind the replacement listeners before stopping the healthy server. A bad
+	// address therefore cannot take an existing DNS service offline.
 	packet, err := net.ListenPacket("udp", address)
 	if err != nil {
 		return fmt.Errorf("UDP %s 启动失败: %w", address, err)
@@ -214,20 +227,28 @@ func (m *Manager) Start(settings Settings) error {
 		_ = packet.Close()
 		return fmt.Errorf("TCP %s 启动失败: %w", address, err)
 	}
+	if err := m.stopLocked(); err != nil {
+		_ = packet.Close()
+		_ = listener.Close()
+		return err
+	}
 	handler := dns.HandlerFunc(m.handle)
-	m.udp = &dns.Server{PacketConn: packet, Handler: handler}
-	m.tcp = &dns.Server{Listener: listener, Handler: handler}
+	udpServer := &dns.Server{PacketConn: packet, Handler: handler}
+	tcpServer := &dns.Server{Listener: listener, Handler: handler}
+	m.udp = udpServer
+	m.tcp = tcpServer
 	m.settings = settings
 	m.running = true
 	m.lastError = ""
+	m.clearCacheLocked()
 	go func() {
-		if err := m.udp.ActivateAndServe(); err != nil && !strings.Contains(strings.ToLower(err.Error()), "closed") {
-			m.setRuntimeError(err)
+		if err := udpServer.ActivateAndServe(); err != nil && !strings.Contains(strings.ToLower(err.Error()), "closed") {
+			m.setRuntimeError(udpServer, nil, err)
 		}
 	}()
 	go func() {
-		if err := m.tcp.ActivateAndServe(); err != nil && !strings.Contains(strings.ToLower(err.Error()), "closed") {
-			m.setRuntimeError(err)
+		if err := tcpServer.ActivateAndServe(); err != nil && !strings.Contains(strings.ToLower(err.Error()), "closed") {
+			m.setRuntimeError(nil, tcpServer, err)
 		}
 	}()
 	return nil
@@ -239,6 +260,7 @@ func (m *Manager) Apply(settings Settings) error {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		m.settings = settings
+		m.clearCacheLocked()
 		return m.stopLocked()
 	}
 	return m.Start(settings)
@@ -266,9 +288,12 @@ func (m *Manager) stopLockedContext(ctx context.Context) error {
 	m.running = false
 	return firstErr
 }
-func (m *Manager) setRuntimeError(err error) {
+func (m *Manager) setRuntimeError(udpServer, tcpServer *dns.Server, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if udpServer != nil && m.udp != udpServer || tcpServer != nil && m.tcp != tcpServer {
+		return
+	}
 	m.lastError = err.Error()
 	m.running = false
 }
@@ -314,6 +339,10 @@ func (m *Manager) Resolve(ctx context.Context, request *dns.Msg) *dns.Msg {
 					if len(response.Answer) > 0 {
 						return response
 					}
+					// The owner name exists but not for the requested type. DNS
+					// requires a NOERROR/NODATA response; NXDOMAIN would incorrectly
+					// negative-cache the entire name (commonly after an AAAA lookup).
+					return response
 				}
 				response.Rcode = dns.RcodeNameError
 				return response
