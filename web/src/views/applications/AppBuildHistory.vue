@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { opsAppReleaseInfo, queryOpsApplicationOptions, queryOpsAppReleaseList, retryOpsAppRelease } from '../../api/ops'
@@ -14,6 +14,9 @@ const detailLoading = ref(false)
 const currentDetail = ref({})
 const logKeyword = ref('')
 const dateRange = ref([])
+const logBodyRef = ref()
+let detailPollTimer = null
+let refreshingDetail = false
 
 const query = reactive({ pageNum: 1, pageSize: 10, appId: undefined, env: '', keyword: '', status: '' })
 
@@ -54,7 +57,40 @@ const detailLogs = computed(() => {
 })
 const logFileName = computed(() => `${releaseTitle(currentDetail.value)}.log`.replace(/[\\/:*?"<>|]/g, '_'))
 
-async function openDetail(row) { detailVisible.value = true; detailLoading.value = true; logKeyword.value = ''; try { currentDetail.value = await opsAppReleaseInfo(row.id) } finally { detailLoading.value = false } }
+function stopDetailPolling() {
+  if (detailPollTimer) window.clearInterval(detailPollTimer)
+  detailPollTimer = null
+}
+async function scrollLogToLatest() {
+  await nextTick()
+  if (!logKeyword.value && logBodyRef.value) logBodyRef.value.scrollTop = logBodyRef.value.scrollHeight
+}
+async function refreshDetail() {
+  if (!currentDetail.value?.id || refreshingDetail) return
+  refreshingDetail = true
+  try {
+    currentDetail.value = await opsAppReleaseInfo(currentDetail.value.id)
+    await scrollLogToLatest()
+    if (currentDetail.value.status !== 'running') {
+      stopDetailPolling()
+      await loadData()
+    }
+  } finally { refreshingDetail = false }
+}
+function startDetailPolling() {
+  stopDetailPolling()
+  if (currentDetail.value.status === 'running') detailPollTimer = window.setInterval(refreshDetail, 2000)
+}
+async function openDetail(row) {
+  detailVisible.value = true
+  detailLoading.value = true
+  logKeyword.value = ''
+  try {
+    currentDetail.value = await opsAppReleaseInfo(row.id)
+    await scrollLogToLatest()
+    startDetailPolling()
+  } finally { detailLoading.value = false }
+}
 async function retry(row) {
   await ElMessageBox.confirm(`将按「${releaseTitle(row)}」的任务、分支和原始参数重新执行构建。`, '确认重试构建', { type: 'warning', confirmButtonText: '立即重试' })
   await retryOpsAppRelease(row.id)
@@ -63,6 +99,8 @@ async function retry(row) {
 }
 async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('日志已复制') }
 function downloadLog() { const blob = new Blob([detailLogs.value || ''], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = logFileName.value; link.click(); URL.revokeObjectURL(url) }
+watch(detailVisible, (visible) => { if (!visible) stopDetailPolling() })
+onBeforeUnmount(stopDetailPolling)
 onMounted(async () => { if (route.query.appId) query.appId = Number(route.query.appId); if (route.query.env) query.env = String(route.query.env); if (route.query.keyword) query.keyword = String(route.query.keyword); await Promise.all([loadApps(), loadData()]) })
 </script>
 
@@ -96,7 +134,7 @@ onMounted(async () => { if (route.query.appId) query.appId = Number(route.query.
         <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>耗时 {{ durationText(currentDetail.durationMs) }}</strong></div>
         <div class="detail-meta"><span>应用<b>{{ currentDetail.appName || '-' }}</b></span><span>环境<b>{{ currentDetail.env || '-' }}</b></span><span>代码版本<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>提交版本<b>{{ currentDetail.commitId || '-' }}</b></span><span>执行路径<b>{{ currentDetail.workspace || '-' }}</b></span><span>开始时间<b>{{ currentDetail.createTime || '-' }}</b></span></div>
         <section class="detail-section"><div class="section-head"><strong>构建阶段</strong><span>当前：{{ stageText(currentDetail.stage) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
-        <section class="detail-section"><div class="section-head"><strong>完整日志</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="搜索日志" /><el-button link type="primary" @click="copyLog">复制</el-button><el-button link type="primary" @click="downloadLog">下载</el-button></div></div><pre class="log-body">{{ detailLogs || '暂无日志输出' }}</pre></section>
+        <section class="detail-section"><div class="section-head"><strong>完整日志</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="搜索日志" /><el-button link type="primary" @click="copyLog">复制</el-button><el-button link type="primary" @click="downloadLog">下载</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || '暂无日志输出' }}</pre></section>
         <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">按原配置重试</el-button></div>
       </template></div>
     </el-drawer>

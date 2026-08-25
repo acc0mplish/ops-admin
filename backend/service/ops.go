@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path"
 	"regexp"
 	"slices"
@@ -914,6 +915,12 @@ func (s *Service) finishOpsTask(taskID uint) {
 }
 
 func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeoutSeconds int) model.OpsExecTargetResult {
+	return s.execCommandOnHostStreaming(host, command, timeoutSeconds, nil)
+}
+
+// execCommandOnHostStreaming reports remote stdout/stderr as soon as SSH receives it.
+// Callers that do not need incremental output should keep using execCommandOnHost.
+func (s *Service) execCommandOnHostStreaming(host model.AssetHost, command string, timeoutSeconds int, onOutput func(string)) model.OpsExecTargetResult {
 	started := time.Now()
 	result := model.OpsExecTargetResult{
 		HostID:    host.ID,
@@ -930,7 +937,7 @@ func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeou
 	}
 	defer client.Close()
 
-	stdout, stderr, exitCode, runErr := runSSHCommandDetailed(client, "bash -lc "+shellQuote(command), timeoutSeconds)
+	stdout, stderr, exitCode, runErr := runSSHCommandDetailedStreaming(client, "bash -lc "+shellQuote(command), timeoutSeconds, onOutput)
 	result.Stdout = stdout
 	result.Stderr = stderr
 	result.ExitCode = exitCode
@@ -1038,6 +1045,10 @@ func (s *Service) readRemoteFile(hostID uint, sourcePath string) (*model.AssetHo
 }
 
 func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds int) (string, string, int, error) {
+	return runSSHCommandDetailedStreaming(client, command, timeoutSeconds, nil)
+}
+
+func runSSHCommandDetailedStreaming(client *ssh.Client, command string, timeoutSeconds int, onOutput func(string)) (string, string, int, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", "", -1, err
@@ -1046,8 +1057,20 @@ func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds in
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
+	var outputMu sync.Mutex
+	newWriter := func(buffer *bytes.Buffer) io.Writer {
+		return writerFunc(func(chunk []byte) (int, error) {
+			outputMu.Lock()
+			_, _ = buffer.Write(chunk)
+			outputMu.Unlock()
+			if onOutput != nil && len(chunk) > 0 {
+				onOutput(string(chunk))
+			}
+			return len(chunk), nil
+		})
+	}
+	session.Stdout = newWriter(&stdout)
+	session.Stderr = newWriter(&stderr)
 
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 10
@@ -1078,5 +1101,12 @@ func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds in
 			exitCode = -1
 		}
 	}
-	return stdout.String(), stderr.String(), exitCode, err
+	outputMu.Lock()
+	stdoutText, stderrText := stdout.String(), stderr.String()
+	outputMu.Unlock()
+	return stdoutText, stderrText, exitCode, err
 }
+
+type writerFunc func([]byte) (int, error)
+
+func (fn writerFunc) Write(chunk []byte) (int, error) { return fn(chunk) }

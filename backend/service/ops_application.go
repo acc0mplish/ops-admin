@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -178,6 +179,51 @@ type opsBuildExecution struct {
 	ArtifactPath   string
 	Version        string
 	Params         map[string]string
+}
+
+// opsBuildLogWriter keeps the persisted log usable while a build is still
+// running. The database write is throttled so noisy build tools do not cause a
+// write per output chunk.
+type opsBuildLogWriter struct {
+	service     *Service
+	releaseID   uint
+	column      string
+	mu          sync.Mutex
+	content     strings.Builder
+	lastPersist time.Time
+}
+
+func newOpsBuildLogWriter(service *Service, releaseID uint, column string) *opsBuildLogWriter {
+	return &opsBuildLogWriter{service: service, releaseID: releaseID, column: column}
+}
+
+func (writer *opsBuildLogWriter) Append(text string) {
+	if text == "" {
+		return
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	writer.content.WriteString(text)
+	if time.Since(writer.lastPersist) >= 500*time.Millisecond {
+		writer.persistLocked()
+	}
+}
+
+func (writer *opsBuildLogWriter) Flush() {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	writer.persistLocked()
+}
+
+func (writer *opsBuildLogWriter) String() string {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.content.String()
+}
+
+func (writer *opsBuildLogWriter) persistLocked() {
+	_ = writer.service.db.Model(&model.OpsAppRelease{}).Where("id = ?", writer.releaseID).Update(writer.column, writer.content.String()).Error
+	writer.lastPersist = time.Now()
 }
 
 type opsPipelineExecution struct {
@@ -2106,8 +2152,8 @@ func (s *Service) resolveOpsAppWorkspace(app model.OpsApplication) string {
 func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 	started := time.Now()
 	workspace := execInfo.Workspace
-	buildLog := ""
-	postBuildLog := ""
+	buildLogs := newOpsBuildLogWriter(s, execInfo.ReleaseID, "build_log")
+	postBuildLogs := newOpsBuildLogWriter(s, execInfo.ReleaseID, "deploy_log")
 	status, stage, summary := "success", "done", "构建及构建后操作已完成"
 	commitID := ""
 	timeout := time.Duration(normalizeOpsBuildTimeout(execInfo.TimeoutSeconds)) * time.Second
@@ -2119,24 +2165,45 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 			status, stage, summary = "failed", "prepare", "构建主机不存在或不可用"
 		} else {
 			checkoutCommand := s.remoteOpsAppCheckoutCommand(execInfo.App, remoteWorkspace, execInfo.Branch)
-			checkoutResult := s.execCommandOnHost(host, checkoutCommand, normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
-			buildLog += sectionLog("Remote Checkout", s.sanitizeOpsAppLog(execInfo.App, strings.TrimSpace(checkoutResult.Stdout+"\n"+checkoutResult.Stderr)))
+			buildLogs.Append(sectionLog("Remote Checkout", ""))
+			_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": "checkout", "summary": "正在拉取代码"}).Error
+			checkoutResult := s.execCommandOnHostStreaming(host, checkoutCommand, normalizeOpsBuildTimeout(execInfo.TimeoutSeconds), func(chunk string) {
+				buildLogs.Append(s.sanitizeOpsAppLog(execInfo.App, chunk))
+			})
+			buildLogs.Flush()
 			if checkoutResult.Status != "success" {
+				if checkoutResult.ErrorText != "" {
+					buildLogs.Append("\nERROR: " + checkoutResult.ErrorText + "\n")
+				}
 				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "远程代码拉取失败")
 			} else {
 				commitResult := s.execCommandOnHost(host, "cd "+shellQuote(remoteWorkspace)+" && (git rev-parse --short HEAD 2>/dev/null || svn info --show-item revision 2>/dev/null || true)", 30)
 				commitID = strings.TrimSpace(commitResult.Stdout)
 				variables := s.opsAppBuildEnvironment(execInfo, commitID, remoteWorkspace)
 				stage = "build"
-				buildResult := s.execCommandOnHost(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.BuildScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
-				buildLog += sectionLog("Remote Build", strings.TrimSpace(buildResult.Stdout+"\n"+buildResult.Stderr))
+				buildLogs.Append(sectionLog("Remote Build", ""))
+				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "正在执行构建脚本", "commit_id": commitID}).Error
+				buildResult := s.execCommandOnHostStreaming(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.BuildScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds), func(chunk string) {
+					buildLogs.Append(s.sanitizeOpsAppLog(execInfo.App, chunk))
+				})
+				buildLogs.Flush()
 				if buildResult.Status != "success" {
+					if buildResult.ErrorText != "" {
+						buildLogs.Append("\nERROR: " + buildResult.ErrorText + "\n")
+					}
 					status, summary = "failed", firstNonEmpty(buildResult.ErrorText, "远程构建失败")
 				} else if strings.TrimSpace(execInfo.DeployScript) != "" {
 					stage = "post_build"
-					postResult := s.execCommandOnHost(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.DeployScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds))
-					postBuildLog = sectionLog("Remote Post Build", strings.TrimSpace(postResult.Stdout+"\n"+postResult.Stderr))
+					postBuildLogs.Append(sectionLog("Remote Post Build", ""))
+					_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "正在执行构建后操作"}).Error
+					postResult := s.execCommandOnHostStreaming(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.DeployScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds), func(chunk string) {
+						postBuildLogs.Append(s.sanitizeOpsAppLog(execInfo.App, chunk))
+					})
+					postBuildLogs.Flush()
 					if postResult.Status != "success" {
+						if postResult.ErrorText != "" {
+							postBuildLogs.Append("\nERROR: " + postResult.ErrorText + "\n")
+						}
 						status, summary = "failed", firstNonEmpty(postResult.ErrorText, "远程构建后操作失败")
 					}
 				}
@@ -2148,7 +2215,7 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 		stage = "checkout"
 		_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "正在拉取代码"})
 		checkoutLog, err := s.checkoutOpsAppCode(execInfo.App, workspace, execInfo.Branch)
-		buildLog += sectionLog("Git Clone", s.sanitizeOpsAppLog(execInfo.App, checkoutLog))
+		buildLogs.Append(sectionLog("Git Clone", s.sanitizeOpsAppLog(execInfo.App, checkoutLog)))
 		if err != nil {
 			status, summary = "failed", err.Error()
 		} else {
@@ -2156,19 +2223,19 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 			variables := s.opsAppBuildEnvironment(execInfo, commitID, workspace)
 			stage = "build"
 			_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-				"stage": stage, "summary": "正在执行构建脚本", "build_log": buildLog, "commit_id": commitID,
+				"stage": stage, "summary": "正在执行构建脚本", "build_log": buildLogs.String(), "commit_id": commitID,
 			})
 			buildOutput, buildErr := runOpsAppShellWithEnv(execInfo.BuildScript, workspace, timeout, variables)
-			buildLog += sectionLog("Build", buildOutput)
+			buildLogs.Append(sectionLog("Build", buildOutput))
 			if buildErr != nil {
 				status, summary = "failed", buildErr.Error()
 			} else if strings.TrimSpace(execInfo.DeployScript) != "" {
 				stage = "post_build"
 				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-					"stage": stage, "summary": "正在执行构建后操作", "build_log": buildLog, "commit_id": commitID,
+					"stage": stage, "summary": "正在执行构建后操作", "build_log": buildLogs.String(), "commit_id": commitID,
 				})
 				postOutput, postErr := runOpsAppShellWithEnv(execInfo.DeployScript, workspace, timeout, variables)
-				postBuildLog = sectionLog("Post Build", postOutput)
+				postBuildLogs.Append(sectionLog("Post Build", postOutput))
 				if postErr != nil {
 					status, summary = "failed", postErr.Error()
 				}
@@ -2179,8 +2246,10 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 	if status != "success" && summary == "" {
 		summary = "构建失败"
 	}
+	buildLogs.Flush()
+	postBuildLogs.Flush()
 	_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-		"status": status, "stage": stage, "summary": summary, "build_log": buildLog, "deploy_log": postBuildLog,
+		"status": status, "stage": stage, "summary": summary, "build_log": buildLogs.String(), "deploy_log": postBuildLogs.String(),
 		"commit_id": commitID, "finished_at": &finished, "duration_ms": finished.Sub(started).Milliseconds(),
 	})
 	updates := map[string]any{"last_status": status}
