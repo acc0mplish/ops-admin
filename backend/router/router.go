@@ -351,6 +351,7 @@ func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 		authGroup.DELETE("/ops/application/build-task/delete", ctl.DeleteOpsAppBuildTask)
 		authGroup.POST("/ops/application/build-task/run", ctl.RunOpsAppBuildTask)
 		authGroup.POST("/ops/application/release/run", ctl.RunOpsAppRelease)
+		authGroup.POST("/ops/application/release/retry", ctl.RetryOpsAppRelease)
 		authGroup.GET("/ops/application/release/list", ctl.GetOpsAppReleaseList)
 		authGroup.GET("/ops/application/release/info", ctl.GetOpsAppReleaseInfo)
 		authGroup.GET("/ops/application/artifact/list", ctl.GetOpsAppArtifactList)
@@ -369,7 +370,6 @@ func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 		authGroup.GET("/ops/application/pipeline/run/info", ctl.GetOpsAppPipelineRunInfo)
 		authGroup.POST("/ops/application/pipeline/run/approve", ctl.ApproveOpsAppPipelineRun)
 		authGroup.POST("/ops/application/pipeline/run/rollback", ctl.RollbackOpsAppPipelineRun)
-		authGroup.GET("/ops/application/topology", ctl.GetApplicationTopology)
 
 		authGroup.GET("/notify/template/list", ctl.GetNotifyTemplateList)
 		authGroup.GET("/notify/template/options", ctl.GetNotifyTemplateOptions)

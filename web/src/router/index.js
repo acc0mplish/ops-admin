@@ -53,7 +53,6 @@ import AppBuildTaskList from '../views/applications/AppBuildTaskList.vue'
 import AppBuildHistory from '../views/applications/AppBuildHistory.vue'
 import AppPipelineCenter from '../views/applications/AppPipelineCenter.vue'
 import AppImageRegistry from '../views/applications/AppImageRegistry.vue'
-import AppTopology from '../views/applications/AppTopology.vue'
 import NotifyTemplate from '../views/notify/NotifyTemplate.vue'
 import NotifyChannel from '../views/notify/NotifyChannel.vue'
 import NotifyRule from '../views/notify/NotifyRule.vue'
@@ -337,15 +336,6 @@ const routes = [
         }
       },
       {
-        path: '/applications/topology',
-        component: AppTopology,
-        meta: {
-          title: '应用拓扑',
-          app: 'applications',
-          summary: '以应用为中心串联主机、K8s、数据库、监控告警和发布记录。'
-        }
-      },
-      {
         path: '/ops/schedule/tasks',
         component: OpsScheduleTaskList,
         meta: {
@@ -422,7 +412,7 @@ const routes = [
       {
         path: '/applications/projects',
         component: AppProjectList,
-        meta: { title: '项目列表', app: 'applications', summary: '维护应用项目、服务类别和 Git/SVN 仓库地址。' }
+        meta: { title: '应用管理', app: 'applications', summary: '维护应用项目、服务类别和 Git/SVN 仓库地址。' }
       },
       {
         path: '/applications/build-tasks',

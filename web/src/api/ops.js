@@ -74,6 +74,7 @@ export const updateOpsAppBuildTaskStatus = (data) => http.put('/api/v1/ops/appli
 export const deleteOpsAppBuildTask = (id) => http.delete('/api/v1/ops/application/build-task/delete', { data: { id } })
 export const runOpsAppBuildTask = (data) => http.post('/api/v1/ops/application/build-task/run', data)
 export const runOpsAppRelease = (data) => http.post('/api/v1/ops/application/release/run', data)
+export const retryOpsAppRelease = (id) => http.post('/api/v1/ops/application/release/retry', { id })
 export const queryOpsAppReleaseList = (params) => http.get('/api/v1/ops/application/release/list', { params })
 export const opsAppReleaseInfo = (id) => http.get('/api/v1/ops/application/release/info', { params: { id } })
 export const queryOpsAppArtifactList = (params) => http.get('/api/v1/ops/application/artifact/list', { params })
@@ -92,7 +93,6 @@ export const queryOpsAppPipelineRunList = (params) => http.get('/api/v1/ops/appl
 export const opsAppPipelineRunInfo = (id) => http.get('/api/v1/ops/application/pipeline/run/info', { params: { id } })
 export const approveOpsAppPipelineRun = (data) => http.post('/api/v1/ops/application/pipeline/run/approve', data)
 export const rollbackOpsAppPipelineRun = (id) => http.post('/api/v1/ops/application/pipeline/run/rollback', { id })
-export const queryOpsApplicationTopology = (params) => http.get('/api/v1/ops/application/topology', { params })
 
 export const queryOpsEnvironmentList = (params) => http.get('/api/v1/ops/environment/list', { params })
 export const saveOpsEnvironment = (data) => http.post('/api/v1/ops/environment/save', data)

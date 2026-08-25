@@ -203,6 +203,19 @@ func normalizeOpsRepoType(value string) string {
 	}
 }
 
+func normalizeOpsSVNRevision(value string) (string, error) {
+	revision := strings.ToUpper(strings.TrimSpace(value))
+	if revision == "" || revision == "HEAD" {
+		return "HEAD", nil
+	}
+	for _, char := range revision {
+		if char < '0' || char > '9' {
+			return "", errors.New("SVN 版本号仅支持 HEAD 或数字修订号")
+		}
+	}
+	return revision, nil
+}
+
 func normalizeOpsAppStatus(value int) int {
 	if value == 2 {
 		return 2
@@ -387,7 +400,6 @@ func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 		RepoURL:          Trimmed(payload.RepoURL),
 		RepoCredentialID: payload.RepoCredentialID,
 		Branch:           Trimmed(payload.Branch),
-		Workspace:        Trimmed(payload.Workspace),
 		BuildScript:      strings.TrimSpace(payload.BuildScript),
 		DeployScript:     strings.TrimSpace(payload.DeployScript),
 		Env:              Trimmed(payload.Env),
@@ -406,7 +418,13 @@ func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 	if item.ServiceType == "" {
 		item.ServiceType = "后端服务"
 	}
-	if item.Branch == "" && item.RepoType == "git" {
+	if item.RepoType == "svn" {
+		var err error
+		item.Branch, err = normalizeOpsSVNRevision(item.Branch)
+		if err != nil {
+			return err
+		}
+	} else if item.Branch == "" {
 		item.Branch = "master"
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
@@ -418,7 +436,7 @@ func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 			appID = item.ID
 		} else if err := tx.Model(&model.OpsApplication{}).Where("id = ?", appID).Updates(map[string]any{
 			"name": item.Name, "code": item.Code, "service_type": item.ServiceType, "repo_type": item.RepoType,
-			"repo_url": item.RepoURL, "repo_credential_id": item.RepoCredentialID, "branch": item.Branch, "workspace": item.Workspace,
+			"repo_url": item.RepoURL, "repo_credential_id": item.RepoCredentialID, "branch": item.Branch,
 			"build_script": item.BuildScript, "deploy_script": item.DeployScript, "env": item.Env,
 			"status": item.Status, "description": item.Description,
 		}).Error; err != nil {
@@ -714,7 +732,7 @@ func (s *Service) RunOpsAppBuildTask(payload OpsAppBuildRunPayload) (map[string]
 	return map[string]any{"releaseId": release.ID, "status": release.Status, "summary": release.Summary}, nil
 }
 
-func (s *Service) ListOpsAppReleases(pageNum, pageSize int, appID uint, keyword, status, env string) (map[string]any, error) {
+func (s *Service) ListOpsAppReleases(pageNum, pageSize int, appID uint, keyword, status, env, startTime, endTime string) (map[string]any, error) {
 	if pageNum < 1 {
 		pageNum = 1
 	}
@@ -735,6 +753,12 @@ func (s *Service) ListOpsAppReleases(pageNum, pageSize int, appID uint, keyword,
 	if env = strings.TrimSpace(env); env != "" {
 		query = query.Where("env = ?", env)
 	}
+	if value, ok := parseOpsReleaseQueryTime(startTime); ok {
+		query = query.Where("created_at >= ?", value)
+	}
+	if value, ok := parseOpsReleaseQueryTime(endTime); ok {
+		query = query.Where("created_at <= ?", value)
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, err
@@ -744,6 +768,39 @@ func (s *Service) ListOpsAppReleases(pageNum, pageSize int, appID uint, keyword,
 		return nil, err
 	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+func parseOpsReleaseQueryTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func (s *Service) RetryOpsAppRelease(id uint) (map[string]any, error) {
+	if id == 0 {
+		return nil, errors.New("构建记录 ID 不能为空")
+	}
+	release, err := s.GetOpsAppRelease(id)
+	if err != nil {
+		return nil, err
+	}
+	if release.BuildTaskID == 0 {
+		return nil, errors.New("该历史记录不关联构建任务，无法按原配置重试")
+	}
+	params := map[string]any{}
+	if strings.TrimSpace(release.ParamsJSON) != "" {
+		if err := json.Unmarshal([]byte(release.ParamsJSON), &params); err != nil {
+			return nil, errors.New("原构建参数无法读取，无法重试")
+		}
+	}
+	return s.RunOpsAppBuildTask(OpsAppBuildRunPayload{TaskID: release.BuildTaskID, Branch: release.Branch, Params: params})
 }
 
 func (s *Service) GetOpsAppRelease(id uint) (*model.OpsAppRelease, error) {
@@ -2158,7 +2215,12 @@ func (s *Service) remoteOpsAppCheckoutCommand(app model.OpsApplication, workspac
 	parent := pathpkg.Dir(target)
 	repoURL := s.opsAppAuthenticatedRepoURL(app)
 	if app.RepoType == "svn" {
-		return fmt.Sprintf("mkdir -p %s && if [ -d %s/.svn ]; then cd %s && svn update; else svn checkout %s %s; fi", shellQuote(parent), shellQuote(target), shellQuote(target), shellQuote(repoURL), shellQuote(target))
+		revision := strings.TrimSpace(branch)
+		revisionArg := ""
+		if revision != "" && !strings.EqualFold(revision, "HEAD") {
+			revisionArg = " -r " + shellQuote(revision)
+		}
+		return fmt.Sprintf("mkdir -p %s && if [ -d %s/.svn ]; then cd %s && svn update%s; else svn checkout%s %s %s; fi", shellQuote(parent), shellQuote(target), shellQuote(target), revisionArg, revisionArg, shellQuote(repoURL), shellQuote(target))
 	}
 	branchArg := ""
 	if strings.TrimSpace(branch) != "" {
@@ -2215,10 +2277,17 @@ func sectionLog(name string, output string) string {
 func (s *Service) checkoutOpsAppCode(app model.OpsApplication, workspace string, branch string) (string, error) {
 	repoURL := s.opsAppAuthenticatedRepoURL(app)
 	if app.RepoType == "svn" {
-		if _, err := os.Stat(filepath.Join(workspace, ".svn")); err == nil {
-			return runOpsAppCommand(workspace, 15*time.Minute, "svn", "update")
+		revision := strings.TrimSpace(branch)
+		revisionArgs := []string{}
+		if revision != "" && !strings.EqualFold(revision, "HEAD") {
+			revisionArgs = append(revisionArgs, "-r", revision)
 		}
-		return runOpsAppCommand(".", 15*time.Minute, "svn", "checkout", repoURL, workspace)
+		if _, err := os.Stat(filepath.Join(workspace, ".svn")); err == nil {
+			return runOpsAppCommand(workspace, 15*time.Minute, "svn", append([]string{"update"}, revisionArgs...)...)
+		}
+		args := append([]string{"checkout"}, revisionArgs...)
+		args = append(args, repoURL, workspace)
+		return runOpsAppCommand(".", 15*time.Minute, "svn", args...)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, ".git")); err == nil {
 		output, checkoutErr := runOpsAppCommand(workspace, 15*time.Minute, "git", "checkout", branch)

@@ -421,6 +421,27 @@ func seedApplicationMenus(db *gorm.DB) error {
 		value       string
 	}
 
+	// Application topology was retired. Remove the historical menu and its
+	// role links so an existing deployment does not keep showing a stale entry.
+	var retiredMenus []model.Menu
+	if err := db.Where("value = ? OR url = ?", "applications:topology", "/applications/topology").Find(&retiredMenus).Error; err != nil {
+		return err
+	}
+	if len(retiredMenus) > 0 {
+		ids := make([]uint, 0, len(retiredMenus))
+		for _, menu := range retiredMenus {
+			ids = append(ids, menu.ID)
+		}
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("menu_id IN ?", ids).Delete(&model.RoleMenu{}).Error; err != nil {
+				return err
+			}
+			return tx.Where("id IN ?", ids).Delete(&model.Menu{}).Error
+		}); err != nil {
+			return err
+		}
+	}
+
 	applications := []appSeed{
 		{
 			name: "资产管理", url: "/assets", value: "assets", icon: "Box",
@@ -475,8 +496,7 @@ func seedApplicationMenus(db *gorm.DB) error {
 		{
 			name: "应用中心", url: "/applications", value: "applications", icon: "Box",
 			children: []menuSeed{
-				{"项目列表", "/applications/projects", "applications:project:list", "Tickets"},
-				{"应用拓扑", "/applications/topology", "applications:topology", "Connection"},
+				{"应用管理", "/applications/projects", "applications:project:list", "Tickets"},
 				{"构建任务", "/applications/build-tasks", "applications:buildtask:list", "Operation"},
 				{"构建历史", "/applications/build-history", "applications:buildhistory:list", "Document"},
 				{"CI/CD 流水线", "/applications/pipelines", "applications:pipeline:list", "Share"},

@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatLineRound, Delete, Plus, Promotion, Setting, Star, StarFilled } from '@element-plus/icons-vue'
+import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 import {
   confirmAIAction,
   deleteAIConversation,
@@ -25,10 +27,15 @@ const input = ref('')
 const sending = ref(false)
 const scrollRef = ref()
 const route = useRoute()
+const markdown = new MarkdownIt({ breaks: true, linkify: true, typographer: true })
 
 const activeConversation = computed(() => conversations.value.find((item) => item.id === currentId.value))
 const pendingActions = computed(() => actions.value.filter((item) => item.status === 'pending'))
 const suggestions = ['查询最近 6 个月云费用趋势', '分析本月云费用的产品和地域分布', '检查当前 K8s 集群健康状态', '分析 Pod 频繁重启的排障步骤']
+
+function renderMarkdown(content) {
+  return DOMPurify.sanitize(markdown.render(String(content || '')))
+}
 
 async function loadModels() {
   models.value = (await queryAIModels()) || []
@@ -180,7 +187,7 @@ onMounted(async () => {
           <template v-else>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
               <div class="message-avatar">{{ message.role === 'user' ? '我' : 'AI' }}</div>
-              <div class="message-body"><div class="message-role">{{ message.role === 'user' ? '你' : '运维助手' }}</div><pre>{{ message.content }}</pre></div>
+              <div class="message-body"><div class="message-role">{{ message.role === 'user' ? '你' : '运维助手' }}</div><pre v-if="message.role === 'user'" class="user-message-content">{{ message.content }}</pre><div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div></div>
             </article>
           </template>
 
@@ -241,8 +248,19 @@ onMounted(async () => {
 .message.user .message-body { max-width: min(76%, 920px); }
 .message-role { margin-bottom: 6px; color: #7788a3; font-size: 12px; }
 .message.user .message-role { text-align: right; }
-.message pre { width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 14px 16px; overflow-wrap: anywhere; color: #263a58; font-family: inherit; line-height: 1.75; white-space: pre-wrap; background: #fff; border: 1px solid #dfe7f2; border-radius: 7px; }
-.message.user pre { color: #fff; background: #315fba; border-color: #315fba; }
+  .user-message-content, .markdown-content { width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 14px 16px; overflow-wrap: anywhere; line-height: 1.75; border-radius: 7px; }
+  .user-message-content { color: #fff; font-family: inherit; white-space: pre-wrap; background: #315fba; border: 1px solid #315fba; }
+  .markdown-content { color: #263a58; background: #fff; border: 1px solid #dfe7f2; }
+  .markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3) { margin: 20px 0 10px; color: #142b4d; line-height: 1.35; }
+  .markdown-content :deep(h1:first-child), .markdown-content :deep(h2:first-child), .markdown-content :deep(h3:first-child) { margin-top: 0; }
+  .markdown-content :deep(h1) { padding-bottom: 9px; font-size: 21px; border-bottom: 1px solid #e5ecf5; }
+  .markdown-content :deep(h2) { font-size: 18px; }.markdown-content :deep(h3) { font-size: 16px; }
+  .markdown-content :deep(p) { margin: 0 0 12px; }.markdown-content :deep(ul), .markdown-content :deep(ol) { padding-left: 24px; margin: 8px 0 14px; }.markdown-content :deep(li + li) { margin-top: 4px; }
+  .markdown-content :deep(blockquote) { margin: 14px 0; padding: 8px 13px; color: #5d7090; background: #f4f7fc; border-left: 3px solid #5a83e8; }
+  .markdown-content :deep(code) { padding: 2px 5px; color: #244f94; font-family: Consolas, Monaco, monospace; background: #edf3ff; border-radius: 4px; }
+  .markdown-content :deep(pre) { margin: 14px 0; padding: 14px; overflow: auto; color: #dbeafe; background: #111c31; border-radius: 6px; }.markdown-content :deep(pre code) { padding: 0; color: inherit; background: transparent; }
+  .markdown-content :deep(table) { display: block; width: 100%; margin: 14px 0; overflow-x: auto; border-collapse: collapse; }.markdown-content :deep(th), .markdown-content :deep(td) { min-width: 96px; padding: 8px 10px; text-align: left; border: 1px solid #dfe7f2; }.markdown-content :deep(th) { color: #36557e; background: #f4f7fc; }
+  .markdown-content :deep(a) { color: #2d67d9; text-decoration: none; }.markdown-content :deep(a:hover) { text-decoration: underline; }.markdown-content :deep(hr) { margin: 18px 0; border: 0; border-top: 1px solid #e4ebf5; }
 .action-card { max-width: 760px; padding: 16px; margin: 0 auto 22px; background: #fffaf0; border: 1px solid #f0cd85; border-radius: 7px; }
 .action-card > div { display: flex; justify-content: space-between; }
 .action-card pre { padding: 10px; overflow: auto; color: #6f5218; background: #fff; border-radius: 4px; }

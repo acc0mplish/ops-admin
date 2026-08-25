@@ -663,7 +663,7 @@ func truncateRunes(value string, limit int) string {
 }
 
 func integrationAISystemPrompt(custom string) string {
-	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。只能调用本请求提供的原生工具名称；绝不在回复正文输出 XML、DSML、tool_calls、invoke 或其他内部工具协议。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
+	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。回复必须使用标准 Markdown：按内容需要使用二、三级标题、无序/有序列表、加粗、引用、表格和代码块；不要把 Markdown 标记当作普通文本转义输出。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。只能调用本请求提供的原生工具名称；绝不在回复正文输出 XML、DSML、tool_calls、invoke 或其他内部工具协议。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
 	base += "\n\n夜莺监控技能规范：遇到 PromQL 需求先生成表达式，必要时用 prometheus_query 验证；查询告警使用 monitor_alert_event_query；查询数据源使用 monitor_datasource_query；主机问题优先使用 host_health_diagnose；综合故障使用 ops_troubleshooting；大屏问题使用 monitor_dashboard_analyze。分析结论必须基于工具返回的证据，并明确区分已证实的现象和推测。创建告警时只能调用 monitor_alert_rule_draft，等待用户确认后创建停用草稿，不能承诺已启用或已发送通知。"
 	if strings.TrimSpace(custom) != "" {
 		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
@@ -684,7 +684,7 @@ func sanitizeAIMessageContent(content string) string {
 	return "该历史消息包含模型未支持的内部工具调用格式，未执行任何操作。请重新发起查询。"
 }
 
-const finOpsChatResponseInstruction = "云费用工具已返回结果。请严格使用简洁要点格式回答，不超过 8 行，不使用 Markdown 标题、表格、引用、代码块、漏斗图或长段落。普通费用问题格式：\n【账期｜账号】\n- 总费用：金额（如为当前月须注明截至日期）\n- 主要产品：仅列 Top 3，产品 + 金额 + 占比\n- 地域：一句结论\n- 关注项：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n当用户询问某产品的实例数量或每实例费用时：优先读取 resourceBreakdown，回答“实例数”和最多 5 个“实例名称/ID：费用”；若 resourceBreakdown.resourceCount 为 0，只能说明本地同步账单缺少可关联的资源 ID/名称及未关联金额，不能建议用户去云厂商控制台。不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
+const finOpsChatResponseInstruction = "云费用工具已返回结果。请使用简洁 Markdown 回答，不超过 8 行：可使用二、三级标题和无序列表，但不要使用表格、引用、代码块、漏斗图或长段落。普通费用问题格式：\n## 账期｜账号\n- **总费用**：金额（如为当前月须注明截至日期）\n- **主要产品**：仅列 Top 3，产品 + 金额 + 占比\n- **地域**：一句结论\n- **关注项**：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n当用户询问某产品的实例数量或每实例费用时：优先读取 resourceBreakdown，回答“实例数”和最多 5 个“实例名称/ID：费用”；若 resourceBreakdown.resourceCount 为 0，只能说明本地同步账单缺少可关联的资源 ID/名称及未关联金额，不能建议用户去云厂商控制台。不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
 
 const knowledgeBaseChatResponseInstruction = "知识库检索工具已返回本地 Markdown 片段。必须围绕用户问题重新归纳，不得把文档目录、标题或章节逐条复述，也不要以“根据知识库文档”开头。先用 1 至 2 句说明与提问最相关的结论，再按“平台定位 / 当前可直接使用的能力 / 推荐使用路径”组织，优先解释用户能获得什么价值、下一步能做什么。除非用户明确要求清单，否则最多列 5 个能力组；把相关模块合并为业务闭环，不要罗列所有菜单。明确区分“已实现/已具备”和“建议/规划”，不得把评审意见当作已实现功能。答案保持 6 至 10 行中文要点；只在用户要求来源或原文时才注明文档名或引用原文。"
 

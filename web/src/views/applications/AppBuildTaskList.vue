@@ -125,6 +125,17 @@ function applyDockerComposePreset() {
   ElMessage.success('已套用 Docker Compose 模板：构建主机仅需 Docker 和 Compose')
 }
 
+function formatDateTime(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/)
+  if (match) return `${match[1]} ${match[2]}`
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 function resetForm() {
   Object.assign(form, {
     id: undefined,
@@ -350,7 +361,7 @@ onMounted(async () => {
 
     <el-card shadow="never" class="table-card">
       <el-table v-loading="loading" :data="rows" row-key="id">
-        <el-table-column prop="name" label="任务名称" min-width="170">
+        <el-table-column prop="name" label="任务名称" min-width="150">
           <template #default="{ row }">
             <div class="name-cell">
               <strong>{{ row.name }}</strong>
@@ -390,23 +401,27 @@ onMounted(async () => {
         <el-table-column label="构建统计" min-width="160">
           <template #default="{ row }">{{ buildStats(row) }}</template>
         </el-table-column>
-        <el-table-column label="创建者" width="100">管理员</el-table-column>
-        <el-table-column prop="createTime" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="创建者" width="96" fixed="right">管理员</el-table-column>
+        <el-table-column label="创建时间" width="150" fixed="right">
+          <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="152" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" :disabled="Number(row.status) !== 1" @click="openRun(row)">立即构建</el-button>
-            <el-dropdown trigger="click">
-              <el-button link type="primary">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="goHistory(row)">日志</el-dropdown-item>
-                  <el-dropdown-item @click="assignForm(row)">编辑</el-dropdown-item>
-                  <el-dropdown-item @click="assignForm(row, true)">复制</el-dropdown-item>
-                  <el-dropdown-item @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '禁用' : '启用' }}</el-dropdown-item>
-                  <el-dropdown-item divided class="danger-item" @click="remove(row)">删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="action-tools">
+              <el-button link type="primary" :disabled="Number(row.status) !== 1" @click="openRun(row)">立即构建</el-button>
+              <el-dropdown trigger="click">
+                <el-button link class="more-action">更多</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="goHistory(row)">日志</el-dropdown-item>
+                    <el-dropdown-item @click="assignForm(row)">编辑</el-dropdown-item>
+                    <el-dropdown-item @click="assignForm(row, true)">复制</el-dropdown-item>
+                    <el-dropdown-item @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '禁用' : '启用' }}</el-dropdown-item>
+                    <el-dropdown-item divided class="danger-item" @click="remove(row)">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -600,6 +615,9 @@ onMounted(async () => {
 .name-cell span { color: #7d8ba6; }
 .path-code { color: #29466f; font-family: Consolas, Monaco, "Courier New", monospace; font-size: 12px; }
 .history-cell { display: flex; align-items: center; gap: 8px; }
+.action-tools { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.more-action { color: #6b7c9b; }
+.more-action:hover, .more-action:focus-visible { color: #355b93; }
 .unit { margin-left: 8px; color: #6b7c9b; }
 .docker-compose-tip { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 10px; background: #f0f7ff; color: #315b89; }
 .docker-compose-tip strong { display: block; margin-bottom: 4px; color: #173d69; }

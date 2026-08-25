@@ -283,25 +283,10 @@ export const appDefinitions = [
     defaultRoute: '/applications/projects',
     menus: [
       {
-        title: '项目管理',
-        titleKey: 'appProjectManage',
+        title: '应用管理',
+        titleKey: 'appProjectList',
         path: '/applications/projects',
-        icon: 'FolderOpened',
-        children: [
-          {
-            title: '项目列表',
-            titleKey: 'appProjectList',
-            path: '/applications/projects',
-            icon: 'Tickets',
-            children: []
-          }
-        ]
-      },
-      {
-        title: '应用拓扑',
-        titleKey: 'appTopology',
-        path: '/applications/topology',
-        icon: 'Connection',
+        icon: 'Tickets',
         children: []
       },
       {
