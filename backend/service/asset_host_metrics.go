@@ -21,9 +21,11 @@ const (
 	hostIOUsagePromQL     = `avg by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100`
 )
 
-// enrichAssetHostUsageMetrics enriches a host list from the configured local
-// monitoring datasource. Metrics are optional: an unavailable datasource must
-// never prevent CMDB hosts from being listed.
+// enrichAssetHostUsageMetrics enriches a host list from every enabled local
+// metrics datasource. A host can be collected by a non-default Prometheus, so
+// querying only the default datasource silently drops valid host metrics.
+// Metrics are optional: an unavailable datasource must never prevent CMDB
+// hosts from being listed.
 func (s *Service) enrichAssetHostUsageMetrics(hosts []model.AssetHost) {
 	for index := range hosts {
 		hosts[index].MetricsStatus = "unavailable"
@@ -32,9 +34,7 @@ func (s *Service) enrichAssetHostUsageMetrics(hosts []model.AssetHost) {
 		return
 	}
 
-	var datasource model.MonitorDatasource
-	err := s.db.Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"}).
-		Order("is_default DESC, id ASC").First(&datasource).Error
+	datasources, err := s.assetHostMetricDatasources()
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			for index := range hosts {
@@ -45,30 +45,36 @@ func (s *Service) enrichAssetHostUsageMetrics(hosts []model.AssetHost) {
 	}
 
 	type queryResult struct {
-		name   string
-		result *PromQueryResult
+		datasourceIndex int
+		name            string
+		result          *PromQueryResult
 	}
 	queries := map[string]string{
 		"cpu":    hostCPUUsagePromQL,
 		"memory": hostMemoryUsagePromQL,
 		"disk":   hostDiskUsagePromQL,
 	}
-	results := make(chan queryResult, len(queries))
+	results := make(chan queryResult, len(queries)*len(datasources))
 	var waitGroup sync.WaitGroup
-	for name, query := range queries {
-		waitGroup.Add(1)
-		go func(name, query string) {
-			defer waitGroup.Done()
-			result, queryErr := s.prometheusQuery(datasource, query, time.Now())
-			if queryErr == nil {
-				results <- queryResult{name: name, result: result}
-			}
-		}(name, query)
+	for datasourceIndex, datasource := range datasources {
+		for name, query := range queries {
+			waitGroup.Add(1)
+			go func(datasourceIndex int, datasource model.MonitorDatasource, name, query string) {
+				defer waitGroup.Done()
+				result, queryErr := s.prometheusQuery(datasource, query, time.Now())
+				if queryErr == nil {
+					results <- queryResult{datasourceIndex: datasourceIndex, name: name, result: result}
+				}
+			}(datasourceIndex, datasource, name, query)
+		}
 	}
 	waitGroup.Wait()
 	close(results)
 
-	values := map[string]map[string]float64{"cpu": {}, "memory": {}, "disk": {}}
+	valuesByDatasource := make([]map[string]map[string]float64, len(datasources))
+	for index := range valuesByDatasource {
+		valuesByDatasource[index] = map[string]map[string]float64{"cpu": {}, "memory": {}, "disk": {}}
+	}
 	for queryResult := range results {
 		for _, sample := range queryResult.result.Data.Result {
 			value, ok := promSampleValue(sample)
@@ -77,15 +83,15 @@ func (s *Service) enrichAssetHostUsageMetrics(hosts []model.AssetHost) {
 			}
 			instance := normalizeHostMetricKey(sample.Metric["instance"])
 			if instance != "" {
-				values[queryResult.name][instance] = value
+				valuesByDatasource[queryResult.datasourceIndex][queryResult.name][instance] = value
 			}
 		}
 	}
 	for index := range hosts {
 		keys := assetHostMetricKeys(hosts[index])
-		cpu, cpuOK := findAssetHostMetric(values["cpu"], keys)
-		memory, memoryOK := findAssetHostMetric(values["memory"], keys)
-		disk, diskOK := findAssetHostMetric(values["disk"], keys)
+		cpu, cpuOK := findAssetHostMetricAcrossDatasources(valuesByDatasource, "cpu", keys)
+		memory, memoryOK := findAssetHostMetricAcrossDatasources(valuesByDatasource, "memory", keys)
+		disk, diskOK := findAssetHostMetricAcrossDatasources(valuesByDatasource, "disk", keys)
 		if cpuOK {
 			hosts[index].CPUUsage = formatAssetHostUsage(cpu)
 		}
@@ -99,6 +105,19 @@ func (s *Service) enrichAssetHostUsageMetrics(hosts []model.AssetHost) {
 			hosts[index].MetricsStatus = "available"
 		}
 	}
+}
+
+func (s *Service) assetHostMetricDatasources() ([]model.MonitorDatasource, error) {
+	var datasources []model.MonitorDatasource
+	err := s.db.Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"}).
+		Order("is_default DESC, id ASC").Find(&datasources).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(datasources) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return datasources, nil
 }
 
 func assetHostMetricKeys(host model.AssetHost) []string {
@@ -132,6 +151,15 @@ func findAssetHostMetric(values map[string]float64, keys []string) (float64, boo
 	return 0, false
 }
 
+func findAssetHostMetricAcrossDatasources(valuesByDatasource []map[string]map[string]float64, metric string, keys []string) (float64, bool) {
+	for _, values := range valuesByDatasource {
+		if value, ok := findAssetHostMetric(values[metric], keys); ok {
+			return value, true
+		}
+	}
+	return 0, false
+}
+
 func formatAssetHostUsage(value float64) string {
 	if value < 0 {
 		value = 0
@@ -158,8 +186,8 @@ func (s *Service) GetAssetHostMetrics(id uint, rangeKey, startValue, endValue st
 		"range":   map[string]any{"key": normalizedRange, "startAt": startAt, "endAt": endAt, "stepSeconds": stepSeconds},
 		"metrics": emptyAssetHostMetricSeries(),
 	}
-	var datasource model.MonitorDatasource
-	if err := s.db.Where("status = ? AND type IN ?", 1, []string{"prometheus", "victoriametrics"}).Order("is_default DESC, id ASC").First(&datasource).Error; err != nil {
+	datasources, err := s.assetHostMetricDatasources()
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			response["status"] = "not_configured"
 			return response, nil
@@ -167,9 +195,9 @@ func (s *Service) GetAssetHostMetrics(id uint, rangeKey, startValue, endValue st
 		return response, nil
 	}
 	keys := assetHostMetricKeys(host)
-	// Keep the range PromQL identical to the host-list instant queries. The
-	// host list already proves these expressions and its instance matching work
-	// against the configured datasource.
+	// Keep the range PromQL identical to the host-list instant queries. Each
+	// enabled datasource is tried in priority order and the first one that has
+	// series for this host supplies the history.
 	queries := map[string]string{
 		"cpu":    hostCPUUsagePromQL,
 		"memory": hostMemoryUsagePromQL,
@@ -178,21 +206,36 @@ func (s *Service) GetAssetHostMetrics(id uint, rangeKey, startValue, endValue st
 	}
 	metrics := emptyAssetHostMetricSeries()
 	queryErrors := make(map[string]string)
+	matchedAnyMetric := false
+	successfulQueries := 0
 	for name, query := range queries {
-		result, queryErr := s.prometheusRangeQuery(datasource, query, startAt, endAt, stepSeconds)
-		if queryErr != nil {
-			queryErrors[name] = queryErr.Error()
-			continue
+		var errors []string
+		for _, datasource := range datasources {
+			result, queryErr := s.prometheusRangeQuery(datasource, query, startAt, endAt, stepSeconds)
+			if queryErr != nil {
+				errors = append(errors, datasource.Name+": "+queryErr.Error())
+				continue
+			}
+			successfulQueries++
+			points := assetHostMetricPoints(result, keys)
+			if len(points) == 0 {
+				continue
+			}
+			metrics[name] = map[string]any{"latest": points[len(points)-1]["value"], "points": points, "datasourceId": datasource.ID, "datasourceName": datasource.Name}
+			matchedAnyMetric = true
+			break
 		}
-		metrics[name] = map[string]any{"latest": assetHostMetricLatest(result, keys), "points": assetHostMetricPoints(result, keys)}
+		if len(errors) == len(datasources) {
+			queryErrors[name] = strings.Join(errors, "; ")
+		}
 	}
 	response["metrics"] = metrics
 	if len(queryErrors) > 0 {
 		response["errors"] = queryErrors
 	}
-	if len(queryErrors) == len(queries) {
+	if successfulQueries == 0 {
 		response["status"] = "query_failed"
-	} else {
+	} else if matchedAnyMetric {
 		response["status"] = "available"
 	}
 	return response, nil

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
+func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 	if cfg.App.Mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -22,6 +22,14 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	engine.Static("/uploads", "./uploads")
 
 	svc := service.New(db)
+	svc.ConfigureCertificate(service.CertificateRuntimeConfig{
+		Email:                 cfg.SSL.ACMEEmail,
+		ProductionCA:          cfg.SSL.ProductionCA,
+		StagingCA:             cfg.SSL.StagingCA,
+		DNSPollingSeconds:     cfg.SSL.DNSPollingSeconds,
+		DNSPropagationSeconds: cfg.SSL.DNSPropagationSeconds,
+		ExpiryWarningDays:     cfg.SSL.ExpiryWarningDays,
+	})
 	ctl := controller.New(svc)
 
 	engine.GET("/ping", ctl.Ping)
@@ -29,6 +37,8 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	api := engine.Group("/api/v1")
 	{
 		api.POST("/login", ctl.Login)
+		api.POST("/auth/refresh", ctl.RefreshToken)
+		api.POST("/auth/logout", ctl.Logout)
 		api.GET("/systemConfig/public", ctl.GetSystemConfig)
 		api.GET("/integration/public/:token", ctl.GetPublicIntegrationNavigation)
 		api.GET("/asset/terminal/ws", ctl.AssetTerminalWS)
@@ -36,9 +46,45 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	}
 
 	authGroup := api.Group("")
-	authGroup.Use(middleware.Auth(), middleware.OperationLog(db))
+	authGroup.Use(middleware.Auth(db), middleware.OperationLog(db))
 	{
 		authGroup.GET("/profile", ctl.Profile)
+		authGroup.GET("/domain/public/accounts", middleware.RequirePermission(db, "domains:account:list"), ctl.ListPublicDNSAccounts)
+		authGroup.GET("/domain/public/accounts/options", middleware.RequireAnyPermission(db, "domains:account:list", "domains:public:list", "domains:ssl:view"), ctl.PublicDNSAccountOptions)
+		authGroup.GET("/domain/public/accounts/detail", middleware.RequirePermission(db, "domains:account:list"), ctl.GetPublicDNSAccount)
+		authGroup.POST("/domain/public/accounts/save", middleware.RequireCreateOrEditPermission(db, "domains:account:add", "domains:account:edit"), ctl.SavePublicDNSAccount)
+		authGroup.DELETE("/domain/public/accounts/delete", middleware.RequirePermission(db, "domains:account:delete"), ctl.DeletePublicDNSAccount)
+		authGroup.POST("/domain/public/accounts/test", middleware.RequirePermission(db, "domains:account:test"), ctl.TestPublicDNSAccount)
+		authGroup.GET("/domain/public/domains", middleware.RequirePermission(db, "domains:public:list"), ctl.ListPublicDomains)
+		authGroup.POST("/domain/public/domains/sync", middleware.RequirePermission(db, "domains:public:sync"), ctl.SyncPublicDomains)
+		authGroup.GET("/domain/public/records", middleware.RequireAnyPermission(db, "domains:public:list", "domains:public:record"), ctl.ListPublicDNSRecords)
+		authGroup.POST("/domain/public/records/mutate", middleware.RequirePermission(db, "domains:public:record"), ctl.MutatePublicDNSRecord)
+		authGroup.POST("/domain/public/records/batch", middleware.RequirePermission(db, "domains:public:batch"), ctl.BatchPublicDNSRecords)
+		authGroup.GET("/domain/internal/settings", middleware.RequireAnyPermission(db, "domains:settings:view", "domains:internal:list", "domains:query:test"), ctl.GetInternalDNSSettings)
+		authGroup.PUT("/domain/internal/settings", middleware.RequirePermission(db, "domains:settings:save"), ctl.SaveInternalDNSSettings)
+		authGroup.GET("/domain/internal/zones", middleware.RequirePermission(db, "domains:internal:list"), ctl.ListInternalDNSZones)
+		authGroup.POST("/domain/internal/zones/save", middleware.RequireCreateOrEditPermission(db, "domains:internal:zone:add", "domains:internal:zone:edit"), ctl.SaveInternalDNSZone)
+		authGroup.DELETE("/domain/internal/zones/delete", middleware.RequirePermission(db, "domains:internal:zone:delete"), ctl.DeleteInternalDNSZone)
+		authGroup.GET("/domain/internal/records", middleware.RequireAnyPermission(db, "domains:internal:list", "domains:internal:record"), ctl.ListInternalDNSRecords)
+		authGroup.POST("/domain/internal/records/save", middleware.RequirePermission(db, "domains:internal:record"), ctl.SaveInternalDNSRecord)
+		authGroup.DELETE("/domain/internal/records/delete", middleware.RequirePermission(db, "domains:internal:record"), ctl.DeleteInternalDNSRecord)
+		authGroup.POST("/domain/internal/records/batch", middleware.RequirePermission(db, "domains:internal:record"), ctl.BatchInternalDNSRecords)
+		authGroup.POST("/domain/internal/query", middleware.RequirePermission(db, "domains:query:test"), ctl.TestDNSResolution)
+		authGroup.GET("/domain/audit", middleware.RequirePermission(db, "domains:audit:list"), ctl.ListDNSAuditLogs)
+		authGroup.GET("/domain/public/certificates", middleware.RequirePermission(db, "domains:ssl:view"), ctl.ListSSLCertificates)
+		authGroup.GET("/domain/public/certificates/detail", middleware.RequirePermission(db, "domains:ssl:view"), ctl.GetSSLCertificate)
+		authGroup.GET("/domain/public/certificates/domain-options", middleware.RequirePermission(db, "domains:ssl:view"), ctl.SSLCertificateDomainOptions)
+		authGroup.GET("/domain/public/certificates/tasks", middleware.RequirePermission(db, "domains:ssl:view"), ctl.ListSSLCertificateTasks)
+		authGroup.GET("/domain/public/certificates/audits", middleware.RequirePermission(db, "domains:ssl:view"), ctl.ListSSLCertificateAudits)
+		authGroup.POST("/domain/public/certificates/sync", middleware.RequirePermission(db, "domains:ssl:sync"), ctl.SyncSSLCertificates)
+		authGroup.POST("/domain/public/certificates/upload", middleware.RequirePermission(db, "domains:ssl:upload"), ctl.UploadSSLCertificate)
+		authGroup.POST("/domain/public/certificates/apply", middleware.RequirePermission(db, "domains:ssl:apply"), ctl.ApplySSLCertificate)
+		authGroup.POST("/domain/public/certificates/renew", middleware.RequirePermission(db, "domains:ssl:renew"), ctl.RenewSSLCertificate)
+		authGroup.POST("/domain/public/certificates/resync", middleware.RequirePermission(db, "domains:ssl:sync"), ctl.ResyncSSLCertificate)
+		authGroup.PUT("/domain/public/certificates/renew-settings", middleware.RequirePermission(db, "domains:ssl:settings"), ctl.UpdateSSLCertificateRenewSettings)
+		authGroup.DELETE("/domain/public/certificates/delete", middleware.RequirePermission(db, "domains:ssl:delete"), ctl.DeleteSSLCertificate)
+		authGroup.GET("/domain/public/certificates/download", middleware.RequirePermission(db, "domains:ssl:download"), ctl.DownloadSSLCertificate)
+		authGroup.GET("/domain/public/certificates/download-private", middleware.RequirePermission(db, "domains:ssl:download-key"), ctl.DownloadSSLCertificatePrivate)
 		authGroup.GET("/systemConfig", ctl.GetSystemConfig)
 		authGroup.PUT("/systemConfig", ctl.UpdateSystemConfig)
 		authGroup.POST("/systemConfig/upload", ctl.UploadSystemAsset)
@@ -151,6 +197,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/asset/service/runtime-topology", ctl.GetAssetServiceRuntimeTopology)
 		authGroup.GET("/asset/service/workload/runtime", ctl.GetAssetServiceWorkloadRuntime)
 		authGroup.GET("/asset/service/workload/topology", ctl.GetAssetServiceWorkloadTopology)
+		authGroup.GET("/asset/service/workload/metrics", ctl.GetAssetServiceWorkloadMetrics)
 		authGroup.GET("/asset/service/workload/rollout-history", ctl.GetAssetServiceWorkloadRolloutHistory)
 		authGroup.POST("/asset/service/workload/rollback", ctl.RollbackAssetServiceWorkload)
 		authGroup.GET("/asset/service/workload/logs", ctl.GetAssetServiceWorkloadLogs)
@@ -275,6 +322,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.POST("/ops/job/add", ctl.CreateOpsJob)
 		authGroup.PUT("/ops/job/update", ctl.UpdateOpsJob)
 		authGroup.POST("/ops/job/run", ctl.RunOpsJob)
+		authGroup.PUT("/ops/job/status", ctl.UpdateOpsJobStatus)
 		authGroup.DELETE("/ops/job/delete", ctl.DeleteOpsJob)
 		authGroup.GET("/ops/job/history/list", ctl.GetOpsJobHistoryList)
 		authGroup.GET("/ops/job/history/detail", ctl.GetOpsJobHistoryDetail)
@@ -285,6 +333,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/ops/job/template/info", ctl.GetOpsJobTemplateInfo)
 		authGroup.POST("/ops/job/template/add", ctl.CreateOpsJobTemplate)
 		authGroup.PUT("/ops/job/template/update", ctl.UpdateOpsJobTemplate)
+		authGroup.PUT("/ops/job/template/status", ctl.UpdateOpsJobTemplateStatus)
 		authGroup.DELETE("/ops/job/template/delete", ctl.DeleteOpsJobTemplate)
 		authGroup.GET("/ops/environment/list", ctl.GetOpsEnvironmentList)
 		authGroup.POST("/ops/environment/save", ctl.SaveOpsEnvironment)
@@ -302,6 +351,7 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.DELETE("/ops/application/build-task/delete", ctl.DeleteOpsAppBuildTask)
 		authGroup.POST("/ops/application/build-task/run", ctl.RunOpsAppBuildTask)
 		authGroup.POST("/ops/application/release/run", ctl.RunOpsAppRelease)
+		authGroup.POST("/ops/application/release/retry", ctl.RetryOpsAppRelease)
 		authGroup.GET("/ops/application/release/list", ctl.GetOpsAppReleaseList)
 		authGroup.GET("/ops/application/release/info", ctl.GetOpsAppReleaseInfo)
 		authGroup.GET("/ops/application/artifact/list", ctl.GetOpsAppArtifactList)
@@ -320,7 +370,6 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/ops/application/pipeline/run/info", ctl.GetOpsAppPipelineRunInfo)
 		authGroup.POST("/ops/application/pipeline/run/approve", ctl.ApproveOpsAppPipelineRun)
 		authGroup.POST("/ops/application/pipeline/run/rollback", ctl.RollbackOpsAppPipelineRun)
-		authGroup.GET("/ops/application/topology", ctl.GetApplicationTopology)
 
 		authGroup.GET("/notify/template/list", ctl.GetNotifyTemplateList)
 		authGroup.GET("/notify/template/options", ctl.GetNotifyTemplateOptions)
@@ -425,6 +474,8 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.GET("/k8s/secret/detail", ctl.GetK8sSecretDetail)
 		authGroup.GET("/k8s/storage/detail", ctl.GetK8sStorageDetail)
 		authGroup.GET("/k8s/pod/detail", ctl.GetK8sPodDetail)
+		authGroup.GET("/k8s/pod/metrics", ctl.GetK8sPodMetrics)
+		authGroup.GET("/k8s/workload/metrics", ctl.GetK8sWorkloadMetrics)
 		authGroup.GET("/k8s/pod/containers", ctl.GetK8sPodContainers)
 		authGroup.GET("/k8s/pod/logs", ctl.GetK8sPodLogs)
 		authGroup.GET("/k8s/pod/events", ctl.GetK8sPodEvents)
@@ -440,5 +491,5 @@ func New(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		authGroup.DELETE("/k8s/resource/delete", ctl.DeleteK8sResource)
 	}
 
-	return engine
+	return engine, svc
 }

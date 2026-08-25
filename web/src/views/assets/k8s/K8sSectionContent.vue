@@ -6,11 +6,15 @@ import { Connection, CopyDocument } from '@element-plus/icons-vue'
 function serviceTypeTagType(type) {
   return {
     ClusterIP: 'success',
-    Headless: 'warning',
+    Headless: 'info',
     NodePort: 'warning',
     LoadBalancer: 'primary',
     ExternalName: 'info'
   }[type] || 'info'
+}
+
+function serviceTypeTagClass(type) {
+  return type === 'Headless' ? 'service-type-headless' : ''
 }
 
 function servicePorts(ports) {
@@ -129,6 +133,14 @@ defineProps({
     <el-table v-if="page.hasItems(page.filteredPods)" :data="page.pagedPods" class="data-table pod-management-table">
       <el-table-column prop="name" :label="page.t('k8sPodName')" min-width="260" />
       <el-table-column prop="namespace" :label="page.t('k8sNamespace')" width="140" />
+      <el-table-column label="工作负载" min-width="200">
+        <template #default="{ row }">
+          <div v-if="row.workloadName" class="pod-workload-cell">
+            <el-tag size="small" effect="plain" class="pod-workload-type">{{ row.workloadName }}</el-tag>
+          </div>
+          <span v-else class="pod-workload-empty">独立 Pod</span>
+        </template>
+      </el-table-column>
       <el-table-column :label="page.t('k8sStatus')" width="110">
         <template #default="{ row }">
           <el-tag :type="page.podStatusTagType(row.status)" effect="light" round>{{ row.status || '-' }}</el-tag>
@@ -195,7 +207,7 @@ defineProps({
         <template #default="{ row }"><el-tag class="service-namespace-tag" effect="plain">{{ row.namespace }}</el-tag></template>
       </el-table-column>
       <el-table-column :label="page.t('k8sType')" width="128">
-        <template #default="{ row }"><el-tag :type="serviceTypeTagType(row.type)" effect="light" round>{{ row.type }}</el-tag></template>
+        <template #default="{ row }"><el-tag :type="serviceTypeTagType(row.type)" :class="serviceTypeTagClass(row.type)" effect="light" round>{{ row.type }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="clusterIP" :label="page.t('k8sClusterIp')" min-width="142">
         <template #default="{ row }"><span class="service-ip-text">{{ row.clusterIP }}</span></template>

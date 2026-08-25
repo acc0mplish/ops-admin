@@ -44,6 +44,7 @@ export const queryOpsJobList = (params) => http.get('/api/v1/ops/job/list', { pa
 export const opsJobInfo = (id) => http.get('/api/v1/ops/job/info', { params: { id } })
 export const addOpsJob = (data) => http.post('/api/v1/ops/job/add', data)
 export const updateOpsJob = (data) => http.put('/api/v1/ops/job/update', data)
+export const updateOpsJobStatus = (data) => http.put('/api/v1/ops/job/status', data)
 export const runOpsJob = (id) => http.post('/api/v1/ops/job/run', { id })
 export const deleteOpsJob = (id) => http.delete('/api/v1/ops/job/delete', { data: { id } })
 
@@ -57,6 +58,7 @@ export const queryOpsJobTemplateOptions = () => http.get('/api/v1/ops/job/templa
 export const opsJobTemplateInfo = (id) => http.get('/api/v1/ops/job/template/info', { params: { id } })
 export const addOpsJobTemplate = (data) => http.post('/api/v1/ops/job/template/add', data)
 export const updateOpsJobTemplate = (data) => http.put('/api/v1/ops/job/template/update', data)
+export const updateOpsJobTemplateStatus = (data) => http.put('/api/v1/ops/job/template/status', data)
 export const deleteOpsJobTemplate = (id) => http.delete('/api/v1/ops/job/template/delete', { data: { id } })
 
 export const queryOpsApplicationList = (params) => http.get('/api/v1/ops/application/list', { params })
@@ -72,6 +74,7 @@ export const updateOpsAppBuildTaskStatus = (data) => http.put('/api/v1/ops/appli
 export const deleteOpsAppBuildTask = (id) => http.delete('/api/v1/ops/application/build-task/delete', { data: { id } })
 export const runOpsAppBuildTask = (data) => http.post('/api/v1/ops/application/build-task/run', data)
 export const runOpsAppRelease = (data) => http.post('/api/v1/ops/application/release/run', data)
+export const retryOpsAppRelease = (id) => http.post('/api/v1/ops/application/release/retry', { id })
 export const queryOpsAppReleaseList = (params) => http.get('/api/v1/ops/application/release/list', { params })
 export const opsAppReleaseInfo = (id) => http.get('/api/v1/ops/application/release/info', { params: { id } })
 export const queryOpsAppArtifactList = (params) => http.get('/api/v1/ops/application/artifact/list', { params })
@@ -90,7 +93,6 @@ export const queryOpsAppPipelineRunList = (params) => http.get('/api/v1/ops/appl
 export const opsAppPipelineRunInfo = (id) => http.get('/api/v1/ops/application/pipeline/run/info', { params: { id } })
 export const approveOpsAppPipelineRun = (data) => http.post('/api/v1/ops/application/pipeline/run/approve', data)
 export const rollbackOpsAppPipelineRun = (id) => http.post('/api/v1/ops/application/pipeline/run/rollback', { id })
-export const queryOpsApplicationTopology = (params) => http.get('/api/v1/ops/application/topology', { params })
 
 export const queryOpsEnvironmentList = (params) => http.get('/api/v1/ops/environment/list', { params })
 export const saveOpsEnvironment = (data) => http.post('/api/v1/ops/environment/save', data)

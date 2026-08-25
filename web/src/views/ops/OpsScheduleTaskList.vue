@@ -10,6 +10,7 @@ import {
   queryNotifyRuleOptions,
   queryOpsScheduleTaskList,
   queryOpsScheduleTemplateList,
+  opsScheduleTemplateInfo,
   queryOpsScriptOptions,
   runOpsScheduleTask,
   updateOpsScheduleTask,
@@ -45,7 +46,7 @@ const form = reactive({
   taskType: 'script',
   templateId: undefined,
   scriptId: undefined,
-  parameters: '',
+  variables: {},
   hostIds: [],
   groupId: undefined,
   concurrency: 5,
@@ -68,6 +69,19 @@ const selectedScriptTimeout = computed(() => {
   return current?.timeoutSeconds || 300
 })
 
+const selectedScriptVariables = computed(() => {
+  const current = scriptOptions.value.find((item) => Number(item.id) === Number(form.scriptId))
+  return current?.variables || []
+})
+
+function syncScriptVariables(values = {}) {
+  const next = {}
+  selectedScriptVariables.value.forEach((variable) => {
+    next[variable.name] = values[variable.name] ?? (variable.secret ? '' : (variable.defaultValue || ''))
+  })
+  form.variables = next
+}
+
 function resetForm() {
   Object.assign(form, {
     id: undefined,
@@ -75,7 +89,7 @@ function resetForm() {
     taskType: 'script',
     templateId: undefined,
     scriptId: undefined,
-    parameters: '',
+    variables: {},
     hostIds: [],
     groupId: undefined,
     concurrency: 5,
@@ -111,6 +125,10 @@ watch(
     }
   }
 )
+
+watch(() => form.scriptId, () => {
+  if (form.taskType === 'script') syncScriptVariables(form.variables)
+})
 
 async function loadBaseOptions() {
   const [scripts, hosts, groups, templates, notifyRules] = await Promise.all([
@@ -170,7 +188,7 @@ async function openEdit(row) {
     taskType: data.taskType || 'script',
     templateId: data.templateId || undefined,
     scriptId: data.scriptId || undefined,
-    parameters: data.parameters || '',
+    variables: data.variables || {},
     hostIds: data.hostIds || [],
     groupId: data.groupIds?.[0] || undefined,
     concurrency: data.concurrency || 5,
@@ -187,6 +205,7 @@ async function openEdit(row) {
     notifyRuleId: data.notifyRuleId || undefined,
     notifyOnFailureOnly: !!data.notifyOnFailureOnly
   })
+  syncScriptVariables(data.variables || {})
   dialogVisible.value = true
 }
 
@@ -199,7 +218,7 @@ async function handleCopy(row) {
     taskType: data.taskType || 'script',
     templateId: data.templateId || undefined,
     scriptId: data.scriptId || undefined,
-    parameters: data.parameters || '',
+    variables: data.variables || {},
     hostIds: data.hostIds || [],
     groupId: data.groupIds?.[0] || undefined,
     concurrency: data.concurrency || 5,
@@ -216,26 +235,28 @@ async function handleCopy(row) {
     notifyRuleId: data.notifyRuleId || undefined,
     notifyOnFailureOnly: !!data.notifyOnFailureOnly
   })
+  syncScriptVariables(data.variables || {})
   dialogVisible.value = true
 }
 
-function applyTemplate(templateId) {
+async function applyTemplate(templateId) {
   const selected = templateOptions.value.find((item) => Number(item.id) === Number(templateId))
   if (!selected) return
-  form.taskType = selected.taskType || 'script'
-  form.scriptId = selected.scriptId || undefined
-  form.parameters = selected.parameters || ''
-  form.httpMethod = selected.httpMethod || 'GET'
-  form.url = selected.url || ''
-  form.headersJson = selected.headersJson || '{}'
-  form.body = selected.body || ''
-  form.expectedStatus = selected.expectedStatus || 200
-  form.timeoutSeconds = selected.timeoutSeconds || 10
-  if (selected.cronExpr) {
-    form.cronExpr = selected.cronExpr
+  const template = await opsScheduleTemplateInfo(templateId)
+  form.taskType = template.taskType || 'script'
+  form.scriptId = template.scriptId || undefined
+  syncScriptVariables(template.variables || {})
+  form.httpMethod = template.httpMethod || 'GET'
+  form.url = template.url || ''
+  form.headersJson = template.headersJson || '{}'
+  form.body = template.body || ''
+  form.expectedStatus = template.expectedStatus || 200
+  form.timeoutSeconds = template.timeoutSeconds || 10
+  if (template.cronExpr) {
+    form.cronExpr = template.cronExpr
   }
-  if (selected.description && !form.description) {
-    form.description = selected.description
+  if (template.description && !form.description) {
+    form.description = template.description
   }
 }
 
@@ -246,7 +267,7 @@ function buildPayload() {
     taskType: form.taskType,
     templateId: form.templateId,
     scriptId: form.scriptId,
-    parameters: form.parameters,
+    variables: form.variables,
     hostIds: form.hostIds,
     groupIds: form.groupId ? [form.groupId] : [],
     concurrency: form.concurrency,
@@ -409,12 +430,12 @@ onMounted(async () => {
       <el-table-column prop="lastSummary" label="最近摘要" min-width="220" show-overflow-tooltip />
       <el-table-column prop="lastRunAt" label="最近执行" width="180" />
       <el-table-column prop="nextRunAt" label="下次执行" width="180" />
-      <el-table-column label="操作" width="320" fixed="right">
+      <el-table-column label="操作" width="350" fixed="right">
         <template #default="{ row }">
           <el-button link type="success" @click="handleRun(row)">立即执行</el-button>
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link @click="handleCopy(row)">复制</el-button>
-          <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleRowStatus(row)">
+          <el-button link :class="row.status === 1 ? 'schedule-action-disable' : 'schedule-action-enable'" @click="toggleRowStatus(row)">
             {{ row.status === 1 ? '禁用' : '启用' }}
           </el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
@@ -510,9 +531,22 @@ onMounted(async () => {
               </el-form-item>
             </el-col>
             <el-col :span="24">
-              <el-form-item label="执行参数">
-                <el-input v-model="form.parameters" placeholder="例如：--env prod --dry-run" />
-              </el-form-item>
+              <div class="variable-panel">
+                <div class="variable-panel__header">
+                  <div>
+                    <div class="variable-panel__title">运行变量</div>
+                    <div class="variable-panel__hint">变量将作为 <code>VARIABLE_变量名</code> 注入脚本；密钥不会回显。</div>
+                  </div>
+                </div>
+                <div v-if="!selectedScriptVariables.length" class="variable-panel__empty">此脚本未声明变量，无需额外配置。</div>
+                <div v-else class="variable-grid">
+                  <div v-for="variable in selectedScriptVariables" :key="variable.name" class="variable-field">
+                    <div class="variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">必填</el-tag></div>
+                    <el-input v-model="form.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '已配置时留空可保留原值' : (variable.defaultValue || '请输入变量值')" />
+                    <div v-if="variable.description" class="variable-field__desc">{{ variable.description }}</div>
+                  </div>
+                </div>
+              </div>
             </el-col>
             <el-col :span="24">
               <OpsTargetSelector
@@ -590,4 +624,17 @@ onMounted(async () => {
 .toolbar-left, .toolbar-right { display: flex; gap: 12px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; }
 .form-tip { margin-left: 12px; color: #8694ad; font-size: 13px; }
+.variable-panel { padding: 16px; border: 1px solid #d9e6ff; border-radius: 10px; background: linear-gradient(135deg, #f8fbff, #fff); }
+.variable-panel__header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.variable-panel__title { color: #172744; font-size: 15px; font-weight: 700; }
+.variable-panel__hint, .variable-field__desc { margin-top: 4px; color: #7282a0; font-size: 12px; }
+.variable-panel__hint code, .variable-field__label code { color: #3869d9; }
+.variable-panel__empty { padding: 12px; color: #8190aa; border: 1px dashed #cbdcff; border-radius: 7px; }
+.variable-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.variable-field { min-width: 0; }
+.variable-field__label { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13px; font-weight: 600; }
+.schedule-action-disable { color: #c87506 !important; font-weight: 600; }
+.schedule-action-disable:hover { color: #9a5a00 !important; }
+.schedule-action-enable { color: #49a828 !important; font-weight: 600; }
+@media (max-width: 720px) { .variable-grid { grid-template-columns: 1fr; } }
 </style>

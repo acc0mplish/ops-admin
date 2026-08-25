@@ -1,6 +1,8 @@
 import http from './http'
 
 export const login = (data) => http.post('/api/v1/login', data)
+export const refreshToken = (lastActivityAt) => http.post('/api/v1/auth/refresh', { lastActivityAt }, { skipAuthRefresh: true })
+export const logoutSession = () => http.post('/api/v1/auth/logout', {}, { skipAuthRefresh: true })
 export const profile = () => http.get('/api/v1/profile')
 
 export const getPublicSystemConfig = () => http.get('/api/v1/systemConfig/public')

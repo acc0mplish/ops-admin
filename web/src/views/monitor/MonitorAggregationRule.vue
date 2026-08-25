@@ -20,7 +20,7 @@ const selectedRuleIds = ref([])
 const rows = ref([])
 const total = ref(0)
 const ruleOptions = ref([])
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '' })
+const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', status: '' })
 
 const aggregationTemplates = [
   { id: 'metric-instance', type: 'metric', name: '监控告警 - 主机实例收敛', matchMode: 'regex', ruleNamePattern: '^主机.*', severity: '', groupBy: ['instance'], windowSeconds: 300, repeatIntervalSeconds: 1800, description: '按主机实例收敛 CPU、内存、磁盘与负载类告警。' },
@@ -45,7 +45,7 @@ const form = reactive({
   ruleNamePattern: '',
   severity: '',
   alertType: '',
-  groupBy: ['instance'],
+  groupBy: [],
   windowSeconds: 300,
   repeatIntervalSeconds: 1800,
   status: 1,
@@ -61,7 +61,7 @@ function resetForm() {
     ruleNamePattern: '',
     severity: '',
     alertType: '',
-    groupBy: ['instance'],
+    groupBy: [],
     windowSeconds: 300,
     repeatIntervalSeconds: 1800,
     status: 1,
@@ -150,14 +150,14 @@ async function openEdit(row) {
     ...data,
     matchMode: data.matchMode || 'regex',
     ruleIds: data.ruleIds || [],
-    groupBy: data.groupBy?.length ? data.groupBy : ['instance']
+    groupBy: data.groupBy || []
   })
   dialogVisible.value = true
 }
 
 async function submit() {
-  if (!form.name.trim() || !form.groupBy.length) {
-    ElMessage.warning('请填写聚合规则名称和分组字段')
+  if (!form.name.trim()) {
+    ElMessage.warning('请填写聚合规则名称')
     return
   }
   if (form.matchMode === 'regex' && !form.ruleNamePattern.trim()) {
@@ -229,7 +229,7 @@ onMounted(async () => {
       <el-table-column prop="alertType" label="告警类型" width="130"><template #default="{ row }">{{ ({ metric: '监控', log: 'ES 日志', victorialogs: 'VictoriaLogs' }[row.alertType] || '全部') }}</template></el-table-column>
       <el-table-column label="分组字段" min-width="220">
         <template #default="{ row }">
-          <el-tag v-for="item in row.groupBy || []" :key="item" class="tag">{{ item }}</el-tag>
+          <template v-if="row.groupBy?.length"><el-tag v-for="item in row.groupBy" :key="item" class="tag">{{ item }}</el-tag></template><el-tag v-else type="warning" effect="light">不按标签分组</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="收敛窗口" width="130">
@@ -252,7 +252,7 @@ onMounted(async () => {
     </el-table>
 
     <div class="pager">
-      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
+      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑聚合收敛规则' : '新增聚合收敛规则'" width="820px">
@@ -278,12 +278,12 @@ onMounted(async () => {
           </el-select>
         </el-form-item>
         <el-form-item label="告警类型"><el-select v-model="form.alertType" clearable placeholder="全部类型" style="width: 100%"><el-option label="监控告警" value="metric" /><el-option label="ES 日志告警" value="log" /><el-option label="VictoriaLogs 告警" value="victorialogs" /></el-select></el-form-item>
-        <el-form-item label="分组字段" required>
-          <el-select v-model="form.groupBy" multiple filterable allow-create default-first-option style="width: 100%" placeholder="例如 instance、job、pod">
+        <el-form-item label="分组字段（可选）">
+          <el-select v-model="form.groupBy" multiple filterable allow-create default-first-option clearable style="width: 100%" placeholder="留空则按同一规则、同一等级汇总为一条通知">
             <el-option v-for="item in ['instance','job','namespace','pod','service','cluster']" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
-        <el-alert type="warning" :closable="false" title="请只选择目标告警中稳定存在的 Label。缺失字段会按空值归组，可能把无关告警一起收敛。" />
+        <el-alert type="info" :closable="false" title="留空：同一规则、同一等级的告警在窗口内合成一条摘要通知；选择字段：仅字段值相同的告警才会合并。请只选稳定存在的 Label。" />
         <el-form-item label="收敛窗口">
           <div class="number-with-unit">
             <el-input-number v-model="form.windowSeconds" :min="60" :max="86400" />

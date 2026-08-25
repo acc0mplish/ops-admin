@@ -11,6 +11,7 @@ import {
   updateK8sCluster
 } from '../../api/k8s'
 import { queryAssetGatewayOptions } from '../../api/asset'
+import { queryMonitorDatasourceOptions, saveMonitorDatasource } from '../../api/monitor'
 import { t } from '../../utils/i18n'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
@@ -21,6 +22,9 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const clusterList = ref([])
 const gatewayOptions = ref([])
+const datasourceOptions = ref([])
+const datasourceSaving = ref(false)
+const datasourceDialogVisible = ref(false)
 const { environmentOptions, environmentLoading, environmentName } = useEnvironmentOptions()
 const selectedEnv = ref('')
 const filteredClusters = computed(() => {
@@ -37,8 +41,10 @@ const form = reactive({
   description: '',
   kubeConfig: '',
   connectionMode: 'direct',
-  gatewayId: undefined
+  gatewayId: undefined,
+  monitorDatasourceId: undefined
 })
+const datasourceForm = reactive({ name: '', type: 'prometheus', url: '', authType: 'none', username: '', password: '', token: '', env: 'test', status: 1, description: '' })
 
 const dialogTitle = computed(() => (isEdit.value ? t('k8sEditCluster') : t('k8sCreateCluster')))
 
@@ -59,7 +65,8 @@ function resetForm() {
     description: '',
     kubeConfig: '',
     connectionMode: 'direct',
-    gatewayId: undefined
+    gatewayId: undefined,
+    monitorDatasourceId: undefined
   })
 }
 
@@ -74,6 +81,34 @@ async function loadClusters() {
 
 async function loadGateways() {
   gatewayOptions.value = await queryAssetGatewayOptions()
+}
+
+async function loadDatasourceOptions() {
+  const options = await queryMonitorDatasourceOptions()
+  datasourceOptions.value = (options || []).filter((item) => ['prometheus', 'victoriametrics'].includes(item.type))
+}
+
+function openDatasourceCreate() {
+  Object.assign(datasourceForm, { name: '', type: 'prometheus', url: '', authType: 'none', username: '', password: '', token: '', env: form.env || 'test', status: 1, description: '' })
+  datasourceDialogVisible.value = true
+}
+
+async function saveDatasource() {
+  if (!datasourceForm.name.trim() || !datasourceForm.url.trim()) {
+    ElMessage.warning('请填写数据源名称和地址')
+    return
+  }
+  datasourceSaving.value = true
+  try {
+    await saveMonitorDatasource(datasourceForm)
+    await loadDatasourceOptions()
+    const created = datasourceOptions.value.find((item) => item.name === datasourceForm.name.trim() && item.url === datasourceForm.url.trim().replace(/\/$/, ''))
+    form.monitorDatasourceId = created?.id
+    datasourceDialogVisible.value = false
+    ElMessage.success('数据源已创建并绑定到当前集群')
+  } finally {
+    datasourceSaving.value = false
+  }
 }
 
 function openCreate() {
@@ -92,7 +127,8 @@ async function openEdit(row) {
     description: data.description || '',
     kubeConfig: data.kubeConfig || '',
     connectionMode: data.connectionMode || 'direct',
-    gatewayId: data.gatewayId || undefined
+    gatewayId: data.gatewayId || undefined,
+    monitorDatasourceId: data.monitorDatasourceId || undefined
   })
   dialogVisible.value = true
 }
@@ -153,6 +189,7 @@ function openDetail(row) {
 
 onMounted(async () => {
   await loadGateways()
+  await loadDatasourceOptions()
   await loadClusters()
 })
 </script>
@@ -189,6 +226,9 @@ onMounted(async () => {
         <el-table-column prop="apiServer" :label="t('k8sApiServer')" min-width="260" />
         <el-table-column prop="version" :label="t('k8sVersion')" width="140" />
         <el-table-column prop="nodeCount" :label="t('k8sNodeCount')" width="100" />
+        <el-table-column label="监控数据源" min-width="160">
+          <template #default="{ row }">{{ row.monitorDatasourceName || '未绑定' }}</template>
+        </el-table-column>
         <el-table-column label="访问方式" min-width="150">
           <template #default="{ row }">
             <span v-if="row.connectionMode === 'gateway'">网关：{{ row.gatewayName || row.gatewayId || '-' }}</span>
@@ -244,6 +284,15 @@ onMounted(async () => {
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="监控数据源">
+          <div class="datasource-binding-control">
+            <el-select v-model="form.monitorDatasourceId" clearable filterable placeholder="选择 Prometheus / VictoriaMetrics" style="flex: 1">
+              <el-option v-for="item in datasourceOptions" :key="item.id" :label="`${item.name} · ${item.type}`" :value="item.id" />
+            </el-select>
+            <el-button plain @click="openDatasourceCreate">新建自定义数据源</el-button>
+          </div>
+          <div class="form-hint">Pod CPU、内存监控只使用此集群绑定的数据源；不绑定时不会查询全局默认数据源。</div>
+        </el-form-item>
         <el-form-item :label="t('k8sKubeConfig')" required>
           <el-input
             v-model="form.kubeConfig"
@@ -258,6 +307,19 @@ onMounted(async () => {
         <el-button type="primary" :loading="submitting" @click="submit">{{ t('save') }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="datasourceDialogVisible" title="新增自定义监控数据源" width="620px" append-to-body>
+      <el-form label-width="110px">
+        <el-form-item label="名称" required><el-input v-model="datasourceForm.name" placeholder="例如：测试集群 Prometheus" /></el-form-item>
+        <el-form-item label="类型"><el-radio-group v-model="datasourceForm.type"><el-radio-button label="prometheus">Prometheus</el-radio-button><el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button></el-radio-group></el-form-item>
+        <el-form-item label="地址" required><el-input v-model="datasourceForm.url" placeholder="http://prometheus:9090" /></el-form-item>
+        <el-form-item label="认证方式"><el-select v-model="datasourceForm.authType" style="width: 100%"><el-option label="无认证" value="none" /><el-option label="Basic Auth" value="basic" /><el-option label="Bearer Token" value="bearer" /></el-select></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" label="用户名"><el-input v-model="datasourceForm.username" /></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" label="密码"><el-input v-model="datasourceForm.password" type="password" show-password /></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'bearer'" label="Token"><el-input v-model="datasourceForm.token" type="password" show-password /></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="datasourceDialogVisible = false">取消</el-button><el-button type="primary" :loading="datasourceSaving" @click="saveDatasource">创建并绑定</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -267,6 +329,9 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
 }
+
+.datasource-binding-control { display: flex; width: 100%; gap: 10px; }
+.form-hint { margin-top: 6px; color: #7d8ca3; font-size: 12px; line-height: 1.5; }
 
 .page-header {
   display: flex;

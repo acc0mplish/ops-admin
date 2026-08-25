@@ -26,6 +26,8 @@ type Controller struct {
 	service *service.Service
 }
 
+const refreshCookieName = "ops-admin-refresh"
+
 var terminalUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
@@ -46,12 +48,65 @@ func (ctl *Controller) Login(c *gin.Context) {
 		httpx.Failed(c, http.StatusBadRequest, "invalid login payload")
 		return
 	}
-	data, err := ctl.service.Login(req, c.ClientIP(), c.Request.UserAgent(), runtime.GOOS)
+	data, refreshToken, err := ctl.service.Login(req, c.ClientIP(), c.Request.UserAgent(), runtime.GOOS)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
 		return
 	}
+	setRefreshCookie(c, refreshToken, int(auth.SessionMaxTTL.Seconds()))
 	httpx.Success(c, data)
+}
+
+func (ctl *Controller) RefreshToken(c *gin.Context) {
+	var payload struct {
+		LastActivityAt int64 `json:"lastActivityAt"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil && err != io.EOF {
+		httpx.Failed(c, http.StatusBadRequest, "invalid refresh payload")
+		return
+	}
+	refreshToken, err := c.Cookie(refreshCookieName)
+	if err != nil {
+		clearRefreshCookie(c)
+		httpx.Failed(c, http.StatusUnauthorized, "登录已过期，请重新登录")
+		return
+	}
+	reportedAt := time.Time{}
+	if payload.LastActivityAt > 0 {
+		reportedAt = time.UnixMilli(payload.LastActivityAt)
+	}
+	data, nextRefreshToken, err := ctl.service.RefreshSession(refreshToken, reportedAt)
+	if err != nil {
+		clearRefreshCookie(c)
+		httpx.Failed(c, http.StatusUnauthorized, "登录已过期，请重新登录")
+		return
+	}
+	maxAge := int(auth.SessionMaxTTL.Seconds())
+	if expiresAt, ok := data["sessionExpiresAt"].(int64); ok {
+		maxAge = max(0, int(time.Until(time.UnixMilli(expiresAt)).Seconds()))
+	}
+	setRefreshCookie(c, nextRefreshToken, maxAge)
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) Logout(c *gin.Context) {
+	if refreshToken, err := c.Cookie(refreshCookieName); err == nil {
+		ctl.service.RevokeSession(refreshToken)
+	}
+	clearRefreshCookie(c)
+	httpx.Success(c, gin.H{"loggedOut": true})
+}
+
+func setRefreshCookie(c *gin.Context, token string, maxAge int) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	secure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	c.SetCookie(refreshCookieName, token, maxAge, "/api/v1/auth", "", secure, true)
+}
+
+func clearRefreshCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	secure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	c.SetCookie(refreshCookieName, "", -1, "/api/v1/auth", "", secure, true)
 }
 
 func (ctl *Controller) Profile(c *gin.Context) {
@@ -924,8 +979,12 @@ func (ctl *Controller) BatchSyncAssetHosts(c *gin.Context) {
 
 func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	token := c.Query("token")
+	if strings.TrimSpace(token) == "" {
+		httpx.Failed(c, http.StatusUnauthorized, "请先登录")
+		return
+	}
 	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, 401, "token invalid")
+		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
 		return
 	}
 

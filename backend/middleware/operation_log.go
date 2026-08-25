@@ -57,6 +57,10 @@ func auditRequestSummary(c *gin.Context) string {
 		parts = append(parts, "query: "+maskSensitive(query))
 	}
 	if c.Request.Body != nil && c.Request.Method != "GET" {
+		if c.Request.URL.Path == "/api/v1/domain/public/certificates/upload" {
+			parts = append(parts, "body: SSL Certificate 与 Private Key 敏感正文，已跳过记录")
+			return strings.Join(parts, "\n")
+		}
 		contentType := strings.ToLower(c.GetHeader("Content-Type"))
 		if strings.Contains(contentType, "multipart/form-data") {
 			parts = append(parts, "body: multipart/form-data 文件上传，已跳过正文记录")
@@ -80,7 +84,7 @@ func maskSensitive(value string) string {
 	result := value
 	sensitiveKeys := []string{
 		"password", "passwd", "secret", "secretKey", "accessKey", "token", "kubeConfig", "kubeconfig",
-		"client-key-data", "clientCertificateData", "privateKey", "keyData", "credential",
+		"client-key-data", "clientCertificateData", "privateKey", "privateKeyPem", "keyData", "credential",
 	}
 	for _, key := range sensitiveKeys {
 		jsonPattern := regexp.MustCompile(`(?i)("` + regexp.QuoteMeta(key) + `"\s*:\s*")([^"]*)(")`)
@@ -142,6 +146,8 @@ func actionDescription(path string, method string) string {
 		return "消息通知"
 	case strings.Contains(path, "/monitor"):
 		return "监控中心"
+	case strings.Contains(path, "/domain"):
+		return "域名管理"
 	case strings.Contains(path, "/admin"):
 		return "用户管理"
 	case strings.Contains(path, "/role"):

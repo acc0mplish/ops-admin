@@ -14,14 +14,11 @@ const dialogVisible = ref(false)
 const tableRef = ref()
 const tempHostIds = ref([])
 const environmentFilter = ref('')
-const tagFilter = ref('')
 
 const flatGroups = computed(() => flattenGroups(props.groupOptions))
 const environmentOptions = computed(() => [...new Set(props.hostOptions.map((item) => item.environment).filter(Boolean))])
-const tagOptions = computed(() => [...new Set(props.hostOptions.flatMap((item) => item.tags || []))])
 const filteredHostOptions = computed(() => props.hostOptions.filter((host) => {
   if (environmentFilter.value && host.environment !== environmentFilter.value) return false
-  if (tagFilter.value && !(host.tags || []).includes(tagFilter.value)) return false
   return true
 }))
 
@@ -56,7 +53,7 @@ watch(dialogVisible, async (visible) => {
   }
 })
 
-watch([environmentFilter, tagFilter], async () => {
+watch(environmentFilter, async () => {
   if (!dialogVisible.value) return
   await nextTick()
   const table = tableRef.value
@@ -121,7 +118,7 @@ function clearGroup() {
           clearable
           filterable
           placeholder="选择主机组"
-          style="width: 100%"
+          class="host-group-select"
           :disabled="Boolean(hostIds?.length)"
           @change="handleGroupChange"
           @clear="clearGroup"
@@ -145,9 +142,6 @@ function clearGroup() {
         <el-select v-model="environmentFilter" clearable placeholder="全部环境" style="width: 180px">
           <el-option v-for="env in environmentOptions" :key="env" :label="env" :value="env" />
         </el-select>
-        <el-select v-model="tagFilter" clearable filterable placeholder="全部标签" style="width: 180px">
-          <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
-        </el-select>
         <span>命中 {{ filteredHostOptions.length }} 台主机</span>
       </div>
       <el-table ref="tableRef" :data="filteredHostOptions" border @selection-change="handleHostSelectionChange">
@@ -160,7 +154,6 @@ function clearGroup() {
           <template #default="{ row }">{{ row.group?.name || '-' }}</template>
         </el-table-column>
         <el-table-column prop="environment" label="环境" width="100" />
-        <el-table-column label="标签" min-width="150"><template #default="{ row }">{{ (row.tags || []).join('、') || '-' }}</template></el-table-column>
         <el-table-column prop="sshUser" label="SSH 用户" min-width="100" />
       </el-table>
       <template #footer>
@@ -190,5 +183,6 @@ function clearGroup() {
 .target-tag {
   max-width: 100%;
 }
+.host-group-select { width: min(500px, 100%); }
 .target-filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; color: #7282a0; }
 </style>

@@ -10,3 +10,18 @@ db:
   password: "123456"
   name: ops_admin
   log-mode: false
+
+security:
+  # 用于加密 DNS 云账号凭据和 SSL Private Key。首次设置后禁止随意更换。
+  # 生产环境请替换为至少 32 字节的随机字符串，并限制本文件的读取权限。
+  credential-key: "ItJXS4UKHMKuus/l3b905oZ6ndxk4+7KBiVCwOU+/JM="
+
+ssl:
+  # Production requires a real operations mailbox. It can also be overridden
+  # with OPS_ADMIN_ACME_EMAIL at deployment time.
+  acme-email: ""
+  production-ca: "https://acme-v02.api.letsencrypt.org/directory"
+  staging-ca: "https://acme-staging-v02.api.letsencrypt.org/directory"
+  dns-polling-seconds: 2
+  dns-propagation-seconds: 120
+  expiry-warning-days: 30

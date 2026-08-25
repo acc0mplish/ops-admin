@@ -293,6 +293,27 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	return result, nil
 }
 
+// GetAssetServiceWorkloadMetrics compares the current Pods of a workload using
+// the Prometheus or VictoriaMetrics datasource bound to its K8s cluster.
+func (s *Service) GetAssetServiceWorkloadMetrics(serviceID uint, workloadType, workloadName, rangeKey string) (map[string]any, error) {
+	service, err := s.GetAssetService(serviceID)
+	if err != nil {
+		return nil, err
+	}
+	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
+		return nil, errors.New("workload does not belong to this service")
+	}
+	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
+	if err != nil {
+		return nil, err
+	}
+	podNames := make([]string, 0, len(detail.Pods))
+	for _, pod := range detail.Pods {
+		podNames = append(podNames, pod.Name)
+	}
+	return s.getK8sPodMetricComparison(service.K8sClusterID, service.Namespace, podNames, rangeKey)
+}
+
 func workloadDetailHealthy(detail model.K8sWorkloadDetail) bool {
 	parts := strings.Split(detail.Ready, "/")
 	if len(parts) != 2 {

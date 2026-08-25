@@ -162,6 +162,45 @@ func (ctl *Controller) GetK8sPodDetail(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) GetK8sPodMetrics(c *gin.Context) {
+	var query struct {
+		ClusterID uint   `form:"clusterId"`
+		Namespace string `form:"namespace"`
+		PodName   string `form:"podName"`
+		Range     string `form:"range"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil || query.ClusterID == 0 || query.Namespace == "" || query.PodName == "" {
+		httpx.Failed(c, http.StatusBadRequest, "invalid pod metrics query")
+		return
+	}
+	data, err := ctl.service.GetK8sPodMetrics(query.ClusterID, query.Namespace, query.PodName, query.Range)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
+func (ctl *Controller) GetK8sWorkloadMetrics(c *gin.Context) {
+	var query struct {
+		ClusterID    uint   `form:"clusterId"`
+		Namespace    string `form:"namespace"`
+		WorkloadType string `form:"workloadType"`
+		WorkloadName string `form:"workloadName"`
+		Range        string `form:"range"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil || query.ClusterID == 0 || query.Namespace == "" || query.WorkloadType == "" || query.WorkloadName == "" {
+		httpx.Failed(c, http.StatusBadRequest, "invalid workload metrics query")
+		return
+	}
+	data, err := ctl.service.GetK8sWorkloadMetrics(query.ClusterID, query.Namespace, query.WorkloadType, query.WorkloadName, query.Range)
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetK8sPodLogs(c *gin.Context) {
 	var query struct {
 		ClusterID uint   `form:"clusterId"`
@@ -220,8 +259,12 @@ func (ctl *Controller) GetK8sPodContainers(c *gin.Context) {
 
 func (ctl *Controller) K8sPodTerminalWS(c *gin.Context) {
 	token := c.Query("token")
+	if strings.TrimSpace(token) == "" {
+		httpx.Failed(c, http.StatusUnauthorized, "请先登录")
+		return
+	}
 	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, http.StatusUnauthorized, "token invalid")
+		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
 		return
 	}
 

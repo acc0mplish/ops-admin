@@ -1,33 +1,115 @@
 package model
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 type OpsScript struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	Name           string    `json:"name" gorm:"size:128;not null;index"`
-	ScriptType     string    `json:"scriptType" gorm:"size:32;not null;index"`
-	Interpreter    string    `json:"interpreter" gorm:"size:32;not null"`
-	Content        string    `json:"content" gorm:"type:longtext"`
-	DefaultParams  string    `json:"defaultParams" gorm:"type:text"`
-	TimeoutSeconds int       `json:"timeoutSeconds" gorm:"default:300"`
-	Status         int       `json:"status" gorm:"default:1;not null;index"`
-	Description    string    `json:"description" gorm:"size:255"`
-	CurrentVersion int       `json:"currentVersion" gorm:"default:1"`
-	CreatedAt      time.Time `json:"createTime"`
-	UpdatedAt      time.Time `json:"updateTime"`
+	ID             uint               `json:"id" gorm:"primaryKey"`
+	Name           string             `json:"name" gorm:"size:128;not null;index"`
+	ScriptType     string             `json:"scriptType" gorm:"size:32;not null;index"`
+	Interpreter    string             `json:"interpreter" gorm:"size:32;not null"`
+	Content        string             `json:"content" gorm:"type:longtext"`
+	DefaultParams  string             `json:"defaultParams" gorm:"type:text"`
+	Variables      OpsScriptVariables `json:"variables" gorm:"type:text"`
+	TimeoutSeconds int                `json:"timeoutSeconds" gorm:"default:300"`
+	Status         int                `json:"status" gorm:"default:1;not null;index"`
+	Description    string             `json:"description" gorm:"size:255"`
+	CurrentVersion int                `json:"currentVersion" gorm:"default:1"`
+	CreatedAt      time.Time          `json:"createTime"`
+	UpdatedAt      time.Time          `json:"updateTime"`
 }
 
 type OpsScriptVersion struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	ScriptID       uint      `json:"scriptId" gorm:"index;not null;uniqueIndex:idx_ops_script_version"`
-	Version        int       `json:"version" gorm:"not null;index;uniqueIndex:idx_ops_script_version"`
-	Content        string    `json:"content" gorm:"type:longtext"`
-	DefaultParams  string    `json:"defaultParams" gorm:"type:text"`
-	Interpreter    string    `json:"interpreter" gorm:"size:32"`
-	TimeoutSeconds int       `json:"timeoutSeconds"`
-	ChangeSummary  string    `json:"changeSummary" gorm:"size:255"`
-	Operator       string    `json:"operator" gorm:"size:128;index"`
-	CreatedAt      time.Time `json:"createTime"`
+	ID             uint               `json:"id" gorm:"primaryKey"`
+	ScriptID       uint               `json:"scriptId" gorm:"index;not null;uniqueIndex:idx_ops_script_version"`
+	Version        int                `json:"version" gorm:"not null;index;uniqueIndex:idx_ops_script_version"`
+	Content        string             `json:"content" gorm:"type:longtext"`
+	DefaultParams  string             `json:"defaultParams" gorm:"type:text"`
+	Variables      OpsScriptVariables `json:"variables" gorm:"type:text"`
+	Interpreter    string             `json:"interpreter" gorm:"size:32"`
+	TimeoutSeconds int                `json:"timeoutSeconds"`
+	ChangeSummary  string             `json:"changeSummary" gorm:"size:255"`
+	Operator       string             `json:"operator" gorm:"size:128;index"`
+	CreatedAt      time.Time          `json:"createTime"`
+}
+
+// OpsScriptVariable is a declared, task-scoped input. Its runtime name is
+// always prefixed with VARIABLE_ before being exported to the remote process.
+type OpsScriptVariable struct {
+	Name         string `json:"name"`
+	DefaultValue string `json:"defaultValue"`
+	Description  string `json:"description"`
+	Required     bool   `json:"required"`
+	Secret       bool   `json:"secret"`
+}
+
+type OpsScriptVariables []OpsScriptVariable
+
+// OpsScriptVariableValues stores values assigned to a script's declared
+// variables. It is deliberately separate from the declaration list above:
+// definitions belong to a script, while values belong to an execution context.
+type OpsScriptVariableValues map[string]string
+
+func (variables OpsScriptVariables) Value() (driver.Value, error) {
+	if len(variables) == 0 {
+		return "[]", nil
+	}
+	value, err := json.Marshal(variables)
+	return string(value), err
+}
+
+func (variables *OpsScriptVariables) Scan(value any) error {
+	if value == nil {
+		*variables = OpsScriptVariables{}
+		return nil
+	}
+	var raw []byte
+	switch item := value.(type) {
+	case string:
+		raw = []byte(item)
+	case []byte:
+		raw = item
+	default:
+		return fmt.Errorf("unsupported ops script variables value %T", value)
+	}
+	if len(raw) == 0 {
+		*variables = OpsScriptVariables{}
+		return nil
+	}
+	return json.Unmarshal(raw, variables)
+}
+
+func (values OpsScriptVariableValues) Value() (driver.Value, error) {
+	if len(values) == 0 {
+		return "{}", nil
+	}
+	value, err := json.Marshal(values)
+	return string(value), err
+}
+
+func (values *OpsScriptVariableValues) Scan(value any) error {
+	if value == nil {
+		*values = OpsScriptVariableValues{}
+		return nil
+	}
+	var raw []byte
+	switch item := value.(type) {
+	case string:
+		raw = []byte(item)
+	case []byte:
+		raw = item
+	default:
+		return fmt.Errorf("unsupported ops script variable values type %T", value)
+	}
+	if len(raw) == 0 {
+		*values = OpsScriptVariableValues{}
+		return nil
+	}
+	return json.Unmarshal(raw, values)
 }
 
 func (OpsScriptVersion) TableName() string { return "ops_script_version" }
@@ -95,23 +177,24 @@ func (OpsExecTargetResult) TableName() string {
 }
 
 type OpsScheduleTemplate struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	Name           string    `json:"name" gorm:"size:128;not null;index"`
-	TaskType       string    `json:"taskType" gorm:"size:32;not null;index"`
-	ScriptID       uint      `json:"scriptId" gorm:"index"`
-	ScriptName     string    `json:"scriptName" gorm:"size:128"`
-	Parameters     string    `json:"parameters" gorm:"type:text"`
-	HTTPMethod     string    `json:"httpMethod" gorm:"size:16"`
-	URL            string    `json:"url" gorm:"size:1024"`
-	HeadersJSON    string    `json:"headersJson" gorm:"type:text"`
-	Body           string    `json:"body" gorm:"type:longtext"`
-	ExpectedStatus int       `json:"expectedStatus" gorm:"default:200"`
-	TimeoutSeconds int       `json:"timeoutSeconds" gorm:"default:10"`
-	CronExpr       string    `json:"cronExpr" gorm:"size:128"`
-	Description    string    `json:"description" gorm:"size:255"`
-	Status         int       `json:"status" gorm:"default:1;index"`
-	CreatedAt      time.Time `json:"createTime"`
-	UpdatedAt      time.Time `json:"updateTime"`
+	ID             uint                    `json:"id" gorm:"primaryKey"`
+	Name           string                  `json:"name" gorm:"size:128;not null;index"`
+	TaskType       string                  `json:"taskType" gorm:"size:32;not null;index"`
+	ScriptID       uint                    `json:"scriptId" gorm:"index"`
+	ScriptName     string                  `json:"scriptName" gorm:"size:128"`
+	Parameters     string                  `json:"parameters" gorm:"type:text"`
+	Variables      OpsScriptVariableValues `json:"variables" gorm:"type:text"`
+	HTTPMethod     string                  `json:"httpMethod" gorm:"size:16"`
+	URL            string                  `json:"url" gorm:"size:1024"`
+	HeadersJSON    string                  `json:"headersJson" gorm:"type:text"`
+	Body           string                  `json:"body" gorm:"type:longtext"`
+	ExpectedStatus int                     `json:"expectedStatus" gorm:"default:200"`
+	TimeoutSeconds int                     `json:"timeoutSeconds" gorm:"default:10"`
+	CronExpr       string                  `json:"cronExpr" gorm:"size:128"`
+	Description    string                  `json:"description" gorm:"size:255"`
+	Status         int                     `json:"status" gorm:"default:1;index"`
+	CreatedAt      time.Time               `json:"createTime"`
+	UpdatedAt      time.Time               `json:"updateTime"`
 }
 
 func (OpsScheduleTemplate) TableName() string {
@@ -119,34 +202,35 @@ func (OpsScheduleTemplate) TableName() string {
 }
 
 type OpsScheduleTask struct {
-	ID                  uint       `json:"id" gorm:"primaryKey"`
-	Name                string     `json:"name" gorm:"size:128;not null;index"`
-	TaskType            string     `json:"taskType" gorm:"size:32;not null;index"`
-	TemplateID          uint       `json:"templateId" gorm:"index"`
-	ScriptID            uint       `json:"scriptId" gorm:"index"`
-	ScriptName          string     `json:"scriptName" gorm:"size:128"`
-	Parameters          string     `json:"parameters" gorm:"type:text"`
-	HostIDsJSON         string     `json:"hostIdsJson" gorm:"type:text"`
-	GroupIDsJSON        string     `json:"groupIdsJson" gorm:"type:text"`
-	Concurrency         int        `json:"concurrency" gorm:"default:5"`
-	HTTPMethod          string     `json:"httpMethod" gorm:"size:16"`
-	URL                 string     `json:"url" gorm:"size:1024"`
-	HeadersJSON         string     `json:"headersJson" gorm:"type:text"`
-	Body                string     `json:"body" gorm:"type:longtext"`
-	ExpectedStatus      int        `json:"expectedStatus" gorm:"default:200"`
-	TimeoutSeconds      int        `json:"timeoutSeconds" gorm:"default:10"`
-	CronExpr            string     `json:"cronExpr" gorm:"size:128;not null"`
-	Description         string     `json:"description" gorm:"size:255"`
-	Status              int        `json:"status" gorm:"default:1;index"`
-	NotifyEnabled       bool       `json:"notifyEnabled" gorm:"default:false;index"`
-	NotifyRuleID        uint       `json:"notifyRuleId" gorm:"index"`
-	NotifyOnFailureOnly bool       `json:"notifyOnFailureOnly" gorm:"default:false"`
-	LastStatus          string     `json:"lastStatus" gorm:"size:32"`
-	LastSummary         string     `json:"lastSummary" gorm:"type:text"`
-	LastRunAt           *time.Time `json:"lastRunAt"`
-	NextRunAt           *time.Time `json:"nextRunAt"`
-	CreatedAt           time.Time  `json:"createTime"`
-	UpdatedAt           time.Time  `json:"updateTime"`
+	ID                  uint                    `json:"id" gorm:"primaryKey"`
+	Name                string                  `json:"name" gorm:"size:128;not null;index"`
+	TaskType            string                  `json:"taskType" gorm:"size:32;not null;index"`
+	TemplateID          uint                    `json:"templateId" gorm:"index"`
+	ScriptID            uint                    `json:"scriptId" gorm:"index"`
+	ScriptName          string                  `json:"scriptName" gorm:"size:128"`
+	Parameters          string                  `json:"parameters" gorm:"type:text"`
+	Variables           OpsScriptVariableValues `json:"variables" gorm:"type:text"`
+	HostIDsJSON         string                  `json:"hostIdsJson" gorm:"type:text"`
+	GroupIDsJSON        string                  `json:"groupIdsJson" gorm:"type:text"`
+	Concurrency         int                     `json:"concurrency" gorm:"default:5"`
+	HTTPMethod          string                  `json:"httpMethod" gorm:"size:16"`
+	URL                 string                  `json:"url" gorm:"size:1024"`
+	HeadersJSON         string                  `json:"headersJson" gorm:"type:text"`
+	Body                string                  `json:"body" gorm:"type:longtext"`
+	ExpectedStatus      int                     `json:"expectedStatus" gorm:"default:200"`
+	TimeoutSeconds      int                     `json:"timeoutSeconds" gorm:"default:10"`
+	CronExpr            string                  `json:"cronExpr" gorm:"size:128;not null"`
+	Description         string                  `json:"description" gorm:"size:255"`
+	Status              int                     `json:"status" gorm:"default:1;index"`
+	NotifyEnabled       bool                    `json:"notifyEnabled" gorm:"default:false;index"`
+	NotifyRuleID        uint                    `json:"notifyRuleId" gorm:"index"`
+	NotifyOnFailureOnly bool                    `json:"notifyOnFailureOnly" gorm:"default:false"`
+	LastStatus          string                  `json:"lastStatus" gorm:"size:32"`
+	LastSummary         string                  `json:"lastSummary" gorm:"type:text"`
+	LastRunAt           *time.Time              `json:"lastRunAt"`
+	NextRunAt           *time.Time              `json:"nextRunAt"`
+	CreatedAt           time.Time               `json:"createTime"`
+	UpdatedAt           time.Time               `json:"updateTime"`
 }
 
 func (OpsScheduleTask) TableName() string {

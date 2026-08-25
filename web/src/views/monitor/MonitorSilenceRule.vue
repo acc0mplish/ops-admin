@@ -24,7 +24,7 @@ const selectedRuleIds = ref([])
 const rows = ref([])
 const total = ref(0)
 const ruleOptions = ref([])
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', status: '' })
+const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', status: '' })
 const timeRange = ref([])
 
 const silenceTemplates = [
@@ -299,7 +299,7 @@ onMounted(async () => {
     </el-table>
 
     <div class="pager">
-      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
+      <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑屏蔽规则' : '新增屏蔽规则'" width="820px">

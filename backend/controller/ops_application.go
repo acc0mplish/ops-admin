@@ -167,10 +167,24 @@ func (ctl *Controller) RunOpsAppRelease(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
+func (ctl *Controller) RetryOpsAppRelease(c *gin.Context) {
+	var payload service.IDPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		httpx.Failed(c, 400, "invalid release retry payload")
+		return
+	}
+	data, err := ctl.service.RetryOpsAppRelease(payload.ID)
+	if err != nil {
+		httpx.Failed(c, 400, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
+
 func (ctl *Controller) GetOpsAppReleaseList(c *gin.Context) {
 	pageNum, _ := strconv.Atoi(c.DefaultQuery("pageNum", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	data, err := ctl.service.ListOpsAppReleases(pageNum, pageSize, uint(mustAtoi(c.Query("appId"))), c.Query("keyword"), c.Query("status"), c.Query("env"))
+	data, err := ctl.service.ListOpsAppReleases(pageNum, pageSize, uint(mustAtoi(c.Query("appId"))), c.Query("keyword"), c.Query("status"), c.Query("env"), c.Query("startTime"), c.Query("endTime"))
 	if err != nil {
 		httpx.Failed(c, 500, err.Error())
 		return

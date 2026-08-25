@@ -534,6 +534,13 @@ func (s *Service) initMonitorScheduler() {
 		}
 		s.monitorScheduler.cron.Start()
 		s.reloadMonitorAlertRules()
+		// Repair historical events left firing by rules that were disabled before
+		// the automatic-close behavior existed.
+		s.closeInactiveMonitorAlertRuleEvents()
+		// Aggregated alerts are intentionally delayed until their convergence
+		// window closes, so a short cadence is needed even when no rule happens
+		// to be evaluated at that exact moment.
+		_, _ = s.monitorScheduler.cron.AddFunc("@every 15s", s.flushDueMonitorAggregationNotifications)
 		entryID, err := s.monitorScheduler.cron.AddFunc("@every 60s", s.checkAllMonitorDatasources)
 		if err == nil {
 			s.monitorScheduler.healthEntry = entryID
@@ -682,6 +689,12 @@ func (s *Service) DeleteMonitorDatasource(id uint) error {
 	}
 	if count > 0 {
 		return errors.New("数据源已被监控大屏引用，不能删除")
+	}
+	if err := s.db.Model(&model.K8sCluster{}).Where("monitor_datasource_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("数据源已被 K8s 集群监控绑定，不能删除")
 	}
 	return s.db.Delete(&model.MonitorDatasource{}, id).Error
 }
@@ -1308,6 +1321,30 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	if query == "" {
 		query = "*"
 	}
+	startedAt := time.Now()
+	items, err := s.queryVictoriaLogsRows(ds, query, startAt, endAt, pageNum, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
+	// VictoriaLogs 的 /query 和 /hits 在起始时间边界上偶发不一致：
+	// /hits 已计入一条记录，但 /query 返回空行。仅在这个异常分支把起点
+	// 向前补偿一秒重试，避免页面出现“命中 1 条却没有日志”的假空结果。
+	if len(items) == 0 && total > 0 && pageNum == 1 && startAt > 1000 {
+		if retryItems, retryErr := s.queryVictoriaLogsRows(ds, query, startAt-1000, endAt, pageNum, pageSize); retryErr == nil {
+			items = retryItems
+		}
+	}
+	if total == 0 && len(items) > 0 {
+		total = int64(len(items))
+	}
+	return map[string]any{
+		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
+		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
+	}, nil
+}
+
+func (s *Service) queryVictoriaLogsRows(ds model.MonitorDatasource, query string, startAt, endAt int64, pageNum, pageSize int) ([]map[string]any, error) {
 	form := url.Values{}
 	form.Set("query", query)
 	form.Set("start", time.UnixMilli(startAt).UTC().Format(time.RFC3339Nano))
@@ -1320,7 +1357,6 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	applyMonitorDatasourceAuth(request, ds)
-	startedAt := time.Now()
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
 		return nil, err
@@ -1342,14 +1378,7 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 		}
 		items = append(items, formatMonitorLogItem(source, "", ""))
 	}
-	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
-	if total == 0 && len(items) > 0 {
-		total = int64(len(items))
-	}
-	return map[string]any{
-		"items": items, "total": total, "took": time.Since(startedAt).Milliseconds(), "histogram": histogram,
-		"startAt": startAt, "endAt": endAt, "pageNum": pageNum, "pageSize": pageSize,
-	}, nil
+	return items, nil
 }
 
 func normalizeMonitorLogPagination(pageNum, pageSize int) (int, int) {
@@ -1486,7 +1515,7 @@ func monitorLogFieldValue(source map[string]any, path string) string {
 	return monitorSourceString(current)
 }
 
-func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	if datasourceID == 0 {
 		return nil, errors.New("请选择 VictoriaLogs 数据源")
 	}
@@ -1498,6 +1527,7 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 		return nil, errors.New("当前数据源不是 VictoriaLogs")
 	}
 	field = firstNonEmpty(strings.TrimSpace(field), "kafka_topic")
+	limit = normalizeMonitorLogFieldValueLimit(limit)
 	end := time.UnixMilli(endAt)
 	if endAt <= 0 {
 		end = time.Now()
@@ -1515,6 +1545,8 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 	form.Set("field", field)
 	form.Set("start", start.UTC().Format(time.RFC3339Nano))
 	form.Set("end", end.UTC().Format(time.RFC3339Nano))
+	// 不向 VictoriaLogs field_values 透传 limit。部分版本在携带该参数时仍会
+	// 返回字段值，但 hits 会全部变成 0；在收到带真实命中数的结果后再统一截取。
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/field_values", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -1546,6 +1578,17 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 		}
 		items = append(items, map[string]any{"value": item.Value, "hits": item.Hits, "field": field})
 	}
+	sort.Slice(items, func(i, j int) bool {
+		left, _ := items[i]["hits"].(int64)
+		right, _ := items[j]["hits"].(int64)
+		if left == right {
+			return monitorSourceString(items[i]["value"]) < monitorSourceString(items[j]["value"])
+		}
+		return left > right
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	return items, nil
 }
 
@@ -1567,7 +1610,7 @@ func (s *Service) ListMonitorLogFields(datasourceID uint, index, query string, s
 	}
 }
 
-func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	if datasourceID == 0 {
 		return nil, errors.New("请选择日志数据源")
 	}
@@ -1578,7 +1621,7 @@ func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, que
 			return nil, err
 		}
 		if normalizeMonitorDatasourceType(ds.Type) == "victorialogs" && isSafeVictoriaLogsField(field) {
-			return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+			return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt, limit)
 		}
 	}
 	if !isCommonMonitorLogField(field) {
@@ -1590,12 +1633,22 @@ func (s *Service) ListMonitorLogFieldValues(datasourceID uint, index, field, que
 	}
 	switch normalizeMonitorDatasourceType(ds.Type) {
 	case "elasticsearch":
-		return s.elasticsearchLogFieldValues(*ds, index, field, query, startAt, endAt)
+		return s.elasticsearchLogFieldValues(*ds, index, field, query, startAt, endAt, limit)
 	case "victorialogs":
-		return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt)
+		return s.ListMonitorVictoriaLogsStreams(datasourceID, field, query, startAt, endAt, limit)
 	default:
 		return nil, errors.New("日志字段仅支持 Elasticsearch 或 VictoriaLogs 数据源")
 	}
+}
+
+func normalizeMonitorLogFieldValueLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
 }
 
 func isCommonMonitorLogField(field string) bool {
@@ -1622,7 +1675,7 @@ func isSafeVictoriaLogsField(field string) bool {
 	return true
 }
 
-func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64) ([]map[string]any, error) {
+func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index, field, query string, startAt, endAt int64, limit int) ([]map[string]any, error) {
 	index = firstNonEmpty(strings.TrimSpace(index), "_all")
 	if strings.Contains(index, "/") || strings.Contains(index, "\\") {
 		return nil, errors.New("索引不能包含路径分隔符")
@@ -1729,6 +1782,10 @@ func (s *Service) elasticsearchLogFieldValues(ds model.MonitorDatasource, index,
 		}
 		return left > right
 	})
+	limit = normalizeMonitorLogFieldValueLimit(limit)
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	return items, nil
 }
 
@@ -2910,6 +2967,7 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		return s.registerMonitorAlertRule(current)
 	}
 	s.removeMonitorAlertRule(current.ID)
+	s.closeActiveMonitorAlertEventsForRule(current.ID, "告警规则已停用，系统自动关闭未结束事件")
 	return nil
 }
 
@@ -3151,10 +3209,9 @@ func (s *Service) SaveMonitorAggregationRule(payload MonitorAggregationRulePaylo
 	if strings.TrimSpace(payload.Name) == "" {
 		return errors.New("aggregation rule name is required")
 	}
+	// An empty list is intentional: it means aggregate all samples of the
+	// matched rule and severity into one bucket, regardless of their labels.
 	groupBy := payload.GroupBy
-	if len(groupBy) == 0 {
-		groupBy = []string{"alertname", "instance"}
-	}
 	updates := map[string]any{
 		"name":                    Trimmed(payload.Name),
 		"match_mode":              normalizeRuleMatchMode(payload.MatchMode),
@@ -3208,7 +3265,50 @@ func (s *Service) UpdateMonitorAlertRuleStatus(id uint, status int) error {
 		return s.registerMonitorAlertRule(*rule)
 	}
 	s.removeMonitorAlertRule(id)
+	s.closeActiveMonitorAlertEventsForRule(id, "告警规则已停用，系统自动关闭未结束事件")
 	return nil
+}
+
+// Disabling a rule is terminal for its in-flight events. Keeping them firing
+// would let a later aggregation flush notify an alert whose rule is inactive.
+func (s *Service) closeActiveMonitorAlertEventsForRule(ruleID uint, reason string) {
+	if ruleID == 0 || s.db == nil {
+		return
+	}
+	var events []model.MonitorAlertEvent
+	if err := s.db.Where("rule_id = ? AND status IN ?", ruleID, []string{"pending", "firing", "claimed", "silenced"}).Find(&events).Error; err != nil || len(events) == 0 {
+		return
+	}
+	now := time.Now()
+	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("id IN ?", monitorAlertEventIDs(events)).Updates(map[string]any{
+		"status": "resolved", "resolved_at": &now, "resolve_note": reason,
+	}).Error; err != nil {
+		return
+	}
+	for _, event := range events {
+		s.appendMonitorAlertTimeline(event.ID, "resolved", "告警规则已停用，事件自动关闭", reason, "系统", nil)
+	}
+}
+
+func (s *Service) closeInactiveMonitorAlertRuleEvents() {
+	if s.db == nil {
+		return
+	}
+	var rules []model.MonitorAlertRule
+	if err := s.db.Select("id").Where("status <> ?", 1).Find(&rules).Error; err != nil {
+		return
+	}
+	for _, rule := range rules {
+		s.closeActiveMonitorAlertEventsForRule(rule.ID, "告警规则已停用，系统自动关闭未结束事件")
+	}
+}
+
+func monitorAlertEventIDs(events []model.MonitorAlertEvent) []uint {
+	ids := make([]uint, 0, len(events))
+	for _, event := range events {
+		ids = append(ids, event.ID)
+	}
+	return ids
 }
 
 func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayload) error {
@@ -3263,6 +3363,7 @@ func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayl
 			}
 		} else {
 			s.removeMonitorAlertRule(rule.ID)
+			s.closeActiveMonitorAlertEventsForRule(rule.ID, "告警规则已批量停用，系统自动关闭未结束事件")
 		}
 	}
 	return nil
@@ -3642,9 +3743,6 @@ func (s *Service) matchMonitorAggregationRule(rule model.MonitorAlertRule, label
 			continue
 		}
 		groupBy := decodeStringList(item.GroupByJSON)
-		if len(groupBy) == 0 {
-			groupBy = []string{"alertname", "instance"}
-		}
 		parts := []string{fmt.Sprintf("aggregation=%d", item.ID), "rule=" + rule.Name, "severity=" + rule.Severity}
 		for _, key := range groupBy {
 			key = strings.TrimSpace(key)
@@ -3711,6 +3809,12 @@ func (s *Service) markMonitorAlertNotified(event *model.MonitorAlertEvent) bool 
 }
 
 func (s *Service) notifyMonitorAlertIfAllowed(event *model.MonitorAlertEvent, rule model.MonitorAlertRule, aggregation *model.MonitorAggregationRule, status string) bool {
+	// A matching aggregation rule changes the delivery model from "send this
+	// event" to "collect this group and send one summary after its window".
+	// The scheduled flusher owns the notification marker for the whole group.
+	if aggregation != nil && event.AggregationKey != "" && status == "firing" {
+		return false
+	}
 	// Keep the aggregation decision and its persisted notification marker in one
 	// critical section so concurrent rule evaluations cannot both notify.
 	s.monitorNotifyMu.Lock()
@@ -3724,6 +3828,94 @@ func (s *Service) notifyMonitorAlertIfAllowed(event *model.MonitorAlertEvent, ru
 		"notifyRuleId": rule.NotifyRuleID, "notifyCount": event.NotifyCount, "status": status,
 	})
 	return true
+}
+
+// flushDueMonitorAggregationNotifications delivers one summary for every due
+// aggregation bucket. Individual events remain visible in the event list, but
+// are never sent one-by-one while they belong to an aggregation rule.
+func (s *Service) flushDueMonitorAggregationNotifications() {
+	if s.db == nil {
+		return
+	}
+	now := time.Now()
+	var aggregations []model.MonitorAggregationRule
+	if err := s.db.Where("status = ?", 1).Find(&aggregations).Error; err != nil {
+		return
+	}
+	for _, aggregation := range aggregations {
+		windowStart := now.Add(-time.Duration(normalizeAggregationWindow(aggregation.WindowSeconds)) * time.Second)
+		var candidates []model.MonitorAlertEvent
+		if err := s.db.Where("aggregate_rule_id = ? AND aggregation_key <> '' AND status = ? AND silenced = ? AND first_trigger_at <= ?", aggregation.ID, "firing", false, windowStart).
+			Order("aggregation_key ASC, first_trigger_at ASC").Find(&candidates).Error; err != nil {
+			continue
+		}
+		groups := make(map[string][]model.MonitorAlertEvent)
+		for _, event := range candidates {
+			groups[event.AggregationKey] = append(groups[event.AggregationKey], event)
+		}
+		for key, events := range groups {
+			s.flushMonitorAggregationGroup(aggregation, key, events, now)
+		}
+	}
+}
+
+func (s *Service) flushMonitorAggregationGroup(aggregation model.MonitorAggregationRule, key string, events []model.MonitorAlertEvent, now time.Time) {
+	if len(events) == 0 {
+		return
+	}
+	representative := events[0]
+	var rule model.MonitorAlertRule
+	if err := s.db.First(&rule, representative.RuleID).Error; err != nil || rule.Status != 1 || !rule.NotifyEnabled || rule.NotifyRuleID == 0 {
+		return
+	}
+	repeatAfter := time.Duration(normalizeAggregationWindow(aggregation.RepeatIntervalSeconds)) * time.Second
+	s.monitorNotifyMu.Lock()
+	var latest model.MonitorAlertEvent
+	err := s.db.Where("aggregation_key = ? AND status = ? AND last_notify_at IS NOT NULL", key, "firing").Order("last_notify_at DESC").First(&latest).Error
+	if err == nil && latest.LastNotifyAt != nil && now.Sub(*latest.LastNotifyAt) < repeatAfter {
+		s.monitorNotifyMu.Unlock()
+		return
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		s.monitorNotifyMu.Unlock()
+		return
+	}
+	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("aggregation_key = ? AND status = ?", key, "firing").Updates(map[string]any{
+		"last_notify_at": &now, "notify_count": gorm.Expr("notify_count + ?", 1),
+	}).Error; err != nil {
+		s.monitorNotifyMu.Unlock()
+		return
+	}
+	s.monitorNotifyMu.Unlock()
+
+	s.dispatchMonitorAggregationNotification(rule, aggregation, events, now)
+	for _, event := range events {
+		s.appendMonitorAlertTimeline(event.ID, "aggregation_notification", "已发送聚合告警通知", fmt.Sprintf("聚合规则：%s，本批共 %d 条告警", aggregation.Name, len(events)), "系统", map[string]any{
+			"aggregationKey": key, "eventCount": len(events), "notifyRuleId": rule.NotifyRuleID,
+		})
+	}
+}
+
+func (s *Service) dispatchMonitorAggregationNotification(rule model.MonitorAlertRule, aggregation model.MonitorAggregationRule, events []model.MonitorAlertEvent, now time.Time) {
+	representative := events[0]
+	samples := make([]string, 0, min(len(events), 5))
+	for index, event := range events {
+		if index == 5 {
+			break
+		}
+		samples = append(samples, event.LabelsJSON)
+	}
+	summary := fmt.Sprintf("【聚合告警】%s：%d 条同类告警", representative.RuleName, len(events))
+	detail := fmt.Sprintf("聚合规则：%s\n收敛窗口：%d 秒\n命中数量：%d\n样本标签：\n%s", aggregation.Name, normalizeAggregationWindow(aggregation.WindowSeconds), len(events), strings.Join(samples, "\n"))
+	s.DispatchNotifyRule(rule.NotifyRuleID, NotifyEvent{
+		Scope: "monitor", Event: "firing", TargetID: representative.ID, TargetName: representative.RuleName + "（聚合）", Status: "firing",
+		Summary: summary, Detail: detail, StartedAt: &representative.FirstTriggerAt,
+		Extra: map[string]string{
+			"alertName": representative.RuleName, "severity": representative.Severity, "aggregationRule": aggregation.Name,
+			"aggregationCount": strconv.Itoa(len(events)), "aggregationWindowSeconds": strconv.Itoa(normalizeAggregationWindow(aggregation.WindowSeconds)),
+			"labels": representative.LabelsJSON, "datasourceName": representative.DatasourceName, "sentAt": now.Format(time.RFC3339),
+		},
+	})
 }
 
 func (s *Service) appendMonitorAlertTimeline(eventID uint, eventType, title, detail, operator string, metadata map[string]any) {
@@ -3875,9 +4067,31 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 		event.Status = "recovered"
 		event.RecoveredAt = &now
 		if rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled {
-			s.dispatchMonitorNotification(rule, event, "recovered")
+			if event.AggregateRuleID == 0 || event.AggregationKey == "" {
+				s.dispatchMonitorNotification(rule, event, "recovered")
+			} else {
+				s.notifyMonitorAggregationRecovered(rule, event)
+			}
 		}
 	}
+}
+
+// A recovered event in an aggregation bucket only notifies when the final
+// firing event in that bucket has recovered, preventing a recovery storm.
+func (s *Service) notifyMonitorAggregationRecovered(rule model.MonitorAlertRule, event model.MonitorAlertEvent) {
+	s.monitorNotifyMu.Lock()
+	defer s.monitorNotifyMu.Unlock()
+	var activeCount int64
+	if err := s.db.Model(&model.MonitorAlertEvent{}).Where("aggregation_key = ? AND status IN ?", event.AggregationKey, []string{"pending", "firing", "claimed"}).Count(&activeCount).Error; err != nil || activeCount > 0 {
+		return
+	}
+	s.DispatchNotifyRule(rule.NotifyRuleID, NotifyEvent{
+		Scope: "monitor", Event: "recovered", TargetID: event.ID, TargetName: event.RuleName + "（聚合）", Status: "recovered",
+		Summary: fmt.Sprintf("【聚合恢复】%s：同组告警已全部恢复", event.RuleName), Detail: event.LabelsJSON,
+		StartedAt: &event.FirstTriggerAt, FinishedAt: event.RecoveredAt,
+		Extra: map[string]string{"alertName": event.RuleName, "severity": event.Severity, "aggregationRule": event.AggregateRuleName, "labels": event.LabelsJSON},
+	})
+	s.appendMonitorAlertTimeline(event.ID, "aggregation_recovered", "已发送聚合恢复通知", "同一聚合分组内的告警均已恢复", "系统", map[string]any{"aggregationKey": event.AggregationKey})
 }
 
 func (s *Service) dispatchMonitorNotification(rule model.MonitorAlertRule, event model.MonitorAlertEvent, status string) {

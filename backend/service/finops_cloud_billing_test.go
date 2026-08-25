@@ -39,6 +39,26 @@ func TestFinOpsAliCloudEstimatedDailyRecordsKeepResourceFields(t *testing.T) {
 	}
 }
 
+func TestFinOpsAliCloudEstimatedDailyRecordsKeepRepeatedSourceRows(t *testing.T) {
+	records := finOpsAliCloudEstimatedDailyRecords([]map[string]any{
+		{"RecordID": "repeated", "ProductName": "云服务器 ECS", "PretaxAmount": "31.00"},
+		{"RecordID": "repeated", "ProductName": "云服务器 ECS", "PretaxAmount": "62.00"},
+	}, model.IntegrationFinOpsAccount{}, "2026-06")
+	if len(records) != 60 {
+		t.Fatalf("expected both source rows to produce daily records, got %d", len(records))
+	}
+	if records[0].ExternalID == records[30].ExternalID {
+		t.Fatalf("repeated RecordID must not cause an upsert collision: %s", records[0].ExternalID)
+	}
+	total := 0.0
+	for _, record := range records {
+		total += record.Amount
+	}
+	if total < 92.999 || total > 93.001 {
+		t.Fatalf("expected all source charges to be preserved, got %.6f", total)
+	}
+}
+
 func TestFinOpsRecordDataQuality(t *testing.T) {
 	if quality := finOpsRecordDataQuality(`{"granularity":"daily_estimate"}`); quality != "estimated" {
 		t.Fatalf("expected estimated, got %s", quality)

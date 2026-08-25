@@ -164,12 +164,6 @@ onMounted(loadData)
       <el-table-column label="认证" width="120">
         <template #default="{ row }">{{ row.authType || 'none' }}</template>
       </el-table-column>
-      <el-table-column label="默认" width="90" align="center">
-        <template #default="{ row }">
-          <el-tag v-if="row.isDefault" type="success">默认</el-tag>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
       <el-table-column label="健康状态" width="120">
         <template #default="{ row }"><el-tag :type="healthType(row.healthStatus)" effect="light">{{ healthText(row.healthStatus) }}</el-tag></template>
       </el-table-column>
@@ -230,7 +224,6 @@ onMounted(loadData)
         <el-form-item v-if="form.authType === 'bearer' || form.authType === 'apikey'" :label="form.authType === 'apikey' ? 'API Key' : 'Token'">
           <el-input v-model="form.token" type="textarea" :rows="3" />
         </el-form-item>
-        <el-form-item label="默认数据源"><el-switch v-model="form.isDefault" /></el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">启用</el-radio>

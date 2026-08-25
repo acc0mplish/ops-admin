@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path"
+	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,17 +22,18 @@ import (
 )
 
 type OpsScriptPayload struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	ScriptType     string `json:"scriptType"`
-	Interpreter    string `json:"interpreter"`
-	Content        string `json:"content"`
-	DefaultParams  string `json:"defaultParams"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
-	Status         int    `json:"status"`
-	Description    string `json:"description"`
-	ChangeSummary  string `json:"changeSummary"`
-	Operator       string `json:"-"`
+	ID             uint                      `json:"id"`
+	Name           string                    `json:"name"`
+	ScriptType     string                    `json:"scriptType"`
+	Interpreter    string                    `json:"interpreter"`
+	Content        string                    `json:"content"`
+	DefaultParams  string                    `json:"defaultParams"`
+	Variables      []model.OpsScriptVariable `json:"variables"`
+	TimeoutSeconds int                       `json:"timeoutSeconds"`
+	Status         int                       `json:"status"`
+	Description    string                    `json:"description"`
+	ChangeSummary  string                    `json:"changeSummary"`
+	Operator       string                    `json:"-"`
 }
 
 type OpsScriptStatusPayload struct {
@@ -53,19 +57,22 @@ type OpsExecCommandPayload struct {
 }
 
 type OpsExecScriptPayload struct {
-	Title          string `json:"title"`
-	ScriptID       uint   `json:"scriptId"`
-	Parameters     string `json:"parameters"`
-	HostIDs        []uint `json:"hostIds"`
-	GroupIDs       []uint `json:"groupIds"`
-	Concurrency    int    `json:"concurrency"`
-	TimeoutSeconds int    `json:"timeoutSeconds"`
-	RiskConfirmed  bool   `json:"riskConfirmed"`
-	Operator       string `json:"-"`
-	SourceIP       string `json:"-"`
-	Source         string `json:"-"`
-	RetryOfTaskID  uint   `json:"-"`
+	Title          string            `json:"title"`
+	ScriptID       uint              `json:"scriptId"`
+	Parameters     string            `json:"parameters"`
+	Variables      map[string]string `json:"variables"`
+	HostIDs        []uint            `json:"hostIds"`
+	GroupIDs       []uint            `json:"groupIds"`
+	Concurrency    int               `json:"concurrency"`
+	TimeoutSeconds int               `json:"timeoutSeconds"`
+	RiskConfirmed  bool              `json:"riskConfirmed"`
+	Operator       string            `json:"-"`
+	SourceIP       string            `json:"-"`
+	Source         string            `json:"-"`
+	RetryOfTaskID  uint              `json:"-"`
 }
+
+var opsScriptVariableName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 type OpsFileDispatchPayload struct {
 	Title          string `json:"title"`
@@ -101,14 +108,81 @@ func normalizeOpsScriptType(v string) string {
 
 func normalizeOpsInterpreter(v string, scriptType string) string {
 	interpreter := strings.ToLower(strings.TrimSpace(v))
-	allowed := []string{"bash", "sh", "python", "python3"}
-	if slices.Contains(allowed, interpreter) {
+	if normalizeOpsScriptType(scriptType) == "python" {
+		if slices.Contains([]string{"python", "python3"}, interpreter) {
+			return interpreter
+		}
+		return "python"
+	}
+	if slices.Contains([]string{"bash", "sh"}, interpreter) {
 		return interpreter
 	}
-	if normalizeOpsScriptType(scriptType) == "python" {
-		return "python3"
-	}
 	return "bash"
+}
+
+func normalizeOpsScriptTimeout(v int) int {
+	if v <= 0 {
+		return 300
+	}
+	if v < 30 {
+		return 30
+	}
+	if v > 3600 {
+		return 3600
+	}
+	return v
+}
+
+func normalizeOpsScriptVariables(values []model.OpsScriptVariable) ([]model.OpsScriptVariable, error) {
+	if len(values) > 30 {
+		return nil, errors.New("最多定义 30 个执行变量")
+	}
+	result := make([]model.OpsScriptVariable, 0, len(values))
+	seen := map[string]bool{}
+	for _, item := range values {
+		item.Name = strings.ToUpper(strings.TrimSpace(item.Name))
+		item.Description = Trimmed(item.Description)
+		if !opsScriptVariableName.MatchString(item.Name) {
+			return nil, fmt.Errorf("变量名 %q 无效；仅支持大写字母、数字和下划线，且必须以字母开头", item.Name)
+		}
+		if seen[item.Name] {
+			return nil, fmt.Errorf("变量 %s 重复", item.Name)
+		}
+		if len(item.DefaultValue) > 4096 || len(item.Description) > 255 {
+			return nil, fmt.Errorf("变量 %s 的默认值或说明过长", item.Name)
+		}
+		if item.Secret {
+			item.DefaultValue = ""
+		}
+		seen[item.Name] = true
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func resolveOpsScriptVariables(definitions []model.OpsScriptVariable, supplied map[string]string) (map[string]string, error) {
+	resolved := make(map[string]string, len(definitions))
+	allowed := make(map[string]bool, len(definitions))
+	for _, definition := range definitions {
+		allowed[definition.Name] = true
+		value, exists := supplied[definition.Name]
+		if !exists {
+			value = definition.DefaultValue
+		}
+		if definition.Required && strings.TrimSpace(value) == "" {
+			return nil, fmt.Errorf("请填写执行变量 %s", definition.Name)
+		}
+		if len(value) > 4096 {
+			return nil, fmt.Errorf("执行变量 %s 的值过长", definition.Name)
+		}
+		resolved[definition.Name] = value
+	}
+	for name := range supplied {
+		if !allowed[name] {
+			return nil, fmt.Errorf("变量 %s 未在脚本中定义", name)
+		}
+	}
+	return resolved, nil
 }
 
 func normalizeOpsConcurrency(v int) int {
@@ -241,13 +315,18 @@ func (s *Service) GetOpsScript(id uint) (*model.OpsScript, error) {
 }
 
 func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
+	variables, err := normalizeOpsScriptVariables(payload.Variables)
+	if err != nil {
+		return err
+	}
 	item := model.OpsScript{
 		Name:           Trimmed(payload.Name),
 		ScriptType:     normalizeOpsScriptType(payload.ScriptType),
 		Interpreter:    normalizeOpsInterpreter(payload.Interpreter, payload.ScriptType),
 		Content:        strings.TrimSpace(payload.Content),
 		DefaultParams:  strings.TrimSpace(payload.DefaultParams),
-		TimeoutSeconds: payload.TimeoutSeconds,
+		Variables:      model.OpsScriptVariables(variables),
+		TimeoutSeconds: normalizeOpsScriptTimeout(payload.TimeoutSeconds),
 		Status:         payload.Status,
 		Description:    Trimmed(payload.Description),
 		CurrentVersion: 1,
@@ -258,9 +337,6 @@ func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
 	if item.Content == "" {
 		return errors.New("脚本内容不能为空")
 	}
-	if item.TimeoutSeconds <= 0 {
-		item.TimeoutSeconds = 300
-	}
 	if item.Status == 0 {
 		item.Status = 1
 	}
@@ -269,7 +345,7 @@ func (s *Service) CreateOpsScript(payload OpsScriptPayload) error {
 			return err
 		}
 		return tx.Create(&model.OpsScriptVersion{
-			ScriptID: item.ID, Version: 1, Content: item.Content, DefaultParams: item.DefaultParams,
+			ScriptID: item.ID, Version: 1, Content: item.Content, DefaultParams: item.DefaultParams, Variables: item.Variables,
 			Interpreter: item.Interpreter, TimeoutSeconds: item.TimeoutSeconds,
 			ChangeSummary: "创建脚本", Operator: payload.Operator,
 		}).Error
@@ -281,13 +357,18 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 	if err != nil {
 		return err
 	}
+	variables, err := normalizeOpsScriptVariables(payload.Variables)
+	if err != nil {
+		return err
+	}
 	updates := map[string]any{
 		"name":            Trimmed(payload.Name),
 		"script_type":     normalizeOpsScriptType(payload.ScriptType),
 		"interpreter":     normalizeOpsInterpreter(payload.Interpreter, payload.ScriptType),
 		"content":         strings.TrimSpace(payload.Content),
 		"default_params":  strings.TrimSpace(payload.DefaultParams),
-		"timeout_seconds": payload.TimeoutSeconds,
+		"variables":       model.OpsScriptVariables(variables),
+		"timeout_seconds": normalizeOpsScriptTimeout(payload.TimeoutSeconds),
 		"status":          payload.Status,
 		"description":     Trimmed(payload.Description),
 	}
@@ -296,9 +377,6 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 	}
 	if updates["content"] == "" {
 		return errors.New("脚本内容不能为空")
-	}
-	if payload.TimeoutSeconds <= 0 {
-		updates["timeout_seconds"] = 300
 	}
 	if payload.Status == 0 {
 		updates["status"] = existing.Status
@@ -310,7 +388,7 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 	updates["current_version"] = nextVersion
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if existing.CurrentVersion <= 0 {
-			if err := tx.Create(&model.OpsScriptVersion{ScriptID: existing.ID, Version: 1, Content: existing.Content, DefaultParams: existing.DefaultParams, Interpreter: existing.Interpreter, TimeoutSeconds: existing.TimeoutSeconds, ChangeSummary: "历史版本归档", Operator: "system"}).Error; err != nil {
+			if err := tx.Create(&model.OpsScriptVersion{ScriptID: existing.ID, Version: 1, Content: existing.Content, DefaultParams: existing.DefaultParams, Variables: existing.Variables, Interpreter: existing.Interpreter, TimeoutSeconds: existing.TimeoutSeconds, ChangeSummary: "历史版本归档", Operator: "system"}).Error; err != nil {
 				return err
 			}
 		}
@@ -319,7 +397,7 @@ func (s *Service) UpdateOpsScript(payload OpsScriptPayload) error {
 		}
 		return tx.Create(&model.OpsScriptVersion{
 			ScriptID: payload.ID, Version: nextVersion, Content: updates["content"].(string),
-			DefaultParams: updates["default_params"].(string), Interpreter: updates["interpreter"].(string),
+			DefaultParams: updates["default_params"].(string), Variables: model.OpsScriptVariables(variables), Interpreter: updates["interpreter"].(string),
 			TimeoutSeconds: updates["timeout_seconds"].(int), ChangeSummary: Trimmed(payload.ChangeSummary), Operator: payload.Operator,
 		}).Error
 	})
@@ -338,7 +416,7 @@ func (s *Service) ListOpsScriptVersions(scriptID uint) ([]model.OpsScriptVersion
 			version = 1
 			_ = s.db.Model(&model.OpsScript{}).Where("id = ?", scriptID).Update("current_version", version).Error
 		}
-		row := model.OpsScriptVersion{ScriptID: scriptID, Version: version, Content: script.Content, DefaultParams: script.DefaultParams, Interpreter: script.Interpreter, TimeoutSeconds: script.TimeoutSeconds, ChangeSummary: "现有版本归档", Operator: "system"}
+		row := model.OpsScriptVersion{ScriptID: scriptID, Version: version, Content: script.Content, DefaultParams: script.DefaultParams, Variables: script.Variables, Interpreter: script.Interpreter, TimeoutSeconds: script.TimeoutSeconds, ChangeSummary: "现有版本归档", Operator: "system"}
 		if createErr := s.db.Create(&row).Error; createErr != nil {
 			return nil, createErr
 		}
@@ -358,11 +436,11 @@ func (s *Service) RollbackOpsScript(scriptID uint, version int, operator string)
 	}
 	nextVersion := existing.CurrentVersion + 1
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"content": target.Content, "default_params": target.DefaultParams, "interpreter": target.Interpreter, "timeout_seconds": target.TimeoutSeconds, "current_version": nextVersion}
+		updates := map[string]any{"content": target.Content, "default_params": target.DefaultParams, "variables": target.Variables, "interpreter": target.Interpreter, "timeout_seconds": target.TimeoutSeconds, "current_version": nextVersion}
 		if err := tx.Model(&model.OpsScript{}).Where("id = ?", scriptID).Updates(updates).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.OpsScriptVersion{ScriptID: scriptID, Version: nextVersion, Content: target.Content, DefaultParams: target.DefaultParams, Interpreter: target.Interpreter, TimeoutSeconds: target.TimeoutSeconds, ChangeSummary: fmt.Sprintf("回滚至 v%d", version), Operator: operator}).Error
+		return tx.Create(&model.OpsScriptVersion{ScriptID: scriptID, Version: nextVersion, Content: target.Content, DefaultParams: target.DefaultParams, Variables: target.Variables, Interpreter: target.Interpreter, TimeoutSeconds: target.TimeoutSeconds, ChangeSummary: fmt.Sprintf("回滚至 v%d", version), Operator: operator}).Error
 	})
 }
 
@@ -441,6 +519,14 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 	if err := requireOpsProductionConfirmation(hosts, payload.RiskConfirmed); err != nil {
 		return nil, err
 	}
+	variables, err := resolveOpsScriptVariables([]model.OpsScriptVariable(script.Variables), payload.Variables)
+	if err != nil {
+		return nil, err
+	}
+	timeoutSeconds := payload.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = script.TimeoutSeconds
+	}
 	task := model.OpsExecTask{
 		TaskType:       "script",
 		Title:          opsTaskTitle(payload.Title, "脚本执行"),
@@ -448,7 +534,7 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 		ScriptName:     script.Name,
 		Parameters:     strings.TrimSpace(payload.Parameters),
 		Concurrency:    normalizeOpsConcurrency(payload.Concurrency),
-		TimeoutSeconds: normalizeOpsTimeout(script.TimeoutSeconds),
+		TimeoutSeconds: normalizeOpsTimeout(timeoutSeconds),
 		Status:         "running",
 		Summary:        "任务创建成功，正在执行中",
 		HostCount:      len(hosts),
@@ -465,7 +551,7 @@ func (s *Service) ExecuteOpsScript(payload OpsExecScriptPayload) (map[string]any
 		if params == "" {
 			params = strings.TrimSpace(script.DefaultParams)
 		}
-		return s.execScriptOnHost(host, *script, params, task.TimeoutSeconds)
+		return s.execScriptOnHost(host, *script, params, variables, task.TimeoutSeconds)
 	})
 }
 
@@ -829,6 +915,12 @@ func (s *Service) finishOpsTask(taskID uint) {
 }
 
 func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeoutSeconds int) model.OpsExecTargetResult {
+	return s.execCommandOnHostStreaming(host, command, timeoutSeconds, nil)
+}
+
+// execCommandOnHostStreaming reports remote stdout/stderr as soon as SSH receives it.
+// Callers that do not need incremental output should keep using execCommandOnHost.
+func (s *Service) execCommandOnHostStreaming(host model.AssetHost, command string, timeoutSeconds int, onOutput func(string)) model.OpsExecTargetResult {
 	started := time.Now()
 	result := model.OpsExecTargetResult{
 		HostID:    host.ID,
@@ -845,7 +937,7 @@ func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeou
 	}
 	defer client.Close()
 
-	stdout, stderr, exitCode, runErr := runSSHCommandDetailed(client, "bash -lc "+shellQuote(command), timeoutSeconds)
+	stdout, stderr, exitCode, runErr := runSSHCommandDetailedStreaming(client, "bash -lc "+shellQuote(command), timeoutSeconds, onOutput)
 	result.Stdout = stdout
 	result.Stderr = stderr
 	result.ExitCode = exitCode
@@ -858,16 +950,31 @@ func (s *Service) execCommandOnHost(host model.AssetHost, command string, timeou
 	return result
 }
 
-func (s *Service) execScriptOnHost(host model.AssetHost, script model.OpsScript, params string, timeoutSeconds int) model.OpsExecTargetResult {
+func (s *Service) execScriptOnHost(host model.AssetHost, script model.OpsScript, params string, variables map[string]string, timeoutSeconds int) model.OpsExecTargetResult {
 	encoded := base64.StdEncoding.EncodeToString([]byte(script.Content))
 	interpreter := normalizeOpsInterpreter(script.Interpreter, script.ScriptType)
 	command := fmt.Sprintf(
-		"tmp=$(mktemp /tmp/ops-script-XXXXXX) && base64 -d <<'__OPS_SCRIPT__' > \"$tmp\"\n%s\n__OPS_SCRIPT__\nchmod +x \"$tmp\"\n%s \"$tmp\" %s\nstatus=$?\nrm -f \"$tmp\"\nexit $status",
+		"tmp=$(mktemp /tmp/ops-script-XXXXXX) && base64 -d <<'__OPS_SCRIPT__' > \"$tmp\"\n%s\n__OPS_SCRIPT__\nchmod +x \"$tmp\"\n%s\n%s \"$tmp\" %s\nstatus=$?\nrm -f \"$tmp\"\nexit $status",
 		encoded,
+		opsScriptVariableExports(variables),
 		interpreter,
 		strings.TrimSpace(params),
 	)
 	return s.execCommandOnHost(host, command, timeoutSeconds)
+}
+
+func opsScriptVariableExports(variables map[string]string) string {
+	names := make([]string, 0, len(variables))
+	for name := range variables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		encoded := base64.StdEncoding.EncodeToString([]byte(variables[name]))
+		lines = append(lines, fmt.Sprintf("export VARIABLE_%s=$(printf %%s %s | base64 -d)", name, shellQuote(encoded)))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *Service) dispatchFileToHost(host model.AssetHost, fileName, targetPath string, content []byte, overwrite bool, timeoutSeconds int) model.OpsExecTargetResult {
@@ -938,6 +1045,10 @@ func (s *Service) readRemoteFile(hostID uint, sourcePath string) (*model.AssetHo
 }
 
 func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds int) (string, string, int, error) {
+	return runSSHCommandDetailedStreaming(client, command, timeoutSeconds, nil)
+}
+
+func runSSHCommandDetailedStreaming(client *ssh.Client, command string, timeoutSeconds int, onOutput func(string)) (string, string, int, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", "", -1, err
@@ -946,8 +1057,20 @@ func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds in
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
+	var outputMu sync.Mutex
+	newWriter := func(buffer *bytes.Buffer) io.Writer {
+		return writerFunc(func(chunk []byte) (int, error) {
+			outputMu.Lock()
+			_, _ = buffer.Write(chunk)
+			outputMu.Unlock()
+			if onOutput != nil && len(chunk) > 0 {
+				onOutput(string(chunk))
+			}
+			return len(chunk), nil
+		})
+	}
+	session.Stdout = newWriter(&stdout)
+	session.Stderr = newWriter(&stderr)
 
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 10
@@ -978,5 +1101,12 @@ func runSSHCommandDetailed(client *ssh.Client, command string, timeoutSeconds in
 			exitCode = -1
 		}
 	}
-	return stdout.String(), stderr.String(), exitCode, err
+	outputMu.Lock()
+	stdoutText, stderrText := stdout.String(), stderr.String()
+	outputMu.Unlock()
+	return stdoutText, stderrText, exitCode, err
 }
+
+type writerFunc func([]byte) (int, error)
+
+func (fn writerFunc) Write(chunk []byte) (int, error) { return fn(chunk) }

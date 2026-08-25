@@ -81,6 +81,21 @@ const iconMap = {
               :value="item.value"
             />
             </el-select>
+            <el-select
+              v-if="page.currentTab === 'pods'"
+              :model-value="page.podWorkloadFilter"
+              filterable
+              class="workload-select"
+              placeholder="全部工作负载"
+              @update:model-value="page.handlePodWorkloadFilterChange"
+            >
+              <el-option
+                v-for="item in page.podWorkloadOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
             <el-input
             :model-value="page.resourceKeyword"
             clearable

@@ -43,7 +43,7 @@ const groups = ref([])
 const selectedGroupId = ref(0)
 const detail = ref({})
 const groupForm = reactive({ id: undefined, parentId: 0, name: '' })
-const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', datasourceType: '', source: '', groupId: '' })
+const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', datasourceType: '', source: '', groupId: '' })
 const form = reactive({ id: undefined, groupId: undefined, name: '', datasourceType: 'prometheus', queryText: '', comparator: '>', threshold: 90, forSeconds: 300, evalIntervalSeconds: 60, severity: 'P2', labelsJson: '{}', annotationsJson: '{}', description: '', status: 1 })
 
 const groupTree = computed(() => {
@@ -419,7 +419,7 @@ onMounted(async () => {
               </template>
             </el-table-column>
           </el-table>
-          <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
+          <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
         </main>
       </div>
     </section>

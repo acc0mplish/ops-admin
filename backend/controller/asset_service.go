@@ -163,6 +163,15 @@ func (ctl *Controller) GetAssetServiceWorkloadTopology(c *gin.Context) {
 	}
 	httpx.Success(c, data)
 }
+
+func (ctl *Controller) GetAssetServiceWorkloadMetrics(c *gin.Context) {
+	data, err := ctl.service.GetAssetServiceWorkloadMetrics(uint(mustAtoi(c.Query("serviceId"))), c.Query("workloadType"), c.Query("workloadName"), c.Query("range"))
+	if err != nil {
+		httpx.Failed(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpx.Success(c, data)
+}
 func (ctl *Controller) GetAssetServiceWorkloadRolloutHistory(c *gin.Context) {
 	data, err := ctl.service.GetAssetServiceWorkloadRolloutHistory(uint(mustAtoi(c.Query("serviceId"))), c.Query("workloadType"), c.Query("workloadName"))
 	if err != nil {

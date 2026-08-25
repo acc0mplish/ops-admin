@@ -42,15 +42,6 @@ func (ctl *Controller) DeleteOpsEnvironment(c *gin.Context) {
 	httpx.Success(c, true)
 }
 
-func (ctl *Controller) GetApplicationTopology(c *gin.Context) {
-	data, err := ctl.service.GetApplicationTopology(uint(mustAtoi(c.Query("appId"))), c.Query("env"))
-	if err != nil {
-		httpx.Failed(c, 500, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
 func (ctl *Controller) TriggerMonitorAlertAction(c *gin.Context) {
 	var payload service.MonitorAlertActionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"ops-admin/backend/model"
-
-	"gorm.io/gorm"
 )
 
 type OpsEnvironmentPayload struct {
@@ -121,83 +119,6 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 		}
 	}
 	return s.db.Delete(&model.OpsEnvironment{}, id).Error
-}
-
-func (s *Service) GetApplicationTopology(appID uint, env string) (map[string]any, error) {
-	normalizedEnv := normalizeEnvCode(env)
-	var app model.OpsApplication
-	appQuery := s.db.Model(&model.OpsApplication{})
-	if appID > 0 {
-		appQuery = appQuery.Where("id = ?", appID)
-	} else if normalizedEnv != "" {
-		appQuery = appQuery.Where("env = ? OR env = ''", normalizedEnv)
-	}
-	if err := appQuery.Order("id asc").First(&app).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
-	hostQuery := s.db.Model(&model.AssetHost{})
-	databaseQuery := s.db.Model(&model.AssetDatabase{})
-	k8sQuery := s.db.Model(&model.K8sCluster{})
-	alertQuery := s.db.Model(&model.MonitorAlertEvent{})
-	releaseQuery := s.db.Model(&model.OpsAppRelease{})
-	pipelineQuery := s.db.Model(&model.OpsAppPipelineRun{})
-	if normalizedEnv != "" {
-		hostQuery = hostQuery.Where("environment = ? OR environment = ''", normalizedEnv)
-		databaseQuery = databaseQuery.Where("env = ? OR env = ''", normalizedEnv)
-		k8sQuery = k8sQuery.Where("env = ? OR env = ''", normalizedEnv)
-		releaseQuery = releaseQuery.Where("env = ?", normalizedEnv)
-		pipelineQuery = pipelineQuery.Where("env = ?", normalizedEnv)
-	}
-	if app.ID > 0 {
-		releaseQuery = releaseQuery.Where("app_id = ?", app.ID)
-		pipelineQuery = pipelineQuery.Where("app_id = ?", app.ID)
-		if app.Code != "" {
-			alertQuery = alertQuery.Where("rule_name LIKE ? OR labels_json LIKE ? OR annotations_json LIKE ? OR summary LIKE ?", "%"+app.Code+"%", "%"+app.Code+"%", "%"+app.Code+"%", "%"+app.Code+"%")
-		}
-	}
-	var hosts []model.AssetHost
-	var databases []model.AssetDatabase
-	var clusters []model.K8sCluster
-	var alerts []model.MonitorAlertEvent
-	var releases []model.OpsAppRelease
-	var pipelineRuns []model.OpsAppPipelineRun
-	if err := hostQuery.Order("id desc").Limit(20).Find(&hosts).Error; err != nil {
-		return nil, err
-	}
-	if err := databaseQuery.Order("id desc").Limit(20).Find(&databases).Error; err != nil {
-		return nil, err
-	}
-	if err := k8sQuery.Order("id desc").Limit(20).Find(&clusters).Error; err != nil {
-		return nil, err
-	}
-	if err := alertQuery.Order("id desc").Limit(20).Find(&alerts).Error; err != nil {
-		return nil, err
-	}
-	if err := releaseQuery.Order("id desc").Limit(10).Find(&releases).Error; err != nil {
-		return nil, err
-	}
-	if err := pipelineQuery.Order("id desc").Limit(10).Find(&pipelineRuns).Error; err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"app":          app,
-		"env":          normalizedEnv,
-		"hosts":        hosts,
-		"databases":    databases,
-		"k8sClusters":  clusters,
-		"alerts":       alerts,
-		"releases":     releases,
-		"pipelineRuns": pipelineRuns,
-		"summary": map[string]int{
-			"hosts":        len(hosts),
-			"databases":    len(databases),
-			"k8sClusters":  len(clusters),
-			"alerts":       len(alerts),
-			"releases":     len(releases),
-			"pipelineRuns": len(pipelineRuns),
-		},
-	}, nil
 }
 
 func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (map[string]any, error) {

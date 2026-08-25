@@ -1,0 +1,20 @@
+<script setup>
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { queryDNSAccountOptions, queryPublicDomains, syncPublicDomains } from '../../api/domain'
+const router=useRouter(),loading=ref(false),syncing=ref(false),tableData=ref([]),accounts=ref([]),total=ref(0)
+const query=reactive({pageNum:1,pageSize:10,keyword:'',provider:'',accountId:''})
+async function load(){loading.value=true;try{const data=await queryPublicDomains(query);tableData.value=data.list||[];total.value=data.total||0}finally{loading.value=false}}
+async function loadAccounts(){accounts.value=await queryDNSAccountOptions()}
+async function sync(){syncing.value=true;try{const data=await syncPublicDomains(Number(query.accountId)||0);ElMessage.success(`已同步 ${data.synced} 个域名`);await load()}finally{syncing.value=false}}
+function records(row){router.push(`/domains/public/${row.accountId}/${encodeURIComponent(row.domain)}/records`)}
+onMounted(async()=>{await loadAccounts();await load()})
+</script>
+<template><section class="domain-page domain-panel page-card">
+  <div class="domain-page-head"><div><div class="domain-eyebrow">PUBLIC DNS INVENTORY</div><h2>公网域名</h2><p>域名只从云厂商官方 API 同步，本地不提供手工创建入口。</p></div><el-button v-permission="'domains:public:sync'" type="primary" :loading="syncing" @click="sync">从云厂商刷新</el-button></div>
+  <div class="domain-stat-grid"><div class="domain-stat"><div class="domain-stat__label">已同步域名</div><div class="domain-stat__value">{{total}}</div></div><div class="domain-stat"><div class="domain-stat__label">已启用账号</div><div class="domain-stat__value">{{accounts.length}}</div></div><div class="domain-stat"><div class="domain-stat__label">支持服务商</div><div class="domain-stat__value">2</div></div><div class="domain-stat"><div class="domain-stat__label">数据来源</div><div class="domain-stat__value" style="font-size:17px">官方 API</div></div></div>
+  <div class="domain-toolbar" role="search"><div class="domain-toolbar__filters"><el-input v-model="query.keyword" clearable placeholder="搜索域名" style="width:220px" @keyup.enter="load"/><el-select v-model="query.accountId" clearable placeholder="云账号" style="width:180px"><el-option v-for="item in accounts" :key="item.id" :label="item.name" :value="item.id"/></el-select><el-select v-model="query.provider" clearable placeholder="服务商" style="width:160px"><el-option label="阿里云 DNS" value="aliyun"/><el-option label="腾讯云 DNSPod" value="tencent"/></el-select><el-button @click="load">查询</el-button></div><div class="domain-toolbar__actions"><el-button v-permission="'domains:account:list'" @click="router.push('/domains/public/accounts')">管理 DNS 账号</el-button></div></div>
+  <div class="domain-table-wrap"><el-table v-loading="loading" :data="tableData" border @row-dblclick="records"><el-table-column prop="domain" label="域名" min-width="240"><template #default="{row}"><el-button link type="primary" class="domain-mono" @click="records(row)">{{row.domain}}</el-button></template></el-table-column><el-table-column label="服务商" width="150"><template #default="{row}">{{row.provider==='aliyun'?'阿里云 DNS':'腾讯云 DNSPod'}}</template></el-table-column><el-table-column prop="accountName" label="账号" min-width="160"/><el-table-column prop="recordCount" label="记录数量" width="110"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag type="success">{{row.status||'正常'}}</el-tag></template></el-table-column><el-table-column prop="syncedAt" label="最后同步" width="180"/><el-table-column label="操作" width="120" fixed="right"><template #default="{row}"><el-button link type="primary" @click="records(row)">解析记录</el-button></template></el-table-column><template #empty><div class="domain-empty"><strong>暂无已同步域名</strong><p>先配置 DNS 账号，再从云厂商刷新域名列表。</p><el-button type="primary" @click="router.push('/domains/public/accounts')">配置 DNS 账号</el-button></div></template></el-table></div>
+  <div class="domain-pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" layout="total, sizes, prev, pager, next" :total="total" @current-change="load" @size-change="load"/></div>
+</section></template>

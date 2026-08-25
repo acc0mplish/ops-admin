@@ -54,7 +54,7 @@ async function submit() {
   loading.value = true
   try {
     const data = await login(form)
-    setToken(data.token)
+    setToken(data.token, data.accessTokenExpiresAt)
     setUser(data.sysAdmin)
     setMenus(data.leftMenuList || [])
     setPermissions(data.permissionList || [])
