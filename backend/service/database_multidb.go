@@ -357,16 +357,43 @@ func (s *Service) getNonMySQLSchemaTree(item *model.AssetDatabase) (map[string]a
 			if err != nil {
 				return nil, err
 			}
-			tables := make([]map[string]any, 0)
+			type tableMeta struct {
+				name      string
+				tableType string
+			}
+			metadata := make([]tableMeta, 0)
 			for tableRows.Next() {
 				var tableName, tableType string
 				if err := tableRows.Scan(&tableName, &tableType); err != nil {
 					tableRows.Close()
 					return nil, err
 				}
-				tables = append(tables, map[string]any{"name": tableName, "type": tableType, "rows": 0, "schema": name, "fullName": name + "." + tableName})
+				metadata = append(metadata, tableMeta{name: tableName, tableType: tableType})
+			}
+			if err := tableRows.Err(); err != nil {
+				tableRows.Close()
+				return nil, err
 			}
 			tableRows.Close()
+
+			tables := make([]map[string]any, 0, len(metadata))
+			for _, table := range metadata {
+				var rowCount any
+				if strings.EqualFold(table.tableType, "BASE TABLE") {
+					var count int64
+					countQuery := "SELECT COUNT(*) FROM " + postgresQuoteIdentifier(name) + "." + postgresQuoteIdentifier(table.name)
+					if err := db.QueryRow(countQuery).Scan(&count); err == nil {
+						rowCount = count
+					}
+				}
+				tables = append(tables, map[string]any{
+					"name":     table.name,
+					"type":     table.tableType,
+					"rows":     rowCount,
+					"schema":   name,
+					"fullName": name + "." + table.name,
+				})
+			}
 			schemas = append(schemas, map[string]any{"name": name, "tableCount": len(tables), "tables": tables, "isCurrent": name == defaultSchema(item, "")})
 		}
 		return map[string]any{"schemas": schemas, "defaultSchema": defaultSchema(item, "")}, nil
