@@ -33,6 +33,13 @@ const templateDialogVisible = ref(false)
 const batchNotifyVisible = ref(false)
 const batchNotifySaving = ref(false)
 const batchNotifyRuleId = ref()
+const batchNotifyRepeatIntervalMinutes = ref(30)
+const batchNotifyMaxCount = ref(0)
+const batchNotifyRecoveryEnabled = ref(true)
+const batchTimingVisible = ref(false)
+const batchTimingSaving = ref(false)
+const batchTimingAction = ref('')
+const batchTimingValue = ref(undefined)
 const batchLoading = ref(false)
 const runningRuleId = ref()
 const ruleTableRef = ref()
@@ -90,6 +97,13 @@ const alertTypeLabel = computed(() => alertTypeName(form.alertType))
 const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertType))
 const enabledOnPage = computed(() => rows.value.filter((item) => item.status === 1).length)
 const failedOnPage = computed(() => rows.value.filter((item) => item.lastEvalStatus === 'failed').length)
+const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? '批量修改持续时间' : '批量修改评估间隔')
+const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : '评估间隔')
+const batchTimingTip = computed(() => batchTimingAction.value === 'update_for_seconds'
+  ? `持续时间仅对监控告警生效；已选 ${selectedRuleIds.value.length} 条规则中的日志告警不会变更。`
+  : `将统一更新已选 ${selectedRuleIds.value.length} 条告警规则的评估频率，并立即按新间隔重新调度。`)
+const batchTimingMin = computed(() => batchTimingAction.value === 'update_for_seconds' ? 0 : 15)
+const batchTimingMax = computed(() => batchTimingAction.value === 'update_for_seconds' ? 86400 : 3600)
 const templateGroupTree = computed(() => {
   const map = new Map(templateGroups.value.map((item) => [item.id, { ...item, children: [] }]))
   const roots = []
@@ -612,7 +626,17 @@ function clearSelection() {
 function openBatchNotify() {
   if (!selectedRuleIds.value.length) return
   batchNotifyRuleId.value = undefined
+  batchNotifyRepeatIntervalMinutes.value = 30
+  batchNotifyMaxCount.value = 0
+  batchNotifyRecoveryEnabled.value = true
   batchNotifyVisible.value = true
+}
+
+function openBatchTiming(action) {
+  if (!selectedRuleIds.value.length) return
+  batchTimingAction.value = action
+  batchTimingValue.value = undefined
+  batchTimingVisible.value = true
 }
 
 function searchRules() {
@@ -636,15 +660,52 @@ async function submitBatchNotify() {
     ElMessage.warning('请选择通知规则')
     return
   }
+  if (batchNotifyRepeatIntervalMinutes.value < 1 || batchNotifyRepeatIntervalMinutes.value > 10080) {
+    ElMessage.warning('重复通知间隔需在 1 分钟到 7 天之间')
+    return
+  }
+  if (batchNotifyMaxCount.value < 0 || batchNotifyMaxCount.value > 1000) {
+    ElMessage.warning('最大发送次数需在 0 到 1000 之间')
+    return
+  }
   batchNotifySaving.value = true
   try {
-    await batchUpdateMonitorAlertRules({ ids: selectedRuleIds.value, action: 'enable_notify', notifyRuleId: batchNotifyRuleId.value })
+    await batchUpdateMonitorAlertRules({
+      ids: selectedRuleIds.value,
+      action: 'enable_notify',
+      notifyRuleId: batchNotifyRuleId.value,
+      notifyRepeatIntervalSeconds: batchNotifyRepeatIntervalMinutes.value * 60,
+      maxNotifyCount: batchNotifyMaxCount.value,
+      notifyRecoveryEnabled: batchNotifyRecoveryEnabled.value
+    })
     ElMessage.success('已批量启用通知并绑定通知规则')
     batchNotifyVisible.value = false
     clearSelection()
     await loadData()
   } finally {
     batchNotifySaving.value = false
+  }
+}
+
+async function submitBatchTiming() {
+  if (batchTimingValue.value === undefined || batchTimingValue.value === null) {
+    ElMessage.warning(`请填写${batchTimingLabel.value}`)
+    return
+  }
+  batchTimingSaving.value = true
+  try {
+    const isDuration = batchTimingAction.value === 'update_for_seconds'
+    await batchUpdateMonitorAlertRules({
+      ids: selectedRuleIds.value,
+      action: batchTimingAction.value,
+      ...(isDuration ? { forSeconds: batchTimingValue.value } : { evalIntervalSeconds: batchTimingValue.value })
+    })
+    ElMessage.success(`已批量修改${batchTimingLabel.value}`)
+    batchTimingVisible.value = false
+    clearSelection()
+    await loadData()
+  } finally {
+    batchTimingSaving.value = false
   }
 }
 
@@ -696,6 +757,8 @@ onMounted(async () => {
       <el-button size="small" type="success" @click="handleBatchStatus(1)">批量启用</el-button>
       <el-button size="small" type="warning" @click="handleBatchStatus(2)">批量禁用</el-button>
       <el-button size="small" type="primary" plain @click="openBatchNotify">批量启用通知</el-button>
+      <el-button size="small" type="primary" @click="openBatchTiming('update_for_seconds')">批量修改持续时间</el-button>
+      <el-button size="small" type="info" plain @click="openBatchTiming('update_eval_interval')">批量修改评估间隔</el-button>
       <el-button size="small" link @click="clearSelection">取消选择</el-button>
     </div>
 
@@ -844,16 +907,50 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="batchNotifyVisible" title="批量启用通知" width="520px" append-to-body>
-      <p class="batch-dialog-tip">将为已选中的 {{ selectedRuleIds.length }} 条告警规则开启消息通知，并统一绑定以下通知规则。</p>
-      <el-form label-width="88px">
+    <el-dialog v-model="batchNotifyVisible" title="批量启用通知" width="640px" append-to-body>
+      <p class="batch-dialog-tip">将为已选中的 {{ selectedRuleIds.length }} 条告警规则开启消息通知，并统一应用以下通知策略。</p>
+      <el-form label-position="top" class="batch-notify-form">
         <el-form-item label="通知规则" required>
           <el-select v-model="batchNotifyRuleId" filterable style="width: 100%" placeholder="请选择通知规则">
             <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
+        <div class="batch-notify-grid">
+          <el-form-item label="重复通知间隔" required>
+            <div class="batch-number-input">
+              <el-input-number v-model="batchNotifyRepeatIntervalMinutes" :min="1" :max="10080" :step="5" controls-position="right" />
+              <span>分钟</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="最大发送次数" required>
+            <div class="batch-number-input">
+              <el-input-number v-model="batchNotifyMaxCount" :min="0" :max="1000" controls-position="right" />
+              <span>0 表示不限制次数</span>
+            </div>
+          </el-form-item>
+        </div>
+        <el-form-item class="batch-recovery-field" label="恢复通知">
+          <div class="batch-recovery-control">
+            <el-switch v-model="batchNotifyRecoveryEnabled" active-text="开启" inactive-text="关闭" />
+            <span>告警恢复后发送恢复消息</span>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer><el-button @click="batchNotifyVisible = false">取消</el-button><el-button type="primary" :loading="batchNotifySaving" @click="submitBatchNotify">确认启用</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="batchTimingVisible" :title="batchTimingTitle" width="520px" append-to-body>
+      <p class="batch-dialog-tip">{{ batchTimingTip }}</p>
+      <el-form label-width="92px">
+        <el-form-item :label="batchTimingLabel" required>
+          <div class="batch-timing-input">
+            <el-input-number v-model="batchTimingValue" :min="batchTimingMin" :max="batchTimingMax" :step="batchTimingAction === 'update_for_seconds' ? 30 : 15" controls-position="right" />
+            <span>秒</span>
+          </div>
+        </el-form-item>
+        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? '0 秒表示条件命中后立即触发；最长不超过 24 小时。' : '评估间隔最短 15 秒，最长 1 小时。' }}</div>
+      </el-form>
+      <template #footer><el-button @click="batchTimingVisible = false">取消</el-button><el-button type="primary" :loading="batchTimingSaving" @click="submitBatchTiming">保存修改</el-button></template>
     </el-dialog>
   </div>
 </template>
@@ -910,6 +1007,20 @@ onMounted(async () => {
 .notify-toggle small { line-height: 1.5; }
 .notify-toggle-action { flex: none; gap: 12px; }
 .rule-editor-dialog .notify-settings { margin: -2px 0 18px; padding: 16px; border-color: #bcd7f6; border-radius: 12px; background: #f7fbff; box-shadow: inset 3px 0 0 #6aa8f8; }
+.batch-timing-input { display: flex; align-items: center; gap: 8px; }
+.batch-timing-input :deep(.el-input-number) { width: 220px; }
+.batch-timing-input span { color: #60718c; font-size: 13px; }
+.batch-dialog-hint { margin: -6px 0 0 92px; color: #8a98ad; font-size: 12px; line-height: 1.55; }
+.batch-notify-form :deep(.el-form-item) { margin-bottom: 16px; }
+.batch-notify-form :deep(.el-form-item__label) { color: #465a78; font-weight: 600; }
+.batch-notify-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.batch-number-input { display: flex; align-items: center; gap: 8px; }
+.batch-number-input :deep(.el-input-number) { width: 170px; }
+.batch-number-input span { color: #72829a; font-size: 12px; white-space: nowrap; }
+.batch-recovery-field { margin-bottom: 0 !important; padding: 13px 14px; border: 1px solid #dce7f7; border-radius: 9px; background: #f8fbff; }
+.batch-recovery-field :deep(.el-form-item__label) { margin-bottom: 8px; }
+.batch-recovery-control { display: flex; align-items: center; gap: 12px; }
+.batch-recovery-control span { color: #7587a2; font-size: 12px; }
 .rule-table :deep(.notification-state.is-notify-enabled) { color: #23834b !important; border-color: #9bd7ad !important; background: #ecf9f0 !important; font-weight: 600; }
 .rule-table :deep(.notification-state.is-notify-disabled) { color: #b7791f !important; border-color: #edcf8a !important; background: #fff8e8 !important; font-weight: 600; }
 @media (max-width: 980px) {
@@ -919,5 +1030,6 @@ onMounted(async () => {
   .rule-editor-dialog .rule-parameters { grid-template-columns: 1fr; }
   .rule-editor-dialog .notify-toggle { align-items: flex-start; flex-direction: column; }
   .notify-toggle-action { width: 100%; justify-content: space-between; }
+  .batch-notify-grid { grid-template-columns: 1fr; gap: 0; }
 }
 </style>
