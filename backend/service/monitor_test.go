@@ -5,9 +5,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"ops-admin/backend/model"
 )
+
+func TestShouldNotifyMonitorRecoveryOnlyAfterTriggerNotification(t *testing.T) {
+	rule := model.MonitorAlertRule{
+		NotifyEnabled:         true,
+		NotifyRuleID:          1,
+		NotifyRecoveryEnabled: true,
+	}
+	if shouldNotifyMonitorRecovery(rule, model.MonitorAlertEvent{Status: "pending"}) {
+		t.Fatal("a pending event that recovered before firing must not send a recovery notification")
+	}
+
+	notifiedAt := time.Now()
+	if !shouldNotifyMonitorRecovery(rule, model.MonitorAlertEvent{Status: "firing", LastNotifyAt: &notifiedAt, NotifyCount: 1}) {
+		t.Fatal("an event with a sent firing notification should send a recovery notification")
+	}
+}
 
 func TestNormalizeMonitorDatasourceTypeJaeger(t *testing.T) {
 	for _, value := range []string{"jaeger", "Jaeger-Query", "tracing"} {

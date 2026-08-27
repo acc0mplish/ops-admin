@@ -4106,13 +4106,20 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 		if active[event.Fingerprint] {
 			continue
 		}
+		wasPending := event.Status == "pending"
 		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
 			"status": "recovered", "recovered_at": &now,
 		}).Error
-		s.appendMonitorAlertTimeline(event.ID, "recovered", "告警已自动恢复", "指标已不再满足告警条件", "系统", nil)
+		if wasPending {
+			s.appendMonitorAlertTimeline(event.ID, "recovered", "等待持续已取消", "告警条件已恢复，未达到持续时间，不发送恢复通知", "系统", nil)
+		} else {
+			s.appendMonitorAlertTimeline(event.ID, "recovered", "告警已自动恢复", "指标已不再满足告警条件", "系统", nil)
+		}
 		event.Status = "recovered"
 		event.RecoveredAt = &now
-		if rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled {
+		// 恢复通知只能对应一条已经发出过触发通知的告警。pending 事件在持续
+		// 时间内恢复时并未对外告警，因此不能产生一条孤立的“恢复”消息。
+		if shouldNotifyMonitorRecovery(rule, event) {
 			if event.AggregateRuleID == 0 || event.AggregationKey == "" {
 				s.dispatchMonitorNotification(rule, event, "recovered")
 			} else {
@@ -4120,6 +4127,11 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 			}
 		}
 	}
+}
+
+func shouldNotifyMonitorRecovery(rule model.MonitorAlertRule, event model.MonitorAlertEvent) bool {
+	return rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled &&
+		(event.LastNotifyAt != nil || event.NotifyCount > 0)
 }
 
 // A recovered event in an aggregation bucket only notifies when the final
