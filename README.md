@@ -4,6 +4,76 @@ Ops Admin 是一个基于 **Go + Vue 3** 的一体化运维管理平台，面向
 
 平台围绕“资产、环境、应用、监控、执行”组织功能，支持通过 SSH 网关访问内网主机、数据库和 Kubernetes 集群。
 
+## 页面展示
+
+### 应用平台导航
+
+统一切换控制台、资产管理、容器管理、标准运维、应用中心、消息通知、集成中心、监控中心和域名管理。
+
+![Ops Admin 应用平台导航](docs/screenshots/01-platform-navigation.png)
+
+### 资产概览
+
+集中查看主机、主机组、凭据、云账号、数据库和 Kubernetes 集群的健康状态与资源分布。
+
+![Ops Admin 资产概览](docs/screenshots/02-asset-overview.png)
+
+### Kubernetes 集群概览
+
+展示集群健康、资源使用、网络配置和证书状态。
+
+![Ops Admin Kubernetes 集群概览](docs/screenshots/03-kubernetes-cluster-overview.png)
+
+### 作业编排
+
+通过脚本执行、文件分发、人工确认和消息通知步骤编排标准运维作业。
+
+![Ops Admin 作业编排](docs/screenshots/04-job-orchestration.png)
+
+### 构建历史
+
+按应用、环境和时间追踪构建状态、当前阶段、耗时与失败原因。
+
+![Ops Admin 构建历史](docs/screenshots/05-build-history.png)
+
+### 消息模板
+
+维护钉钉、企业微信、飞书和 Webhook 的通知模板。
+
+![Ops Admin 消息模板](docs/screenshots/06-message-templates.png)
+
+### 集成导航
+
+按场景组织内部系统、运维工具和第三方平台入口。
+
+![Ops Admin 集成导航](docs/screenshots/07-integration-navigation.png)
+
+### 告警模板
+
+按数据源和组件分组维护可复用的 Prometheus 告警定义。
+
+![Ops Admin 告警模板](docs/screenshots/08-alert-templates.png)
+
+### 内网 DNS Zone
+
+维护内网权威 Zone、解析记录、DNS 服务状态和操作审计。
+
+![Ops Admin 内网 DNS Zone](docs/screenshots/09-private-dns-zones.png)
+
+## 技术栈
+
+| 层级 | 技术 |
+| --- | --- |
+| 后端 | Go 1.24、Gin、GORM、JWT |
+| 数据库 | MySQL 8.x |
+| Kubernetes | client-go、Kubernetes API |
+| 远程连接 | SSH、WebSocket |
+| 调度 | robfig/cron v3 |
+| 前端 | Vue 3、Vite 5、Vue Router |
+| UI | Element Plus |
+| 编排画布 | AntV X6 |
+| Web 终端 | XTerm.js |
+
 ## 核心能力
 
 ### 资产管理
@@ -72,76 +142,6 @@ Ops Admin 是一个基于 **Go + Vue 3** 的一体化运维管理平台，面向
 - 登录日志和操作日志
 - 中文、英文界面切换
 - `dev / test / prod` 环境模型
-
-## 技术栈
-
-| 层级 | 技术 |
-| --- | --- |
-| 后端 | Go 1.24、Gin、GORM、JWT |
-| 数据库 | MySQL 8.x |
-| Kubernetes | client-go、Kubernetes API |
-| 远程连接 | SSH、WebSocket |
-| 调度 | robfig/cron v3 |
-| 前端 | Vue 3、Vite 5、Vue Router |
-| UI | Element Plus |
-| 编排画布 | AntV X6 |
-| Web 终端 | XTerm.js |
-
-## 页面展示
-
-### 应用平台导航
-
-统一切换控制台、资产管理、容器管理、标准运维、应用中心、消息通知、集成中心、监控中心和域名管理。
-
-![Ops Admin 应用平台导航](docs/screenshots/01-platform-navigation.png)
-
-### 资产概览
-
-集中查看主机、主机组、凭据、云账号、数据库和 Kubernetes 集群的健康状态与资源分布。
-
-![Ops Admin 资产概览](docs/screenshots/02-asset-overview.png)
-
-### Kubernetes 集群概览
-
-展示集群健康、资源使用、网络配置和证书状态。
-
-![Ops Admin Kubernetes 集群概览](docs/screenshots/03-kubernetes-cluster-overview.png)
-
-### 作业编排
-
-通过脚本执行、文件分发、人工确认和消息通知步骤编排标准运维作业。
-
-![Ops Admin 作业编排](docs/screenshots/04-job-orchestration.png)
-
-### 构建历史
-
-按应用、环境和时间追踪构建状态、当前阶段、耗时与失败原因。
-
-![Ops Admin 构建历史](docs/screenshots/05-build-history.png)
-
-### 消息模板
-
-维护钉钉、企业微信、飞书和 Webhook 的通知模板。
-
-![Ops Admin 消息模板](docs/screenshots/06-message-templates.png)
-
-### 集成导航
-
-按场景组织内部系统、运维工具和第三方平台入口。
-
-![Ops Admin 集成导航](docs/screenshots/07-integration-navigation.png)
-
-### 告警模板
-
-按数据源和组件分组维护可复用的 Prometheus 告警定义。
-
-![Ops Admin 告警模板](docs/screenshots/08-alert-templates.png)
-
-### 内网 DNS Zone
-
-维护内网权威 Zone、解析记录、DNS 服务状态和操作审计。
-
-![Ops Admin 内网 DNS Zone](docs/screenshots/09-private-dns-zones.png)
 
 ## 项目结构
 
