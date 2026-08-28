@@ -149,7 +149,7 @@ func logQueryToolSchema() map[string]any {
 		"datasourceId":   integerProperty("日志数据源 ID；留空则查询所有启用的 Elasticsearch 和 VictoriaLogs 数据源"),
 		"datasourceName": stringProperty("数据源名称关键词，仅在未指定 datasourceId 时使用"),
 		"index":          stringProperty("Elasticsearch 索引或索引模式，例如 logs-*；留空查询全部索引"),
-		"streams":        stringProperty("Stream/Topic，多个值用逗号分隔；默认按包含关系匹配，例如 err.log 可匹配 szfc.err.log.1053；使用 =szfc.err.log.1053 可精确匹配"),
+		"streams":        stringProperty("Stream/Topic，多个值用逗号分隔；默认按包含关系匹配，例如 err.log 可匹配 app.err.log.1053；使用 =app.err.log.1053 可精确匹配"),
 		"query":          stringProperty("日志条件：Elasticsearch 使用 Lucene，VictoriaLogs 使用 LogsQL；例如 level:ERROR，留空表示全部"),
 		"startTime":      stringProperty("开始时间，支持 RFC3339、YYYY-MM-DD HH:mm:ss、昨天 10:00 或 yesterday 10:00，时区 Asia/Shanghai"),
 		"endTime":        stringProperty("结束时间，格式与 startTime 相同，必须晚于开始时间"),

@@ -121,7 +121,7 @@ onMounted(async () => {
     </section>
 
     <el-dialog v-model="dialogVisible" :title="form.id ? '编辑服务' : '新增服务'" width="min(960px, 94vw)" destroy-on-close>
-      <el-alert type="info" :closable="false" show-icon title="唯一 ID 自动生成：集群地址 - 命名空间 - 服务名称。例如：192.168.171.51-szfc-inner-51服务。" />
+      <el-alert type="info" :closable="false" show-icon title="唯一 ID 自动生成：集群地址 - 命名空间 - 服务名称。例如：192.168.171.51-demo-order-service。" />
       <el-form label-width="110px" class="app-form">
         <el-row :gutter="18"><el-col :span="12"><el-form-item label="服务名称" required><el-input v-model="form.name" placeholder="例如：51服务" /></el-form-item></el-col><el-col :span="12"><el-form-item label="服务类型"><el-input v-model="form.serviceType" placeholder="例如：游戏服务" /></el-form-item></el-col></el-row>
         <el-row :gutter="18"><el-col :span="12"><el-form-item label="K8s 集群" required><el-select v-model="form.k8sClusterId" filterable style="width:100%" placeholder="选择集群" @change="onClusterChange"><el-option v-for="item in clusters" :key="item.id" :label="`${item.name} · ${item.apiServer}`" :value="item.id" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="命名空间" required><el-select v-model="form.namespace" filterable style="width:100%" :disabled="!form.k8sClusterId" placeholder="选择命名空间" @change="onNamespaceChange"><el-option v-for="item in catalog.namespaces || []" :key="item.name" :label="item.name" :value="item.name" /></el-select></el-form-item></el-col></el-row>
