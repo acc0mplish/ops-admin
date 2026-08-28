@@ -45,8 +45,8 @@ func TestAppendAILogStreamFilterElasticsearchContains(t *testing.T) {
 }
 
 func TestAppendAILogStreamFilterExact(t *testing.T) {
-	got := appendAILogStreamFilter("", []string{"=szfc.err.log.1053"}, true)
-	want := `({kafka_topic="szfc.err.log.1053"})`
+	got := appendAILogStreamFilter("", []string{"=app.err.log.1053"}, true)
+	want := `({kafka_topic="app.err.log.1053"})`
 	if got != want {
 		t.Fatalf("query = %q, want %q", got, want)
 	}

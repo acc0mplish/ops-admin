@@ -10,10 +10,15 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ops-admin .
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata \
-    && mkdir -p /app/uploads
+    && addgroup -S opsadmin \
+    && adduser -S -G opsadmin -h /app opsadmin \
+    && mkdir -p /app/uploads \
+    && chown -R opsadmin:opsadmin /app
 
 WORKDIR /app
-COPY --from=builder /out/ops-admin /app/ops-admin
+COPY --from=builder --chown=opsadmin:opsadmin /out/ops-admin /app/ops-admin
 
-EXPOSE 8082
+USER opsadmin
+
+EXPOSE 8082 53/tcp 53/udp
 CMD ["/app/ops-admin"]

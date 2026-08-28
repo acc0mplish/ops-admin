@@ -5,9 +5,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"ops-admin/backend/model"
 )
+
+func TestShouldNotifyMonitorRecoveryOnlyAfterTriggerNotification(t *testing.T) {
+	rule := model.MonitorAlertRule{
+		NotifyEnabled:         true,
+		NotifyRuleID:          1,
+		NotifyRecoveryEnabled: true,
+	}
+	if shouldNotifyMonitorRecovery(rule, model.MonitorAlertEvent{Status: "pending"}) {
+		t.Fatal("a pending event that recovered before firing must not send a recovery notification")
+	}
+
+	notifiedAt := time.Now()
+	if !shouldNotifyMonitorRecovery(rule, model.MonitorAlertEvent{Status: "firing", LastNotifyAt: &notifiedAt, NotifyCount: 1}) {
+		t.Fatal("an event with a sent firing notification should send a recovery notification")
+	}
+}
 
 func TestNormalizeMonitorDatasourceTypeJaeger(t *testing.T) {
 	for _, value := range []string{"jaeger", "Jaeger-Query", "tracing"} {
@@ -45,8 +62,8 @@ func TestNormalizeMonitorLogPagination(t *testing.T) {
 }
 
 func TestFormatMonitorOpLogContentHidesTransportFields(t *testing.T) {
-	raw := `{"@timestamp":"2026-07-15T01:41:18.013Z","actionType":14,"source_type":"kafka","timestamp":"2026-07-15T01:41:18.013Z","ts":"2026-07-15T09:41:18.013+08:00","kafka_topic":"szfc.op.log.0"}`
-	content := formatMonitorOpLogContent(map[string]any{"kafka_topic": "szfc.op.log.0", "message": raw}, "szfc-oplog", raw)
+	raw := `{"@timestamp":"2026-07-15T01:41:18.013Z","actionType":14,"source_type":"kafka","timestamp":"2026-07-15T01:41:18.013Z","ts":"2026-07-15T09:41:18.013+08:00","kafka_topic":"app.op.log.0"}`
+	content := formatMonitorOpLogContent(map[string]any{"kafka_topic": "app.op.log.0", "message": raw}, "app-oplog", raw)
 	var document map[string]any
 	if err := json.Unmarshal([]byte(content), &document); err != nil {
 		t.Fatalf("expected valid compact JSON, got %q: %v", content, err)
@@ -56,7 +73,7 @@ func TestFormatMonitorOpLogContentHidesTransportFields(t *testing.T) {
 			t.Fatalf("field %s should be hidden: %#v", field, document)
 		}
 	}
-	if document["actionType"] != float64(14) || document["kafka_topic"] != "szfc.op.log.0" {
+	if document["actionType"] != float64(14) || document["kafka_topic"] != "app.op.log.0" {
 		t.Fatalf("business fields should be preserved: %#v", document)
 	}
 }

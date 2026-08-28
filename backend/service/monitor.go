@@ -117,9 +117,14 @@ type MonitorAlertTemplateExportPayload struct {
 }
 
 type MonitorAlertRuleBatchPayload struct {
-	IDs          []uint `json:"ids"`
-	Action       string `json:"action"`
-	NotifyRuleID uint   `json:"notifyRuleId"`
+	IDs                         []uint `json:"ids"`
+	Action                      string `json:"action"`
+	NotifyRuleID                uint   `json:"notifyRuleId"`
+	NotifyRepeatIntervalSeconds *int   `json:"notifyRepeatIntervalSeconds"`
+	MaxNotifyCount              *int   `json:"maxNotifyCount"`
+	NotifyRecoveryEnabled       *bool  `json:"notifyRecoveryEnabled"`
+	ForSeconds                  *int   `json:"forSeconds"`
+	EvalIntervalSeconds         *int   `json:"evalIntervalSeconds"`
 }
 
 type MonitorAlertEventActionPayload struct {
@@ -3333,9 +3338,47 @@ func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayl
 		updates["status"] = 1
 	case "disable":
 		updates["status"] = 2
+	case "update_for_seconds":
+		if payload.ForSeconds == nil {
+			return errors.New("请填写持续时间")
+		}
+		if *payload.ForSeconds < 0 || *payload.ForSeconds > 86400 {
+			return errors.New("持续时间需在 0 到 86400 秒之间")
+		}
+		var metricRuleCount int64
+		if err := s.db.Model(&model.MonitorAlertRule{}).Where("id IN ? AND alert_type = ?", uniqueIDs, "metric").Count(&metricRuleCount).Error; err != nil {
+			return err
+		}
+		if metricRuleCount == 0 {
+			return errors.New("所选规则中没有可修改持续时间的监控告警规则")
+		}
+		return s.db.Model(&model.MonitorAlertRule{}).Where("id IN ? AND alert_type = ?", uniqueIDs, "metric").Update("for_seconds", *payload.ForSeconds).Error
+	case "update_eval_interval":
+		if payload.EvalIntervalSeconds == nil {
+			return errors.New("请填写评估间隔")
+		}
+		if *payload.EvalIntervalSeconds < 15 || *payload.EvalIntervalSeconds > 3600 {
+			return errors.New("评估间隔需在 15 到 3600 秒之间")
+		}
+		updates["eval_interval_seconds"] = *payload.EvalIntervalSeconds
 	case "enable_notify":
 		if payload.NotifyRuleID == 0 {
 			return errors.New("请选择通知规则")
+		}
+		if payload.NotifyRepeatIntervalSeconds == nil {
+			return errors.New("请填写重复通知间隔")
+		}
+		if *payload.NotifyRepeatIntervalSeconds < 60 || *payload.NotifyRepeatIntervalSeconds > 604800 {
+			return errors.New("重复通知间隔需在 1 分钟到 7 天之间")
+		}
+		if payload.MaxNotifyCount == nil {
+			return errors.New("请填写最大发送次数")
+		}
+		if *payload.MaxNotifyCount < 0 || *payload.MaxNotifyCount > 1000 {
+			return errors.New("最大发送次数需在 0 到 1000 之间")
+		}
+		if payload.NotifyRecoveryEnabled == nil {
+			return errors.New("请设置是否发送恢复通知")
 		}
 		var notifyRule model.NotifyRule
 		if err := s.db.Where("id = ? AND status = ?", payload.NotifyRuleID, 1).First(&notifyRule).Error; err != nil {
@@ -3343,13 +3386,16 @@ func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayl
 		}
 		updates["notify_enabled"] = true
 		updates["notify_rule_id"] = payload.NotifyRuleID
+		updates["notify_repeat_interval_seconds"] = *payload.NotifyRepeatIntervalSeconds
+		updates["max_notify_count"] = *payload.MaxNotifyCount
+		updates["notify_recovery_enabled"] = *payload.NotifyRecoveryEnabled
 	default:
 		return errors.New("不支持的批量操作")
 	}
 	if err := s.db.Model(&model.MonitorAlertRule{}).Where("id IN ?", uniqueIDs).Updates(updates).Error; err != nil {
 		return err
 	}
-	if action != "enable" && action != "disable" {
+	if action == "enable_notify" {
 		return nil
 	}
 	var rules []model.MonitorAlertRule
@@ -3361,7 +3407,7 @@ func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayl
 			if err := s.registerMonitorAlertRule(rule); err != nil {
 				return err
 			}
-		} else {
+		} else if action == "enable" || action == "disable" {
 			s.removeMonitorAlertRule(rule.ID)
 			s.closeActiveMonitorAlertEventsForRule(rule.ID, "告警规则已批量停用，系统自动关闭未结束事件")
 		}
@@ -4060,13 +4106,20 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 		if active[event.Fingerprint] {
 			continue
 		}
+		wasPending := event.Status == "pending"
 		_ = s.db.Model(&model.MonitorAlertEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
 			"status": "recovered", "recovered_at": &now,
 		}).Error
-		s.appendMonitorAlertTimeline(event.ID, "recovered", "告警已自动恢复", "指标已不再满足告警条件", "系统", nil)
+		if wasPending {
+			s.appendMonitorAlertTimeline(event.ID, "recovered", "等待持续已取消", "告警条件已恢复，未达到持续时间，不发送恢复通知", "系统", nil)
+		} else {
+			s.appendMonitorAlertTimeline(event.ID, "recovered", "告警已自动恢复", "指标已不再满足告警条件", "系统", nil)
+		}
 		event.Status = "recovered"
 		event.RecoveredAt = &now
-		if rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled {
+		// 恢复通知只能对应一条已经发出过触发通知的告警。pending 事件在持续
+		// 时间内恢复时并未对外告警，因此不能产生一条孤立的“恢复”消息。
+		if shouldNotifyMonitorRecovery(rule, event) {
 			if event.AggregateRuleID == 0 || event.AggregationKey == "" {
 				s.dispatchMonitorNotification(rule, event, "recovered")
 			} else {
@@ -4074,6 +4127,11 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 			}
 		}
 	}
+}
+
+func shouldNotifyMonitorRecovery(rule model.MonitorAlertRule, event model.MonitorAlertEvent) bool {
+	return rule.NotifyEnabled && rule.NotifyRuleID > 0 && rule.NotifyRecoveryEnabled &&
+		(event.LastNotifyAt != nil || event.NotifyCount > 0)
 }
 
 // A recovered event in an aggregation bucket only notifies when the final
