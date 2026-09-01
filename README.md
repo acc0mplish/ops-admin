@@ -1,203 +1,203 @@
 # Ops Admin
 
-Ops Admin 是一个基于 **Go + Vue 3** 的一体化运维管理平台，面向中小型运维团队提供资产管理、Kubernetes 管理、批量运维、任务编排、监控告警、消息通知和 CI/CD 发布能力。
+Ops Admin은 **Go + Vue 3** 기반의 통합 운영 관리 플랫폼입니다. 중소 규모 운영팀을 대상으로 자산 관리, Kubernetes 관리, 일괄 운영, Job 오케스트레이션, 모니터링·알림, 메시지 통지, CI/CD 배포 기능을 제공합니다.
 
-平台围绕“资产、环境、应用、监控、执行”组织功能，支持通过 SSH 网关访问内网主机、数据库和 Kubernetes 集群。
+플랫폼은 **자산, 환경, 애플리케이션, 모니터링, 실행**을 중심으로 기능을 구성하며, SSH Gateway를 통해 내부망의 호스트, 데이터베이스, Kubernetes 클러스터에 접근할 수 있습니다.
 
-## 页面展示
+## 화면 미리보기
 
-### 应用平台导航
+### 애플리케이션 플랫폼 탐색
 
-统一切换控制台、资产管理、容器管理、标准运维、应用中心、消息通知、集成中心、监控中心和域名管理。
+Console, 자산 관리, 컨테이너 관리, 표준 운영, 애플리케이션 센터, 메시지 통지, 통합 센터, 모니터링 센터, 도메인 관리를 한 화면에서 전환합니다.
 
-![Ops Admin 应用平台导航](docs/screenshots/01-platform-navigation.png)
+![Ops Admin 애플리케이션 플랫폼 탐색](docs/screenshots/01-platform-navigation.png)
 
-### 资产概览
+### 자산 개요
 
-集中查看主机、主机组、凭据、云账号、数据库和 Kubernetes 集群的健康状态与资源分布。
+호스트, 호스트 그룹, Credential, 클라우드 계정, 데이터베이스, Kubernetes 클러스터의 상태와 리소스 분포를 한곳에서 확인합니다.
 
-![Ops Admin 资产概览](docs/screenshots/02-asset-overview.png)
+![Ops Admin 자산 개요](docs/screenshots/02-asset-overview.png)
 
-### Kubernetes 集群概览
+### Kubernetes 클러스터 개요
 
-展示集群健康、资源使用、网络配置和证书状态。
+클러스터 상태, 리소스 사용량, 네트워크 구성, 인증서 상태를 확인합니다.
 
-![Ops Admin Kubernetes 集群概览](docs/screenshots/03-kubernetes-cluster-overview.png)
+![Ops Admin Kubernetes 클러스터 개요](docs/screenshots/03-kubernetes-cluster-overview.png)
 
-### 作业编排
+### Job 오케스트레이션
 
-通过脚本执行、文件分发、人工确认和消息通知步骤编排标准运维作业。
+스크립트 실행, 파일 배포, 수동 승인, 메시지 통지 단계를 조합해 표준 운영 Job을 구성합니다.
 
-![Ops Admin 作业编排](docs/screenshots/04-job-orchestration.png)
+![Ops Admin Job 오케스트레이션](docs/screenshots/04-job-orchestration.png)
 
-### 构建历史
+### 빌드 이력
 
-按应用、环境和时间追踪构建状态、当前阶段、耗时与失败原因。
+애플리케이션, 환경, 시간 기준으로 빌드 상태, 현재 단계, 소요 시간, 실패 원인을 추적합니다.
 
-![Ops Admin 构建历史](docs/screenshots/05-build-history.png)
+![Ops Admin 빌드 이력](docs/screenshots/05-build-history.png)
 
-### 消息模板
+### 메시지 템플릿
 
-维护钉钉、企业微信、飞书和 Webhook 的通知模板。
+DingTalk, WeCom, Feishu, Webhook 통지 템플릿을 관리합니다.
 
-![Ops Admin 消息模板](docs/screenshots/06-message-templates.png)
+![Ops Admin 메시지 템플릿](docs/screenshots/06-message-templates.png)
 
-### 集成导航
+### 통합 탐색
 
-按场景组织内部系统、运维工具和第三方平台入口。
+내부 시스템, 운영 도구, 외부 플랫폼 진입점을 용도별로 구성합니다.
 
-![Ops Admin 集成导航](docs/screenshots/07-integration-navigation.png)
+![Ops Admin 통합 탐색](docs/screenshots/07-integration-navigation.png)
 
-### 告警模板
+### Alert 템플릿
 
-按数据源和组件分组维护可复用的 Prometheus 告警定义。
+데이터 소스와 컴포넌트별로 재사용 가능한 Prometheus Alert 정의를 관리합니다.
 
-![Ops Admin 告警模板](docs/screenshots/08-alert-templates.png)
+![Ops Admin Alert 템플릿](docs/screenshots/08-alert-templates.png)
 
-### 内网 DNS Zone
+### 내부 DNS Zone
 
-维护内网权威 Zone、解析记录、DNS 服务状态和操作审计。
+내부 Authoritative Zone, DNS Record, DNS 서비스 상태, 작업 감사 로그를 관리합니다.
 
-![Ops Admin 内网 DNS Zone](docs/screenshots/09-private-dns-zones.png)
+![Ops Admin 내부 DNS Zone](docs/screenshots/09-private-dns-zones.png)
 
-## 技术栈
+## 기술 스택
 
-| 层级 | 技术 |
+| 계층 | 기술 |
 | --- | --- |
-| 后端 | Go 1.24、Gin、GORM、JWT |
-| 数据库 | MySQL 8.x |
-| Kubernetes | client-go、Kubernetes API |
-| 远程连接 | SSH、WebSocket |
-| 调度 | robfig/cron v3 |
-| 前端 | Vue 3、Vite 5、Vue Router |
+| Backend | Go 1.24, Gin, GORM, JWT |
+| Database | MySQL 8.x |
+| Kubernetes | client-go, Kubernetes API |
+| 원격 연결 | SSH, WebSocket |
+| Scheduler | robfig/cron v3 |
+| Frontend | Vue 3, Vite 5, Vue Router |
 | UI | Element Plus |
-| 编排画布 | AntV X6 |
-| Web 终端 | XTerm.js |
+| 오케스트레이션 Canvas | AntV X6 |
+| Web Terminal | XTerm.js |
 
-## 核心能力
+## 주요 기능
 
-### 资产管理
+### 자산 관리
 
-- 资产概览、主机与主机组管理
-- SSH 密码、密钥凭据管理
-- 云账号与主机信息维护
-- Web SSH 终端
-- SSH 跳板网关管理
-- MySQL 数据库资产与 DBMS 工作台
-- SQL 编辑、补全、结果编辑、执行历史、回滚 SQL
-- 数据库导入、导出任务
+- 자산 개요, 호스트 및 호스트 그룹 관리
+- SSH Password / SSH Key Credential 관리
+- 클라우드 계정 및 호스트 정보 관리
+- Web SSH Terminal
+- SSH Jump Gateway 관리
+- MySQL 데이터베이스 자산 및 DBMS Workbench
+- SQL 편집, 자동 완성, 결과 편집, 실행 이력, Rollback SQL
+- 데이터베이스 Import / Export Job
 
-### Kubernetes 管理
+### Kubernetes 관리
 
-- 多集群录入、连接校验和集群切换
-- 支持直连或通过 SSH 网关访问 API Server
-- 集群概览、证书信息和节点管理
-- 命名空间、Pod、工作负载管理
+- Multi-Cluster 등록, 연결 검증, 클러스터 전환
+- Direct 연결 또는 SSH Gateway를 통한 API Server 접근
+- 클러스터 개요, 인증서 정보, Node 관리
+- Namespace, Pod, Workload 관리
 - Pod Web Terminal
-- Service、Ingress 和 Gateway API
-- 配置与存储资源管理
-- YAML 查看、搜索、差异预览和确认编辑
-- 工作负载批量更新镜像版本
+- Service, Ingress, Gateway API
+- ConfigMap, Secret, Storage 리소스 관리
+- YAML 조회, 검색, Diff Preview, 변경 확인
+- Workload 이미지 버전 일괄 업데이트
 
-### 标准运维
+### 표준 운영
 
-- Shell、Bat、Perl、Python、PowerShell、SQL 脚本库
-- 命令执行、脚本执行和文件分发
-- 主机与主机组互斥选择
-- 并发数、超时时间和实时执行结果
-- 快速执行历史
-- 脚本任务和 HTTP 探针定时任务
-- 任务模板、任务日志和批量启停
-- 六段 Cron 编辑器：`秒 分 时 日 月 周`
-- 可视化作业编排
-- 脚本执行、文件分发、人工确认、消息通知步骤
-- 作业模板、作业历史和人工确认中心
+- Shell, Bat, Perl, Python, PowerShell, SQL 스크립트 라이브러리
+- Command 실행, Script 실행, File Distribution
+- 호스트와 호스트 그룹 상호 배타 선택
+- 동시 실행 수, Timeout, 실시간 실행 결과
+- Quick Execution History
+- Script Job 및 HTTP Probe Scheduled Task
+- Job Template, Job Log, 일괄 활성화/비활성화
+- 6필드 Cron Editor: `초 분 시 일 월 요일`
+- Visual Job Orchestration
+- Script 실행, File Distribution, Manual Approval, Message Notification 단계
+- Job Template, Job History, Approval Center
 
-### 应用中心
+### 애플리케이션 센터
 
-- Git、SVN 应用项目管理
-- 应用、主机、Kubernetes、数据库、监控和发布拓扑
-- 构建任务与构建历史
-- 构建阶段日志
-- CI/CD 流水线模板与自定义流水线
-- 代码拉取、测试、构建、镜像构建、镜像推送和 K8s 发布
-- Go、Maven、Vue 等常用流水线模板
+- Git / SVN 애플리케이션 프로젝트 관리
+- 애플리케이션, 호스트, Kubernetes, 데이터베이스, 모니터링, 배포 Topology
+- Build Task 및 Build History
+- Build Stage Log
+- CI/CD Pipeline Template 및 Custom Pipeline
+- Source Checkout, Test, Build, Container Image Build, Image Push, K8s Deploy
+- Go, Maven, Vue 등 주요 Pipeline Template
 
-### 监控与通知
+### 모니터링 및 통지
 
-- Prometheus、VictoriaMetrics 数据源
-- PromQL 即时查询
-- 告警规则和告警事件
-- 告警屏蔽、聚合收敛和重复通知控制
-- 告警触发诊断脚本或运维作业
-- 主机与 Kubernetes 监控大屏
-- 巡检大屏和巡检报告
-- 钉钉、企业微信、飞书机器人
-- 自定义 HTTP Webhook
-- 消息模板、通知媒介、通知规则和发送日志
+- Prometheus, VictoriaMetrics 데이터 소스
+- PromQL Instant Query
+- Alert Rule 및 Alert Event
+- Alert Silence, Aggregation, 반복 통지 제어
+- Alert 발생 시 진단 Script 또는 운영 Job 실행
+- 호스트 및 Kubernetes Monitoring Dashboard
+- Inspection Dashboard 및 점검 보고서
+- DingTalk, WeCom, Feishu Bot
+- Custom HTTP Webhook
+- Message Template, Notification Channel, Notification Rule, Send Log
 
-### 平台管理
+### 플랫폼 관리
 
-- 用户、角色、部门、岗位和菜单权限
-- 登录日志和操作日志
-- 中文、英文界面切换
-- `dev / test / prod` 环境模型
+- 사용자, Role, 부서, 직무, 메뉴 권한 관리
+- Login Log 및 Operation Audit Log
+- 한국어 중심 UI
+- `dev / test / prod` 환경 모델
 
-## 项目结构
+## 프로젝트 구조
 
 ```text
 ops-admin/
 ├── backend/
-│   ├── auth/          # JWT 鉴权
-│   ├── config/        # 配置加载
-│   ├── controller/    # HTTP 控制器
-│   ├── middleware/    # 鉴权、跨域、操作日志
-│   ├── model/         # GORM 数据模型
-│   ├── router/        # API 路由
-│   ├── service/       # 业务逻辑
-│   ├── store/         # 数据库连接、迁移和初始化
-│   ├── util/          # 公共工具
-│   ├── config.yaml    # 后端配置
+│   ├── auth/          # JWT 인증/인가
+│   ├── config/        # 설정 로딩
+│   ├── controller/    # HTTP Controller
+│   ├── middleware/    # 인증, CORS, 작업 로그
+│   ├── model/         # GORM 데이터 모델
+│   ├── router/        # API Route
+│   ├── service/       # 비즈니스 로직
+│   ├── store/         # DB 연결, Migration, 초기화
+│   ├── util/          # 공통 Utility
+│   ├── config.yaml    # Backend 설정
 │   └── main.go
 ├── web/
-│   ├── src/api/       # API 封装
+│   ├── src/api/       # API Wrapper
 │   ├── src/composables/
-│   ├── src/layouts/   # 平台布局
-│   ├── src/router/    # 前端路由
-│   ├── src/utils/     # 菜单、国际化和工具
-│   └── src/views/     # 业务页面
+│   ├── src/layouts/   # 플랫폼 Layout
+│   ├── src/router/    # Frontend Route
+│   ├── src/utils/     # 메뉴, i18n, Utility
+│   └── src/views/     # 화면
 ├── docs/
 ├── scripts/
 ├── LICENSE
 └── README.md
 ```
 
-## 环境要求
+## 실행 환경
 
 - Go `1.24+`
-- Node.js `18+`，建议使用 `20+`
+- Node.js `18+` (`20+` 권장)
 - npm `9+`
 - MySQL `8.x`
 
-按实际使用的模块，还需要准备：
+사용하는 기능에 따라 다음 환경도 준비해야 합니다.
 
-- 可访问的 Linux SSH 主机
+- 접근 가능한 Linux SSH 호스트
 - Kubernetes `kubeconfig`
-- Prometheus 或 VictoriaMetrics
-- Git 或 SVN 客户端
-- Docker、kubectl 等流水线命令行工具
+- Prometheus 또는 VictoriaMetrics
+- Git 또는 SVN Client
+- Docker, kubectl 등 Pipeline 실행에 필요한 CLI
 
-## 部署
+## 배포
 
-生产或体验环境推荐使用 Docker Compose，完整步骤见：
+운영 또는 체험 환경에서는 Docker Compose 사용을 권장합니다. 상세 절차는 다음 문서를 참고하십시오.
 
-- [Docker Compose 部署手册](docs/DEPLOY_DOCKER_COMPOSE.md)
+- [Docker Compose 배포 가이드](docs/DEPLOY_DOCKER_COMPOSE.md)
 
-该方案会启动独立的 MySQL、API 和 Web 容器，仅对外暴露 Web 端口 `8080`，并包含配置、安全、验收、备份、升级与故障排查说明。
+구성은 독립된 MySQL, API, Web Container를 실행하며 외부에는 Web 포트 `8080`만 노출합니다. 설정, 보안, 검증, Backup, Upgrade, Troubleshooting 절차를 포함합니다.
 
-## 本地开发快速开始
+## 로컬 개발 빠른 시작
 
-### 1. 创建数据库
+### 1. 데이터베이스 생성
 
 ```sql
 CREATE DATABASE ops_admin
@@ -205,11 +205,11 @@ CREATE DATABASE ops_admin
   COLLATE utf8mb4_general_ci;
 ```
 
-当前项目使用的排序规则为 `utf8mb4_general_ci`。后端启动时会自动执行 GORM 数据表迁移和基础数据初始化。
+현재 프로젝트의 Collation은 `utf8mb4_general_ci`입니다. Backend 시작 시 GORM이 Schema Migration과 기본 데이터 초기화를 자동 수행합니다.
 
-### 2. 配置后端
+### 2. Backend 설정
 
-修改 `backend/config.yaml`：
+`backend/config.yaml`을 수정합니다.
 
 ```yaml
 app:
@@ -221,12 +221,12 @@ db:
   host: 127.0.0.1
   port: "3306"
   user: root
-  password: "请替换为数据库密码"
+  password: "데이터베이스 비밀번호로 변경"
   name: ops_admin
   log-mode: false
 ```
 
-### 3. 启动后端
+### 3. Backend 실행
 
 ```bash
 cd backend
@@ -234,12 +234,12 @@ go mod download
 go run .
 ```
 
-后端默认监听：
+기본 Listen 주소:
 
-- API：`http://127.0.0.1:8082`
-- 健康检查：`http://127.0.0.1:8082/ping`
+- API: `http://127.0.0.1:8082`
+- Health Check: `http://127.0.0.1:8082/ping`
 
-### 4. 启动前端
+### 4. Frontend 실행
 
 ```bash
 cd web
@@ -247,46 +247,46 @@ npm install
 npm run dev
 ```
 
-访问 `http://127.0.0.1:8080`。Vite 会将 `/api/v1` 和 `/uploads` 代理到后端 `8082` 端口。
+`http://127.0.0.1:8080`에 접속합니다. Vite는 `/api/v1`과 `/uploads`를 Backend의 `8082` 포트로 Proxy합니다.
 
-### 5. 初始账号
-
-```text
-用户名：admin
-密码：123456
-```
-
-首次登录后请立即修改默认密码。
-
-## Cron 规则
-
-定时任务使用六段 Cron：
+### 5. 초기 계정
 
 ```text
-秒 分 时 日 月 周
+사용자명: admin
+비밀번호: 123456
 ```
 
-默认表达式：
+최초 로그인 후 기본 비밀번호를 즉시 변경하십시오.
+
+## Cron 규칙
+
+Scheduled Task는 6필드 Cron 형식을 사용합니다.
+
+```text
+초 분 시 일 월 요일
+```
+
+기본 표현식:
 
 ```text
 0 */5 * * * *
 ```
 
-表示每隔 5 分钟，在第 0 秒执行。系统也兼容传统五段表达式，并自动在最前面补充 `0` 秒。
+5분마다 0초 시점에 실행됩니다. 전통적인 5필드 표현식도 지원하며, 앞에 `0`초를 자동 추가합니다.
 
-## 网关访问
+## Gateway 접근
 
-当目标资源位于内网时，可以先在“资产管理 → 网关管理”中配置 SSH 跳板机，再为以下资源选择网关访问：
+대상 리소스가 내부망에 있는 경우 **자산 관리 → Gateway 관리**에서 SSH Jump Host를 먼저 등록한 뒤 다음 리소스에 Gateway를 지정할 수 있습니다.
 
-- 主机 SSH
-- MySQL 数据库
+- Host SSH
+- MySQL Database
 - Kubernetes API Server
 
-网关自身必须能从 Ops Admin 后端所在服务器访问，并且能够连通最终目标地址。
+Gateway 자체는 Ops Admin Backend가 실행되는 서버에서 접근 가능해야 하며, 최종 대상 주소까지 네트워크 연결이 가능해야 합니다.
 
-## 开发与验证
+## 개발 및 검증
 
-后端格式化和测试：
+Backend Format 및 Test:
 
 ```bash
 cd backend
@@ -294,49 +294,49 @@ go fmt ./...
 go test ./...
 ```
 
-前端生产构建：
+Frontend Production Build:
 
 ```bash
 cd web
 npm run build
 ```
 
-构建产物输出到 `web/dist/`。
+Build Artifact는 `web/dist/`에 생성됩니다.
 
-## 安全建议
+## 보안 권장사항
 
-- 生产环境不要继续使用默认管理员密码。
-- 不要将真实数据库密码、SSH 私钥、Token 或 kubeconfig 提交到 Git。
-- 限制 Ops Admin 后端对生产网络的访问范围。
-- 为高风险 SQL、文件覆盖、K8s YAML 修改和发布操作保留二次确认。
-- 定期检查操作日志、执行历史和通知发送日志。
-- 建议通过 HTTPS 反向代理访问平台。
-- 建议在生产环境关闭 Gin debug 模式。
+- 운영 환경에서 기본 관리자 비밀번호를 사용하지 마십시오.
+- 실제 DB Password, SSH Private Key, Token, kubeconfig를 Git에 Commit하지 마십시오.
+- Ops Admin Backend의 운영망 접근 범위를 최소화하십시오.
+- 고위험 SQL, 파일 덮어쓰기, K8s YAML 변경, 배포 작업은 이중 확인 절차를 유지하십시오.
+- Operation Log, Execution History, Notification Send Log를 정기적으로 점검하십시오.
+- HTTPS Reverse Proxy를 통해 플랫폼에 접근하는 것을 권장합니다.
+- 운영 환경에서는 Gin debug mode를 비활성화하는 것을 권장합니다.
 
-## 常见问题
+## 문제 해결
 
-### K8s 集群连接失败
+### K8s 클러스터 연결 실패
 
-检查 kubeconfig、API Server 地址、证书有效期、后端网络连通性以及网关配置。
+kubeconfig, API Server 주소, 인증서 유효기간, Backend 네트워크 연결, Gateway 설정을 확인하십시오.
 
-### SSH 执行失败
+### SSH 실행 실패
 
-检查主机 SSH IP、端口、用户名、凭据、网关路径和服务器防火墙。
+Host SSH IP, Port, Username, Credential, Gateway 경로, 서버 Firewall을 확인하십시오.
 
-### 监控页面没有数据
+### 모니터링 화면에 데이터가 없음
 
-确认数据源连接正常，并检查 PromQL 对应指标是否存在。
+데이터 소스 연결 상태를 확인하고 해당 PromQL Metric이 존재하는지 확인하십시오.
 
-### CI/CD 阶段执行失败
+### CI/CD Stage 실행 실패
 
-确认后端运行环境已安装阶段所需的 Git、SVN、Docker、kubectl、Go、Node.js 或 Maven。
+Backend 실행 환경에 Stage 수행에 필요한 Git, SVN, Docker, kubectl, Go, Node.js, Maven이 설치되어 있는지 확인하십시오.
 
-## 文档
+## 문서
 
-- [Docker Compose 部署手册](docs/DEPLOY_DOCKER_COMPOSE.md)
-- [架构文档索引](docs/architecture/README.md)
-- [平台体验评审](docs/PLATFORM_UX_REVIEW.md)
+- [Docker Compose 배포 가이드](docs/DEPLOY_DOCKER_COMPOSE.md)
+- [아키텍처 문서 인덱스](docs/architecture/README.md)
+- [플랫폼 UX 리뷰](docs/PLATFORM_UX_REVIEW.md)
 
 ## License
 
-本项目基于 [GNU General Public License v3.0](LICENSE) 开源。
+이 프로젝트는 [GNU General Public License v3.0](LICENSE)을 따릅니다. 소스 코드 수정·배포 시 해당 라이선스 조건을 준수해야 합니다.
