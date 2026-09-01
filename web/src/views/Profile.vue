@@ -25,7 +25,7 @@ const passwordForm = reactive({
   resetPassword: ''
 })
 
-const userName = computed(() => currentUser.value.nickname || currentUser.value.username || '管理员')
+const userName = computed(() => currentUser.value.nickname || currentUser.value.username || '관리자')
 
 async function loadProfile() {
   loading.value = true
@@ -75,15 +75,15 @@ async function submitProfile() {
 
 async function submitPassword() {
   if (!passwordForm.password || !passwordForm.newPassword || !passwordForm.resetPassword) {
-    ElMessage.warning('请完整填写密码信息')
+    ElMessage.warning('비밀번호 정보를 모두 입력하세요.')
     return
   }
   if (passwordForm.newPassword.length < 6) {
-    ElMessage.warning('新密码至少 6 位')
+    ElMessage.warning('새 비밀번호는 6자 이상이어야 합니다.')
     return
   }
   if (passwordForm.newPassword !== passwordForm.resetPassword) {
-    ElMessage.warning('两次输入的新密码不一致')
+    ElMessage.warning('새 비밀번호와 확인 비밀번호가 일치하지 않습니다.')
     return
   }
 
@@ -127,22 +127,22 @@ onMounted(loadProfile)
           <el-descriptions-item :label="t('nickname')">{{ currentUser.nickname || '-' }}</el-descriptions-item>
           <el-descriptions-item :label="t('email')">{{ currentUser.email || '-' }}</el-descriptions-item>
           <el-descriptions-item :label="t('phone')">{{ currentUser.phone || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="部门">{{ translateEntity(currentUser.deptName, '-') }}</el-descriptions-item>
-          <el-descriptions-item label="岗位">{{ translateEntity(currentUser.postName, '-') }}</el-descriptions-item>
-          <el-descriptions-item label="角色">{{ translateEntity(currentUser.roleName, '-') }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ currentUser.status === 1 ? '启用' : '停用' }}</el-descriptions-item>
+          <el-descriptions-item label="부서">{{ translateEntity(currentUser.deptName, '-') }}</el-descriptions-item>
+          <el-descriptions-item label="직책">{{ translateEntity(currentUser.postName, '-') }}</el-descriptions-item>
+          <el-descriptions-item label="역할">{{ translateEntity(currentUser.roleName, '-') }}</el-descriptions-item>
+          <el-descriptions-item label="상태">{{ currentUser.status === 1 ? '활성' : '비활성' }}</el-descriptions-item>
         </el-descriptions>
       </div>
 
       <div class="page-card">
         <h3 class="section-title">{{ t('extraInfo') }}</h3>
-        <div class="note-box">{{ currentUser.note || '暂未填写个人说明。' }}</div>
+        <div class="note-box">{{ currentUser.note || '등록된 개인 설명이 없습니다.' }}</div>
         <div class="meta-row">
-          <span>创建时间</span>
+          <span>생성 일시</span>
           <strong>{{ currentUser.createTime || '-' }}</strong>
         </div>
         <div class="meta-row">
-          <span>更新时间</span>
+          <span>수정 일시</span>
           <strong>{{ currentUser.updateTime || '-' }}</strong>
         </div>
       </div>
