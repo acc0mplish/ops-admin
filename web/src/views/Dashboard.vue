@@ -11,7 +11,7 @@ const stats = ref([
   { title: t('postCount'), value: 0, note: t('postCountNote') }
 ])
 
-const welcome = computed(() => currentUser.value.nickname || currentUser.value.username || '管理员')
+const welcome = computed(() => currentUser.value.nickname || currentUser.value.username || '관리자')
 
 onMounted(async () => {
   const [userInfo, adminRes, roleRes, deptRes, postRes] = await Promise.all([
@@ -40,11 +40,11 @@ onMounted(async () => {
         <h1>{{ t('welcomeBack', { name: welcome }) }}</h1>
         <p class="hero-text">{{ t('dashboardDesc') }}</p>
       </div>
-      <div class="hero-badge" aria-label="控制台工作范围">
+      <div class="hero-badge" aria-label="콘솔 작업 범위">
         <p>CONSOLE SCOPE</p>
-        <span><i></i>系统治理</span>
-        <span><i></i>权限配置</span>
-        <span><i></i>审计追溯</span>
+        <span><i></i>시스템 거버넌스</span>
+        <span><i></i>권한 구성</span>
+        <span><i></i>감사 추적</span>
       </div>
     </section>
 
