@@ -82,7 +82,7 @@ onMounted(loadSystemConfig)
           <template v-else>{{ logoText }}</template>
         </div>
         <h1>{{ config.loginTitle || config.siteName || 'Ops Admin' }}</h1>
-        <p>{{ config.loginSubtitle || config.siteSlogan || '运维系统管理后台' }}</p>
+        <p>{{ config.loginSubtitle || config.siteSlogan || '통합 운영 관리 플랫폼' }}</p>
         <div class="hero-meta">
           <span>System</span>
           <span>RBAC</span>
