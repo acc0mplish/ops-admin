@@ -1,9 +1,11 @@
-﻿export const APP_KEY = 'ops-admin-current-app'
+export const APP_KEY = 'ops-admin-current-app'
+
+const leaf = (title, path, icon, titleKey) => ({ title, ...(titleKey ? { titleKey } : {}), path, icon, children: [] })
 
 export const appDefinitions = [
   {
     key: 'console',
-    name: '控制台',
+    name: '콘솔',
     labelKey: 'appConsole',
     icon: 'Monitor',
     defaultRoute: '/dashboard',
@@ -11,510 +13,215 @@ export const appDefinitions = [
   },
   {
     key: 'assets',
-    name: '资产管理',
+    name: '자산 관리',
     labelKey: 'appAssets',
     icon: 'Box',
     defaultRoute: '/assets/overview',
     menus: [
+      leaf('자산 개요', '/assets/overview', 'DataBoard', 'assetsOverview'),
+      leaf('환경 모델', '/assets/environments', 'SetUp', 'opsEnvironments'),
+      leaf('터미널 로그인', '/assets/terminal', 'Platform'),
       {
-        title: '资产概览',
-        titleKey: 'assetsOverview',
-        path: '/assets/overview',
-        icon: 'DataBoard',
-        children: []
-      },
-      {
-        title: '环境模型',
-        titleKey: 'opsEnvironments',
-        path: '/assets/environments',
-        icon: 'SetUp',
-        children: []
-      },
-      {
-        title: '终端登录',
-        path: '/assets/terminal',
-        icon: 'Platform',
-        children: []
-      },
-      {
-        title: '服务器管理',
-        titleKey: 'serverManagement',
-        path: '/assets/server',
-        icon: 'Cpu',
+        title: '서버 관리', titleKey: 'serverManagement', path: '/assets/server', icon: 'Cpu',
         children: [
-          {
-            title: '主机管理',
-            titleKey: 'hostManagement',
-            path: '/assets/server/hosts',
-            icon: 'Monitor',
-            children: []
-          },
-          {
-            title: '主机组管理',
-            titleKey: 'hostGroupManagement',
-            path: '/assets/server/groups',
-            icon: 'FolderOpened',
-            children: []
-          },
-          {
-            title: '凭据管理',
-            titleKey: 'credentialManagement',
-            path: '/assets/server/credentials',
-            icon: 'Key',
-            children: []
-          },
-          {
-            title: '云账号管理',
-            titleKey: 'cloudAccountManagement',
-            path: '/assets/server/cloud-accounts',
-            icon: 'Cloudy',
-            children: []
-          }
+          leaf('호스트 관리', '/assets/server/hosts', 'Monitor', 'hostManagement'),
+          leaf('호스트 그룹 관리', '/assets/server/groups', 'FolderOpened', 'hostGroupManagement'),
+          leaf('Credential 관리', '/assets/server/credentials', 'Key', 'credentialManagement'),
+          leaf('클라우드 계정 관리', '/assets/server/cloud-accounts', 'Cloudy', 'cloudAccountManagement')
         ]
       },
       {
-        title: '数据库管理',
-        titleKey: 'databaseManagement',
-        path: '/assets/databases',
-        icon: 'Coin',
+        title: '데이터베이스 관리', titleKey: 'databaseManagement', path: '/assets/databases', icon: 'Coin',
         children: [
-          {
-            title: '数据库列表',
-            titleKey: 'databaseList',
-            path: '/assets/databases',
-            icon: 'List',
-            children: []
-          },
-          {
-            title: 'DBMS 工作台',
-            titleKey: 'databaseWorkbench',
-            path: '/assets/databases/workbench',
-            icon: 'EditPen',
-            children: []
-          },
-          {
-            title: '数据导入',
-            titleKey: 'databaseImport',
-            path: '/assets/databases/import',
-            icon: 'Upload',
-            children: []
-          },
-          {
-            title: '备份管理',
-            titleKey: 'databaseBackup',
-            path: '/assets/databases/backups',
-            icon: 'FolderOpened',
-            children: []
-          }
+          leaf('데이터베이스 목록', '/assets/databases', 'List', 'databaseList'),
+          leaf('DBMS 워크벤치', '/assets/databases/workbench', 'EditPen', 'databaseWorkbench'),
+          leaf('데이터 Import', '/assets/databases/import', 'Upload', 'databaseImport'),
+          leaf('백업 관리', '/assets/databases/backups', 'FolderOpened', 'databaseBackup')
         ]
       },
-      {
-        title: '网关管理',
-        titleKey: 'gatewayManagement',
-        path: '/assets/gateways',
-        icon: 'Switch',
-        children: []
-      },
+      leaf('Gateway 관리', '/assets/gateways', 'Switch', 'gatewayManagement')
     ]
   },
   {
     key: 'containers',
-    name: '容器管理',
+    name: '컨테이너 관리',
     labelKey: 'appContainers',
     icon: 'Box',
     defaultRoute: '/containers/k8s/clusters',
     menus: [
+      leaf('서비스 관리', '/containers/services', 'Grid'),
+      leaf('서비스 상태 진단', '/containers/services/health-diagnosis', 'Monitor'),
       {
-        title: '服务管理',
-        path: '/containers/services',
-        icon: 'Grid',
-        children: []
-      },
-      { title: '服务健康诊断', path: '/containers/services/health-diagnosis', icon: 'Monitor', children: [] },
-      {
-        title: 'Kubernetes 管理',
-        titleKey: 'k8sManagement',
-        path: '/containers/k8s',
-        icon: 'Connection',
+        title: 'Kubernetes 관리', titleKey: 'k8sManagement', path: '/containers/k8s', icon: 'Connection',
         children: [
-          { title: '集群管理', titleKey: 'k8sClusters', path: '/containers/k8s/clusters', icon: 'FolderOpened', children: [] },
-          { title: '集群概览', titleKey: 'k8sOverview', path: '/containers/k8s/overview', icon: 'DataAnalysis', children: [] },
-          { title: '节点管理', titleKey: 'k8sNodes', path: '/containers/k8s/nodes', icon: 'Monitor', children: [] },
-          { title: '命名空间', titleKey: 'k8sNamespaces', path: '/containers/k8s/namespaces', icon: 'Grid', children: [] },
-          { title: '工作负载', titleKey: 'k8sWorkloads', path: '/containers/k8s/workloads', icon: 'SetUp', children: [] },
-          { title: 'Pod 管理', titleKey: 'k8sPods', path: '/containers/k8s/pods', icon: 'Box', children: [] },
-          { title: '服务', titleKey: 'k8sServices', path: '/containers/k8s/services', icon: 'Share', children: [] },
-          { title: 'Ingress', titleKey: 'k8sIngresses', path: '/containers/k8s/ingresses', icon: 'Connection', children: [] },
-          { title: '高级网络', titleKey: 'k8sAdvancedNetwork', path: '/containers/k8s/advanced-network', icon: 'Connection', children: [] },
-          { title: '配置与存储', titleKey: 'k8sConfigStorage', path: '/containers/k8s/config-storage', icon: 'Files', children: [] }
+          leaf('클러스터 관리', '/containers/k8s/clusters', 'FolderOpened', 'k8sClusters'),
+          leaf('클러스터 개요', '/containers/k8s/overview', 'DataAnalysis', 'k8sOverview'),
+          leaf('Node 관리', '/containers/k8s/nodes', 'Monitor', 'k8sNodes'),
+          leaf('Namespace', '/containers/k8s/namespaces', 'Grid', 'k8sNamespaces'),
+          leaf('Workload', '/containers/k8s/workloads', 'SetUp', 'k8sWorkloads'),
+          leaf('Pod 관리', '/containers/k8s/pods', 'Box', 'k8sPods'),
+          leaf('Service', '/containers/k8s/services', 'Share', 'k8sServices'),
+          leaf('Ingress', '/containers/k8s/ingresses', 'Connection', 'k8sIngresses'),
+          leaf('고급 네트워크', '/containers/k8s/advanced-network', 'Connection', 'k8sAdvancedNetwork'),
+          leaf('Config & Storage', '/containers/k8s/config-storage', 'Files', 'k8sConfigStorage')
         ]
       }
     ]
   },
   {
     key: 'ops',
-    name: '标准运维',
+    name: '표준 운영',
     labelKey: 'appOps',
     icon: 'Operation',
     defaultRoute: '/ops/quick-exec/command',
     menus: [
+      leaf('스크립트 라이브러리', '/ops/scripts/library', 'Document', 'opsScriptLibrary'),
       {
-        title: '脚本库',
-        titleKey: 'opsScriptLibrary',
-        path: '/ops/scripts/library',
-        icon: 'Document',
-        children: []
-      },
-      {
-        title: '快速执行',
-        titleKey: 'opsQuickExecute',
-        path: '/ops/quick-exec',
-        icon: 'Timer',
+        title: '빠른 실행', titleKey: 'opsQuickExecute', path: '/ops/quick-exec', icon: 'Timer',
         children: [
-          {
-            title: '命令执行',
-            titleKey: 'opsCommandExecute',
-            path: '/ops/quick-exec/command',
-            icon: 'CaretRight',
-            children: []
-          },
-          {
-            title: '脚本执行',
-            titleKey: 'opsScriptExecute',
-            path: '/ops/quick-exec/script',
-            icon: 'EditPen',
-            children: []
-          },
-          {
-            title: '文件分发',
-            titleKey: 'opsFileDispatch',
-            path: '/ops/quick-exec/file-dispatch',
-            icon: 'Files',
-            children: []
-          },
-          {
-            title: '快速执行历史',
-            titleKey: 'opsExecutionHistory',
-            path: '/ops/quick-exec/history',
-            icon: 'DocumentCopy',
-            children: []
-          }
+          leaf('명령 실행', '/ops/quick-exec/command', 'CaretRight', 'opsCommandExecute'),
+          leaf('스크립트 실행', '/ops/quick-exec/script', 'EditPen', 'opsScriptExecute'),
+          leaf('파일 배포', '/ops/quick-exec/file-dispatch', 'Files', 'opsFileDispatch'),
+          leaf('빠른 실행 이력', '/ops/quick-exec/history', 'DocumentCopy', 'opsExecutionHistory')
         ]
       },
       {
-        title: '定时任务',
-        titleKey: 'opsSchedule',
-        path: '/ops/schedule',
-        icon: 'Clock',
+        title: '스케줄 작업', titleKey: 'opsSchedule', path: '/ops/schedule', icon: 'Clock',
         children: [
-          {
-            title: '任务列表',
-            titleKey: 'opsScheduleTasks',
-            path: '/ops/schedule/tasks',
-            icon: 'List',
-            children: []
-          },
-          {
-            title: '任务日志',
-            titleKey: 'opsScheduleLogs',
-            path: '/ops/schedule/logs',
-            icon: 'Document',
-            children: []
-          },
-          {
-            title: '任务模板',
-            titleKey: 'opsScheduleTemplates',
-            path: '/ops/schedule/templates',
-            icon: 'Tickets',
-            children: []
-          }
+          leaf('작업 목록', '/ops/schedule/tasks', 'List', 'opsScheduleTasks'),
+          leaf('작업 로그', '/ops/schedule/logs', 'Document', 'opsScheduleLogs'),
+          leaf('작업 템플릿', '/ops/schedule/templates', 'Tickets', 'opsScheduleTemplates')
         ]
       },
       {
-        title: '作业',
-        titleKey: 'opsJobs',
-        path: '/ops/jobs',
-        icon: 'Share',
+        title: 'Job', titleKey: 'opsJobs', path: '/ops/jobs', icon: 'Share',
         children: [
-          {
-            title: '作业编排',
-            titleKey: 'opsJobDesigner',
-            path: '/ops/jobs/designer',
-            icon: 'Grid',
-            children: []
-          },
-          {
-            title: '作业列表',
-            titleKey: 'opsJobList',
-            path: '/ops/jobs/list',
-            icon: 'List',
-            children: []
-          },
-          {
-            title: '人工确认',
-            titleKey: 'opsJobApprovals',
-            path: '/ops/jobs/approvals',
-            icon: 'Bell',
-            children: []
-          },
-          {
-            title: '作业历史',
-            titleKey: 'opsJobHistory',
-            path: '/ops/jobs/history',
-            icon: 'Document',
-            children: []
-          },
-          {
-            title: '作业模板',
-            titleKey: 'opsJobTemplates',
-            path: '/ops/jobs/templates',
-            icon: 'Tickets',
-            children: []
-          }
+          leaf('Job 오케스트레이션', '/ops/jobs/designer', 'Grid', 'opsJobDesigner'),
+          leaf('Job 목록', '/ops/jobs/list', 'List', 'opsJobList'),
+          leaf('수동 승인', '/ops/jobs/approvals', 'Bell', 'opsJobApprovals'),
+          leaf('Job 이력', '/ops/jobs/history', 'Document', 'opsJobHistory'),
+          leaf('Job 템플릿', '/ops/jobs/templates', 'Tickets', 'opsJobTemplates')
         ]
       }
     ]
   },
   {
     key: 'applications',
-    name: '应用中心',
+    name: '애플리케이션 센터',
     labelKey: 'appApplications',
     icon: 'Box',
     defaultRoute: '/applications/projects',
     menus: [
+      leaf('애플리케이션 관리', '/applications/projects', 'Tickets', 'appProjectList'),
       {
-        title: '应用管理',
-        titleKey: 'appProjectList',
-        path: '/applications/projects',
-        icon: 'Tickets',
-        children: []
-      },
-      {
-        title: '构建与部署',
-        titleKey: 'appBuildDeploy',
-        path: '/applications/build-tasks',
-        icon: 'SetUp',
+        title: 'Build & Deploy', titleKey: 'appBuildDeploy', path: '/applications/build-tasks', icon: 'SetUp',
         children: [
-          {
-            title: '构建任务',
-            titleKey: 'appBuildTasks',
-            path: '/applications/build-tasks',
-            icon: 'Operation',
-            children: []
-          },
-          {
-            title: '构建历史',
-            titleKey: 'appBuildHistory',
-            path: '/applications/build-history',
-            icon: 'Document',
-            children: []
-          },
+          leaf('Build 작업', '/applications/build-tasks', 'Operation', 'appBuildTasks'),
+          leaf('Build 이력', '/applications/build-history', 'Document', 'appBuildHistory')
         ]
       },
-      {
-        title: '镜像仓库',
-        path: '/applications/image-registries',
-        icon: 'Box',
-        children: []
-      },
-      {
-        title: 'CI/CD 流水线',
-        titleKey: 'appPipelines',
-        path: '/applications/pipelines',
-        icon: 'Share',
-        children: []
-      }
+      leaf('Image Registry', '/applications/image-registries', 'Box'),
+      leaf('CI/CD Pipeline', '/applications/pipelines', 'Share', 'appPipelines')
     ]
   },
   {
     key: 'notify',
-    name: '消息通知',
+    name: '알림',
     labelKey: 'appNotify',
     icon: 'Bell',
     defaultRoute: '/notify/rules',
     menus: [
-      {
-        title: '通知规则',
-        titleKey: 'notifyRules',
-        path: '/notify/rules',
-        icon: 'Operation',
-        children: []
-      },
-      {
-        title: '消息模板',
-        titleKey: 'notifyTemplates',
-        path: '/notify/templates',
-        icon: 'Document',
-        children: []
-      },
-      {
-        title: '通知媒介',
-        titleKey: 'notifyChannels',
-        path: '/notify/channels',
-        icon: 'Connection',
-        children: []
-      },
-      {
-        title: '发送日志',
-        titleKey: 'notifySendLogs',
-        path: '/notify/send-logs',
-        icon: 'Tickets',
-        children: []
-      }
+      leaf('알림 규칙', '/notify/rules', 'Operation', 'notifyRules'),
+      leaf('메시지 템플릿', '/notify/templates', 'Document', 'notifyTemplates'),
+      leaf('알림 채널', '/notify/channels', 'Connection', 'notifyChannels'),
+      leaf('전송 로그', '/notify/send-logs', 'Tickets', 'notifySendLogs')
     ]
   },
   {
     key: 'integration',
-    name: '集成中心',
+    name: '통합 센터',
     labelKey: 'appIntegration',
     icon: 'Grid',
     defaultRoute: '/integration/navigation',
     menus: [
+      leaf('Navigation 관리', '/integration/navigation', 'Grid', 'integrationNavigation'),
       {
-        title: '导航管理',
-        titleKey: 'integrationNavigation',
-        path: '/integration/navigation',
-        icon: 'Grid',
-        children: []
-      },
-      {
-        title: 'AI 助手',
-        titleKey: 'integrationAI',
-        path: '/integration/ai/chat',
-        icon: 'ChatLineRound',
+        title: 'AI Assistant', titleKey: 'integrationAI', path: '/integration/ai/chat', icon: 'ChatLineRound',
         children: [
-          { title: '智能对话', titleKey: 'integrationAIChat', path: '/integration/ai/chat', icon: 'ChatDotRound', children: [] },
-          { title: '会话管理', titleKey: 'integrationAIConversations', path: '/integration/ai/conversations', icon: 'Clock', children: [] },
-          { title: '模型管理', titleKey: 'integrationAIModels', path: '/integration/ai/models', icon: 'Cpu', children: [] },
-          { title: '知识库管理', titleKey: 'integrationAIKnowledgeBase', path: '/integration/ai/knowledge-base', icon: 'Document', children: [] },
-          { title: '工具集', titleKey: 'integrationAITools', path: '/integration/ai/tools', icon: 'Operation', children: [] }
+          leaf('AI 대화', '/integration/ai/chat', 'ChatDotRound', 'integrationAIChat'),
+          leaf('대화 세션 관리', '/integration/ai/conversations', 'Clock', 'integrationAIConversations'),
+          leaf('모델 관리', '/integration/ai/models', 'Cpu', 'integrationAIModels'),
+          leaf('Knowledge Base 관리', '/integration/ai/knowledge-base', 'Document', 'integrationAIKnowledgeBase'),
+          leaf('Toolset', '/integration/ai/tools', 'Operation', 'integrationAITools')
         ]
       },
       {
-        title: '云费用分析',
-        titleKey: 'integrationCloudCost',
-        path: '/integration/finops/dashboard',
-        icon: 'Coin',
+        title: '클라우드 비용 분석', titleKey: 'integrationCloudCost', path: '/integration/finops/dashboard', icon: 'Coin',
         children: [
-          { title: '费用看板', titleKey: 'integrationCostDashboard', path: '/integration/finops/dashboard', icon: 'DataAnalysis', children: [] },
-          { title: '云账号', titleKey: 'integrationCloudAccounts', path: '/integration/finops/accounts', icon: 'CreditCard', children: [] },
-          { title: '费用拆分', titleKey: 'integrationCostBreakdown', path: '/integration/finops/breakdown', icon: 'PieChart', children: [] },
-          { title: '优化建议', titleKey: 'integrationCostRecommendations', path: '/integration/finops/recommendations', icon: 'Opportunity', children: [] },
-          { title: '资源拆分', titleKey: 'integrationCostResources', path: '/integration/finops/resources', icon: 'Box', children: [] },
-          { title: '账单同步', titleKey: 'integrationCostSync', path: '/integration/finops/sync', icon: 'Refresh', children: [] }
+          leaf('비용 Dashboard', '/integration/finops/dashboard', 'DataAnalysis', 'integrationCostDashboard'),
+          leaf('클라우드 계정', '/integration/finops/accounts', 'CreditCard', 'integrationCloudAccounts'),
+          leaf('비용 Breakdown', '/integration/finops/breakdown', 'PieChart', 'integrationCostBreakdown'),
+          leaf('최적화 권고', '/integration/finops/recommendations', 'Opportunity', 'integrationCostRecommendations'),
+          leaf('리소스 Breakdown', '/integration/finops/resources', 'Box', 'integrationCostResources'),
+          leaf('청구 데이터 동기화', '/integration/finops/sync', 'Refresh', 'integrationCostSync')
         ]
       }
     ]
   },
   {
     key: 'monitor',
-    name: '监控中心',
+    name: '모니터링 센터',
     labelKey: 'appMonitor',
     icon: 'Histogram',
     defaultRoute: '/monitor/overview',
     menus: [
+      leaf('모니터링 개요', '/monitor/overview', 'TrendCharts', 'monitorOverview'),
+      leaf('통합 관제 Dashboard', '/monitor/command-center', 'DataBoard'),
+      leaf('Datasource 관리', '/monitor/datasources', 'Connection', 'monitorDatasources'),
+      leaf('즉시 Query', '/monitor/query', 'Search', 'monitorQuery'),
+      leaf('로그 Query', '/monitor/logs', 'Document', 'monitorLogs'),
+      leaf('Trace', '/monitor/traces', 'Share', 'monitorTraces'),
       {
-        title: '监控概览',
-        titleKey: 'monitorOverview',
-        path: '/monitor/overview',
-        icon: 'TrendCharts',
-        children: []
-      },
-      {
-        title: '智能大屏',
-        path: '/monitor/command-center',
-        icon: 'DataBoard',
-        children: []
-      },
-      {
-        title: '数据源管理',
-        titleKey: 'monitorDatasources',
-        path: '/monitor/datasources',
-        icon: 'Connection',
-        children: []
-      },
-      {
-        title: '即时查询',
-        titleKey: 'monitorQuery',
-        path: '/monitor/query',
-        icon: 'Search',
-        children: []
-      },
-      {
-        title: '日志查询',
-        titleKey: 'monitorLogs',
-        path: '/monitor/logs',
-        icon: 'Document',
-        children: []
-      },
-      {
-        title: '链路追踪',
-        titleKey: 'monitorTraces',
-        path: '/monitor/traces',
-        icon: 'Share',
-        children: []
-      },
-      {
-        title: '告警管理',
-        path: '/monitor/alert-management',
-        icon: 'Bell',
+        title: 'Alert 관리', path: '/monitor/alert-management', icon: 'Bell',
         children: [
-          { title: '告警模板', path: '/monitor/alert-templates', icon: 'CollectionTag', children: [] },
-          { title: '告警规则', titleKey: 'monitorAlertRules', path: '/monitor/alert-rules', icon: 'Bell', children: [] },
-          { title: '告警事件', titleKey: 'monitorAlertEvents', path: '/monitor/alert-events', icon: 'Warning', children: [] },
-          { title: '告警屏蔽', titleKey: 'monitorSilences', path: '/monitor/silences', icon: 'MuteNotification', children: [] },
-          { title: '聚合收敛', titleKey: 'monitorAggregations', path: '/monitor/aggregations', icon: 'Filter', children: [] }
+          leaf('Alert 템플릿', '/monitor/alert-templates', 'CollectionTag'),
+          leaf('Alert 규칙', '/monitor/alert-rules', 'Bell', 'monitorAlertRules'),
+          leaf('Alert 이벤트', '/monitor/alert-events', 'Warning', 'monitorAlertEvents'),
+          leaf('Silence', '/monitor/silences', 'MuteNotification', 'monitorSilences'),
+          leaf('Alert 집계', '/monitor/aggregations', 'Filter', 'monitorAggregations')
         ]
       },
-      {
-        title: '监控大屏',
-        titleKey: 'monitorDashboards',
-        path: '/monitor/dashboards',
-        icon: 'PieChart',
-        children: []
-      },
-      {
-        title: '巡检大屏',
-        titleKey: 'monitorInspections',
-        path: '/monitor/inspections',
-        icon: 'Tickets',
-        children: []
-      }
+      leaf('모니터링 Dashboard', '/monitor/dashboards', 'PieChart', 'monitorDashboards'),
+      leaf('점검 Dashboard', '/monitor/inspections', 'Tickets', 'monitorInspections')
     ]
   },
   {
     key: 'domains',
-    name: '域名管理',
+    name: '도메인 관리',
     labelKey: 'appDomains',
     icon: 'Connection',
     defaultRoute: '/domains/public',
     menus: [
       {
-        title: '公网域名',
-        path: '/domains/public',
-        icon: 'Position',
+        title: 'Public DNS', path: '/domains/public', icon: 'Position',
         children: [
-          { title: '域名列表', path: '/domains/public', icon: 'List', children: [] },
-          { title: 'DNS 账号', path: '/domains/public/accounts', icon: 'Key', children: [] },
-          { title: 'SSL 证书', path: '/domains/public/certificates', icon: 'Lock', children: [] }
+          leaf('도메인 목록', '/domains/public', 'List'),
+          leaf('DNS 계정', '/domains/public/accounts', 'Key'),
+          leaf('SSL 인증서', '/domains/public/certificates', 'Lock')
         ]
       },
       {
-        title: '内网域名',
-        path: '/domains/internal',
-        icon: 'OfficeBuilding',
+        title: 'Private DNS', path: '/domains/internal', icon: 'OfficeBuilding',
         children: [
-          { title: 'Zone 管理', path: '/domains/internal', icon: 'Collection', children: [] },
-          { title: 'DNS 设置', path: '/domains/internal/settings', icon: 'Setting', children: [] }
+          leaf('Zone 관리', '/domains/internal', 'Collection'),
+          leaf('DNS 설정', '/domains/internal/settings', 'Setting')
         ]
       },
       {
-        title: '诊断与审计',
-        path: '/domains/query-test',
-        icon: 'DataAnalysis',
+        title: '진단 및 Audit', path: '/domains/query-test', icon: 'DataAnalysis',
         children: [
-          { title: '解析测试', path: '/domains/query-test', icon: 'Search', children: [] },
-          { title: '操作审计', path: '/domains/audit', icon: 'Memo', children: [] }
+          leaf('DNS 조회 테스트', '/domains/query-test', 'Search'),
+          leaf('작업 Audit', '/domains/audit', 'Memo')
         ]
       }
     ]
@@ -526,30 +233,14 @@ export function getAppByKey(key) {
 }
 
 export function getAppByRoute(path) {
-  if (path.startsWith('/assets')) {
-    return getAppByKey('assets')
-  }
-  if (path.startsWith('/containers')) {
-    return getAppByKey('containers')
-  }
-  if (path.startsWith('/ops')) {
-    return getAppByKey('ops')
-  }
-  if (path.startsWith('/applications')) {
-    return getAppByKey('applications')
-  }
-  if (path.startsWith('/notify')) {
-    return getAppByKey('notify')
-  }
-  if (path.startsWith('/monitor')) {
-    return getAppByKey('monitor')
-  }
-  if (path.startsWith('/integration')) {
-    return getAppByKey('integration')
-  }
-  if (path.startsWith('/domains')) {
-    return getAppByKey('domains')
-  }
+  if (path.startsWith('/assets')) return getAppByKey('assets')
+  if (path.startsWith('/containers')) return getAppByKey('containers')
+  if (path.startsWith('/ops')) return getAppByKey('ops')
+  if (path.startsWith('/applications')) return getAppByKey('applications')
+  if (path.startsWith('/notify')) return getAppByKey('notify')
+  if (path.startsWith('/monitor')) return getAppByKey('monitor')
+  if (path.startsWith('/integration')) return getAppByKey('integration')
+  if (path.startsWith('/domains')) return getAppByKey('domains')
   return getAppByKey('console')
 }
 
@@ -560,4 +251,3 @@ export function setCurrentApp(key) {
 export function getCurrentApp() {
   return localStorage.getItem(APP_KEY) || 'console'
 }
-
