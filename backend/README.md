@@ -1,29 +1,29 @@
-# Ops Admin 后端
+# Ops Admin Backend
 
-Ops Admin 后端基于 Go、Gin、GORM 和 MySQL，向 Web 控制台提供 `/api/v1` REST API，并承载资产、可观测性、自动化、AI 助手和云费用（FinOps）能力。
+Ops Admin Backend는 Go, Gin, GORM, MySQL 기반으로 Web Console에 `/api/v1` REST API를 제공하며 자산 관리, Observability, Automation, AI Assistant, 클라우드 비용(FinOps) 기능을 담당합니다.
 
-## 目录与职责
+## 디렉터리 및 역할
 
-| 目录 | 职责 |
+| 디렉터리 | 역할 |
 | --- | --- |
-| `router/` | 路由注册、鉴权中间件与 API 分组 |
-| `controller/` | 请求参数校验和 HTTP 响应 |
-| `service/` | 业务编排、领域规则与外部系统访问 |
-| `model/` | GORM 实体与数据结构 |
-| `store/` | MySQL 初始化、迁移与种子数据 |
-| `config/` | 配置加载 |
+| `router/` | Route 등록, 인증 Middleware, API Group 구성 |
+| `controller/` | Request Parameter 검증 및 HTTP Response 처리 |
+| `service/` | 비즈니스 오케스트레이션, Domain Rule, 외부 시스템 연동 |
+| `model/` | GORM Entity 및 데이터 구조 |
+| `store/` | MySQL 초기화, Migration, Seed Data |
+| `config/` | 설정 로딩 |
 
-入口为 `main.go`：加载 `config.yaml`、连接 MySQL、执行迁移与种子数据，再创建 Gin 路由。
+진입점은 `main.go`입니다. `config.yaml`을 로드하고 MySQL에 연결한 뒤 Migration과 Seed Data를 적용하고 Gin Route를 생성합니다.
 
-## 环境要求
+## 실행 환경
 
 - Go 1.24+
-- MySQL 8.0+（或兼容的 MySQL 实例）
-- 前端开发时使用 Node.js 18+
+- MySQL 8.0+ 또는 호환 MySQL 인스턴스
+- Frontend 개발 시 Node.js 18+
 
-## 配置
+## 설정
 
-复制并按环境修改 `config.yaml`。至少需要配置应用端口和 MySQL 连接信息：
+환경에 맞게 `config.yaml`을 수정하십시오. 최소한 애플리케이션 Port와 MySQL 연결 정보가 필요합니다.
 
 ```yaml
 app:
@@ -40,24 +40,24 @@ db:
   log-mode: false
 ```
 
-`config.yaml` 可能包含本地开发凭据；不要将真实生产密码、云密钥或模型密钥提交到仓库。生产环境应使用受控的配置注入和最小权限数据库账号。
+`config.yaml`에는 로컬 개발 Credential이 포함될 수 있습니다. 실제 운영 Password, Cloud Access Key, Model API Key를 저장소에 Commit하지 마십시오. 운영 환경에서는 통제된 방식으로 설정을 주입하고 최소 권한 DB 계정을 사용해야 합니다.
 
-生产环境必须通过 `OPS_ADMIN_JWT_SECRET` 环境变量注入随机 JWT 签名密钥。登录会话采用 60 分钟 Access Token、连续 6 小时无操作超时和 7 天最长周期；前端会在 Access Token 到期前 5 分钟静默刷新。
+운영 환경에서는 `OPS_ADMIN_JWT_SECRET` 환경 변수로 충분히 긴 Random JWT Signing Key를 주입해야 합니다. 로그인 Session은 60분 Access Token, 연속 6시간 비활성 Timeout, 최대 7일 Lifetime을 사용하며 Frontend는 Access Token 만료 5분 전에 Silent Refresh를 수행합니다.
 
-域名管理使用 `config.yaml` 中的 `security.credential-key` 对公网 DNS 凭据和 SSL Private Key 进行 AES-GCM 加密；生产环境必须设置至少 32 字节的稳定独立随机密钥。内网 DNS 默认关闭。Linux 上监听 53 端口时不要让整个平台以 root 运行，可为二进制授予最小能力：
+도메인 관리는 `config.yaml`의 `security.credential-key`를 사용해 Public DNS Credential과 SSL Private Key를 AES-GCM으로 암호화합니다. 운영 환경에서는 최소 32byte의 안정적이고 독립적인 Random Key를 사용하십시오. Private DNS 기능은 기본적으로 비활성화되어 있습니다. Linux에서 Port 53을 Listen해야 할 경우 플랫폼 전체를 root로 실행하지 말고 Binary에 최소 Capability만 부여하는 방식을 권장합니다.
 
 ```bash
 setcap 'cap_net_bind_service=+ep' /path/to/ops-admin
 ```
 
-systemd 也可以使用：
+systemd에서는 다음과 같이 설정할 수 있습니다.
 
 ```ini
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ```
 
-## 本地开发
+## 로컬 개발
 
 ```powershell
 cd backend
@@ -65,59 +65,59 @@ go mod download
 go run .
 ```
 
-默认监听 `http://127.0.0.1:8082`。启动会自动执行数据库迁移及必要的种子数据初始化。
+기본 Listen 주소는 `http://127.0.0.1:8082`입니다. 시작 시 Database Migration과 필요한 Seed Data 초기화를 자동으로 수행합니다.
 
-验证：
+검증:
 
 ```powershell
 cd backend
 go test ./...
 ```
 
-## 关键模块
+## 주요 모듈
 
-### 资产与可观测性
+### 자산 및 Observability
 
-- 主机、数据库、Kubernetes、凭据和网关等资产由 CMDB 模型统一维护。
-- 主机 CPU、内存、磁盘使用率从已配置的 Prometheus 或 VictoriaMetrics 查询 node_exporter 指标；没有匹配到监控目标时会明确返回不可用状态，而非伪造数值。
-- 监控、日志和告警访问由服务层统一封装，前端不直接访问数据源。
+- Host, Database, Kubernetes, Credential, Gateway 자산은 CMDB 모델에서 통합 관리합니다.
+- Host CPU, Memory, Disk 사용률은 설정된 Prometheus 또는 VictoriaMetrics에서 node_exporter Metric을 조회합니다. 일치하는 Monitoring Target이 없으면 임의 값을 생성하지 않고 명확하게 사용 불가 상태를 반환합니다.
+- Monitoring, Log, Alert 데이터 접근은 Service Layer에서 통합 처리하며 Frontend가 Data Source에 직접 접근하지 않습니다.
 
-### AI 助手
+### AI Assistant
 
-- 模型、会话、工具配置和工具执行记录持久化在本地数据库。
-- 只读工具可自动执行；会造成外部状态变更的工具必须进入待确认状态，只有人工确认后才执行。
-- 兼容 OpenAI 原生工具调用和部分模型返回的 DSML 工具标记。单次会话最多进行 3 轮工具调用，避免无界循环。
+- Model, Conversation, Tool 설정 및 Tool 실행 이력은 로컬 Database에 저장합니다.
+- Read-only Tool은 자동 실행할 수 있지만 외부 상태를 변경하는 Tool은 반드시 Confirm Pending 상태를 거쳐 사용자 승인 후 실행합니다.
+- OpenAI Native Tool Calling과 일부 Model이 반환하는 DSML Tool Marker를 지원합니다. 무한 Loop를 방지하기 위해 한 Conversation에서 최대 3회의 Tool Calling Round를 허용합니다.
 
-### 云费用 FinOps
+### 클라우드 비용 FinOps
 
-FinOps 的边界必须保持清晰：
+FinOps의 데이터 경계는 명확하게 유지해야 합니다.
 
-1. **云账号测试和账单同步**是唯一允许调用云厂商账单 API 的后端路径。
-2. 同步按自然月逐月执行。未传范围时为含当前月的最近 6 个自然月；单月失败不会阻断其他月份。
-3. 同一账号、同一账单记录通过幂等写入（upsert）更新，不重复累计。
-4. 费用看板、费用拆分、资源拆分、优化建议和 AI 云费用工具都只查询本地已同步账单数据，绝不触发云侧拉取或同步。
-5. 当前月允许为不完整账单；阿里云月度实例账单的日维度展示为本地日均摊估算，页面与接口需保留该口径说明。
+1. **Cloud Account 연결 테스트와 Billing Sync**만 Cloud Provider Billing API를 호출할 수 있습니다.
+2. 동기화는 Calendar Month 단위로 수행합니다. 범위를 지정하지 않으면 현재 월을 포함한 최근 6개월을 대상으로 하며, 한 달의 동기화 실패가 다른 월의 처리를 중단시키지 않습니다.
+3. 동일 Account의 동일 Billing Record는 idempotent upsert로 갱신하며 중복 합산하지 않습니다.
+4. Cost Dashboard, Cost Breakdown, Resource Breakdown, Optimization Recommendation, AI Cloud Cost Tool은 모두 로컬에 동기화된 Billing Data만 조회하며 Cloud Provider에서 실시간으로 데이터를 가져오지 않습니다.
+5. 현재 월 Billing은 불완전할 수 있습니다. Alibaba Cloud 월간 Instance Billing의 일 단위 표시는 로컬 일평균 배분 추정치이며 UI와 API에서 해당 산정 기준을 명시해야 합니다.
 
-主要接口位于 `/api/v1/integration/finops/*`：
+주요 API는 `/api/v1/integration/finops/*`에 있습니다.
 
-| 类别 | 说明 |
+| 분류 | 설명 |
 | --- | --- |
-| `account/*` | 云账号管理、连接测试 |
-| `sync/trigger`、`sync/logs` | 按月同步与同步历史 |
-| `dashboard`、`breakdown`、`resource/list` | 本地账单的聚合查询 |
-| `recommendation/*` | 默认或 AI 策略生成、查看、更新和删除建议 |
-| `cost/import` | 导入标准 JSON 账单 |
+| `account/*` | Cloud Account 관리 및 연결 테스트 |
+| `sync/trigger`, `sync/logs` | 월 단위 Billing Sync 및 Sync History |
+| `dashboard`, `breakdown`, `resource/list` | 로컬 Billing Data Aggregation Query |
+| `recommendation/*` | 기본 또는 AI 전략 기반 Recommendation 생성, 조회, 수정, 삭제 |
+| `cost/import` | 표준 JSON Billing Import |
 
-AI 工具 `finops_cost_analysis` 只读取已同步费用记录；可按账号、月份、服务、地域和资源维度聚合，不能用它读取云厂商实时账单。
+AI Tool `finops_cost_analysis`는 동기화된 Cost Record만 읽습니다. Account, Month, Service, Region, Resource 기준 Aggregation은 가능하지만 Cloud Provider의 실시간 Billing 조회 용도로 사용해서는 안 됩니다.
 
-## 变更约定
+## 변경 원칙
 
-- Controller 负责校验和协议转换，业务规则放入 `service/`，不要把云厂商调用散落在 Controller 或 AI 工具中。
-- 涉及账单金额的改动要同时校验：记录数、金额、账期、币种以及“当前月是否不完整”的标识。
-- 新增 AI 工具时必须声明权限、参数模式、是否需要确认和数据来源；涉及云费用时默认只允许本地数据库查询。
+- Controller는 Validation과 Protocol Conversion을 담당하고 비즈니스 Rule은 `service/`에 둡니다. Cloud Provider 호출을 Controller나 AI Tool에 분산시키지 마십시오.
+- Billing Amount 관련 변경은 Record Count, Amount, Billing Period, Currency, 현재 월 데이터의 불완전 여부를 함께 검증해야 합니다.
+- AI Tool 추가 시 Permission, Parameter Schema, Confirm 필요 여부, Data Source를 명확히 선언해야 합니다. Cloud Cost 관련 Tool은 기본적으로 로컬 Database 조회만 허용합니다.
 
-## 相关文档
+## 관련 문서
 
-- [架构文档索引](../docs/architecture/README.md)
-- [FinOps 与 AI 数据流](../docs/architecture/finops-ai-data-flow.md)
-- [FinOps 优化方案](../docs/FINOPS_OPTIMIZATION_PLAN.md)
+- [아키텍처 문서 인덱스](../docs/architecture/README.md)
+- [FinOps 및 AI 데이터 흐름](../docs/architecture/finops-ai-data-flow.md)
+- [FinOps 최적화 방안](../docs/FINOPS_OPTIMIZATION_PLAN.md)
