@@ -1,0 +1,4 @@
+# Ops Admin is positioned as a Go-first operations platform. The Vue code is
+# its bundled web console and remains part of the repository and build, but it
+# is excluded from GitHub Linguist's language-distribution calculation.
+web/** linguist-detectable=false
