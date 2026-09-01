@@ -14,7 +14,7 @@ import {
   setUser
 } from '../utils/auth'
 import { appDefinitions, getAppByRoute, setCurrentApp } from '../utils/apps'
-import { locale, setLocale, t, translateRoute } from '../utils/i18n'
+import { t, translateRoute } from '../utils/i18n'
 import { applySystemTheme, getSystemConfig, resolveSystemAsset, setSystemConfig } from '../utils/system-config'
 
 const route = useRoute()
@@ -38,7 +38,6 @@ const tagContextMenu = ref({
   tag: null
 })
 
-const currentLocale = computed(() => locale.value)
 const activePath = computed(() => route.path)
 const siteName = computed(() => layoutConfig.value.siteName || 'Ops Admin')
 const sidebarTheme = computed(() => layoutConfig.value.sidebarTheme || 'dark')
@@ -182,8 +181,8 @@ function releaseTagResources(tag) {
 
 function normalizeBackendMenus(raw) {
   const menuList = (raw || [])
-    // 控制台只应使用属于控制台的后端菜单。后端菜单中也包含各应用的
-    // 容器/资产等分支；只排除应用根路径会遗漏 /containers/k8s 这类子路径。
+    // 콘솔에는 콘솔 소속 백엔드 메뉴만 노출한다. 백엔드 메뉴에는 자산/컨테이너 등
+    // 다른 앱 분기도 포함되므로 앱 루트뿐 아니라 하위 경로까지 앱 기준으로 필터링한다.
     .filter((item) => !isAppEntryMenu(item) && isConsoleMenuPath(item.url || item.path))
     .map((item) => ({
       title: item.menuName,
@@ -198,7 +197,7 @@ function normalizeBackendMenus(raw) {
           children: []
         }))
     }))
-    // 没有控制台路由、也没有保留下级菜单的应用分组不应显示为空菜单项。
+    // 콘솔 경로도 없고 남은 하위 메뉴도 없는 앱 그룹은 빈 메뉴로 표시하지 않는다.
     .filter((item) => item.path || item.children.length)
 
   if (!menuList.some((item) => item.path === '/dashboard')) {
@@ -216,7 +215,7 @@ function normalizeBackendMenus(raw) {
 function isAppEntryMenu(item) {
   const name = item.menuName || item.title || ''
   const path = item.url || item.path || ''
-  return name === '控制台' || name === 'Console' || path === '/console'
+  return name === '콘솔' || name === 'Console' || path === '/console'
 }
 
 function normalizeStaticMenus(raw) {
@@ -324,12 +323,12 @@ function ensureTag(path, title, fullPath = path) {
   if (!path || path === '/login') {
     return
   }
-  const translated = translateRoute(path, title || '未命名页面')
+  const translated = translateRoute(path, title || '미지정 페이지')
   const found = tagViews.value.find((item) => item.path === path)
   if (found) {
     found.title = translated
-    // 标签按路由路径去重，但必须保留最后一次打开时的查询参数。
-    // 否则像服务资源拓扑这类依赖 serviceId 的页面在切换标签后会丢失上下文。
+    // 탭은 라우트 경로 기준으로 중복 제거하되 마지막으로 연 query parameter는 유지한다.
+    // serviceId처럼 query context에 의존하는 페이지가 탭 전환 후 문맥을 잃지 않게 하기 위함이다.
     found.fullPath = fullPath || path
     saveTags()
     return
@@ -461,15 +460,6 @@ function openProfile() {
   router.push('/profile')
 }
 
-function switchLocale(value) {
-  setLocale(value)
-  tagViews.value = tagViews.value.map((item) => ({
-    ...item,
-    title: translateRoute(item.path, item.title)
-  }))
-  saveTags()
-}
-
 function switchApp(key) {
   const targetApp = appDefinitions.find((item) => item.key === key) || appDefinitions[0]
   setCurrentApp(targetApp.key)
@@ -516,17 +506,6 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () => locale.value,
-  () => {
-    tagViews.value = tagViews.value.map((item) => ({
-      ...item,
-      title: translateRoute(item.path, item.title)
-    }))
-    saveTags()
-  }
-)
-
 onMounted(() => {
   applySystemTheme(layoutConfig.value)
   syncProfile()
@@ -545,13 +524,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <div v-else class="brand-mark">{{ currentLogoText() }}</div>
           <div v-if="!collapsed" class="brand-text">
             <strong>{{ siteName }}</strong>
-            <span>{{ layoutConfig.siteSlogan || '个人运维管理平台' }}</span>
+            <span>{{ layoutConfig.siteSlogan || '개인 운영 관리 플랫폼' }}</span>
           </div>
           <el-popover v-model:visible="appNavigationVisible" placement="bottom-start" :width="820" trigger="click" popper-class="platform-nav-popper">
             <template #reference>
               <button type="button" class="platform-nav-trigger" :aria-label="t('appSwitch')" :title="t('appSwitch')">
                 <el-icon><Grid /></el-icon>
-                <span>平台导航</span>
+                <span>플랫폼 탐색</span>
                 <el-icon class="platform-nav-arrow"><ArrowDown /></el-icon>
               </button>
             </template>
@@ -559,9 +538,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
               <div class="platform-navigation-head">
                 <div>
                   <span>PLATFORM NAVIGATION</span>
-                  <strong>应用平台导航</strong>
+                  <strong>애플리케이션 플랫폼</strong>
                 </div>
-                <small>选择一个应用，切换对应的工作台与菜单</small>
+                <small>애플리케이션을 선택해 워크스페이스와 메뉴를 전환합니다.</small>
               </div>
               <div class="platform-navigation-grid">
                 <button
@@ -576,7 +555,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
                   <span class="platform-app-icon"><el-icon><component :is="app.icon || House" /></el-icon></span>
                   <span class="platform-app-copy">
                     <strong>{{ t(app.labelKey || 'appConsole') }}</strong>
-                    <small>{{ app.menuCount }} 个菜单入口</small>
+                    <small>메뉴 {{ app.menuCount }}개</small>
                   </span>
                   <el-icon v-if="app.key === currentApp.key" class="platform-app-check"><Check /></el-icon>
                 </button>
@@ -645,31 +624,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <div class="header-right">
             <el-button class="command-trigger" @click="openCommandPalette">
               <el-icon><Search /></el-icon>
-              <span>全局搜索</span>
+              <span>전체 검색</span>
               <kbd>⌘K</kbd>
             </el-button>
-            <el-dropdown trigger="click" @command="switchLocale">
-              <div class="locale-box">
-                <span>{{ currentLocale === 'zh-CN' ? 'CN' : 'EN' }}</span>
-                <el-icon><ArrowDown /></el-icon>
-              </div>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="zh-CN">
-                    <div class="locale-item">
-                      <span>CN</span>
-                      <el-icon v-if="currentLocale === 'zh-CN'"><Check /></el-icon>
-                    </div>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="en-US">
-                    <div class="locale-item">
-                      <span>EN</span>
-                      <el-icon v-if="currentLocale === 'en-US'"><Check /></el-icon>
-                    </div>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
 
             <el-dropdown>
               <div class="user-box">
@@ -732,7 +689,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           </span>
           <span class="app-drawer-text">
             <strong>{{ t(app.labelKey || 'appConsole') }}</strong>
-            <small>{{ app.key === currentApp.key ? '当前应用' : '切换进入' }}</small>
+            <small>{{ app.key === currentApp.key ? '현재 애플리케이션' : '전환' }}</small>
           </span>
           <el-icon v-if="app.key === currentApp.key" class="app-drawer-check"><Check /></el-icon>
         </button>
@@ -745,9 +702,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
         :style="{ left: `${tagContextMenu.x}px`, top: `${tagContextMenu.y}px` }"
         @click.stop
       >
-        <button type="button" @click="closeLeftTags">关闭左侧标签页</button>
-        <button type="button" @click="closeRightTags">关闭右侧标签页</button>
-        <button type="button" @click="closeOtherTags">关闭其他标签页</button>
+        <button type="button" @click="closeLeftTags">왼쪽 탭 닫기</button>
+        <button type="button" @click="closeRightTags">오른쪽 탭 닫기</button>
+        <button type="button" @click="closeOtherTags">다른 탭 닫기</button>
       </div>
     </div>
 
@@ -756,12 +713,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
         <div class="command-palette-head">
           <div>
             <span>GLOBAL COMMAND</span>
-            <strong>快速跳转与检索</strong>
+            <strong>빠른 이동 및 검색</strong>
           </div>
           <kbd>ESC</kbd>
         </div>
       </template>
-      <el-input v-model="commandKeyword" autofocus placeholder="搜索全部应用的页面、模块或路径" clearable>
+      <el-input v-model="commandKeyword" autofocus placeholder="전체 애플리케이션의 페이지, 모듈 또는 경로 검색" clearable>
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <div class="command-result-list">
@@ -770,7 +727,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <span><b>{{ item.title }}</b><small>{{ [item.appLabel, item.parentTitle].filter(Boolean).join(' / ') }} · {{ item.path }}</small></span>
           <em>Enter</em>
         </button>
-        <el-empty v-if="!commandItems.length" description="未找到匹配的页面或操作" :image-size="48" />
+        <el-empty v-if="!commandItems.length" description="일치하는 페이지 또는 작업이 없습니다." :image-size="48" />
       </div>
     </el-dialog>
   </el-container>
