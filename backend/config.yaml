@@ -12,8 +12,8 @@ db:
   log-mode: false
 
 security:
-  # 用于加密 DNS 云账号凭据和 SSL Private Key。首次设置后禁止随意更换。
-  # 生产环境请替换为至少 32 字节的随机字符串，并限制本文件的读取权限。
+  # Used to encrypt DNS cloud-account credentials and SSL private keys. Do not rotate casually after initial setup.
+  # In production, replace this with a random string of at least 32 bytes and restrict read access to this file.
   credential-key: "ItJXS4UKHMKuus/l3b905oZ6ndxk4+7KBiVCwOU+/JM="
 
 ssl:
