@@ -22,7 +22,7 @@ func (ctl *Controller) GetIntegrationNavigationGroupList(c *gin.Context) {
 func (ctl *Controller) SaveIntegrationNavigationGroup(c *gin.Context) {
 	var payload service.IntegrationNavigationGroupPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的导航组参数")
+		httpx.Failed(c, 400, "Invalid navigation group payload")
 		return
 	}
 	data, err := ctl.service.SaveIntegrationNavigationGroup(payload)
@@ -36,7 +36,7 @@ func (ctl *Controller) SaveIntegrationNavigationGroup(c *gin.Context) {
 func (ctl *Controller) DeleteIntegrationNavigationGroup(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的删除参数")
+		httpx.Failed(c, 400, "Invalid delete payload")
 		return
 	}
 	if err := ctl.service.DeleteIntegrationNavigationGroup(payload.ID); err != nil {
@@ -49,7 +49,7 @@ func (ctl *Controller) DeleteIntegrationNavigationGroup(c *gin.Context) {
 func (ctl *Controller) RegenerateIntegrationPublicToken(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的导航组参数")
+		httpx.Failed(c, 400, "Invalid navigation group payload")
 		return
 	}
 	data, err := ctl.service.RegenerateIntegrationPublicToken(payload.ID)
@@ -73,7 +73,7 @@ func (ctl *Controller) GetIntegrationNavigationList(c *gin.Context) {
 func (ctl *Controller) SaveIntegrationNavigation(c *gin.Context) {
 	var payload service.IntegrationNavigationPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的导航参数")
+		httpx.Failed(c, 400, "Invalid navigation payload")
 		return
 	}
 	data, err := ctl.service.SaveIntegrationNavigation(payload)
@@ -87,7 +87,7 @@ func (ctl *Controller) SaveIntegrationNavigation(c *gin.Context) {
 func (ctl *Controller) DeleteIntegrationNavigation(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的删除参数")
+		httpx.Failed(c, 400, "Invalid delete payload")
 		return
 	}
 	if err := ctl.service.DeleteIntegrationNavigation(payload.ID); err != nil {
@@ -100,7 +100,7 @@ func (ctl *Controller) DeleteIntegrationNavigation(c *gin.Context) {
 func (ctl *Controller) GetPublicIntegrationNavigation(c *gin.Context) {
 	data, err := ctl.service.GetPublicIntegrationNavigation(c.Param("token"))
 	if err != nil {
-		httpx.Failed(c, http.StatusNotFound, "公开导航不存在或已关闭")
+		httpx.Failed(c, http.StatusNotFound, "Public navigation does not exist or is disabled")
 		return
 	}
 	httpx.Success(c, data)
