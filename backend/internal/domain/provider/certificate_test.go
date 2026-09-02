@@ -34,7 +34,7 @@ func TestTencentCertificateProviderListsCloudCertificates(t *testing.T) {
 			t.Fatalf("unexpected action: %s", request.Header.Get("X-TC-Action"))
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"Response":{"TotalCount":1,"Certificates":[{"CertificateId":"tx-101","Alias":"wildcard-example","Domain":"*.example.com","CertSANs":["*.example.com","example.com"],"ProductZhName":"Test CA","CertBeginTime":"2026-01-01 00:00:00","CertEndTime":"2027-01-01 00:00:00","Status":1,"StatusMsg":"正常"}]}}`)
+		fmt.Fprint(writer, `{"Response":{"TotalCount":1,"Certificates":[{"CertificateId":"tx-101","Alias":"wildcard-example","Domain":"*.example.com","CertSANs":["*.example.com","example.com"],"ProductZhName":"Test CA","CertBeginTime":"2026-01-01 00:00:00","CertEndTime":"2027-01-01 00:00:00","Status":1,"StatusMsg":"\u6b63\u5e38"}]}}`)
 	}))
 	defer server.Close()
 
