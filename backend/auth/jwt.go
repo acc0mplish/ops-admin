@@ -79,10 +79,10 @@ func HashOpaqueToken(token string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// TokenErrorMessage returns a user-facing message without exposing JWT details.
+// TokenErrorMessage returns a user-facing canonical English message without exposing JWT details.
 func TokenErrorMessage(err error) string {
 	if errors.Is(err, jwt.ErrTokenExpired) {
-		return "登录已过期，请重新登录"
+		return "Login expired; please sign in again"
 	}
-	return "登录凭证无效，请重新登录"
+	return "Invalid login credential; please sign in again"
 }
