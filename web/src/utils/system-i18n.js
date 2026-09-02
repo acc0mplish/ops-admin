@@ -9,10 +9,10 @@ const ko = {
   ldapFilter: '사용자명으로 LDAP 사용자 필터링', ldapQuery: 'LDAP 조회', username: '사용자명', syncSelected: '선택 사용자 동기화 ({count})',
   userUpdated: '사용자 정보를 업데이트했습니다.', userCreated: '사용자를 생성했습니다.', deleteUserConfirm: '사용자 {name}을(를) 삭제하시겠습니까?', deleteConfirm: '삭제 확인', userDeleted: '사용자를 삭제했습니다.',
   userStatusUpdated: '사용자 상태를 변경했습니다.', passwordResetDefault: '비밀번호를 123456으로 초기화했습니다.', ldapSelectRequired: '동기화할 LDAP 사용자를 하나 이상 선택하십시오.', ldapSyncResult: 'LDAP 동기화 완료: 신규 {created}명, 업데이트 {updated}명',
-  departmentManagement: '부서 관리', addDepartment: '부서 추가', editDepartment: '부서 수정', departmentName: '부서명', parentDepartment: '상위 부서', rootDepartment: '최상위 부서',
+  departmentManagement: '부서 관리', addDepartment: '부서 추가', editDepartment: '부서 수정', departmentName: '부서명', departmentType: '부서 유형', parentDepartment: '상위 부서', rootDepartment: '최상위 부서', company: '회사', center: '센터',
   positionManagement: '직무 관리', addPosition: '직무 추가', editPosition: '직무 수정', positionCode: '직무 코드', positionName: '직무명', remark: '설명',
   roleManagement: 'Role 관리', addRole: 'Role 추가', editRole: 'Role 수정', roleName: 'Role 이름', roleKey: 'Role Key', description: '설명', assignPermissions: '권한 할당',
-  menuManagement: '메뉴 관리', addMenu: '메뉴 추가', editMenu: '메뉴 수정', menuName: '메뉴명', menuType: '메뉴 유형', directory: '디렉터리', page: '페이지', permission: '권한', route: 'Route', permissionKey: 'Permission Key', icon: 'Icon', sort: '정렬',
+  menuManagement: '메뉴 관리', addMenu: '메뉴 추가', editMenu: '메뉴 수정', menuName: '메뉴명', menuType: '메뉴 유형', directory: '디렉터리', page: '페이지', permission: '권한', route: 'Route', permissionKey: 'Permission Key', icon: 'Icon', sort: '정렬', parentMenu: '상위 메뉴', rootMenu: '최상위 메뉴',
   loginLog: '로그인 로그', operationLog: '작업 로그', loginAccount: '로그인 계정', ipAddress: 'IP 주소', loginTime: '로그인 시각', result: '결과', success: '성공', failure: '실패', clear: '전체 삭제',
   createdSuccess: '생성했습니다.', updatedSuccess: '수정했습니다.', deletedSuccess: '삭제했습니다.', statusUpdated: '상태를 변경했습니다.', confirmDelete: '{name}을(를) 삭제하시겠습니까?', clearLogsConfirm: '로그를 모두 삭제하시겠습니까?'
 }
@@ -26,10 +26,10 @@ const en = {
   ldapFilter: 'Filter LDAP users by username', ldapQuery: 'Query LDAP', username: 'Username', syncSelected: 'Sync Selected Users ({count})',
   userUpdated: 'User updated.', userCreated: 'User created.', deleteUserConfirm: 'Delete user {name}?', deleteConfirm: 'Confirm Delete', userDeleted: 'User deleted.',
   userStatusUpdated: 'User status updated.', passwordResetDefault: 'Password reset to 123456.', ldapSelectRequired: 'Select at least one LDAP user.', ldapSyncResult: 'LDAP sync complete: {created} created, {updated} updated',
-  departmentManagement: 'Department Management', addDepartment: 'Add Department', editDepartment: 'Edit Department', departmentName: 'Department Name', parentDepartment: 'Parent Department', rootDepartment: 'Root Department',
+  departmentManagement: 'Department Management', addDepartment: 'Add Department', editDepartment: 'Edit Department', departmentName: 'Department Name', departmentType: 'Department Type', parentDepartment: 'Parent Department', rootDepartment: 'Root Department', company: 'Company', center: 'Center',
   positionManagement: 'Position Management', addPosition: 'Add Position', editPosition: 'Edit Position', positionCode: 'Position Code', positionName: 'Position Name', remark: 'Description',
   roleManagement: 'Role Management', addRole: 'Add Role', editRole: 'Edit Role', roleName: 'Role Name', roleKey: 'Role Key', description: 'Description', assignPermissions: 'Assign Permissions',
-  menuManagement: 'Menu Management', addMenu: 'Add Menu', editMenu: 'Edit Menu', menuName: 'Menu Name', menuType: 'Menu Type', directory: 'Directory', page: 'Page', permission: 'Permission', route: 'Route', permissionKey: 'Permission Key', icon: 'Icon', sort: 'Sort',
+  menuManagement: 'Menu Management', addMenu: 'Add Menu', editMenu: 'Edit Menu', menuName: 'Menu Name', menuType: 'Menu Type', directory: 'Directory', page: 'Page', permission: 'Permission', route: 'Route', permissionKey: 'Permission Key', icon: 'Icon', sort: 'Sort', parentMenu: 'Parent Menu', rootMenu: 'Root Menu',
   loginLog: 'Login Log', operationLog: 'Operation Log', loginAccount: 'Login Account', ipAddress: 'IP Address', loginTime: 'Login Time', result: 'Result', success: 'Success', failure: 'Failure', clear: 'Clear All',
   createdSuccess: 'Created successfully.', updatedSuccess: 'Updated successfully.', deletedSuccess: 'Deleted successfully.', statusUpdated: 'Status updated.', confirmDelete: 'Delete {name}?', clearLogsConfirm: 'Delete all logs?'
 }
