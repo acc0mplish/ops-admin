@@ -2,6 +2,8 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { addMenu, deleteMenu, menuInfo, menuUpdate, queryMenuList, querySysMenuVoList } from '../../api/system'
+import { translateRoute } from '../../utils/i18n-runtime'
+import { st } from '../../utils/system-i18n'
 import { buildTree } from '../../utils/tree'
 
 const loading = ref(false)
@@ -14,36 +16,37 @@ function resetForm() { Object.assign(form, { id: undefined, parentId: 0, menuNam
 async function loadData() { loading.value = true; try { const [list, options] = await Promise.all([queryMenuList(), querySysMenuVoList()]); tableData.value = buildTree(list || []); menuOptions.value = options || [] } finally { loading.value = false } }
 function openCreate() { isEdit.value = false; resetForm(); dialogVisible.value = true }
 async function openEdit(row) { isEdit.value = true; Object.assign(form, await menuInfo(row.id)); dialogVisible.value = true }
-async function submit() { if (isEdit.value) { await menuUpdate(form); ElMessage.success('메뉴 정보를 업데이트했습니다.') } else { await addMenu(form); ElMessage.success('메뉴를 생성했습니다.') }; dialogVisible.value = false; await loadData() }
-async function handleDelete(row) { await ElMessageBox.confirm(`메뉴 ${row.menuName}을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' }); await deleteMenu(row.id); ElMessage.success('메뉴를 삭제했습니다.'); await loadData() }
+async function submit() { if (isEdit.value) { await menuUpdate(form); ElMessage.success(st('updatedSuccess')) } else { await addMenu(form); ElMessage.success(st('createdSuccess')) }; dialogVisible.value = false; await loadData() }
+async function handleDelete(row) { await ElMessageBox.confirm(st('confirmDelete', { name: row.menuName }), st('deleteConfirm'), { type: 'warning' }); await deleteMenu(row.id); ElMessage.success(st('deletedSuccess')); await loadData() }
+function menuTypeLabel(type) { if (type === 1) return st('directory'); if (type === 3) return st('permission'); return st('page') }
 onMounted(loadData)
 </script>
 
 <template>
   <div class="page-card console-card-page">
-    <h2 class="page-title">메뉴 관리</h2>
-    <div class="toolbar"><div class="toolbar-left"></div><div class="toolbar-right"><el-button v-permission="'system:menu:add'" type="primary" @click="openCreate">메뉴 추가</el-button></div></div>
+    <h2 class="page-title">{{ st('menuManagement') }}</h2>
+    <div class="toolbar"><div class="toolbar-left"></div><div class="toolbar-right"><el-button v-permission="'system:menu:add'" type="primary" @click="openCreate">{{ st('addMenu') }}</el-button></div></div>
     <el-table v-loading="loading" :data="tableData" row-key="id" border default-expand-all>
-      <el-table-column prop="menuName" label="메뉴명" min-width="180" />
-      <el-table-column prop="url" label="Route" min-width="180" />
-      <el-table-column prop="value" label="Permission Key" min-width="180" />
-      <el-table-column prop="menuType" label="유형" width="100" />
-      <el-table-column prop="sort" label="정렬 순서" width="90" />
-      <el-table-column label="상태" width="100"><template #default="{ row }"><el-tag :type="row.menuStatus === 1 ? 'success' : 'danger'">{{ row.menuStatus === 1 ? '활성' : '비활성' }}</el-tag></template></el-table-column>
-      <el-table-column label="작업" width="180" fixed="right"><template #default="{ row }"><el-button v-permission="'system:menu:edit'" link type="primary" @click="openEdit(row)">수정</el-button><el-button v-permission="'system:menu:delete'" link type="danger" @click="handleDelete(row)">삭제</el-button></template></el-table-column>
+      <el-table-column prop="menuName" :label="st('menuName')" min-width="180"><template #default="{ row }">{{ translateRoute(row.url || '', row.menuName) }}</template></el-table-column>
+      <el-table-column prop="url" :label="st('route')" min-width="180" />
+      <el-table-column prop="value" :label="st('permissionKey')" min-width="180" />
+      <el-table-column prop="menuType" :label="st('menuType')" width="100"><template #default="{ row }">{{ menuTypeLabel(row.menuType) }}</template></el-table-column>
+      <el-table-column prop="sort" :label="st('sort')" width="90" />
+      <el-table-column :label="st('status')" width="100"><template #default="{ row }"><el-tag :type="row.menuStatus === 1 ? 'success' : 'danger'">{{ row.menuStatus === 1 ? st('active') : st('inactive') }}</el-tag></template></el-table-column>
+      <el-table-column :label="st('actions')" width="180" fixed="right"><template #default="{ row }"><el-button v-permission="'system:menu:edit'" link type="primary" @click="openEdit(row)">{{ st('edit') }}</el-button><el-button v-permission="'system:menu:delete'" link type="danger" @click="handleDelete(row)">{{ st('delete') }}</el-button></template></el-table-column>
     </el-table>
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '메뉴 수정' : '메뉴 추가'" width="620px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? st('editMenu') : st('addMenu')" width="620px">
       <el-form label-width="110px">
-        <el-form-item label="상위 메뉴"><el-select v-model="form.parentId" style="width:100%"><el-option :value="0" label="최상위 메뉴" /><el-option v-for="item in menuOptions" :key="item.id" :label="item.label" :value="item.id" /></el-select></el-form-item>
-        <el-form-item label="메뉴명"><el-input v-model="form.menuName" /></el-form-item>
-        <el-form-item label="Route"><el-input v-model="form.url" /></el-form-item>
-        <el-form-item label="Permission Key"><el-input v-model="form.value" /></el-form-item>
-        <el-form-item label="Icon"><el-input v-model="form.icon" /></el-form-item>
-        <el-form-item label="메뉴 유형"><el-radio-group v-model="form.menuType"><el-radio :value="1">디렉터리</el-radio><el-radio :value="2">메뉴</el-radio><el-radio :value="3">버튼</el-radio></el-radio-group></el-form-item>
-        <el-form-item label="상태"><el-radio-group v-model="form.menuStatus"><el-radio :value="1">활성</el-radio><el-radio :value="2">비활성</el-radio></el-radio-group></el-form-item>
-        <el-form-item label="정렬 순서"><el-input-number v-model="form.sort" :min="0" style="width:100%" /></el-form-item>
+        <el-form-item :label="st('parentMenu')"><el-select v-model="form.parentId" style="width:100%"><el-option :value="0" :label="st('rootMenu')" /><el-option v-for="item in menuOptions" :key="item.id" :label="translateRoute(item.url || '', item.label)" :value="item.id" /></el-select></el-form-item>
+        <el-form-item :label="st('menuName')"><el-input v-model="form.menuName" /></el-form-item>
+        <el-form-item :label="st('route')"><el-input v-model="form.url" /></el-form-item>
+        <el-form-item :label="st('permissionKey')"><el-input v-model="form.value" /></el-form-item>
+        <el-form-item :label="st('icon')"><el-input v-model="form.icon" /></el-form-item>
+        <el-form-item :label="st('menuType')"><el-radio-group v-model="form.menuType"><el-radio :value="1">{{ st('directory') }}</el-radio><el-radio :value="2">{{ st('page') }}</el-radio><el-radio :value="3">{{ st('permission') }}</el-radio></el-radio-group></el-form-item>
+        <el-form-item :label="st('status')"><el-radio-group v-model="form.menuStatus"><el-radio :value="1">{{ st('active') }}</el-radio><el-radio :value="2">{{ st('inactive') }}</el-radio></el-radio-group></el-form-item>
+        <el-form-item :label="st('sort')"><el-input-number v-model="form.sort" :min="0" style="width:100%" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">취소</el-button><el-button type="primary" @click="submit">저장</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">{{ st('cancel') }}</el-button><el-button type="primary" @click="submit">{{ st('save') }}</el-button></template>
     </el-dialog>
   </div>
 </template>
