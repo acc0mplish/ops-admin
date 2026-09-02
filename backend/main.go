@@ -33,6 +33,9 @@ func main() {
 	if err := store.Seed(db); err != nil {
 		log.Fatalf("seed data failed: %v", err)
 	}
+	if err := store.CanonicalizeSeedLocalization(db); err != nil {
+		log.Fatalf("canonicalize seed localization failed: %v", err)
+	}
 
 	engine, svc := router.New(cfg, db)
 	server := &http.Server{Addr: ":" + cfg.App.Port, Handler: engine, ReadHeaderTimeout: 10 * time.Second}
