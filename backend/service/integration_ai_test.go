@@ -12,7 +12,7 @@ func TestParseAILogTimeRelative(t *testing.T) {
 	}
 	now := time.Date(2026, 7, 16, 15, 30, 0, 0, location)
 
-	startAt, err := parseAILogTime("昨天 10:00", now)
+	startAt, err := parseAILogTime("\u6628\u5929 10:00", now)
 	if err != nil {
 		t.Fatal(err)
 	}
