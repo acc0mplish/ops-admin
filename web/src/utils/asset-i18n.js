@@ -7,7 +7,9 @@ const ko = {
   recentLines: '최근 {count}줄',
   refreshLogs: 'Log 새로고침',
   noLogContent: '표시할 Log 내용이 없습니다.',
-  selectPodForLogs: 'Pod를 선택하면 최근 200줄의 Log를 불러옵니다.'
+  selectPodForLogs: 'Pod를 선택하면 최근 200줄의 Log를 불러옵니다.',
+  noDatabaseConnection: '사용 가능한 Database 연결이 없습니다. Database 목록에서 연결을 먼저 구성하십시오.',
+  enteringDatabaseWorkbench: 'DBMS Workbench로 이동하고 있습니다...'
 }
 
 const en = {
@@ -17,7 +19,9 @@ const en = {
   recentLines: 'Latest {count} lines',
   refreshLogs: 'Refresh Logs',
   noLogContent: 'No log content available.',
-  selectPodForLogs: 'Select a Pod to load the latest 200 log lines.'
+  selectPodForLogs: 'Select a Pod to load the latest 200 log lines.',
+  noDatabaseConnection: 'No database connection is available. Configure a connection in the database list first.',
+  enteringDatabaseWorkbench: 'Opening DBMS Workbench...'
 }
 
 export function at(key, params = {}) {
