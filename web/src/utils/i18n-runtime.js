@@ -6,6 +6,22 @@ export const DEFAULT_LOCALE = 'ko-KR'
 export const FALLBACK_LOCALE = 'en-US'
 export const SUPPORTED_LOCALES = ['ko-KR', 'en-US']
 
+const ko = {
+  loginHeroSubtitle: '통합 운영 관리 플랫폼',
+  passwordFieldsRequired: '비밀번호 정보를 모두 입력하십시오.',
+  passwordMinLength: '새 비밀번호는 6자 이상이어야 합니다.',
+  passwordMismatch: '새 비밀번호와 확인 비밀번호가 일치하지 않습니다.',
+  department: '부서',
+  position: '직책',
+  status: '상태',
+  active: '활성',
+  inactive: '비활성',
+  noPersonalNote: '등록된 개인 설명이 없습니다.',
+  createdAt: '생성 일시',
+  updatedAt: '수정 일시',
+  administrator: '관리자'
+}
+
 const en = {
   language: 'Korean',
   english: 'English',
@@ -80,12 +96,15 @@ export function getLocale() {
 }
 
 export function t(key, params = {}) {
-  let text = locale.value === 'en-US' ? (en[key] || key) : koText(key, params)
+  let text
   if (locale.value === 'en-US') {
-    Object.keys(params).forEach((name) => {
-      text = text.replaceAll(`{${name}}`, String(params[name]))
-    })
+    text = en[key] || key
+  } else {
+    text = ko[key] || koText(key, params)
   }
+  Object.keys(params).forEach((name) => {
+    text = text.replaceAll(`{${name}}`, String(params[name]))
+  })
   return text
 }
 
