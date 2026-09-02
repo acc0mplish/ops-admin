@@ -98,7 +98,7 @@ func TestParseMonitorLogMessageFallsBackToRawContent(t *testing.T) {
 func TestApplyMonitorEventAggregationUpdatesPersistedAndInMemoryState(t *testing.T) {
 	event := model.MonitorAlertEvent{}
 	updates := map[string]any{}
-	aggregation := model.MonitorAggregationRule{ID: 7, Name: "按实例收敛"}
+	aggregation := model.MonitorAggregationRule{ID: 7, Name: "Aggregate by Instance"}
 
 	applyMonitorEventAggregation(&event, updates, aggregation, "aggregation=7|instance=10.0.0.1:9100")
 
