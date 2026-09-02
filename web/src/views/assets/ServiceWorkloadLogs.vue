@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { queryAssetServiceWorkloadLogs, queryAssetServiceWorkloadRuntime } from '../../api/asset'
+import { at } from '../../utils/asset-i18n'
 
 const props = defineProps({ serviceId: { type: Number, default: 0 }, workloadType: String, workloadName: String, podName: String, inline: Boolean })
 const route = useRoute()
@@ -12,23 +13,53 @@ const runtime = ref({})
 const logs = ref('')
 const logLines = ref(200)
 const selectedPod = ref(props.podName || route.query.podName || '')
-const logCountLabel = (count) => `\u6700\u8fd1 ${count} \u6761`
+const logCountLabel = (count) => at('recentLines', { count })
 const params = computed(() => ({ serviceId: props.serviceId || Number(route.query.serviceId), workloadType: props.workloadType || route.query.workloadType, workloadName: props.workloadName || route.query.workloadName }))
 const hasWorkloadContext = computed(() => Boolean(params.value.serviceId && params.value.workloadType && params.value.workloadName))
-async function loadRuntime() { if (!hasWorkloadContext.value) { runtime.value = {}; logs.value = ''; return }; loading.value = true; try { runtime.value = await queryAssetServiceWorkloadRuntime(params.value); if (!selectedPod.value) selectedPod.value = runtime.value?.pods?.[0]?.name || ''; if (selectedPod.value) await loadLogs() } finally { loading.value = false } }
-async function loadLogs() { if (!selectedPod.value) return; logLoading.value = true; try { const data = await queryAssetServiceWorkloadLogs({ ...params.value, podName: selectedPod.value, tailLines: logLines.value }); logs.value = data.content || 'No log content available.' } finally { logLoading.value = false } }
+
+async function loadRuntime() {
+  if (!hasWorkloadContext.value) {
+    runtime.value = {}
+    logs.value = ''
+    return
+  }
+  loading.value = true
+  try {
+    runtime.value = await queryAssetServiceWorkloadRuntime(params.value)
+    if (!selectedPod.value) selectedPod.value = runtime.value?.pods?.[0]?.name || ''
+    if (selectedPod.value) await loadLogs()
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadLogs() {
+  if (!selectedPod.value) return
+  logLoading.value = true
+  try {
+    const data = await queryAssetServiceWorkloadLogs({ ...params.value, podName: selectedPod.value, tailLines: logLines.value })
+    logs.value = data.content || at('noLogContent')
+  } finally {
+    logLoading.value = false
+  }
+}
+
 onMounted(loadRuntime)
 </script>
 
 <template>
   <div class="logs-page" v-loading="loading">
-    <el-empty v-if="!hasWorkloadContext" description="请选择服务和工作负载后查看 Pod 日志" />
+    <el-empty v-if="!hasWorkloadContext" :description="at('selectServiceWorkloadForLogs')" />
     <section v-else class="logs-card">
       <header>
-        <div><h2>Pod &#26085;&#24535;</h2><p>&#40664;&#35748;&#26368;&#36817; 200 &#26465;&#65292;&#26368;&#22810;&#21487;&#35835;&#21462;&#26368;&#36817; 1000 &#26465;&#12290;</p></div>
-        <div class="controls"><el-select v-model="selectedPod" style="width:300px" placeholder="Pod" @change="loadLogs"><el-option v-for="pod in runtime.pods || []" :key="pod.name" :label="pod.name" :value="pod.name"/></el-select><el-select v-model="logLines" style="width:142px" @change="loadLogs"><el-option v-for="item in [100, 200, 500, 800, 1000]" :key="item" :label="logCountLabel(item)" :value="item"/></el-select><el-button :icon="Refresh" @click="loadLogs">&#21047;&#26032;&#26085;&#24535;</el-button></div>
+        <div><h2>{{ at('podLogs') }}</h2><p>{{ at('podLogsHint') }}</p></div>
+        <div class="controls">
+          <el-select v-model="selectedPod" style="width:300px" placeholder="Pod" @change="loadLogs"><el-option v-for="pod in runtime.pods || []" :key="pod.name" :label="pod.name" :value="pod.name" /></el-select>
+          <el-select v-model="logLines" style="width:142px" @change="loadLogs"><el-option v-for="item in [100, 200, 500, 800, 1000]" :key="item" :label="logCountLabel(item)" :value="item" /></el-select>
+          <el-button :icon="Refresh" @click="loadLogs">{{ at('refreshLogs') }}</el-button>
+        </div>
       </header>
-      <pre v-loading="logLoading">{{ logs || 'Select a Pod to load the latest 200 log lines.' }}</pre>
+      <pre v-loading="logLoading">{{ logs || at('selectPodForLogs') }}</pre>
     </section>
   </div>
 </template>
