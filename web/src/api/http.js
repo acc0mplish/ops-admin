@@ -9,6 +9,7 @@ import {
   setLastActivityAt,
   setToken
 } from '../utils/auth'
+import { ct } from '../utils/common-i18n'
 
 const ACCESS_REFRESH_WINDOW = 5 * 60 * 1000
 const SESSION_IDLE_TIMEOUT = 6 * 60 * 60 * 1000
@@ -26,7 +27,7 @@ function recordUserActivity() {
   if (now - lastActivityWrite < ACTIVITY_WRITE_INTERVAL) return
   const previousActivityAt = getLastActivityAt()
   if (getToken() && previousActivityAt && now - previousActivityAt >= SESSION_IDLE_TIMEOUT) {
-    expireLocalSession('会话因连续 6 小时未操作而结束，请重新登录')
+    expireLocalSession(ct('idleSessionExpired'))
     return
   }
   lastActivityWrite = now
@@ -47,7 +48,7 @@ function sessionIsIdle() {
   return Boolean(lastActivityAt && Date.now() - lastActivityAt >= SESSION_IDLE_TIMEOUT)
 }
 
-function expireLocalSession(message = '登录已过期，请重新登录') {
+function expireLocalSession(message = ct('sessionExpired')) {
   clearLocalSession()
   if (router.currentRoute.value.path !== '/login') router.push('/login')
   if (!sessionExpiryMessageShown) {
@@ -61,7 +62,7 @@ async function renewAccessToken(force = false) {
   const token = getToken()
   if (!token) return ''
   if (sessionIsIdle()) {
-    expireLocalSession('会话因连续 6 小时未操作而结束，请重新登录')
+    expireLocalSession(ct('idleSessionExpired'))
     throw new Error('session idle timeout')
   }
   if (!force && getTokenExpiresAt() - Date.now() > ACCESS_REFRESH_WINDOW) return token
@@ -96,7 +97,7 @@ http.interceptors.response.use(
     if (response.config.responseType === 'blob') return response
     const res = response.data
     if (res.code !== 200) {
-      ElMessage.error(res.message || '请求失败')
+      ElMessage.error(res.message || ct('requestFailed'))
       return Promise.reject(new Error(res.message || 'request failed'))
     }
     return res.data
@@ -113,11 +114,11 @@ http.interceptors.response.use(
         return http(config)
       } catch {
         expireLocalSession()
-        return Promise.reject(new Error(res?.message || '登录已过期'))
+        return Promise.reject(new Error(res?.message || ct('sessionExpired')))
       }
     }
     if (res?.code === 401) expireLocalSession(res.message)
-    const message = res?.message || error.message || '网络错误'
+    const message = res?.message || error.message || ct('networkError')
     if (res?.code !== 401) ElMessage.error(message)
     return Promise.reject(new Error(message))
   }
