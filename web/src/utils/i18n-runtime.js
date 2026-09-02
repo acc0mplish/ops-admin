@@ -19,7 +19,11 @@ const ko = {
   noPersonalNote: '등록된 개인 설명이 없습니다.',
   createdAt: '생성 일시',
   updatedAt: '수정 일시',
-  administrator: '관리자'
+  administrator: '관리자',
+  consoleScope: '콘솔 작업 범위',
+  systemGovernance: '시스템 거버넌스',
+  permissionConfiguration: '권한 구성',
+  auditTrail: '감사 추적'
 }
 
 const en = {
@@ -75,7 +79,11 @@ const en = {
   superAdmin: 'Super Administrator',
   headquarters: 'Headquarters',
   noDept: 'No department assigned',
-  noPost: 'No position assigned'
+  noPost: 'No position assigned',
+  consoleScope: 'Console scope',
+  systemGovernance: 'System governance',
+  permissionConfiguration: 'Permission configuration',
+  auditTrail: 'Audit trail'
 }
 
 const savedLocale = localStorage.getItem(LOCALE_KEY)
