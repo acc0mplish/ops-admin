@@ -17,7 +17,7 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {
-			httpx.Failed(c, 401, "请先登录")
+			httpx.Failed(c, 401, "Authentication required")
 			c.Abort()
 			return
 		}
@@ -30,14 +30,14 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if claims.SessionID == "" {
-			httpx.Failed(c, 401, "登录会话无效，请重新登录")
+			httpx.Failed(c, 401, "Invalid login session; please sign in again")
 			c.Abort()
 			return
 		}
 
 		var session model.AuthSession
 		if err := db.Where("id = ? AND admin_id = ?", claims.SessionID, claims.UserID).First(&session).Error; err != nil {
-			httpx.Failed(c, 401, "登录会话无效，请重新登录")
+			httpx.Failed(c, 401, "Invalid login session; please sign in again")
 			c.Abort()
 			return
 		}
@@ -52,7 +52,7 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 		if session.RevokedAt != nil || !now.Before(session.ExpiresAt) || now.Sub(lastActivityAt) >= auth.SessionIdleTTL {
-			httpx.Failed(c, 401, "登录已过期，请重新登录")
+			httpx.Failed(c, 401, "Login expired; please sign in again")
 			c.Abort()
 			return
 		}
