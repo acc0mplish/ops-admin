@@ -52,7 +52,7 @@ func RequireAnyPermission(db *gorm.DB, permissions ...string) gin.HandlerFunc {
 			}
 		}
 		if len(values) == 0 {
-			httpx.Failed(c, 403, "没有执行该操作的权限")
+			httpx.Failed(c, 403, "Permission denied")
 			c.Abort()
 			return
 		}
@@ -63,7 +63,7 @@ func RequireAnyPermission(db *gorm.DB, permissions ...string) gin.HandlerFunc {
 			Where("ar.admin_id = ? AND m.value IN ? AND m.menu_status = ?", c.GetUint("userID"), values, 1).
 			Count(&count).Error
 		if err != nil || count == 0 {
-			httpx.Failed(c, 403, "没有执行该操作的权限")
+			httpx.Failed(c, 403, "Permission denied")
 			c.Abort()
 			return
 		}
