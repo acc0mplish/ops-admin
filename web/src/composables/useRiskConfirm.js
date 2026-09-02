@@ -1,4 +1,5 @@
 import { ElMessageBox } from 'element-plus'
+import { ct } from '../utils/common-i18n'
 
 /**
  * A consistent confirmation gate for production and destructive operations.
@@ -12,22 +13,22 @@ export async function confirmRiskOperation({
   production = false,
   destructive = false
 }) {
-  const acknowledgement = production ? '生产环境' : destructive ? '我确认' : '确认执行'
+  const acknowledgement = production ? ct('productionAck') : destructive ? ct('destructiveAck') : ct('executeAck')
   const riskText = [
-    production ? '目标包含生产环境。' : '',
-    destructive ? '该操作可能修改或删除现有数据。' : '',
-    targetCount ? `本次将作用于 ${targetCount} 个目标。` : ''
+    production ? ct('productionRisk') : '',
+    destructive ? ct('destructiveRisk') : '',
+    targetCount ? ct('targetCountRisk', { count: targetCount }) : ''
   ].filter(Boolean).join(' ')
 
   await ElMessageBox.prompt(
-    `${riskText}\n\n操作：${operation}\n目标：${targetSummary}\n\n请输入“${acknowledgement}”后继续。`,
-    production ? '生产操作确认' : '高风险操作确认',
+    ct('riskPrompt', { risk: riskText, operation, target: targetSummary, ack: acknowledgement }),
+    production ? ct('productionConfirmTitle') : ct('highRiskConfirmTitle'),
     {
       type: 'warning',
       inputPlaceholder: acknowledgement,
-      inputValidator: (value) => value === acknowledgement || `请输入“${acknowledgement}”以确认`,
-      confirmButtonText: '确认并继续',
-      cancelButtonText: '取消',
+      inputValidator: (value) => value === acknowledgement || ct('acknowledgementRequired', { ack: acknowledgement }),
+      confirmButtonText: ct('confirmContinue'),
+      cancelButtonText: ct('cancel'),
       closeOnClickModal: false,
       closeOnPressEscape: false
     }
