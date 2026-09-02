@@ -80,7 +80,7 @@ defineProps({
       :model-value="page.podWorkloadFilter"
       filterable
       class="workload-select"
-      placeholder="全部工作负载"
+      :placeholder="page.t('k8sWorkloadTypeAll')"
       @update:model-value="page.handlePodWorkloadFilterChange"
     >
       <el-option
