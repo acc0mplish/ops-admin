@@ -121,7 +121,7 @@ func (p *TencentDNSProvider) UpdateRecord(ctx context.Context, req RecordRequest
 	return p.simple(ctx, "ModifyRecord", recordPayload(req, true))
 }
 func recordPayload(req RecordRequest, includeID bool) map[string]any {
-	payload := map[string]any{"Domain": req.Domain, "SubDomain": req.Host, "RecordType": req.Type, "RecordLine": first(req.Line, "默认"), "Value": req.Value, "TTL": req.TTL}
+	payload := map[string]any{"Domain": req.Domain, "SubDomain": req.Host, "RecordType": req.Type, "RecordLine": first(req.Line, "\u9ed8\u8ba4"), "Value": req.Value, "TTL": req.TTL}
 	if includeID {
 		id, _ := strconv.ParseUint(req.RecordID, 10, 64)
 		payload["RecordId"] = id
