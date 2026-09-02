@@ -5,7 +5,7 @@ import { ElMessage } from 'element-plus'
 import { getPublicSystemConfig, login } from '../api/system'
 import { setMenus, setPermissions, setToken, setUser } from '../utils/auth'
 import { applySystemTheme, getSystemConfig, resolveSystemAsset, setSystemConfig } from '../utils/system-config'
-import { t } from '../utils/i18n'
+import { t } from '../utils/i18n-runtime'
 
 const router = useRouter()
 const loading = ref(false)
@@ -82,7 +82,7 @@ onMounted(loadSystemConfig)
           <template v-else>{{ logoText }}</template>
         </div>
         <h1>{{ config.loginTitle || config.siteName || 'Ops Admin' }}</h1>
-        <p>{{ config.loginSubtitle || config.siteSlogan || '통합 운영 관리 플랫폼' }}</p>
+        <p>{{ config.loginSubtitle || config.siteSlogan || t('loginHeroSubtitle') }}</p>
         <div class="hero-meta">
           <span>System</span>
           <span>RBAC</span>
