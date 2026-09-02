@@ -89,7 +89,7 @@ func (p *AliyunCertificateProvider) GetCertificate(ctx context.Context, certific
 	}
 	id, err := strconv.ParseInt(strings.TrimSpace(certificateID), 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("阿里云证书 ID 必须为数字: %w", err)
+		return nil, fmt.Errorf("Aliyun certificate ID must be numeric: %w", err)
 	}
 	if err := p.call(ctx, "GetCertificateDetail", url.Values{"CertificateId": {strconv.FormatInt(id, 10)}}, &response); err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func (p *AliyunCertificateProvider) UploadCertificate(ctx context.Context, cert 
 func (p *AliyunCertificateProvider) DeleteCertificate(ctx context.Context, certificateID string) error {
 	id, err := strconv.ParseInt(strings.TrimSpace(certificateID), 10, 64)
 	if err != nil {
-		return fmt.Errorf("阿里云仅允许通过数字 CertId 删除证书: %w", err)
+		return fmt.Errorf("Aliyun only supports deleting certificates by numeric CertId: %w", err)
 	}
 	var response map[string]any
 	return p.call(ctx, "DeleteUserCertificate", url.Values{"CertId": {strconv.FormatInt(id, 10)}}, &response)
