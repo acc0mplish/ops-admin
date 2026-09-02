@@ -12,13 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reject Chinese text in product source and docs
+      - name: Scan Chinese text in product source and docs
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-          import sys
 
           roots = [Path('web/src'), Path('backend'), Path('docs')]
           extra_files = [Path('README.md'), Path('web/README.md')]
@@ -49,11 +48,29 @@ jobs:
                   if cjk.search(line):
                       findings.append((str(path), lineno, line.strip()))
 
-          if findings:
-              print(f'Found {len(findings)} line(s) containing Chinese characters in {len(set(p for p, _, _ in findings))} file(s):')
+          output = Path('localization-findings.txt')
+          with output.open('w', encoding='utf-8') as handle:
               for path, lineno, line in findings:
-                  print(f'{path}:{lineno}: {line}')
-              sys.exit(1)
+                  handle.write(f'{path}\t{lineno}\t{line}\n')
 
-          print('PASS: no Chinese characters found in product source or documentation.')
+          if findings:
+              print(f'Found {len(findings)} line(s) containing Chinese characters in {len(set(p for p, _, _ in findings))} file(s).')
+          else:
+              print('PASS: no Chinese characters found in product source or documentation.')
           PY
+      - name: Upload localization findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: localization-findings
+          path: localization-findings.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Reject Chinese text
+        shell: bash
+        run: |
+          if [ -s localization-findings.txt ]; then
+            cat localization-findings.txt
+            exit 1
+          fi
+          echo 'PASS: no Chinese characters found in product source or documentation.'
