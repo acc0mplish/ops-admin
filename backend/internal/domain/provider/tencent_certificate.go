@@ -145,7 +145,7 @@ func (p *TencentCertificateProvider) DeleteCertificate(ctx context.Context, cert
 		return err
 	}
 	if !response.Response.DeleteResult {
-		return fmt.Errorf("腾讯云未确认删除证书 %s", certificateID)
+		return fmt.Errorf("Tencent Cloud did not confirm deletion of certificate %s", certificateID)
 	}
 	return nil
 }
