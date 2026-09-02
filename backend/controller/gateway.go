@@ -41,7 +41,7 @@ func (ctl *Controller) GetAssetGatewayInfo(c *gin.Context) {
 func (ctl *Controller) CreateAssetGateway(c *gin.Context) {
 	var payload service.AssetGatewayPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "网关参数不正确")
+		httpx.Failed(c, 400, "Invalid gateway payload")
 		return
 	}
 	if err := ctl.service.CreateAssetGateway(payload); err != nil {
@@ -54,7 +54,7 @@ func (ctl *Controller) CreateAssetGateway(c *gin.Context) {
 func (ctl *Controller) UpdateAssetGateway(c *gin.Context) {
 	var payload service.AssetGatewayPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "网关参数不正确")
+		httpx.Failed(c, 400, "Invalid gateway payload")
 		return
 	}
 	if err := ctl.service.UpdateAssetGateway(payload); err != nil {
@@ -67,7 +67,7 @@ func (ctl *Controller) UpdateAssetGateway(c *gin.Context) {
 func (ctl *Controller) DeleteAssetGateway(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "删除参数不正确")
+		httpx.Failed(c, 400, "Invalid delete payload")
 		return
 	}
 	if err := ctl.service.DeleteAssetGateway(payload.ID); err != nil {
@@ -80,7 +80,7 @@ func (ctl *Controller) DeleteAssetGateway(c *gin.Context) {
 func (ctl *Controller) UpdateAssetGatewayStatus(c *gin.Context) {
 	var payload service.AdminStatusPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "状态参数不正确")
+		httpx.Failed(c, 400, "Invalid status payload")
 		return
 	}
 	if err := ctl.service.UpdateAssetGatewayStatus(payload); err != nil {
@@ -93,7 +93,7 @@ func (ctl *Controller) UpdateAssetGatewayStatus(c *gin.Context) {
 func (ctl *Controller) TestAssetGatewayConnection(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "测试参数不正确")
+		httpx.Failed(c, 400, "Invalid test payload")
 		return
 	}
 	data, err := ctl.service.TestAssetGatewayConnection(payload.ID)
