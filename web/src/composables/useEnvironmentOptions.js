@@ -1,5 +1,6 @@
 import { onMounted, ref } from 'vue'
 import { queryOpsEnvironmentList } from '../api/ops'
+import { ct } from '../utils/common-i18n'
 
 export function useEnvironmentOptions() {
   const environmentOptions = ref([])
@@ -15,7 +16,7 @@ export function useEnvironmentOptions() {
   }
 
   function environmentName(code) {
-    if (!code) return '未分配'
+    if (!code) return ct('unassigned')
     const item = environmentOptions.value.find((option) => option.code === code)
     return item ? item.name : code
   }
