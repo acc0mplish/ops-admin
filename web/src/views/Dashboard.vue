@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { profile, queryAdminList, queryRoleList, queryDeptList, queryPostList } from '../api/system'
-import { t } from '../utils/i18n'
+import { t } from '../utils/i18n-runtime'
 
 const currentUser = ref({})
 const stats = ref([
@@ -11,7 +11,7 @@ const stats = ref([
   { title: t('postCount'), value: 0, note: t('postCountNote') }
 ])
 
-const welcome = computed(() => currentUser.value.nickname || currentUser.value.username || '관리자')
+const welcome = computed(() => currentUser.value.nickname || currentUser.value.username || t('administrator'))
 
 onMounted(async () => {
   const [userInfo, adminRes, roleRes, deptRes, postRes] = await Promise.all([
@@ -40,11 +40,11 @@ onMounted(async () => {
         <h1>{{ t('welcomeBack', { name: welcome }) }}</h1>
         <p class="hero-text">{{ t('dashboardDesc') }}</p>
       </div>
-      <div class="hero-badge" aria-label="콘솔 작업 범위">
+      <div class="hero-badge" :aria-label="t('consoleScope')">
         <p>CONSOLE SCOPE</p>
-        <span><i></i>시스템 거버넌스</span>
-        <span><i></i>권한 구성</span>
-        <span><i></i>감사 추적</span>
+        <span><i></i>{{ t('systemGovernance') }}</span>
+        <span><i></i>{{ t('permissionConfiguration') }}</span>
+        <span><i></i>{{ t('auditTrail') }}</span>
       </div>
     </section>
 
