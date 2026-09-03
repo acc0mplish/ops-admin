@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { FullScreen, Refresh, RefreshLeft } from '@element-plus/icons-vue'
 import { queryMonitorCommandCenter } from '../../api/monitor'
+import { currentLocale } from '../../utils/i18n-runtime'
+import { mt } from '../../utils/monitor-i18n'
 
 const screenRef = ref(null)
 const globeRef = ref(null)
@@ -34,8 +36,8 @@ const onlineRate = computed(() => Number(asset.value.coverage || 0))
 
 function number(value) { return Number(value || 0).toLocaleString() }
 function percent(value) { return `${Number(value || 0).toFixed(1)}%` }
-function timeText(value = now.value) { return new Date(value).toLocaleTimeString('zh-CN', { hour12: false }) }
-function dateText(value = now.value) { return new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) }
+function timeText(value = now.value) { return new Date(value).toLocaleTimeString(currentLocale.value, { hour12: false }) }
+function dateText(value = now.value) { return new Date(value).toLocaleDateString(currentLocale.value, { year: 'numeric', month: '2-digit', day: '2-digit' }) }
 function severityType(value) { return ['P0', 'P1'].includes(String(value || '').toUpperCase()) ? 'danger' : String(value || '').toUpperCase() === 'P2' ? 'warning' : 'info' }
 
 async function loadData() {
@@ -173,7 +175,7 @@ onBeforeUnmount(() => {
   <div ref="screenRef" class="command-center" :class="{ loading }">
     <header class="cc-header">
       <div class="cc-system"><i /> 系统在线 <span>数据刷新：{{ timeText(data.refreshedAt || now) }}</span></div>
-      <div class="cc-title"><small>OPS ADMIN INTELLIGENT OPERATIONS CENTER</small><strong>智能运维驾驶舱</strong></div>
+      <div class="cc-title"><small>{{ mt('commandCenterEyebrow') }}</small><strong>智能运维驾驶舱</strong></div>
       <div class="cc-tools"><b>{{ timeText() }}</b><span>{{ dateText() }}</span><div class="cc-auto" :class="{ enabled: autoRefresh }"><i /><span>自动刷新</span><b>30 秒</b><el-switch v-model="autoRefresh" size="small" @change="syncTimers" /></div><el-button circle :icon="Refresh" :loading="loading" @click="loadData" /><el-button circle :icon="FullScreen" @click="toggleFullscreen" /></div>
     </header>
 
@@ -186,12 +188,12 @@ onBeforeUnmount(() => {
 
       <section class="cc-center">
         <div class="metric-strip"><div class="metric-card"><small>资产总量</small><strong>{{ number(asset.total) }}</strong><span>项纳管资源</span></div><div class="metric-card danger"><small>活跃告警</small><strong>{{ number(overview.firingCount) }}</strong><span>待处理事件</span></div><div class="metric-card"><small>在线主机</small><strong>{{ number(asset.onlineHosts) }} / {{ number(asset.hosts) }}</strong><span>主机存活率</span></div><div class="metric-card green"><small>监控覆盖</small><strong>{{ percent(onlineRate) }}</strong><span>基于主机在线状态</span></div><div class="metric-card amber"><small>K8s 节点</small><strong>{{ number(asset.clusters) }}</strong><span>已接入集群</span></div></div>
-        <article class="globe-panel"><div class="globe-heading"><div><small>RESOURCE SITUATION</small><h2>资源空间态势</h2><p>拖动地球查看资源网络</p></div><button type="button" @click="resetGlobe"><el-icon><RefreshLeft /></el-icon> 复位视角</button></div><canvas ref="globeRef" class="globe-canvas" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointerleave="onPointerUp" /><div class="globe-stats left"><span>PHYSICAL HOST</span><b>{{ number(asset.hosts) }}</b><small>物理 / 云主机</small><span>MONITORING</span><b>{{ percent(onlineRate) }}</b><small>在线覆盖率</small></div><div class="globe-stats right"><span>ACTIVE ALERT</span><b class="danger-text">{{ number(overview.firingCount) }}</b><small>活跃告警</small><span>AUTH RATE</span><b>{{ percent(onlineRate) }}</b><small>资产认证率</small></div><footer><b>{{ number(asset.total) }}</b><span>受管资产</span><small>● 机房节点　● 资产规模　拖动地球旋转</small></footer></article>
-        <div class="hot-row"><article v-for="title in ['CPU 热点', '内存热点', '磁盘热点']" :key="title" class="cc-panel hot-panel"><div class="panel-heading"><span>▣ {{ title }}</span><em>TOP 5</em></div><div v-if="data.hotHosts?.length" class="hot-host"><div v-for="host in data.hotHosts.slice(0, 3)" :key="host.name"><span>{{ host.name }}</span><b :class="host.aliveStatus === 1 ? 'ok-text' : 'danger-text'">{{ host.aliveStatus === 1 ? '在线' : '待检查' }}</b></div></div><div v-else class="panel-empty">◇ 暂无监控数据</div></article></div>
+        <article class="globe-panel"><div class="globe-heading"><div><small>{{ mt('resourceSituation') }}</small><h2>资源空间态势</h2><p>拖动地球查看资源网络</p></div><button type="button" @click="resetGlobe"><el-icon><RefreshLeft /></el-icon> 复位视角</button></div><canvas ref="globeRef" class="globe-canvas" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointerleave="onPointerUp" /><div class="globe-stats left"><span>{{ mt('physicalHost') }}</span><b>{{ number(asset.hosts) }}</b><small>物理 / 云主机</small><span>{{ mt('monitoring') }}</span><b>{{ percent(onlineRate) }}</b><small>在线覆盖率</small></div><div class="globe-stats right"><span>{{ mt('activeAlert') }}</span><b class="danger-text">{{ number(overview.firingCount) }}</b><small>活跃告警</small><span>{{ mt('authRate') }}</span><b>{{ percent(onlineRate) }}</b><small>资产认证率</small></div><footer><b>{{ number(asset.total) }}</b><span>受管资产</span><small>● 机房节点　● 资产规模　拖动地球旋转</small></footer></article>
+        <div class="hot-row"><article v-for="title in ['CPU 热点', '内存热点', '磁盘热点']" :key="title" class="cc-panel hot-panel"><div class="panel-heading"><span>▣ {{ title }}</span><em>{{ mt('topFive') }}</em></div><div v-if="data.hotHosts?.length" class="hot-host"><div v-for="host in data.hotHosts.slice(0, 3)" :key="host.name"><span>{{ host.name }}</span><b :class="host.aliveStatus === 1 ? 'ok-text' : 'danger-text'">{{ host.aliveStatus === 1 ? '在线' : '待检查' }}</b></div></div><div v-else class="panel-empty">◇ 暂无监控数据</div></article></div>
       </section>
 
       <section class="cc-column right-column">
-        <article class="cc-panel composition-panel"><div class="panel-heading"><span>▣ 资产品牌构成</span><em>TOP {{ data.resourceComposition?.length || 0 }}</em></div><div class="composition-list"><div v-for="item in data.resourceComposition" :key="item.name"><span>{{ item.name }}</span><i><b :style="{ width: `${asset.total ? Number(item.count || 0) / asset.total * 100 : 0}%` }" /></i><strong>{{ number(item.count) }}</strong></div></div></article>
+        <article class="cc-panel composition-panel"><div class="panel-heading"><span>▣ 资产品牌构成</span><em>{{ mt('topCount', { count: data.resourceComposition?.length || 0 }) }}</em></div><div class="composition-list"><div v-for="item in data.resourceComposition" :key="item.name"><span>{{ item.name }}</span><i><b :style="{ width: `${asset.total ? Number(item.count || 0) / asset.total * 100 : 0}%` }" /></i><strong>{{ number(item.count) }}</strong></div></div></article>
         <article class="cc-panel resource-panel"><div class="panel-heading"><span>▣ 资产资源总览</span><em>共 {{ number(asset.total) }} 项</em></div><div class="resource-total"><div v-for="item in data.resourceComposition" :key="item.name"><span>{{ item.name }}</span><b>{{ number(item.count) }}</b></div></div><div class="coverage-ring"><strong>{{ percent(onlineRate) }}</strong><span>在线覆盖率</span></div></article>
         <article class="cc-panel region-panel"><div class="panel-heading"><span>▣ 机房资产分布</span><em>{{ data.regions?.length || 0 }} 个区域</em></div><div class="region-list"><div v-for="item in data.regions" :key="item.name"><i>◇</i><span>{{ item.name }}</span><b>{{ number(item.count) }}</b></div><div v-if="!data.regions?.length" class="panel-empty">◇ 暂无区域分布数据</div></div></article>
         <div class="deadline"><span>◷ 待响应告警 <b>{{ number(overview.unclaimedCount) }}</b></span><span>● 高优先级 <b>{{ number(overview.criticalCount) }}</b></span></div>

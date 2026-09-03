@@ -325,7 +325,7 @@ onMounted(async () => {
           <div class="navigation-toolbar">
             <el-input v-model="keyword" clearable :placeholder="nt('searchNavigationPlaceholder')" @keyup.enter="loadNavigations" />
             <el-button @click="loadNavigations">{{ nt('search') }}</el-button>
-            <span class="navigation-count"><strong>{{ navigations.length }}</strong> {{ nt('navigationCount', { count: navigations.length }).replace(String(navigations.length), '').trim() }}</span>
+            <span class="navigation-count">{{ nt('navigationCount', { count: navigations.length }) }}</span>
           </div>
 
           <div v-loading="loading" class="navigation-grid">
