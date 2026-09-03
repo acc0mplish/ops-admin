@@ -1,0 +1,16 @@
+import { currentLocale } from './i18n-runtime'
+
+const ko = {
+  imageRegistry: 'Image Registry', imageRegistryDesc: 'Docker Image Registry 주소를 중앙에서 관리하며 Pipeline Build/Push Stage에서 Target Registry를 선택합니다.', addRegistry: 'Image Registry 추가', registryList: 'Registry 목록', imageFormat: 'Image 이름 형식: Registry Address / Namespace / Application Code : Branch-Time', refresh: '새로고침', noRegistries: 'Image Registry가 없습니다. Registry를 먼저 추가하십시오.', name: '이름', imagePrefix: 'Image Prefix', loginAccount: 'Login Account', notConfigured: '미설정', authentication: 'Authentication', configured: '설정됨', status: '상태', enabled: '활성', disabled: '비활성', actions: '작업', edit: '수정', delete: '삭제', editRegistry: 'Image Registry 수정', registryName: 'Registry 이름', registryAddress: 'Registry 주소', namespace: 'Namespace', loginPassword: 'Login Password', description: '설명', cancel: '취소', save: '저장', registryRequired: 'Image Registry 이름과 주소를 입력하십시오.', saved: '저장했습니다.', deleteConfirm: 'Image Registry “{name}”을 삭제하시겠습니까? 기존 Pipeline Stage에서는 Registry를 다시 선택해야 합니다.', deleteTitle: '삭제 확인', deleted: '삭제했습니다.', appCodePlaceholder: '<Application Code>', registryNameExample: '예: Aliyun Hangzhou ACR', registryAddressExample: '예: registry.cn-hangzhou.aliyuncs.com', namespaceExample: '예: ops-admin (선택)', dockerLoginOptional: 'docker login 용도 (선택)', keepPassword: '비워 두면 기존 Password를 유지합니다.', descriptionPlaceholder: 'Registry 용도, Network 요구사항 또는 사용 범위를 설명하십시오.'
+}
+
+const en = {
+  imageRegistry: 'Image Registry', imageRegistryDesc: 'Centrally manage Docker image registry addresses and select target registries from pipeline build and push stages.', addRegistry: 'Add Image Registry', registryList: 'Registry List', imageFormat: 'Image format: Registry Address / Namespace / Application Code : Branch-Time', refresh: 'Refresh', noRegistries: 'No image registries configured. Add a registry first.', name: 'Name', imagePrefix: 'Image Prefix', loginAccount: 'Login Account', notConfigured: 'Not Configured', authentication: 'Authentication', configured: 'Configured', status: 'Status', enabled: 'Enabled', disabled: 'Disabled', actions: 'Actions', edit: 'Edit', delete: 'Delete', editRegistry: 'Edit Image Registry', registryName: 'Registry Name', registryAddress: 'Registry Address', namespace: 'Namespace', loginPassword: 'Login Password', description: 'Description', cancel: 'Cancel', save: 'Save', registryRequired: 'Enter the image registry name and address.', saved: 'Saved successfully.', deleteConfirm: 'Delete image registry “{name}”? Existing pipeline stages will need to select a registry again.', deleteTitle: 'Confirm Delete', deleted: 'Deleted successfully.', appCodePlaceholder: '<Application Code>', registryNameExample: 'e.g. Aliyun Hangzhou ACR', registryAddressExample: 'e.g. registry.cn-hangzhou.aliyuncs.com', namespaceExample: 'e.g. ops-admin (optional)', dockerLoginOptional: 'Used for docker login (optional)', keepPassword: 'Leave blank to keep the existing password.', descriptionPlaceholder: 'Describe the registry purpose, network requirements, or usage scope.'
+}
+
+export function apt(key, params = {}) {
+  const dict = currentLocale.value === 'en-US' ? en : ko
+  let text = dict[key] || en[key] || key
+  Object.entries(params).forEach(([name, value]) => { text = text.replaceAll(`{${name}}`, String(value)) })
+  return text
+}
