@@ -407,7 +407,7 @@ func (s *Service) DeleteNotifyChannel(id uint) error {
 	for _, rule := range rules {
 		for _, channelID := range decodeUintList(rule.ChannelIDsJSON) {
 			if channelID == id {
-				return fmt.Errorf("通知媒介正在被规则「%s」使用，请先调整规则", rule.Name)
+				return fmt.Errorf("notification channel is used by rule %q; update the rule first", rule.Name)
 			}
 		}
 	}
@@ -483,23 +483,23 @@ func (s *Service) SaveNotifyRule(payload NotifyRulePayload) error {
 	}
 	var tmpl model.NotifyTemplate
 	if err := s.db.First(&tmpl, payload.TemplateID).Error; err != nil {
-		return errors.New("所选消息模板不存在")
+		return errors.New("selected message template does not exist")
 	}
 	ruleScope := normalizeNotifyScope(payload.Scope)
 	if !notifyTemplateScopeCompatible(tmpl.Scope, ruleScope) {
-		return fmt.Errorf("消息模板适用于%s，不能用于%s通知规则", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(ruleScope))
+		return fmt.Errorf("message template is scoped to %s and cannot be used by a %s notification rule", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(ruleScope))
 	}
 	var channels []model.NotifyChannel
 	if err := s.db.Where("id IN ?", payload.ChannelIDs).Find(&channels).Error; err != nil {
 		return err
 	}
 	if len(channels) != len(payload.ChannelIDs) {
-		return errors.New("部分通知媒介不存在，请重新选择")
+		return errors.New("some selected notification channels do not exist; select them again")
 	}
 	templateType := normalizeNotifyChannelType(tmpl.ChannelType)
 	for _, channel := range channels {
 		if normalizeNotifyChannelType(channel.ChannelType) != templateType {
-			return fmt.Errorf("消息模板类型为 %s，不能发送到媒介「%s」(%s)", templateType, channel.Name, channel.ChannelType)
+			return fmt.Errorf("message template type %s cannot be sent to channel %q (%s)", templateType, channel.Name, channel.ChannelType)
 		}
 	}
 	events := normalizeNotifyEvents(payload.Events, payload.Scope)
@@ -536,12 +536,12 @@ func (s *Service) TestNotifyRule(ruleID uint) (map[string]any, error) {
 		Scope:      normalizeNotifyScope(rule.Scope),
 		Event:      "notify",
 		TargetID:   ruleID,
-		TargetName: "通知规则测试",
+		TargetName: "Notification Rule Test",
 		Status:     "firing",
-		Summary:    "这是一条由 Ops Admin 发起的通知规则测试消息",
-		Detail:     "如果你收到此消息，说明模板、通知媒介和持久化投递链路工作正常。",
+		Summary:    "Ops Admin에서 발송한 Notification Rule 테스트 메시지입니다.",
+		Detail:     "이 메시지를 받았다면 Template, Notification Channel, 영속 Delivery Pipeline이 정상적으로 동작합니다.",
 		StartedAt:  &now,
-		Extra:      map[string]string{"operator": "系统管理员"},
+		Extra:      map[string]string{"operator": "System Administrator"},
 	}, true)
 	if err != nil {
 		return nil, err
@@ -551,7 +551,7 @@ func (s *Service) TestNotifyRule(ruleID uint) (map[string]any, error) {
 
 func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisabledRule bool) (int, error) {
 	if ruleID == 0 {
-		return 0, errors.New("通知规则不能为空")
+		return 0, errors.New("notification rule is required")
 	}
 	var rule model.NotifyRule
 	if err := s.db.First(&rule, ruleID).Error; err != nil {
@@ -571,25 +571,25 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 
 	var tmpl model.NotifyTemplate
 	if err := s.db.First(&tmpl, rule.TemplateID).Error; err != nil {
-		return 0, fmt.Errorf("读取消息模板失败: %w", err)
+		return 0, fmt.Errorf("failed to read message template: %w", err)
 	}
 	if tmpl.Status != 1 {
-		return 0, errors.New("消息模板已禁用")
+		return 0, errors.New("message template is disabled")
 	}
 	if !notifyTemplateScopeCompatible(tmpl.Scope, event.Scope) {
-		return 0, fmt.Errorf("消息模板适用于%s，不能处理%s事件", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(event.Scope))
+		return 0, fmt.Errorf("message template is scoped to %s and cannot process a %s event", notifyScopeLabel(tmpl.Scope), notifyScopeLabel(event.Scope))
 	}
 
 	ids := decodeUintList(rule.ChannelIDsJSON)
 	if len(ids) == 0 {
-		return 0, errors.New("通知规则未配置通知媒介")
+		return 0, errors.New("notification rule has no configured channel")
 	}
 	var channels []model.NotifyChannel
 	if err := s.db.Where("id IN ?", ids).Find(&channels).Error; err != nil {
 		return 0, err
 	}
 	if len(channels) == 0 {
-		return 0, errors.New("通知规则关联的媒介不存在")
+		return 0, errors.New("a channel referenced by the notification rule does not exist")
 	}
 
 	now := time.Now()
@@ -603,10 +603,10 @@ func (s *Service) enqueueNotifyRule(ruleID uint, event NotifyEvent, allowDisable
 		errorText := ""
 		if channel.Status != 1 {
 			status = notifyStatusFailed
-			errorText = "通知媒介已禁用"
+			errorText = "notification channel is disabled"
 		} else if normalizeNotifyChannelType(channel.ChannelType) != normalizeNotifyChannelType(tmpl.ChannelType) {
 			status = notifyStatusFailed
-			errorText = "消息模板与通知媒介类型不兼容"
+			errorText = "message template and notification channel types are incompatible"
 		} else if buildErr != nil {
 			status = notifyStatusFailed
 			errorText = buildErr.Error()
@@ -642,15 +642,15 @@ func notifyTemplateScopeCompatible(templateScope, targetScope string) bool {
 func notifyScopeLabel(scope string) string {
 	switch normalizeNotifyScope(scope) {
 	case "monitor":
-		return "监控告警"
+		return "Monitoring Alert"
 	case "schedule":
-		return "定时任务"
+		return "Scheduled Task"
 	case "job":
-		return "作业编排"
+		return "Job Orchestration"
 	case "pipeline":
-		return "CI/CD 流水线"
+		return "CI/CD Pipeline"
 	default:
-		return "全部场景"
+		return "All Scopes"
 	}
 }
 
@@ -687,7 +687,7 @@ func (s *Service) initNotifyDispatcher() {
 		now := time.Now()
 		_ = s.db.Model(&model.NotifySendLog{}).
 			Where("status = ? AND updated_at < ?", notifyStatusSending, now.Add(-2*time.Minute)).
-			Updates(map[string]any{"status": notifyStatusRetrying, "next_retry_at": now, "error_text": "服务重启后恢复未完成投递"}).Error
+			Updates(map[string]any{"status": notifyStatusRetrying, "next_retry_at": now, "error_text": "unfinished delivery resumed after service restart"}).Error
 		go func() {
 			s.dispatchPendingNotifications()
 			ticker := time.NewTicker(2 * time.Second)
@@ -732,9 +732,9 @@ func (s *Service) processNotifySendLog(id uint) {
 	var sendErr error
 	var channel model.NotifyChannel
 	if err := s.db.First(&channel, item.ChannelID).Error; err != nil {
-		sendErr = fmt.Errorf("通知媒介不存在: %w", err)
+		sendErr = fmt.Errorf("notification channel does not exist: %w", err)
 	} else if channel.Status != 1 {
-		sendErr = errors.New("通知媒介已禁用")
+		sendErr = errors.New("notification channel is disabled")
 	} else {
 		result, sendErr = postNotifyWebhook(channel, []byte(item.RequestBody))
 	}
@@ -838,41 +838,41 @@ func notifyStatusLabel(scope, status string) string {
 	case "monitor":
 		switch value {
 		case "firing":
-			return "触发中"
+			return "발생"
 		case "recovered", "resolved":
-			return "已恢复"
+			return "복구"
 		case "claimed":
-			return "已认领"
+			return "인계됨"
 		}
 	case "job":
 		switch value {
 		case "notice", "notify":
-			return "通知"
+			return "알림"
 		case "success", "completed":
-			return "成功"
+			return "성공"
 		case "failed", "error":
-			return "失败"
+			return "실패"
 		case "running":
-			return "执行中"
+			return "실행 중"
 		case "waiting_approval":
-			return "等待人工确认"
+			return "수동 확인 대기"
 		case "rejected":
-			return "已拒绝"
+			return "거부됨"
 		}
 	case "pipeline":
 		switch value {
 		case "notice", "notify":
-			return "通知"
+			return "알림"
 		case "success", "completed":
-			return "成功"
+			return "성공"
 		case "failed", "error":
-			return "失败"
+			return "실패"
 		case "running":
-			return "执行中"
+			return "실행 중"
 		case "waiting_approval":
-			return "等待人工确认"
+			return "수동 확인 대기"
 		case "rejected":
-			return "已拒绝"
+			return "거부됨"
 		}
 	case "schedule":
 		return scheduleNotifyStatusLabel(status)
@@ -898,22 +898,22 @@ func normalizeNotifyTemplateForEvent(title, content string, event NotifyEvent) (
 		return title, content
 	}
 	if scope == "schedule" {
-		return "【定时任务】{{taskName}} · {{status}}", "**执行状态：** {{status}}\n\n**任务名称：** {{taskName}}\n**任务类型：** {{taskType}}\n**触发方式：** {{triggerType}}\n**Cron：** {{cronExpr}}\n**执行耗时：** {{duration}}\n**完成时间：** {{finishedAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}"
+		return "[Scheduled Task] {{taskName}} · {{status}}", "**실행 상태:** {{status}}\n\n**Task 이름:** {{taskName}}\n**Task Type:** {{taskType}}\n**Trigger 방식:** {{triggerType}}\n**Cron:** {{cronExpr}}\n**실행 시간:** {{duration}}\n**완료 시각:** {{finishedAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
 	}
 	if scope == "pipeline" {
-		return "【流水线通知】{{pipelineName}} · {{stageName}}", "**执行状态：** {{status}}\n\n**流水线：** {{pipelineName}}\n**执行编号：** #{{pipelineRunId}}\n**应用：** {{appName}}\n**环境：** {{env}}\n**分支：** {{branch}}\n**镜像版本：** {{imageTag}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**执行摘要**\n{{summary}}\n\n{{detail}}"
+		return "[Pipeline Notification] {{pipelineName}} · {{stageName}}", "**실행 상태:** {{status}}\n\n**Pipeline:** {{pipelineName}}\n**Run ID:** #{{pipelineRunId}}\n**Application:** {{appName}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
 	}
-	return "【作业通知】{{jobName}} · {{stepName}}", "**通知类型：** {{status}}\n\n**作业名称：** {{jobName}}\n**执行编号：** #{{jobHistoryId}}\n**当前步骤：** {{stepName}}\n**触发方式：** {{triggerType}}\n**通知时间：** {{notifyAt}}\n\n---\n\n**通知摘要**\n{{summary}}\n\n{{detail}}"
+	return "[Job Notification] {{jobName}} · {{stepName}}", "**알림 Type:** {{status}}\n\n**Job 이름:** {{jobName}}\n**Run ID:** #{{jobHistoryId}}\n**현재 Step:** {{stepName}}\n**Trigger 방식:** {{triggerType}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**알림 요약**\n{{summary}}\n\n{{detail}}"
 }
 
 func scheduleNotifyStatusLabel(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "success", "completed":
-		return "成功"
+		return "성공"
 	case "failed", "error":
-		return "失败"
+		return "실패"
 	case "running":
-		return "执行中"
+		return "실행 중"
 	default:
 		return status
 	}
@@ -995,7 +995,7 @@ func postNotifyWebhook(channel model.NotifyChannel, body []byte) (notifyWebhookR
 	result := notifyWebhookResult{}
 	webhookURL := strings.TrimSpace(channel.WebhookURL)
 	if webhookURL == "" {
-		return result, errors.New("webhook 地址为空")
+		return result, errors.New("webhook URL is empty")
 	}
 	if channel.Secret != "" && normalizeNotifyChannelType(channel.ChannelType) == "dingtalk" {
 		signedURL, err := signDingTalkURL(webhookURL, channel.Secret)
@@ -1022,12 +1022,12 @@ func postNotifyWebhook(channel model.NotifyChannel, body []byte) (notifyWebhookR
 	result.Body = string(responseBody)
 	result.HTTPStatus = response.StatusCode
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return result, fmt.Errorf("Webhook 返回 HTTP %d", response.StatusCode)
+		return result, fmt.Errorf("webhook returned HTTP %d", response.StatusCode)
 	}
 	code, message, exists := parseNotifyBusinessResponse(channel.ChannelType, responseBody)
 	result.BusinessCode = code
 	if exists && code != "0" {
-		return result, fmt.Errorf("平台返回业务错误码 %s: %s", code, firstNonEmpty(message, "未知错误"))
+		return result, fmt.Errorf("platform returned business error code %s: %s", code, firstNonEmpty(message, "unknown error"))
 	}
 	return result, nil
 }
@@ -1150,7 +1150,7 @@ func (s *Service) RetryNotifySendLog(id uint) (map[string]any, error) {
 		return nil, err
 	}
 	if original.Status != notifyStatusFailed {
-		return nil, errors.New("仅失败的投递记录可以重新发送")
+		return nil, errors.New("only failed delivery records can be resent")
 	}
 	now := time.Now()
 	retry := model.NotifySendLog{

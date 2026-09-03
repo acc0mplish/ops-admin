@@ -166,13 +166,13 @@ func finOpsProviderCapability(provider string) map[string]any {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
 	case "alicloud":
-		return map[string]any{"mode": "builtin", "label": "内置官方账单 API", "supportsOfficialSync": true}
+		return map[string]any{"mode": "builtin", "label": "Built-in Official Billing API", "supportsOfficialSync": true}
 	case "tencent":
-		return map[string]any{"mode": "builtin", "label": "内置官方账单 API", "supportsOfficialSync": true}
+		return map[string]any{"mode": "builtin", "label": "Built-in Official Billing API", "supportsOfficialSync": true}
 	case "aws", "azure", "gcp":
-		return map[string]any{"mode": "adapter", "label": "账单适配器", "supportsOfficialSync": false}
+		return map[string]any{"mode": "adapter", "label": "Billing Adapter", "supportsOfficialSync": false}
 	default:
-		return map[string]any{"mode": "adapter", "label": "自定义账单适配器", "supportsOfficialSync": false}
+		return map[string]any{"mode": "adapter", "label": "Custom Billing Adapter", "supportsOfficialSync": false}
 	}
 }
 
@@ -180,13 +180,13 @@ func (s *Service) SaveFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.Provider = strings.ToLower(strings.TrimSpace(payload.Provider))
 	if payload.Name == "" || !finOpsProviders[payload.Provider] {
-		return nil, errors.New("云账号名称和有效的云厂商不能为空")
+		return nil, errors.New("cloud account name and a valid provider are required")
 	}
 	if payload.SyncFrequency == "" {
 		payload.SyncFrequency = "daily"
 	}
 	if !map[string]bool{"manual": true, "hourly": true, "daily": true, "weekly": true, "monthly": true}[payload.SyncFrequency] {
-		return nil, errors.New("无效的账单同步频率")
+		return nil, errors.New("invalid billing synchronization frequency")
 	}
 	var account model.IntegrationFinOpsAccount
 	if payload.ID > 0 {
@@ -233,7 +233,7 @@ func (s *Service) SaveFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 
 func (s *Service) DeleteFinOpsAccount(id uint) error {
 	if id == 0 {
-		return errors.New("云账号 ID 不能为空")
+		return errors.New("cloud account ID is required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("account_id = ?", id).Delete(&model.IntegrationFinOpsCostRecord{}).Error; err != nil {
@@ -286,7 +286,7 @@ func (s *Service) TestFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 func (s *Service) ImportFinOpsCosts(payload FinOpsCostImportPayload) (map[string]any, error) {
 	var account model.IntegrationFinOpsAccount
 	if err := s.db.First(&account, payload.AccountID).Error; err != nil {
-		return nil, errors.New("云账号不存在")
+		return nil, errors.New("cloud account does not exist")
 	}
 	count, amount, err := s.upsertFinOpsCosts(account, payload.Records)
 	if err != nil {
@@ -301,7 +301,7 @@ func (s *Service) upsertFinOpsCosts(account model.IntegrationFinOpsAccount, inpu
 		for i, input := range inputs {
 			date, err := parseFinOpsDate(input.BillingDate)
 			if err != nil {
-				return fmt.Errorf("第 %d 条账单日期无效: %w", i+1, err)
+				return fmt.Errorf("billing record %d has an invalid date: %w", i+1, err)
 			}
 			externalID := strings.TrimSpace(input.ExternalID)
 			if externalID == "" {
@@ -451,7 +451,7 @@ func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount,
 			return result
 		}
 		result.Status, result.RecordCount, result.TotalAmount, result.SnapshotVerified = "success", count, amount, true
-		finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText+"（未返回账单明细，保留现有入库快照）", 0, 0, count, amount, true)
+		finish("success", finOpsBillingSource(account.Provider)+" billing synchronization completed for "+monthText+"; no detail rows were returned, so the existing stored snapshot was retained", 0, 0, count, amount, true)
 		return result
 	}
 	sourceCount, sourceAmount := finOpsInputSummary(records)
@@ -481,7 +481,7 @@ func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount,
 	}
 	result.Status, result.SourceRecordCount, result.SourceTotalAmount = "success", sourceCount, sourceAmount
 	result.RecordCount, result.TotalAmount, result.DeduplicatedCount, result.SnapshotVerified = count, amount, deduplicatedCount, true
-	finish("success", finOpsBillingSource(account.Provider)+"账单同步完成 "+monthText, sourceCount, sourceAmount, count, amount, true)
+	finish("success", finOpsBillingSource(account.Provider)+" billing synchronization completed for "+monthText, sourceCount, sourceAmount, count, amount, true)
 	return result
 }
 
@@ -610,7 +610,7 @@ func (s *Service) FinOpsBreakdown(start, end time.Time, dimension string, accoun
 	}
 	values := map[string]float64{}
 	for _, r := range records {
-		key := "未分类"
+		key := "Uncategorized"
 		switch dimension {
 		case "provider":
 			key = r.Provider
@@ -634,7 +634,7 @@ func (s *Service) FinOpsBreakdown(start, end time.Time, dimension string, accoun
 			continue
 		}
 		if key == "" {
-			key = "未分类"
+			key = "Uncategorized"
 		}
 		values[key] += r.Amount
 	}
@@ -706,7 +706,7 @@ func (s *Service) FinOpsResources(start, end time.Time, accountID uint, regions,
 			key = r.ResourceName
 		}
 		if key == "" {
-			key = "未关联资源|" + r.Service
+			key = "Unlinked Resource|" + r.Service
 		}
 		key = fmt.Sprintf("%d|%s|%s", r.AccountID, key, r.ResourceType)
 		a := values[key]
@@ -750,10 +750,10 @@ func finOpsHostResourceConfig(host model.AssetHost) string {
 		parts = append(parts, "CPU "+value)
 	}
 	if value := strings.TrimSpace(host.Memory); value != "" {
-		parts = append(parts, "内存 "+value)
+		parts = append(parts, "Memory "+value)
 	}
 	if value := strings.TrimSpace(host.Disk); value != "" {
-		parts = append(parts, "磁盘 "+value)
+		parts = append(parts, "Disk "+value)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -765,7 +765,7 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, a
 	}
 	start, err := parseFinOpsMonth(analysisMonth)
 	if err != nil {
-		return 0, "", errors.New("month 参数格式无效，格式为 YYYY-MM")
+		return 0, "", errors.New("invalid month parameter; expected YYYY-MM")
 	}
 	end := start.AddDate(0, 1, 0)
 	if now.After(start) && now.Before(end) {
@@ -793,9 +793,9 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, a
 		strategy = "default"
 	}
 	if strategy != "default" && strategy != "ai" {
-		return 0, "", errors.New("无效的建议生成策略")
+		return 0, "", errors.New("invalid recommendation generation strategy")
 	}
-	analysisScope := "全部云账号"
+	analysisScope := "전체 Cloud Account"
 	if accountID > 0 {
 		for _, account := range accounts {
 			if account.ID == accountID {
@@ -856,18 +856,18 @@ func (s *Service) GenerateFinOpsRecommendations(modelID uint, strategy string, a
 
 func finOpsRecommendationTitle(scope, analysisMonth, strategy string) string {
 	if strings.TrimSpace(scope) == "" {
-		scope = "全部云账号"
+		scope = "전체 Cloud Account"
 	}
 	if strings.TrimSpace(analysisMonth) == "" {
 		analysisMonth = time.Now().Format("2006-01")
 	}
-	strategyName := "默认策略"
+	strategyName := "기본 Strategy"
 	if strategy == "ai" {
-		strategyName = "AI 分析"
+		strategyName = "AI 분석"
 	} else if strategy == "ai_fallback" {
-		strategyName = "AI 分析降级（默认策略）"
+		strategyName = "AI Fallback (기본 Strategy)"
 	}
-	return fmt.Sprintf("%s｜%s｜%s优化建议", scope, analysisMonth, strategyName)
+	return fmt.Sprintf("%s | %s | %s 최적화 권고", scope, analysisMonth, strategyName)
 }
 
 func defaultFinOpsRecommendations(values map[string]*finOpsRecommendationAggregate) []model.IntegrationFinOpsRecommendation {
@@ -882,7 +882,7 @@ func defaultFinOpsRecommendations(values map[string]*finOpsRecommendationAggrega
 		return nil
 	}
 	var description strings.Builder
-	description.WriteString("## 执行摘要\n以下为基于本月账单的默认 FinOps 分析结果。账单不包含 CPU、内存和连接数等实时监控指标，因此空闲与低利用率项属于待核查对象。")
+	description.WriteString("## 실행 요약\n이번 달 Billing을 기준으로 생성한 기본 FinOps 분석 결과입니다. Billing에는 CPU, Memory, Connection 같은 실시간 Monitoring Metric이 없으므로 유휴 및 저활용 항목은 검증 대상입니다.")
 	total, saving := 0.0, 0.0
 	for index, item := range items {
 		total += item.Cost
@@ -896,16 +896,16 @@ func defaultFinOpsRecommendations(values map[string]*finOpsRecommendationAggrega
 			name = item.ResourceID
 		}
 		if name == "" {
-			name = "服务资源"
+			name = "Service Resource"
 		}
-		description.WriteString(fmt.Sprintf("\n%d. %s：本月成本 %.2f，建议核查使用率、闲置时段与承诺折扣；预计可节省 %.2f。", index+1, name, item.Cost, recommendationSaving))
+		description.WriteString(fmt.Sprintf("\n%d. %s: 이번 달 비용 %.2f. 사용률, 유휴 시간대, 약정 할인 적용 가능성을 검토하십시오. 예상 절감액은 %.2f입니다.", index+1, name, item.Cost, recommendationSaving))
 	}
-	description.WriteString("\n\n## 空闲资源\n优先核查本月仍产生费用、但无对应运行负载或业务访问的资源；确认后可停止、释放或设置定时启停。")
-	description.WriteString("\n\n## 低利用率资源\n对上述高成本计算、数据库和中间件资源核对 CPU、内存、连接数和 IOPS；连续低利用率时考虑降配。")
-	description.WriteString("\n\n## 计费方式优化\n对稳定运行资源评估包年包月、节省计划或预留实例，并避免重复购买资源包。")
-	description.WriteString("\n\n## 闲置磁盘/快照/IP\n盘点未挂载云盘、长期快照、未绑定 EIP 和闲置负载均衡；确认无依赖后清理。")
-	description.WriteString(fmt.Sprintf("\n\n## 预计可节省金额\n本月纳入分析成本 %.2f；按保守 15%% 估算，预计月节省金额 %.2f。", total, saving))
-	return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "cost_review", Priority: "P2", Title: "本月云费用优化建议", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}
+	description.WriteString("\n\n## 유휴 Resource\n이번 달에도 비용이 발생하지만 대응하는 Runtime Workload 또는 업무 Access가 없는 Resource를 우선 확인하십시오. 검증 후 중지, 해제 또는 Scheduled Start/Stop을 적용할 수 있습니다.")
+	description.WriteString("\n\n## 저활용 Resource\n고비용 Compute, Database, Middleware Resource의 CPU, Memory, Connection, IOPS를 확인하십시오. 지속적으로 사용률이 낮으면 Downsize를 검토합니다.")
+	description.WriteString("\n\n## Billing 방식 최적화\n안정적으로 실행되는 Resource에는 Subscription, Savings Plan 또는 Reserved Instance를 평가하고 중복 Resource Package 구매를 방지하십시오.")
+	description.WriteString("\n\n## 유휴 Disk / Snapshot / IP\n연결되지 않은 Cloud Disk, 장기 Snapshot, 미연결 EIP, 유휴 Load Balancer를 점검하고 Dependency가 없음을 확인한 뒤 정리하십시오.")
+	description.WriteString(fmt.Sprintf("\n\n## 예상 절감액\n이번 달 분석 대상 비용은 %.2f이며 보수적인 15%% 기준 예상 월 절감액은 %.2f입니다.", total, saving))
+	return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "cost_review", Priority: "P2", Title: "이번 달 Cloud 비용 최적화 권고", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}
 }
 
 func (s *Service) finOpsRecommendationAIModel(modelID uint) (*model.IntegrationAIModel, error) {
@@ -929,22 +929,22 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 	// analysis, so a conversational model never needs to serialize cost data.
 	base := defaultFinOpsRecommendations(values)
 	if len(base) == 0 {
-		return nil, errors.New("没有可用于生成 AI 建议的费用记录")
+		return nil, errors.New("no cost records are available for AI recommendation generation")
 	}
 	contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData})
-	prompt := "根据以下本地已同步云账单数据，生成简洁、可执行的中文 FinOps 优化分析。不要调用云接口，也不要编造资源、金额或监控指标。请使用 Markdown 标题，覆盖：执行摘要、空闲资源核查、低利用率资源核查、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。没有实时监控数据时，必须写“建议核查”。不要输出 JSON、代码块或表格；总长度不超过 900 个中文字符。数据：" + string(contextJSON)
-	response, err := s.callOpenAICompatible(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师。只输出简洁中文 Markdown 分析报告，不输出 JSON。"}, {"role": "user", "content": prompt}}, nil)
+	prompt := "Using the following locally synchronized cloud billing data, produce a concise and actionable Korean FinOps analysis. Do not call cloud APIs or invent resources, amounts, or monitoring metrics. Use Markdown headings covering: execution summary, idle-resource review, low-utilization review, billing-model optimization, idle disks/snapshots/IPs, and estimated savings. When real-time monitoring data is unavailable, explicitly state that validation is required. Do not output JSON, code fences, or tables. Keep the report under 900 Korean characters. Data: " + string(contextJSON)
+	response, err := s.callOpenAICompatible(aiModel, []map[string]any{{"role": "system", "content": "You are a rigorous FinOps analyst. Output only a concise Korean Markdown analysis report and no JSON."}, {"role": "user", "content": prompt}}, nil)
 	if err != nil {
 		return nil, err
 	}
 	content := strings.TrimSpace(response.Content)
 	if content == "" || hasUnsupportedAIToolProtocol(content) {
-		return nil, errors.New("AI 未返回可展示的 FinOps 分析内容")
+		return nil, errors.New("AI returned no displayable FinOps analysis")
 	}
 	recommendation := base[0]
 	recommendation.Category = "ai_finops"
-	recommendation.Title = "本月云费用 AI 优化建议"
-	recommendation.Description = "## AI 分析结论\n" + truncateRunes(content, 12000)
+	recommendation.Title = "이번 달 Cloud 비용 AI 최적화 권고"
+	recommendation.Description = "## AI 분석 결론\n" + truncateRunes(content, 12000)
 	return []model.IntegrationFinOpsRecommendation{recommendation}, nil
 
 	/*
@@ -959,8 +959,8 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 			items = items[:30]
 		}
 		contextJSON, _ := json.Marshal(map[string]any{"finopsToolResult": analysisData, "costItems": items})
-		prompt := "根据以下云费用分析工具结果生成不超过 5 条可执行优化建议。工具结果只来自本地已同步账单数据库，绝不代表实时云端数据。必须覆盖：空闲资源、低利用率资源、计费方式优化、闲置磁盘/快照/IP、预计可节省金额。账单没有实时监控指标时，明确说明需要核查而不得断言资源闲置。每条 description 不超过 80 个中文字符。只返回一个完整 JSON 对象：{\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。不要使用 Markdown 代码块、标题或任何 JSON 之外的文字。不得编造资源；saving 必须非负且不超过 currentCost。数据：" + string(contextJSON)
-		response, err := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "你是严谨的 FinOps 分析师，只输出符合要求的 JSON。"}, {"role": "user", "content": prompt}})
+		prompt := "Using the following cloud-cost analysis tool result, generate no more than five actionable Korean optimization recommendations. The tool result comes only from the locally synchronized billing database and does not represent real-time cloud state. Cover idle resources, low utilization, billing-model optimization, idle disks/snapshots/IPs, and estimated savings. When billing lacks real-time monitoring metrics, state that validation is required rather than claiming a resource is idle. Each description must be no longer than 80 Korean characters. Return exactly one complete JSON object: {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}. Do not output Markdown fences, headings, or text outside JSON. Do not invent resources; saving must be non-negative and no greater than currentCost. Data: " + string(contextJSON)
+		response, err := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "You are a rigorous FinOps analyst. Output only JSON that satisfies the requested schema."}, {"role": "user", "content": prompt}})
 		if err != nil {
 			return nil, err
 		}
@@ -978,8 +978,8 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 		}
 		content, parseErr := extractFinOpsRecommendationJSON(response.Content)
 		if parseErr != nil {
-			repairPrompt := "将以下 FinOps 分析结果转换为一个完整 JSON 对象。只返回 JSON，不要 Markdown 或解释。格式必须是 {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}。若原内容缺少字段，使用已知账号和成本的保守值，不得编造资源。原内容：\n" + truncateRunes(response.Content, 12000)
-			repaired, repairErr := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "你是严格的 JSON 修复器，只输出一个有效 JSON 对象。"}, {"role": "user", "content": repairPrompt}})
+			repairPrompt := "Convert the following FinOps analysis result into one complete JSON object. Return JSON only, without Markdown or explanation. The schema must be {\"recommendations\":[{\"accountId\":1,\"provider\":\"...\",\"resourceId\":\"...\",\"priority\":\"P1|P2|P3\",\"title\":\"...\",\"description\":\"...\",\"currentCost\":0,\"saving\":0}]}. If fields are missing, use conservative values from the known account and cost data and do not invent resources. Original content:\n" + truncateRunes(response.Content, 12000)
+			repaired, repairErr := s.callOpenAICompatibleJSON(aiModel, []map[string]any{{"role": "system", "content": "You are a strict JSON repair tool. Output exactly one valid JSON object."}, {"role": "user", "content": repairPrompt}})
 			if repairErr == nil {
 				content, parseErr = extractFinOpsRecommendationJSON(repaired.Content)
 			}
@@ -988,7 +988,7 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 			}
 		}
 		if err := json.Unmarshal([]byte(content), &payload); err != nil {
-			return nil, fmt.Errorf("AI 返回的建议 JSON 无法解析: %w", err)
+			return nil, fmt.Errorf("failed to parse AI recommendation JSON: %w", err)
 		}
 		fallbackAccountID, fallbackProvider := uint(0), "multi-cloud"
 		for _, value := range values {
@@ -1027,25 +1027,25 @@ func (s *Service) generateFinOpsAIRecommendations(aiModel model.IntegrationAIMod
 			}
 		}
 		if len(analysis) == 0 {
-			return nil, errors.New("AI 未生成有效的优化建议")
+			return nil, errors.New("AI generated no valid optimization recommendations")
 		}
 		priority, total, saving := "P3", 0.0, 0.0
 		var description strings.Builder
-		description.WriteString("## 执行摘要\n以下为 AI 基于本月账单生成的综合优化建议：")
+		description.WriteString("## 실행 요약\n다음은 AI가 이번 달 Billing을 기준으로 생성한 종합 최적화 권고입니다.")
 		for index, item := range analysis {
 			total += item.CurrentCost
 			saving += item.Saving
 			if item.Priority == "P1" || (item.Priority == "P2" && priority == "P3") {
 				priority = item.Priority
 			}
-			description.WriteString(fmt.Sprintf("\n%d. %s：%s（当前成本 %.2f，预计节省 %.2f）", index+1, item.Title, item.Description, item.CurrentCost, item.Saving))
+			description.WriteString(fmt.Sprintf("\n%d. %s: %s (현재 비용 %.2f, 예상 절감액 %.2f)", index+1, item.Title, item.Description, item.CurrentCost, item.Saving))
 		}
-		description.WriteString("\n\n## 空闲资源\n请优先验证停止但仍计费、无业务访问或无监控负载的资源。")
-		description.WriteString("\n\n## 低利用率资源\n结合 CPU、内存、IOPS、连接数等监控数据确认是否应降配。")
-		description.WriteString("\n\n## 计费方式优化\n评估稳定工作负载是否适合包年包月、节省计划或预留实例。")
-		description.WriteString("\n\n## 闲置磁盘/快照/IP\n清点未挂载磁盘、长期快照、未绑定 IP 和无后端服务的负载均衡。")
-		description.WriteString(fmt.Sprintf("\n\n## 预计可节省金额\n本报告覆盖成本 %.2f，AI 估算可节省金额 %.2f。", total, saving))
-		return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "ai_finops", Priority: priority, Title: "本月云费用 AI 优化建议", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}, nil
+		description.WriteString("\n\n## 유휴 Resource\n중지 상태지만 비용이 발생하거나 업무 Access 또는 Monitoring Load가 없는 Resource를 우선 검증하십시오.")
+		description.WriteString("\n\n## 저활용 Resource\nCPU, Memory, IOPS, Connection 등의 Monitoring 데이터를 함께 확인해 Downsize 여부를 결정하십시오.")
+		description.WriteString("\n\n## Billing 방식 최적화\n안정적인 Workload에 Subscription, Savings Plan 또는 Reserved Instance가 적합한지 평가하십시오.")
+		description.WriteString("\n\n## 유휴 Disk / Snapshot / IP\n연결되지 않은 Disk, 장기 Snapshot, 미연결 IP, Backend가 없는 Load Balancer를 점검하십시오.")
+		description.WriteString(fmt.Sprintf("\n\n## 예상 절감액\n이 Report의 분석 대상 비용은 %.2f이며 AI 예상 절감액은 %.2f입니다.", total, saving))
+		return []model.IntegrationFinOpsRecommendation{{Provider: "multi-cloud", Category: "ai_finops", Priority: priority, Title: "이번 달 Cloud 비용 AI 최적화 권고", Description: description.String(), CurrentCost: total, Saving: saving, Status: "open"}}, nil
 	*/
 }
 
@@ -1095,7 +1095,7 @@ func extractFinOpsRecommendationJSON(content string) (string, error) {
 		}
 		start += next + 1
 	}
-	return "", errors.New("AI 未按约定返回完整 JSON，可能包含说明文字或因输出过长被截断")
+	return "", errors.New("AI did not return complete JSON; the response may contain explanatory text or may have been truncated")
 }
 
 func (s *Service) ListFinOpsRecommendations(status string, accountID uint, analysisMonth string) ([]model.IntegrationFinOpsRecommendation, error) {
@@ -1127,14 +1127,14 @@ func finOpsRecordDataQuality(tagsJSON string) string {
 }
 func (s *Service) UpdateFinOpsRecommendation(id uint, status string) error {
 	if !map[string]bool{"open": true, "accepted": true, "ignored": true, "done": true}[status] {
-		return errors.New("无效的建议状态")
+		return errors.New("invalid recommendation status")
 	}
 	return s.db.Model(&model.IntegrationFinOpsRecommendation{}).Where("id = ?", id).Update("status", status).Error
 }
 
 func (s *Service) DeleteFinOpsRecommendation(id uint) error {
 	if id == 0 {
-		return errors.New("建议 ID 不能为空")
+		return errors.New("recommendation ID is required")
 	}
 	return s.db.Delete(&model.IntegrationFinOpsRecommendation{}, id).Error
 }
@@ -1159,7 +1159,7 @@ func (s *Service) ListFinOpsSyncLogs(accountID uint) ([]map[string]any, error) {
 	for _, account := range accounts {
 		accountNames[account.ID] = account.Name
 	}
-	triggerLabels := map[string]string{"manual": "手动同步", "scheduled": "定时同步", "api": "接口触发"}
+	triggerLabels := map[string]string{"manual": "수동 동기화", "scheduled": "Scheduled 동기화", "api": "API Trigger"}
 	result := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		finishedAt := row.FinishedAt
@@ -1236,7 +1236,7 @@ func parseFinOpsDate(value string) (time.Time, error) {
 			return t, nil
 		}
 	}
-	return time.Time{}, errors.New("支持 YYYY-MM-DD 或 RFC3339")
+	return time.Time{}, errors.New("supported formats are YYYY-MM-DD or RFC3339")
 }
 
 func parseFinOpsMonth(value string) (time.Time, error) {

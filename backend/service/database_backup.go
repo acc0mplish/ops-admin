@@ -87,7 +87,7 @@ func (s *Service) scheduleDatabaseBackupPlan(plan model.DatabaseBackupPlan) erro
 		return nil
 	}
 	entryID, err := s.dbBackupScheduler.cron.AddFunc(normalizeCronExpr(plan.CronExpr), func() {
-		_, _ = s.RunDatabaseBackup(plan.ID, "schedule", "定时任务")
+		_, _ = s.RunDatabaseBackup(plan.ID, "schedule", "Scheduled Task")
 	})
 	if err != nil {
 		return err
@@ -126,11 +126,11 @@ func (s *Service) ListDatabaseBackupPlans(pageNum, pageSize int, keyword, status
 
 func (s *Service) SaveDatabaseBackupPlan(payload DatabaseBackupPlanPayload) error {
 	if strings.TrimSpace(payload.Name) == "" || payload.DatabaseID == 0 {
-		return errors.New("请填写计划名称并选择数据库")
+		return errors.New("enter a plan name and select a database")
 	}
 	cronExpr := normalizeCronExpr(payload.CronExpr)
 	if _, err := parseCronExpr(cronExpr); err != nil {
-		return errors.New("Cron 表达式格式不正确")
+		return errors.New("invalid Cron expression format")
 	}
 	asset, err := s.getAssetDatabase(payload.DatabaseID)
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *Service) SaveDatabaseBackupPlan(payload DatabaseBackupPlanPayload) erro
 
 func (s *Service) DeleteDatabaseBackupPlan(id uint) error {
 	if id == 0 {
-		return errors.New("请选择备份计划")
+		return errors.New("select a backup plan")
 	}
 	if s.dbBackupScheduler != nil {
 		s.dbBackupScheduler.mu.Lock()
@@ -199,14 +199,14 @@ func (s *Service) RunDatabaseBackup(planID uint, triggerType, operator string) (
 
 func (s *Service) RunManualDatabaseBackup(payload DatabaseManualBackupPayload) (map[string]any, error) {
 	if strings.TrimSpace(payload.SchemaName) == "" {
-		return nil, errors.New("请选择需要备份的业务库")
+		return nil, errors.New("select a business database to back up")
 	}
 	return s.createDatabaseBackupRecord(model.DatabaseBackupPlan{}, payload.DatabaseID, payload.SchemaName, "manual", payload.Operator)
 }
 
 func (s *Service) createDatabaseBackupRecord(plan model.DatabaseBackupPlan, databaseID uint, schema, triggerType, operator string) (map[string]any, error) {
 	if databaseID == 0 {
-		return nil, errors.New("请选择需要备份的数据库")
+		return nil, errors.New("select a database to back up")
 	}
 	asset, err := s.getAssetDatabase(databaseID)
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *Service) executeDatabaseBackup(recordID uint, plan model.DatabaseBackup
 		updates["message"] = err.Error()
 	} else {
 		updates["status"] = "success"
-		updates["message"] = "备份完成（" + backupMethod + "）"
+		updates["message"] = "Backup completed (" + backupMethod + ")"
 		updates["file_name"] = filename
 		updates["file_content"] = string(content)
 		updates["file_size"] = len(content)
@@ -294,10 +294,10 @@ func (s *Service) exportDatabaseBackup(databaseID uint, schema string) ([]byte, 
 	switch normalizeDatabaseType(asset.DBType) {
 	case "postgresql":
 		content, rowCount, err = exportPostgreSQLLogicalBackup(db, schema)
-		backupMethod = fmt.Sprintf("内置 PostgreSQL 逻辑备份，%d 行数据", rowCount)
+		backupMethod = fmt.Sprintf("built-in PostgreSQL logical backup, %d rows", rowCount)
 	default:
 		content, rowCount, err = exportMySQLLogicalBackup(db, schema)
-		backupMethod = fmt.Sprintf("内置 MySQL 逻辑备份，%d 行数据", rowCount)
+		backupMethod = fmt.Sprintf("built-in MySQL logical backup, %d rows", rowCount)
 	}
 	if err != nil {
 		return nil, "", "", err
@@ -316,18 +316,18 @@ func resolveBackupSchema(asset *model.AssetDatabase, schema string) (string, err
 		name = strings.TrimSpace(asset.DBName)
 	}
 	if name == "" {
-		return "", errors.New("数据库连接未设置默认库，请选择需要备份的业务库")
+		return "", errors.New("database connection has no default database; select a business database to back up")
 	}
 	if normalizeDatabaseType(asset.DBType) == "postgresql" {
 		lowerName := strings.ToLower(name)
 		if lowerName == "pg_catalog" || lowerName == "information_schema" || strings.HasPrefix(lowerName, "pg_") {
-			return "", errors.New("不允许备份 PostgreSQL 系统 Schema，请选择业务 Schema")
+			return "", errors.New("PostgreSQL system schemas cannot be backed up; select a business schema")
 		}
 		return name, nil
 	}
 	switch strings.ToLower(name) {
 	case "mysql", "sys", "information_schema", "performance_schema":
-		return "", errors.New("不允许备份 MySQL 系统库，请选择业务库")
+		return "", errors.New("MySQL system databases cannot be backed up; select a business database")
 	}
 	return name, nil
 }
@@ -337,14 +337,14 @@ func ensureLogicalBackupFeature(asset *model.AssetDatabase) error {
 	case "mysql", "postgresql":
 		return nil
 	default:
-		return fmt.Errorf("%s 暂不支持逻辑备份，目前支持 MySQL 和 PostgreSQL", databaseTypeDisplayName(asset.DBType))
+		return fmt.Errorf("%s does not support logical backup; supported engines are MySQL and PostgreSQL", databaseTypeDisplayName(asset.DBType))
 	}
 }
 
 func exportMySQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) {
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
-		return nil, 0, fmt.Errorf("创建一致性备份快照失败: %w", err)
+		return nil, 0, fmt.Errorf("failed to create a consistent backup snapshot: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -372,7 +372,7 @@ func exportMySQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) 
 		qualified := quoteIdentifier(schema) + "." + quoteIdentifier(table)
 		createSQL, err := showCreateStatement(tx, "SHOW CREATE TABLE "+qualified, "Create Table")
 		if err != nil {
-			return nil, rowCount, fmt.Errorf("读取表 %s 的建表语句失败: %w", table, err)
+			return nil, rowCount, fmt.Errorf("failed to read the CREATE TABLE statement for %s: %w", table, err)
 		}
 		builder.WriteString("-- Table structure: " + table + "\n")
 		builder.WriteString("DROP TABLE IF EXISTS " + qualified + ";\n")
@@ -392,7 +392,7 @@ func exportMySQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) 
 		qualified := quoteIdentifier(schema) + "." + quoteIdentifier(view)
 		createSQL, err := showCreateStatement(tx, "SHOW CREATE VIEW "+qualified, "Create View")
 		if err != nil {
-			return nil, rowCount, fmt.Errorf("读取视图 %s 的定义失败: %w", view, err)
+			return nil, rowCount, fmt.Errorf("failed to read view definition for %s: %w", view, err)
 		}
 		builder.WriteString("-- View: " + view + "\n")
 		builder.WriteString("DROP VIEW IF EXISTS " + qualified + ";\n")
@@ -410,7 +410,7 @@ func exportMySQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) 
 	builder.WriteString("SET FOREIGN_KEY_CHECKS=1;\n")
 	builder.WriteString("-- Backup completed. Rows exported: " + strconv.FormatInt(rowCount, 10) + "\n")
 	if err := tx.Commit(); err != nil {
-		return nil, 0, fmt.Errorf("提交备份快照失败: %w", err)
+		return nil, 0, fmt.Errorf("failed to commit backup snapshot: %w", err)
 	}
 	return []byte(builder.String()), rowCount, nil
 }
@@ -421,7 +421,7 @@ func exportMySQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) 
 func exportPostgreSQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, error) {
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
-		return nil, 0, fmt.Errorf("创建一致性备份快照失败: %w", err)
+		return nil, 0, fmt.Errorf("failed to create a consistent backup snapshot: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -452,7 +452,7 @@ func exportPostgreSQLLogicalBackup(db *sql.DB, schema string) ([]byte, int64, er
 	builder.WriteString("COMMIT;\n")
 	builder.WriteString("-- Backup completed. Rows exported: " + strconv.FormatInt(rowCount, 10) + "\n")
 	if err := tx.Commit(); err != nil {
-		return nil, 0, fmt.Errorf("提交备份快照失败: %w", err)
+		return nil, 0, fmt.Errorf("failed to commit backup snapshot: %w", err)
 	}
 	return []byte(builder.String()), rowCount, nil
 }
@@ -522,10 +522,10 @@ func postgresBackupColumns(tx *sql.Tx, schema, table string) ([]postgresBackupCo
 func writePostgreSQLTableDefinition(tx *sql.Tx, builder *strings.Builder, schema, table string) error {
 	columns, err := postgresBackupColumns(tx, schema, table)
 	if err != nil {
-		return fmt.Errorf("读取表 %s 的字段定义失败: %w", table, err)
+		return fmt.Errorf("failed to read column definitions for table %s: %w", table, err)
 	}
 	if len(columns) == 0 {
-		return fmt.Errorf("表 %s 没有可备份的字段", table)
+		return fmt.Errorf("table %s has no columns available for backup", table)
 	}
 	qualified := postgresTableName(schema, table)
 	definitions := make([]string, 0, len(columns)+1)
@@ -556,7 +556,7 @@ func writePostgreSQLTableData(tx *sql.Tx, builder *strings.Builder, schema, tabl
 	qualified := postgresTableName(schema, table)
 	rows, err := tx.Query("SELECT * FROM " + qualified)
 	if err != nil {
-		return 0, fmt.Errorf("读取表 %s 数据失败: %w", table, err)
+		return 0, fmt.Errorf("failed to read data from table %s: %w", table, err)
 	}
 	defer rows.Close()
 	columns, err := rows.Columns()
@@ -679,11 +679,11 @@ func showCreateStatement(tx *sql.Tx, query, key string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "", errors.New("未返回建库或建表语句")
+		return "", errors.New("no CREATE DATABASE or CREATE TABLE statement was returned")
 	}
 	value, ok := data[0][key]
 	if !ok {
-		return "", fmt.Errorf("未找到 %s 字段", key)
+		return "", fmt.Errorf("column %s was not found", key)
 	}
 	return fmt.Sprint(value), nil
 }
@@ -692,7 +692,7 @@ func writeTableData(tx *sql.Tx, builder *strings.Builder, schema, table string) 
 	qualified := quoteIdentifier(schema) + "." + quoteIdentifier(table)
 	rows, err := tx.Query("SELECT * FROM " + qualified)
 	if err != nil {
-		return 0, fmt.Errorf("读取表 %s 数据失败: %w", table, err)
+		return 0, fmt.Errorf("failed to read data from table %s: %w", table, err)
 	}
 	defer rows.Close()
 	columns, err := rows.Columns()
@@ -817,7 +817,7 @@ func isNumericMySQLType(typeName string) bool {
 func writeTriggers(tx *sql.Tx, builder *strings.Builder, schema string) error {
 	rows, err := tx.Query(`SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = ? ORDER BY TRIGGER_NAME`, schema)
 	if err != nil {
-		return fmt.Errorf("读取触发器列表失败: %w", err)
+		return fmt.Errorf("failed to read trigger list: %w", err)
 	}
 	names := make([]string, 0)
 	for rows.Next() {
@@ -837,7 +837,7 @@ func writeTriggers(tx *sql.Tx, builder *strings.Builder, schema string) error {
 		qualified := quoteIdentifier(schema) + "." + quoteIdentifier(name)
 		createSQL, err := showCreateStatement(tx, "SHOW CREATE TRIGGER "+qualified, "SQL Original Statement")
 		if err != nil {
-			return fmt.Errorf("读取触发器 %s 失败: %w", name, err)
+			return fmt.Errorf("failed to read trigger %s: %w", name, err)
 		}
 		writeDelimiterBlock(builder, "TRIGGER", qualified, createSQL)
 	}
@@ -847,7 +847,7 @@ func writeTriggers(tx *sql.Tx, builder *strings.Builder, schema string) error {
 func writeRoutines(tx *sql.Tx, builder *strings.Builder, schema string) error {
 	rows, err := tx.Query(`SELECT ROUTINE_NAME, ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_TYPE, ROUTINE_NAME`, schema)
 	if err != nil {
-		return fmt.Errorf("读取存储程序列表失败: %w", err)
+		return fmt.Errorf("failed to read stored-routine list: %w", err)
 	}
 	type routine struct {
 		name string
@@ -877,7 +877,7 @@ func writeRoutines(tx *sql.Tx, builder *strings.Builder, schema string) error {
 		}
 		createSQL, err := showCreateStatement(tx, "SHOW CREATE "+routineType+" "+qualified, createColumn)
 		if err != nil {
-			return fmt.Errorf("读取%s %s 失败: %w", routineType, name, err)
+			return fmt.Errorf("failed to read %s %s: %w", routineType, name, err)
 		}
 		writeDelimiterBlock(builder, routineType, qualified, createSQL)
 	}
@@ -887,7 +887,7 @@ func writeRoutines(tx *sql.Tx, builder *strings.Builder, schema string) error {
 func writeEvents(tx *sql.Tx, builder *strings.Builder, schema string) error {
 	rows, err := tx.Query(`SELECT EVENT_NAME FROM INFORMATION_SCHEMA.EVENTS WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME`, schema)
 	if err != nil {
-		return fmt.Errorf("读取事件列表失败: %w", err)
+		return fmt.Errorf("failed to read event list: %w", err)
 	}
 	names := make([]string, 0)
 	for rows.Next() {
@@ -907,7 +907,7 @@ func writeEvents(tx *sql.Tx, builder *strings.Builder, schema string) error {
 		qualified := quoteIdentifier(schema) + "." + quoteIdentifier(name)
 		createSQL, err := showCreateStatement(tx, "SHOW CREATE EVENT "+qualified, "Create Event")
 		if err != nil {
-			return fmt.Errorf("读取事件 %s 失败: %w", name, err)
+			return fmt.Errorf("failed to read event %s: %w", name, err)
 		}
 		writeDelimiterBlock(builder, "EVENT", qualified, createSQL)
 	}
@@ -971,17 +971,17 @@ func (s *Service) GetDatabaseBackupFile(id uint) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if record.Status != "success" || record.FileContent == "" {
-		return nil, "", errors.New("备份文件尚不可下载")
+		return nil, "", errors.New("backup file is not available for download")
 	}
 	return []byte(record.FileContent), record.FileName, nil
 }
 
 func (s *Service) CreateDatabaseBackupImportTask(payload DatabaseBackupImportPayload) (map[string]any, error) {
 	if payload.DatabaseID == 0 || strings.TrimSpace(payload.SchemaName) == "" {
-		return nil, errors.New("请选择目标数据库连接和 Schema")
+		return nil, errors.New("select a target database connection and schema")
 	}
 	if !payload.Confirmed {
-		return nil, errors.New("恢复备份前必须完成风险确认")
+		return nil, errors.New("backup restoration requires risk confirmation")
 	}
 	asset, err := s.getAssetDatabase(payload.DatabaseID)
 	if err != nil {
@@ -999,39 +999,39 @@ func (s *Service) CreateDatabaseBackupImportTask(payload DatabaseBackupImportPay
 	if payload.BackupRecordID > 0 {
 		var record model.DatabaseBackupRecord
 		if err := s.db.First(&record, payload.BackupRecordID).Error; err != nil {
-			return nil, errors.New("选择的备份记录不存在")
+			return nil, errors.New("selected backup record does not exist")
 		}
 		if record.Status != "success" || strings.TrimSpace(record.FileContent) == "" {
-			return nil, errors.New("选择的备份尚未成功或备份内容为空")
+			return nil, errors.New("selected backup did not succeed or contains no backup data")
 		}
 		sourceAsset, sourceErr := s.getAssetDatabase(record.DatabaseID)
 		if sourceErr != nil {
 			return nil, sourceErr
 		}
 		if normalizeDatabaseType(sourceAsset.DBType) != normalizeDatabaseType(asset.DBType) {
-			return nil, errors.New("备份源数据库与目标数据库类型不一致，不允许跨引擎恢复")
+			return nil, errors.New("source and target database types differ; cross-engine restoration is not allowed")
 		}
 		fileName = record.FileName
 		content = record.FileContent
 	}
 	if content == "" {
-		return nil, errors.New("请选择平台备份或上传 SQL 备份文件")
+		return nil, errors.New("select a platform backup or upload an SQL backup file")
 	}
 	if len(content) > 50*1024*1024 {
-		return nil, errors.New("备份文件不能超过 50MB")
+		return nil, errors.New("backup file must not exceed 50 MB")
 	}
 	if fileName == "" {
 		fileName = "database-backup.sql"
 	}
 	if !strings.HasSuffix(strings.ToLower(fileName), ".sql") {
-		return nil, errors.New("备份导入仅支持 .sql 文件")
+		return nil, errors.New("backup import supports only .sql files")
 	}
 
 	task := model.DatabaseTransferTask{
 		TaskType:      "backup_import",
 		Status:        "pending",
 		Progress:      0,
-		Message:       "等待恢复备份",
+		Message:       "Pending backup restoration",
 		DatabaseID:    asset.ID,
 		DatabaseName:  asset.Name,
 		SchemaName:    strings.TrimSpace(payload.SchemaName),
@@ -1054,7 +1054,7 @@ func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
 	}
 	startedAt := time.Now()
 	s.updateTransferTask(task.ID, map[string]any{
-		"status": "running", "progress": 3, "message": "正在解析备份文件", "started_at": &startedAt,
+		"status": "running", "progress": 3, "message": "Parsing backup file", "started_at": &startedAt,
 	})
 
 	asset, db, cleanup, err := s.openDatabaseByID(task.DatabaseID, task.SchemaName)
@@ -1073,7 +1073,7 @@ func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
 	}
 	statements := splitMySQLRestoreStatements(script)
 	if len(statements) == 0 {
-		s.finishDatabaseBackupImportTask(task, startedAt, 0, errors.New("备份文件中没有可执行的 SQL"), clientIP)
+		s.finishDatabaseBackupImportTask(task, startedAt, 0, errors.New("backup file contains no executable SQL"), clientIP)
 		return
 	}
 	conn, err := db.Conn(context.Background())
@@ -1087,7 +1087,7 @@ func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
 	for index, statement := range statements {
 		result, execErr := conn.ExecContext(context.Background(), statement)
 		if execErr != nil {
-			err = fmt.Errorf("第 %d/%d 条 SQL 恢复失败: %w", index+1, len(statements), execErr)
+			err = fmt.Errorf("SQL restore statement %d/%d failed: %w", index+1, len(statements), execErr)
 			break
 		}
 		if affected, affectedErr := result.RowsAffected(); affectedErr == nil {
@@ -1096,7 +1096,7 @@ func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
 		progress := 5 + int(float64(index+1)/float64(len(statements))*90)
 		s.updateTransferTask(task.ID, map[string]any{
 			"progress": progress,
-			"message":  fmt.Sprintf("正在恢复 %d/%d", index+1, len(statements)),
+			"message":  fmt.Sprintf("Restoring %d/%d", index+1, len(statements)),
 		})
 	}
 	if asset != nil {
@@ -1106,7 +1106,7 @@ func (s *Service) runDatabaseBackupImportTask(taskID uint, clientIP string) {
 			status = 2
 			errText = err.Error()
 		}
-		s.logDBSQLHistory(asset, task.SchemaName, "", "RESTORE", "恢复备份: "+task.FileName, status, rowsAffected, time.Since(startedAt).Milliseconds(), errText, "")
+		s.logDBSQLHistory(asset, task.SchemaName, "", "RESTORE", "Restore Backup: "+task.FileName, status, rowsAffected, time.Since(startedAt).Milliseconds(), errText, "")
 	}
 	s.finishDatabaseBackupImportTask(task, startedAt, rowsAffected, err, clientIP)
 }
@@ -1119,7 +1119,7 @@ func (s *Service) finishDatabaseBackupImportTask(task model.DatabaseTransferTask
 		updates["message"] = runErr.Error()
 	} else {
 		updates["status"] = "success"
-		updates["message"] = fmt.Sprintf("备份恢复完成，影响 %d 行，耗时 %s", rowsAffected, time.Since(startedAt).Round(time.Millisecond))
+		updates["message"] = fmt.Sprintf("backup restoration completed; %d rows affected in %s", rowsAffected, time.Since(startedAt).Round(time.Millisecond))
 	}
 	s.updateTransferTask(task.ID, updates)
 }
