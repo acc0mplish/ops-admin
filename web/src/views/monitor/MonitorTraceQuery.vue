@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { queryMonitorDatasourceOptions, queryMonitorJaegerOperations, queryMonitorJaegerServices, queryMonitorTraces } from '../../api/monitor'
+import { mt } from '../../utils/monitor-i18n'
 
 const loading = ref(false)
 const serviceLoading = ref(false)
@@ -44,7 +45,7 @@ function formatTime(value) {
   if (!value) return '-'
   const time = Number(value) > 100000000000000 ? Number(value) / 1000 : Number(value)
   const date = new Date(time)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString(undefined, { hour12: false })
 }
 
 function formatDuration(value) {
@@ -71,24 +72,24 @@ function traceRootSpan(trace) {
 
 function traceStatus(trace) {
   const span = traceRootSpan(trace)
-  const tags = span.tags || []
-  const httpTag = tags.find((item) => ['http.status_code', 'http.response.status_code', 'http.status', 'http.statusCode'].includes(item.key))
+  const spanTags = span.tags || []
+  const httpTag = spanTags.find((item) => ['http.status_code', 'http.response.status_code', 'http.status', 'http.statusCode'].includes(item.key))
   if (httpTag) return String(httpTag.value ?? '-')
   const hasError = (trace.spans || []).some((item) => (item.tags || []).some((tag) => {
     if (tag.key === 'error') return String(tag.value).toLowerCase() !== 'false'
     if (tag.key === 'status.code') return String(tag.value).toUpperCase() === 'ERROR'
     return ['http.status_code', 'http.response.status_code'].includes(tag.key) && Number(tag.value) >= 400
   }))
-  return hasError ? '异常' : '成功'
+  return hasError ? mt('abnormal') : mt('success')
 }
 
 function traceStatusTagType(trace) {
   const status = traceStatus(trace)
   const code = Number(status)
   if (code >= 200 && code < 400) return 'success'
-  if (code >= 500 || status === '异常' || status.toUpperCase() === 'ERROR') return 'danger'
+  if (code >= 500 || status === mt('abnormal') || status.toUpperCase() === 'ERROR') return 'danger'
   if (code >= 400) return 'warning'
-  return status === '成功' ? 'success' : 'info'
+  return status === mt('success') ? 'success' : 'info'
 }
 
 function traceDuration(trace) {
@@ -146,8 +147,8 @@ function detailRouteQuery() {
 }
 
 async function queryList(window = null, preservePage = false) {
-  if (!service.value) return ElMessage.warning('请选择服务，或直接输入 Trace ID 查询')
-  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的起止时间')
+  if (!service.value) return ElMessage.warning(mt('selectServiceWarning'))
+  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning(mt('selectFullTimeRange'))
   const { startAt, endAt } = window || rangeTimestamps()
   lastQueryWindow.value = { startAt, endAt }
   items.value = await queryMonitorTraces({ datasourceId: datasourceId.value, service: service.value, operation: operation.value, tags: tags.value, startAt, endAt, limit: 1000 }) || []
@@ -178,15 +179,14 @@ async function restoreQueryState() {
 }
 
 async function search() {
-  if (!datasourceId.value) return ElMessage.warning('请先在数据源管理中配置 Jaeger 数据源')
+  if (!datasourceId.value) return ElMessage.warning(mt('configureJaegerFirst'))
   loading.value = true
   try {
     if (traceId.value.trim()) {
       router.push({ path: `/monitor/traces/${encodeURIComponent(traceId.value.trim())}`, query: detailRouteQuery() })
       return
-    } else {
-      await queryList()
     }
+    await queryList()
   } finally {
     loading.value = false
   }
@@ -209,32 +209,32 @@ onMounted(async () => {
 
 <template>
   <div class="trace-page trace-query-page">
-    <div class="page-header"><div><h2>链路追踪</h2><p>通过 Jaeger 检索分布式调用链，定位服务调用耗时与异常 Span。</p></div></div>
-    <el-alert v-if="!datasources.length" title="尚未配置 Jaeger 数据源" type="warning" :closable="false" show-icon>
-      请先前往“数据源管理”新增并测试 Jaeger Query 服务地址。
+    <div class="page-header"><div><h2>{{ mt('traceSearch') }}</h2><p>{{ mt('traceSearchDesc') }}</p></div></div>
+    <el-alert v-if="!datasources.length" :title="mt('noJaegerDatasource')" type="warning" :closable="false" show-icon>
+      {{ mt('noJaegerDatasourceDesc') }}
     </el-alert>
     <div class="toolbar">
-      <el-select v-model="datasourceId" filterable placeholder="选择 Jaeger 数据源" style="width: 220px"><el-option v-for="item in datasources" :key="item.id" :label="item.name" :value="item.id" /></el-select>
-      <el-select v-model="service" filterable clearable :loading="serviceLoading" placeholder="选择服务" style="width: 220px"><el-option v-for="item in services" :key="item" :label="item" :value="item" /></el-select>
-      <el-select v-model="operation" filterable clearable :loading="operationLoading" :disabled="!service" placeholder="选择 Operation（可选）" style="width: 230px"><el-option v-for="item in operations" :key="item" :label="item" :value="item" /></el-select>
-      <el-select v-model="timeRange" style="width: 130px"><el-option label="最近 15 分钟" value="15m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 7 天" value="7d" /><el-option label="自定义时间" value="custom" /></el-select>
-      <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="x" start-placeholder="开始时间" end-placeholder="结束时间" range-separator="至" style="width: 360px" />
-      <el-input v-model="tags" clearable placeholder='标签 JSON，例如 {"http.status_code":"500"}' style="width: 300px" @keyup.enter="search" />
-      <el-input v-model="traceId" clearable placeholder="Trace ID（可直接查询）" style="width: 280px" @keyup.enter="search" />
-      <el-button type="primary" :loading="loading" @click="search">查询</el-button>
+      <el-select v-model="datasourceId" filterable :placeholder="mt('selectJaegerDatasource')" style="width: 220px"><el-option v-for="item in datasources" :key="item.id" :label="item.name" :value="item.id" /></el-select>
+      <el-select v-model="service" filterable clearable :loading="serviceLoading" :placeholder="mt('selectService')" style="width: 220px"><el-option v-for="item in services" :key="item" :label="item" :value="item" /></el-select>
+      <el-select v-model="operation" filterable clearable :loading="operationLoading" :disabled="!service" :placeholder="mt('selectOperationOptional')" style="width: 230px"><el-option v-for="item in operations" :key="item" :label="item" :value="item" /></el-select>
+      <el-select v-model="timeRange" style="width: 130px"><el-option :label="mt('last15Minutes')" value="15m" /><el-option :label="mt('lastHour')" value="1h" /><el-option :label="mt('last6Hours')" value="6h" /><el-option :label="mt('last24Hours')" value="24h" /><el-option :label="mt('last7Days')" value="7d" /><el-option :label="mt('customTime')" value="custom" /></el-select>
+      <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="x" :start-placeholder="mt('startTime')" :end-placeholder="mt('endTime')" :range-separator="mt('to')" style="width: 360px" />
+      <el-input v-model="tags" clearable :placeholder="mt('tagJsonExample')" style="width: 300px" @keyup.enter="search" />
+      <el-input v-model="traceId" clearable :placeholder="mt('traceIdDirect')" style="width: 280px" @keyup.enter="search" />
+      <el-button type="primary" :loading="loading" @click="search">{{ mt('query') }}</el-button>
     </div>
-    <div class="hint">当前数据源：{{ activeDatasource?.name || '-' }}。标签筛选需填写 Jaeger 格式的 JSON 对象。</div>
-    <el-table v-loading="loading" :data="pagedItems" border empty-text="请选择服务并查询，或输入 Trace ID 直接定位调用链">
+    <div class="hint">{{ mt('currentDatasourceHint', { name: activeDatasource?.name || '-' }) }}</div>
+    <el-table v-loading="loading" :data="pagedItems" border :empty-text="mt('selectServiceOrTrace')">
       <el-table-column label="Trace ID" min-width="270"><template #default="{ row }"><el-link type="primary" @click="openDetail(row)">{{ row.traceID }}</el-link></template></el-table-column>
-      <el-table-column label="服务链路" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ traceServices(row) }}</template></el-table-column>
+      <el-table-column :label="mt('servicePath')" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ traceServices(row) }}</template></el-table-column>
       <el-table-column label="Operation" min-width="240" show-overflow-tooltip><template #default="{ row }">{{ traceOperation(row) }}</template></el-table-column>
-      <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag size="small" effect="light" :type="traceStatusTagType(row)">{{ traceStatus(row) }}</el-tag></template></el-table-column>
-      <el-table-column label="开始时间" width="190"><template #default="{ row }">{{ formatTime(row.spans?.[0]?.startTime) }}</template></el-table-column>
-      <el-table-column label="总耗时" width="120"><template #default="{ row }">{{ traceDuration(row) }}</template></el-table-column>
-      <el-table-column label="Span 数" width="110" align="center" sortable :sort-method="(left, right) => (left.spans?.length || 0) - (right.spans?.length || 0)"><template #default="{ row }">{{ row.spans?.length || 0 }}</template></el-table-column>
-      <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">详情</el-button></template></el-table-column>
+      <el-table-column :label="mt('status')" width="90" align="center"><template #default="{ row }"><el-tag size="small" effect="light" :type="traceStatusTagType(row)">{{ traceStatus(row) }}</el-tag></template></el-table-column>
+      <el-table-column :label="mt('startedAt')" width="190"><template #default="{ row }">{{ formatTime(row.spans?.[0]?.startTime) }}</template></el-table-column>
+      <el-table-column :label="mt('totalDuration')" width="120"><template #default="{ row }">{{ traceDuration(row) }}</template></el-table-column>
+      <el-table-column :label="mt('spanCount')" width="110" align="center" sortable :sort-method="(left, right) => (left.spans?.length || 0) - (right.spans?.length || 0)"><template #default="{ row }">{{ row.spans?.length || 0 }}</template></el-table-column>
+      <el-table-column :label="mt('actions')" width="90"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ mt('detail') }}</el-button></template></el-table-column>
     </el-table>
-    <div class="trace-pagination"><span>每页展示 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :page-sizes="[20, 50, 100]" :total="items.length" layout="total, sizes, prev, pager, next, jumper" @size-change="pageNum = 1" /></div>
+    <div class="trace-pagination"><span>{{ mt('pageSize', { count: pageSize }) }}</span><el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :page-sizes="[20, 50, 100]" :total="items.length" layout="total, sizes, prev, pager, next, jumper" @size-change="pageNum = 1" /></div>
   </div>
 </template>
 
