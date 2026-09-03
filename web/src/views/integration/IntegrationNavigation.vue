@@ -10,6 +10,7 @@ import {
   saveNavigation,
   saveNavigationGroup
 } from '../../api/integration'
+import { nt } from '../../utils/navigation-i18n'
 
 const loading = ref(false)
 const groups = ref([])
@@ -102,7 +103,7 @@ function openEditGroup() {
 
 async function submitGroup() {
   if (!groupForm.name.trim()) {
-    ElMessage.warning('请输入导航组名称')
+    ElMessage.warning(nt('groupNameRequired'))
     return
   }
   saving.value = true
@@ -111,7 +112,7 @@ async function submitGroup() {
     groupDialogVisible.value = false
     await loadGroups(data.id)
     await loadNavigations()
-    ElMessage.success('导航组已保存')
+    ElMessage.success(nt('groupSaved'))
   } finally {
     saving.value = false
   }
@@ -119,20 +120,24 @@ async function submitGroup() {
 
 async function removeGroup() {
   if (!selectedGroup.value) return
-  await ElMessageBox.confirm(`删除“${selectedGroup.value.name}”后，组内导航也会一并删除，确认继续吗？`, '删除导航组', {
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消'
-  })
+  await ElMessageBox.confirm(
+    nt('deleteGroupConfirm', { name: selectedGroup.value.name }),
+    nt('deleteGroupTitle'),
+    {
+      type: 'warning',
+      confirmButtonText: nt('delete'),
+      cancelButtonText: nt('cancel')
+    }
+  )
   await deleteNavigationGroup(selectedGroup.value.id)
   await loadGroups(0)
   await loadNavigations()
-  ElMessage.success('导航组已删除')
+  ElMessage.success(nt('groupDeleted'))
 }
 
 function openCreateNavigation() {
   if (!selectedGroupId.value) {
-    ElMessage.warning('请先创建导航组')
+    ElMessage.warning(nt('createGroupRequired'))
     return
   }
   resetNavigationForm()
@@ -146,7 +151,7 @@ function openEditNavigation(item) {
 
 async function submitNavigation() {
   if (!navigationForm.name.trim() || !navigationForm.url.trim()) {
-    ElMessage.warning('请输入导航名称和访问地址')
+    ElMessage.warning(nt('navigationFieldsRequired'))
     return
   }
   saving.value = true
@@ -155,18 +160,26 @@ async function submitNavigation() {
     navigationDialogVisible.value = false
     await loadGroups(selectedGroupId.value)
     await loadNavigations()
-    ElMessage.success('导航已保存')
+    ElMessage.success(nt('navigationSaved'))
   } finally {
     saving.value = false
   }
 }
 
 async function removeNavigation(item) {
-  await ElMessageBox.confirm(`确认删除导航“${item.name}”吗？`, '删除导航', { type: 'warning' })
+  await ElMessageBox.confirm(
+    nt('deleteNavigationConfirm', { name: item.name }),
+    nt('deleteNavigationTitle'),
+    {
+      type: 'warning',
+      confirmButtonText: nt('delete'),
+      cancelButtonText: nt('cancel')
+    }
+  )
   await deleteNavigation(item.id)
   await loadGroups(selectedGroupId.value)
   await loadNavigations()
-  ElMessage.success('导航已删除')
+  ElMessage.success(nt('navigationDeleted'))
 }
 
 function openNavigation(item) {
@@ -181,14 +194,22 @@ function openNavigation(item) {
 async function copyPublicURL() {
   if (!publicURL.value) return
   await navigator.clipboard.writeText(publicURL.value)
-  ElMessage.success('公开链接已复制')
+  ElMessage.success(nt('publicLinkCopied'))
 }
 
 async function regenerateToken() {
-  await ElMessageBox.confirm('重新生成后，原公开链接将立即失效，确认继续吗？', '重新生成公开链接', { type: 'warning' })
+  await ElMessageBox.confirm(
+    nt('regeneratePublicLinkConfirm'),
+    nt('regeneratePublicLinkTitle'),
+    {
+      type: 'warning',
+      confirmButtonText: nt('regenerate'),
+      cancelButtonText: nt('cancel')
+    }
+  )
   await regenerateNavigationGroupToken(selectedGroupId.value)
   await loadGroups(selectedGroupId.value)
-  ElMessage.success('公开链接已重新生成')
+  ElMessage.success(nt('publicLinkRegenerated'))
 }
 
 function iconText(name) {
@@ -219,32 +240,32 @@ onMounted(async () => {
       <div class="header-copy">
         <span class="hub-mark">NH</span>
         <div>
-          <span class="eyebrow">INTEGRATION NAVIGATION</span>
-          <h1>导航管理</h1>
-          <p>按场景沉淀内部系统、运维工具和第三方平台入口，并支持按组公开分享。</p>
+          <span class="eyebrow">{{ nt('pageEyebrow') }}</span>
+          <h1>{{ nt('pageTitle') }}</h1>
+          <p>{{ nt('pageDescription') }}</p>
         </div>
       </div>
       <div class="header-actions">
-        <el-button @click="openCreateGroup">新增分组</el-button>
-        <el-button type="primary" :disabled="!selectedGroupId" @click="openCreateNavigation">新增导航</el-button>
+        <el-button @click="openCreateGroup">{{ nt('addGroup') }}</el-button>
+        <el-button type="primary" :disabled="!selectedGroupId" @click="openCreateNavigation">{{ nt('addNavigation') }}</el-button>
       </div>
     </section>
 
-    <section class="navigation-summary" aria-label="导航资源概览">
+    <section class="navigation-summary" :aria-label="nt('navigationOverview')">
       <div class="summary-cell tone-blue">
-        <div><i></i><span>导航分组</span><em>GROUP</em></div>
+        <div><i></i><span>{{ nt('navigationGroups') }}</span><em>{{ nt('groupMetric') }}</em></div>
         <strong>{{ groups.length }}</strong>
       </div>
       <div class="summary-cell tone-cyan">
-        <div><i></i><span>系统入口</span><em>ENTRY</em></div>
+        <div><i></i><span>{{ nt('systemEntries') }}</span><em>{{ nt('entryMetric') }}</em></div>
         <strong>{{ totalNavigationCount }}</strong>
       </div>
       <div class="summary-cell tone-green">
-        <div><i></i><span>公开分组</span><em>PUBLIC</em></div>
+        <div><i></i><span>{{ nt('publicGroups') }}</span><em>{{ nt('publicMetric') }}</em></div>
         <strong>{{ publicGroupCount }}</strong>
       </div>
       <div class="summary-cell tone-violet">
-        <div><i></i><span>当前分组</span><em>ACTIVE</em></div>
+        <div><i></i><span>{{ nt('currentGroup') }}</span><em>{{ nt('activeMetric') }}</em></div>
         <strong class="active-group-name">{{ selectedGroup?.name || '-' }}</strong>
       </div>
     </section>
@@ -252,8 +273,8 @@ onMounted(async () => {
     <section class="integration-workspace">
       <aside class="group-panel">
         <div class="panel-title">
-          <div><span class="panel-kicker">GROUP DIRECTORY</span><strong>导航分组</strong><small>按使用场景组织入口</small></div>
-          <el-button link type="primary" @click="openCreateGroup">新增</el-button>
+          <div><span class="panel-kicker">{{ nt('groupDirectory') }}</span><strong>{{ nt('navigationGroups') }}</strong><small>{{ nt('groupDirectoryHint') }}</small></div>
+          <el-button link type="primary" @click="openCreateGroup">{{ nt('add') }}</el-button>
         </div>
         <div v-if="groups.length" class="group-list">
           <button
@@ -267,117 +288,117 @@ onMounted(async () => {
             <span class="group-mark" :class="toneClass(group)">{{ iconText(group.name) }}</span>
             <span class="group-copy">
               <strong>{{ group.name }}</strong>
-              <small>{{ group.itemCount }} 个导航</small>
+              <small>{{ nt('entryCount', { count: group.itemCount }) }}</small>
             </span>
-            <el-tag v-if="group.isPublic" size="small" type="success" effect="light">公开</el-tag>
+            <el-tag v-if="group.isPublic" size="small" type="success" effect="light">{{ nt('public') }}</el-tag>
           </button>
         </div>
-        <el-empty v-else description="暂无导航组" :image-size="72" />
+        <el-empty v-else :description="nt('noGroups')" :image-size="72" />
       </aside>
 
       <main class="navigation-panel">
         <template v-if="selectedGroup">
           <div class="group-heading">
             <div>
-              <span class="section-label">GROUP WORKSPACE</span>
+              <span class="section-label">{{ nt('groupWorkspace') }}</span>
               <div class="heading-line">
                 <h2>{{ selectedGroup.name }}</h2>
                 <el-tag :type="selectedGroup.status === 1 ? 'success' : 'info'" effect="light">
-                  {{ selectedGroup.status === 1 ? '启用' : '禁用' }}
+                  {{ selectedGroup.status === 1 ? nt('enabled') : nt('disabled') }}
                 </el-tag>
               </div>
-              <p>{{ selectedGroup.description || '暂无分组说明' }}</p>
+              <p>{{ selectedGroup.description || nt('noGroupDescription') }}</p>
             </div>
             <div class="group-actions">
-              <el-button @click="openEditGroup">编辑分组</el-button>
-              <el-button type="danger" plain @click="removeGroup">删除分组</el-button>
+              <el-button @click="openEditGroup">{{ nt('editGroup') }}</el-button>
+              <el-button type="danger" plain @click="removeGroup">{{ nt('deleteGroup') }}</el-button>
             </div>
           </div>
 
           <div v-if="publicURL" class="public-link-bar">
-            <div class="public-status"><span></span><strong>公开访问已开启</strong></div>
+            <div class="public-status"><span></span><strong>{{ nt('publicAccessEnabled') }}</strong></div>
             <code>{{ publicURL }}</code>
-            <el-button size="small" @click="copyPublicURL">复制链接</el-button>
-            <el-button size="small" @click="regenerateToken">重新生成</el-button>
+            <el-button size="small" @click="copyPublicURL">{{ nt('copyLink') }}</el-button>
+            <el-button size="small" @click="regenerateToken">{{ nt('regenerate') }}</el-button>
           </div>
 
           <div class="navigation-toolbar">
-            <el-input v-model="keyword" clearable placeholder="搜索导航名称、说明或地址" @keyup.enter="loadNavigations" />
-            <el-button @click="loadNavigations">搜索</el-button>
-            <span class="navigation-count"><strong>{{ navigations.length }}</strong> 个导航</span>
+            <el-input v-model="keyword" clearable :placeholder="nt('searchNavigationPlaceholder')" @keyup.enter="loadNavigations" />
+            <el-button @click="loadNavigations">{{ nt('search') }}</el-button>
+            <span class="navigation-count"><strong>{{ navigations.length }}</strong> {{ nt('navigationCount', { count: navigations.length }).replace(String(navigations.length), '').trim() }}</span>
           </div>
 
           <div v-loading="loading" class="navigation-grid">
             <article v-for="item in navigations" :key="item.id" class="navigation-card" :class="toneClass(item)" @click="openNavigation(item)">
               <div class="card-main">
-              <div class="navigation-icon" :class="toneClass(item)">
-                <img v-if="item.iconUrl" :src="item.iconUrl" alt="" />
-                <span v-else>{{ iconText(item.name) }}</span>
-              </div>
-              <div class="navigation-info">
-                <div class="navigation-name">
-                  <strong>{{ item.name }}</strong>
-                  <el-tag v-if="item.status !== 1" size="small" type="info">禁用</el-tag>
+                <div class="navigation-icon" :class="toneClass(item)">
+                  <img v-if="item.iconUrl" :src="item.iconUrl" alt="" />
+                  <span v-else>{{ iconText(item.name) }}</span>
                 </div>
-                <p>{{ item.description || '暂无入口说明' }}</p>
-              </div>
-              <span class="open-arrow">↗</span>
+                <div class="navigation-info">
+                  <div class="navigation-name">
+                    <strong>{{ item.name }}</strong>
+                    <el-tag v-if="item.status !== 1" size="small" type="info">{{ nt('disabled') }}</el-tag>
+                  </div>
+                  <p>{{ item.description || nt('noEntryDescription') }}</p>
+                </div>
+                <span class="open-arrow">↗</span>
               </div>
               <div class="card-footer">
                 <span class="host-name">{{ displayHost(item.url) }}</span>
                 <div class="card-actions" @click.stop>
-                <el-button link type="primary" @click="openEditNavigation(item)">编辑</el-button>
-                <el-button link type="danger" @click="removeNavigation(item)">删除</el-button>
+                  <el-button link type="primary" @click="openEditNavigation(item)">{{ nt('edit') }}</el-button>
+                  <el-button link type="danger" @click="removeNavigation(item)">{{ nt('delete') }}</el-button>
                 </div>
               </div>
             </article>
             <button type="button" class="navigation-card add-card" @click="openCreateNavigation">
-              <span class="add-symbol">+</span><strong>新增导航</strong><small>添加新的系统或工具入口</small>
+              <span class="add-symbol">+</span><strong>{{ nt('addNavigation') }}</strong><small>{{ nt('addNavigationCard') }}</small>
             </button>
           </div>
         </template>
-        <el-empty v-else description="创建一个导航组后开始添加导航" />
+        <el-empty v-else :description="nt('createGroupFirst')" />
       </main>
     </section>
 
-    <el-dialog v-model="groupDialogVisible" :title="groupForm.id ? '编辑导航组' : '新增导航组'" width="620px" destroy-on-close>
+    <el-dialog v-model="groupDialogVisible" :title="groupForm.id ? nt('editNavigationGroup') : nt('newNavigationGroup')" width="620px" destroy-on-close>
       <el-form label-position="top">
         <div class="form-grid two-columns">
-          <el-form-item label="导航组名称" required><el-input v-model="groupForm.name" maxlength="128" /></el-form-item>
-          <el-form-item label="排序"><el-input-number v-model="groupForm.sort" :min="0" :max="9999" controls-position="right" /></el-form-item>
+          <el-form-item :label="nt('groupName')" required><el-input v-model="groupForm.name" maxlength="128" /></el-form-item>
+          <el-form-item :label="nt('sort')"><el-input-number v-model="groupForm.sort" :min="0" :max="9999" controls-position="right" /></el-form-item>
         </div>
-        <el-form-item label="分组说明"><el-input v-model="groupForm.description" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
+        <el-form-item :label="nt('groupDescription')"><el-input v-model="groupForm.description" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
         <div class="form-grid two-columns">
-          <el-form-item label="状态">
-            <el-radio-group v-model="groupForm.status"><el-radio :value="1">启用</el-radio><el-radio :value="2">禁用</el-radio></el-radio-group>
+          <el-form-item :label="nt('status')">
+            <el-radio-group v-model="groupForm.status"><el-radio :value="1">{{ nt('enabled') }}</el-radio><el-radio :value="2">{{ nt('disabled') }}</el-radio></el-radio-group>
           </el-form-item>
-          <el-form-item label="公开访问">
-            <el-switch v-model="groupForm.isPublic" active-text="允许免登录访问" />
+          <el-form-item :label="nt('publicAccess')">
+            <el-switch v-model="groupForm.isPublic" :active-text="nt('allowAnonymousAccess')" />
           </el-form-item>
         </div>
-        <el-alert v-if="groupForm.isPublic" type="warning" :closable="false" show-icon title="公开后，任何获得链接的人都可以查看并打开组内启用的导航。" />
+        <el-alert v-if="groupForm.isPublic" type="warning" :closable="false" show-icon :title="nt('publicAccessWarning')" />
       </el-form>
-      <template #footer><el-button @click="groupDialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submitGroup">保存</el-button></template>
+      <template #footer><el-button @click="groupDialogVisible = false">{{ nt('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="submitGroup">{{ nt('save') }}</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="navigationDialogVisible" :title="navigationForm.id ? '编辑导航' : '新增导航'" width="680px" destroy-on-close>
+    <el-dialog v-model="navigationDialogVisible" :title="navigationForm.id ? nt('editNavigation') : nt('newNavigation')" width="680px" destroy-on-close>
       <el-form label-position="top">
         <div class="form-grid two-columns">
-          <el-form-item label="导航名称" required><el-input v-model="navigationForm.name" maxlength="128" /></el-form-item>
-          <el-form-item label="所属分组" required>
+          <el-form-item :label="nt('navigationName')" required><el-input v-model="navigationForm.name" maxlength="128" /></el-form-item>
+          <el-form-item :label="nt('parentGroup')" required>
             <el-select v-model="navigationForm.groupId" style="width: 100%"><el-option v-for="group in groups" :key="group.id" :label="group.name" :value="group.id" /></el-select>
           </el-form-item>
         </div>
-        <el-form-item label="访问地址" required><el-input v-model="navigationForm.url" placeholder="https://example.com" /></el-form-item>
-        <el-form-item label="图标地址"><el-input v-model="navigationForm.iconUrl" placeholder="可选，填写 HTTP/HTTPS 图片地址；留空显示名称首字母" /></el-form-item>
-        <el-form-item label="导航说明"><el-input v-model="navigationForm.description" type="textarea" :rows="2" maxlength="500" show-word-limit /></el-form-item>
+        <el-form-item :label="nt('accessUrl')" required><el-input v-model="navigationForm.url" placeholder="https://example.com" /></el-form-item>
+        <el-form-item :label="nt('iconUrl')"><el-input v-model="navigationForm.iconUrl" :placeholder="nt('iconUrlPlaceholder')" /></el-form-item>
+        <el-form-item :label="nt('navigationDescription')"><el-input v-model="navigationForm.description" type="textarea" :rows="2" maxlength="500" show-word-limit /></el-form-item>
         <div class="form-grid three-columns">
-          <el-form-item label="打开方式"><el-radio-group v-model="navigationForm.openMode"><el-radio value="new">新窗口</el-radio><el-radio value="current">当前窗口</el-radio></el-radio-group></el-form-item>
-          <el-form-item label="状态"><el-switch v-model="navigationForm.status" :active-value="1" :inactive-value="2" active-text="启用" /></el-form-item>
-          <el-form-item label="排序"><el-input-number v-model="navigationForm.sort" :min="0" :max="9999" controls-position="right" /></el-form-item>
+          <el-form-item :label="nt('openMode')"><el-radio-group v-model="navigationForm.openMode"><el-radio value="new">{{ nt('newWindow') }}</el-radio><el-radio value="current">{{ nt('currentWindow') }}</el-radio></el-radio-group></el-form-item>
+          <el-form-item :label="nt('status')"><el-switch v-model="navigationForm.status" :active-value="1" :inactive-value="2" :active-text="nt('enabled')" /></el-form-item>
+          <el-form-item :label="nt('sort')"><el-input-number v-model="navigationForm.sort" :min="0" :max="9999" controls-position="right" /></el-form-item>
         </div>
       </el-form>
-      <template #footer><el-button @click="navigationDialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submitNavigation">保存</el-button></template>
+      <template #footer><el-button @click="navigationDialogVisible = false">{{ nt('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="submitNavigation">{{ nt('save') }}</el-button></template>
     </el-dialog>
   </div>
 </template>
