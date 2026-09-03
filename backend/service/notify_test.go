@@ -51,18 +51,18 @@ func TestRenderNotifyTemplateUsesBusinessStatusLabels(t *testing.T) {
 		Scope: "job", Status: "notice", TargetName: "\u53d1\u5e03\u4f5c\u4e1a",
 		Extra: map[string]string{"stepName": "\u6d88\u606f\u901a\u77e5"},
 	})
-	if job != "\u901a\u77e5/\u53d1\u5e03\u4f5c\u4e1a/\u6d88\u606f\u901a\u77e5" {
+	if job != "알림/\u53d1\u5e03\u4f5c\u4e1a/\u6d88\u606f\u901a\u77e5" {
 		t.Fatalf("unexpected job rendering: %q", job)
 	}
 	monitor := renderNotifyTemplate("{{status}}", NotifyEvent{Scope: "monitor", Status: "recovered"})
-	if monitor != "\u5df2\u6062\u590d" {
+	if monitor != "복구" {
 		t.Fatalf("unexpected monitor status: %q", monitor)
 	}
 }
 
 func TestNormalizeNotifyTemplateForJobRejectsMonitorLayout(t *testing.T) {
 	title, content := normalizeNotifyTemplateForEvent("\u3010{{severity}}\u3011{{alertName}} -- {{status}}", "\u5b9e\u4f8b\uff1a{{instance}}", NotifyEvent{Scope: "job"})
-	if !strings.Contains(title, "\u3010\u4f5c\u4e1a\u901a\u77e5\u3011") || !strings.Contains(content, "{{jobHistoryId}}") {
+	if !strings.Contains(title, "[Job 알림]") || !strings.Contains(content, "{{jobHistoryId}}") {
 		t.Fatalf("monitor template was not replaced for job event: %q %q", title, content)
 	}
 }

@@ -19,6 +19,7 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"ops-admin/backend/apperr"
 	"ops-admin/backend/internal/domain/provider"
 	"ops-admin/backend/model"
 	"ops-admin/backend/util"
@@ -771,7 +772,7 @@ func parseCertificateAndKey(certPEM, keyPEM string) (*certificateParsed, error) 
 		return nil, err
 	}
 	if !bytes.Equal(publicDER, certPublicDER) {
-		return nil, errors.New("certificate and private key do not match")
+		return nil, apperr.New("SSL_CERTIFICATE_KEY_MISMATCH", nil)
 	}
 	domains := append([]string{}, leaf.DNSNames...)
 	if len(domains) == 0 && strings.TrimSpace(leaf.Subject.CommonName) != "" {

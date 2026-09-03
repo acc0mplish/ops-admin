@@ -20,7 +20,7 @@ func TestSSLCertificateUploadBodyIsNeverLogged(t *testing.T) {
 	if strings.Contains(summary, "CERTIFICATE-CONTENT") || strings.Contains(summary, "PRIVATE-KEY-CONTENT") {
 		t.Fatalf("sensitive SSL payload leaked into audit summary: %s", summary)
 	}
-	if !strings.Contains(summary, "\u5df2\u8df3\u8fc7\u8bb0\u5f55") {
+	if !strings.Contains(summary, "[request-body-omitted:sensitive-ssl]") {
 		t.Fatalf("missing explicit skipped marker: %s", summary)
 	}
 }

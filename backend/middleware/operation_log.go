@@ -58,16 +58,16 @@ func auditRequestSummary(c *gin.Context) string {
 	}
 	if c.Request.Body != nil && c.Request.Method != "GET" {
 		if c.Request.URL.Path == "/api/v1/domain/public/certificates/upload" {
-			parts = append(parts, "body: sensitive SSL certificate and private-key content omitted")
+			parts = append(parts, "body: [request-body-omitted:sensitive-ssl]")
 			return strings.Join(parts, "\n")
 		}
 		contentType := strings.ToLower(c.GetHeader("Content-Type"))
 		if strings.Contains(contentType, "multipart/form-data") {
-			parts = append(parts, "body: multipart/form-data upload content omitted")
+			parts = append(parts, "body: [request-body-omitted:multipart]")
 			return strings.Join(parts, "\n")
 		}
 		if c.Request.ContentLength > 4096 || c.Request.ContentLength < 0 {
-			parts = append(parts, "body: oversized request content omitted")
+			parts = append(parts, "body: [request-body-omitted:oversized]")
 			return strings.Join(parts, "\n")
 		}
 		data, _ := io.ReadAll(io.LimitReader(c.Request.Body, 4096))

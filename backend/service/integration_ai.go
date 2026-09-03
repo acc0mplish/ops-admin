@@ -1425,8 +1425,8 @@ func parseAILogTime(value string, now time.Time) (time.Time, error) {
 		prefix string
 		days   int
 	}{
-		{prefix: "어제", days: -1}, {prefix: "yesterday", days: -1},
-		{prefix: "오늘", days: 0}, {prefix: "today", days: 0},
+		{prefix: "어제", days: -1}, {prefix: "\u6628\u5929", days: -1}, {prefix: "yesterday", days: -1},
+		{prefix: "오늘", days: 0}, {prefix: "\u4eca\u5929", days: 0}, {prefix: "today", days: 0},
 	} {
 		if strings.HasPrefix(lower, relative.prefix) {
 			clock := strings.TrimSpace(value[len(relative.prefix):])

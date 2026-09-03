@@ -898,12 +898,12 @@ func normalizeNotifyTemplateForEvent(title, content string, event NotifyEvent) (
 		return title, content
 	}
 	if scope == "schedule" {
-		return "[Scheduled Task] {{taskName}} · {{status}}", "**실행 상태:** {{status}}\n\n**Task 이름:** {{taskName}}\n**Task Type:** {{taskType}}\n**Trigger 방식:** {{triggerType}}\n**Cron:** {{cronExpr}}\n**실행 시간:** {{duration}}\n**완료 시각:** {{finishedAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
+		return "[정기 작업] {{taskName}} · {{status}}", "**실행 상태:** {{status}}\n\n**Task 이름:** {{taskName}}\n**Task Type:** {{taskType}}\n**Trigger 방식:** {{triggerType}}\n**Cron:** {{cronExpr}}\n**실행 시간:** {{duration}}\n**완료 시각:** {{finishedAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
 	}
 	if scope == "pipeline" {
-		return "[Pipeline Notification] {{pipelineName}} · {{stageName}}", "**실행 상태:** {{status}}\n\n**Pipeline:** {{pipelineName}}\n**Run ID:** #{{pipelineRunId}}\n**Application:** {{appName}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
+		return "[파이프라인 알림] {{pipelineName}} · {{stageName}}", "**실행 상태:** {{status}}\n\n**Pipeline:** {{pipelineName}}\n**Run ID:** #{{pipelineRunId}}\n**Application:** {{appName}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}"
 	}
-	return "[Job Notification] {{jobName}} · {{stepName}}", "**알림 Type:** {{status}}\n\n**Job 이름:** {{jobName}}\n**Run ID:** #{{jobHistoryId}}\n**현재 Step:** {{stepName}}\n**Trigger 방식:** {{triggerType}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**알림 요약**\n{{summary}}\n\n{{detail}}"
+	return "[Job 알림] {{jobName}} · {{stepName}}", "**알림 Type:** {{status}}\n\n**Job 이름:** {{jobName}}\n**Run ID:** #{{jobHistoryId}}\n**현재 Step:** {{stepName}}\n**Trigger 방식:** {{triggerType}}\n**알림 시각:** {{notifyAt}}\n\n---\n\n**알림 요약**\n{{summary}}\n\n{{detail}}"
 }
 
 func scheduleNotifyStatusLabel(status string) string {
