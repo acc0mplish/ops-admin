@@ -59,7 +59,7 @@ def patch_asset_service_controller() -> None:
         'httpx.Failed(c, http.StatusBadRequest, "invalid workload rollback payload")': 'httpx.FailedCode(c, http.StatusBadRequest, "INVALID_WORKLOAD_ROLLBACK_PAYLOAD", nil)',
     }
     expected = {
-        'httpx.Failed(c, 400, "invalid diagnosis target")': 4,
+        'httpx.Failed(c, 400, "invalid diagnosis target")': 5,
         'httpx.Failed(c, 400, "arthas-boot.jar is required")': 1,
         'httpx.Failed(c, http.StatusBadRequest, "invalid service payload")': 1,
         'httpx.Failed(c, http.StatusBadRequest, "invalid delete payload")': 1,
