@@ -2175,7 +2175,7 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 				if checkoutResult.ErrorText != "" {
 					buildLogs.Append("\nERROR: " + checkoutResult.ErrorText + "\n")
 				}
-				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "Remote Source Checkout失败")
+				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "Remote Source Checkout failed")
 			} else {
 				commitResult := s.execCommandOnHost(host, "cd "+shellQuote(remoteWorkspace)+" && (git rev-parse --short HEAD 2>/dev/null || svn info --show-item revision 2>/dev/null || true)", 30)
 				commitID = strings.TrimSpace(commitResult.Stdout)

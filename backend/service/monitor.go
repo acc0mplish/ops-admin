@@ -1332,9 +1332,9 @@ func (s *Service) queryVictoriaLogs(ds model.MonitorDatasource, payload MonitorL
 		return nil, err
 	}
 	histogram, total := s.victoriaLogsHistogram(ds, query, startAt, endAt)
-	// VictoriaLogs 的 /query 和 /hits 在起始时间边界上偶发不一致：
-	// /hits 已计入一条记录，但 /query 返回空行。仅在这个异常分支把起点
-	// 向前补偿一秒重试，避免页面出现“命中 1 条却没有日志”的假空结果。
+	// VictoriaLogs /query and /hits can occasionally disagree at the start-time boundary:
+	// /hits may count a record while /query returns no rows. Only in this exceptional branch,
+	// retry with the start time shifted back by one second to avoid a false empty result.
 	if len(items) == 0 && total > 0 && pageNum == 1 && startAt > 1000 {
 		if retryItems, retryErr := s.queryVictoriaLogsRows(ds, query, startAt-1000, endAt, pageNum, pageSize); retryErr == nil {
 			items = retryItems
@@ -1550,8 +1550,8 @@ func (s *Service) ListMonitorVictoriaLogsStreams(datasourceID uint, field, query
 	form.Set("field", field)
 	form.Set("start", start.UTC().Format(time.RFC3339Nano))
 	form.Set("end", end.UTC().Format(time.RFC3339Nano))
-	// 不向 VictoriaLogs field_values 透传 limit。部分版本在携带该参数时仍会
-	// 返回字段值，但 hits 会全部变成 0；在收到带真实命中数的结果后再统一截取。
+	// Do not pass limit to VictoriaLogs field_values. Some versions return field values but
+	// report every hit count as zero when the parameter is present; truncate only after receiving real counts.
 	request, err := http.NewRequest(http.MethodPost, strings.TrimRight(ds.URL, "/")+"/select/logsql/field_values", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -2430,7 +2430,7 @@ func (s *Service) ImportPrometheusAlertTemplates(payload MonitorAlertTemplateImp
 			name := Trimmed(source.Name)
 			queryText := strings.TrimSpace(source.QueryText)
 			if name == "" || queryText == "" {
-				return errors.New("导入项的名称和query is required")
+				return errors.New("imported item name and query are required")
 			}
 			var count int64
 			if err := tx.Model(&model.MonitorAlertTemplate{}).Where("group_id = ? AND name = ?", payload.GroupID, name).Count(&count).Error; err != nil {
@@ -2911,7 +2911,7 @@ func (s *Service) SaveMonitorAlertRule(payload MonitorAlertRulePayload) error {
 		var count int64
 		if alertType == "log" {
 			err = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND type = ?", 1, "elasticsearch").Count(&count).Error
-			datasourceName = "All Logs数据源"
+			datasourceName = "All Log Datasources"
 		} else if alertType == "victorialogs" {
 			err = s.db.Model(&model.MonitorDatasource{}).Where("status = ? AND type = ?", 1, "victorialogs").Count(&count).Error
 			datasourceName = "All VictoriaLogs Datasources"
@@ -3067,7 +3067,7 @@ func (s *Service) SaveMonitorSilenceRule(payload MonitorSilenceRulePayload) erro
 
 func (s *Service) PreviewMonitorSilenceRule(payload MonitorSilenceRulePayload) (map[string]any, error) {
 	if strings.TrimSpace(payload.Name) == "" {
-		return nil, errors.New("屏蔽rule name is required")
+		return nil, errors.New("silence rule name is required")
 	}
 	matchersJSON, err := normalizeMatcherJSON(payload.MatchersJSON)
 	if err != nil {
@@ -3409,7 +3409,7 @@ func (s *Service) BatchUpdateMonitorAlertRules(payload MonitorAlertRuleBatchPayl
 			}
 		} else if action == "enable" || action == "disable" {
 			s.removeMonitorAlertRule(rule.ID)
-			s.closeActiveMonitorAlertEventsForRule(rule.ID, "告警规则已批量停用，System自动关闭未结束事件")
+			s.closeActiveMonitorAlertEventsForRule(rule.ID, "alert rules disabled in batch; open events were closed automatically")
 		}
 	}
 	return nil
@@ -4117,8 +4117,8 @@ func (s *Service) recoverInactiveMonitorEvents(rule model.MonitorAlertRule, acti
 		}
 		event.Status = "recovered"
 		event.RecoveredAt = &now
-		// 恢复通知只能对应一条已经发出过触发通知的告警。pending 事件在持续
-		// 时间内恢复时并未对外告警，因此不能产生一条孤立的“恢复”消息。
+		// A recovery notification must correspond to an alert that emitted a firing notification. A pending event
+		// that recovers during its duration window emitted no external alert and must not create an orphan recovery message.
 		if shouldNotifyMonitorRecovery(rule, event) {
 			if event.AggregateRuleID == 0 || event.AggregationKey == "" {
 				s.dispatchMonitorNotification(rule, event, "recovered")
