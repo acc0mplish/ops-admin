@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { queryFinOpsAccounts, queryFinOpsDashboard } from '../../../api/integration'
+import { ft } from '../../../utils/finops-i18n'
 import './finops.css'
 
 const loading = ref(false)
@@ -9,12 +10,12 @@ const accounts = ref([])
 const accountId = ref('')
 const rangeMonths = ref(6)
 const colors = ['#3d68f5', '#7850f2', '#18aebb', '#ff9b2f', '#2d93d8']
-const money = value => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const money = value => Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const monthKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 const localDate = date => `${monthKey(date)}-${String(date.getDate()).padStart(2, '0')}`
 const currentMonth = computed(() => monthKey(new Date()))
-const selectedAccountName = computed(() => accounts.value.find(item => String(item.id) === String(accountId.value))?.name || '全部云账号')
-const rangeLabel = computed(() => `最近${rangeMonths.value}个月（含本月）`)
+const selectedAccountName = computed(() => accounts.value.find(item => String(item.id) === String(accountId.value))?.name || ft('allCloudAccounts'))
+const rangeLabel = computed(() => ft('recentMonthsIncludingCurrent', { count: rangeMonths.value }))
 const monthKeys = computed(() => Array.from({ length: rangeMonths.value }, (_, index) => {
   const now = new Date()
   return monthKey(new Date(now.getFullYear(), now.getMonth() - rangeMonths.value + index + 1, 1))
@@ -28,7 +29,7 @@ const monthlyTrend = computed(() => {
   }
   return monthKeys.value.map(month => ({
     month,
-    label: `${Number(month.slice(5))}月`,
+    label: ft('monthLabel', { month: Number(month.slice(5)) }),
     amount: values[month] || 0,
     isPartial: month === currentMonth.value,
   }))
@@ -47,9 +48,9 @@ const currentMonthCost = computed(() => monthlyTrend.value.find(item => item.mon
 const previousMonthCost = computed(() => monthlyTrend.value.at(-2)?.amount || 0)
 const monthOverMonth = computed(() => previousMonthCost.value ? (currentMonthCost.value - previousMonthCost.value) / previousMonthCost.value * 100 : null)
 const latestSyncAt = computed(() => {
-	if (data.value.latestSyncAt) return new Date(data.value.latestSyncAt).toLocaleString('zh-CN', { hour12: false })
+  if (data.value.latestSyncAt) return new Date(data.value.latestSyncAt).toLocaleString(undefined, { hour12: false })
   const values = accounts.value.map(item => item.lastSyncAt).filter(Boolean).sort((a, b) => new Date(b) - new Date(a))
-  return values[0] ? new Date(values[0]).toLocaleString('zh-CN', { hour12: false }) : '-'
+  return values[0] ? new Date(values[0]).toLocaleString(undefined, { hour12: false }) : '-'
 })
 const providers = computed(() => {
   const total = Number(data.value.totalCost || 0)
@@ -81,35 +82,35 @@ onMounted(load)
   <div class="finops-page finops-dashboard" v-loading="loading">
     <section class="finops-panel finops-dashboard-head">
       <div>
-        <h2>费用看板</h2>
-        <p>{{ rangeLabel }}多云费用总览；当前月费用统计截至当前。</p>
+        <h2>{{ ft('dashboardTitle') }}</h2>
+        <p>{{ ft('dashboardDesc', { range: rangeLabel }) }}</p>
       </div>
       <div class="finops-actions">
-        <span class="finops-period-label">时间范围</span>
+        <span class="finops-period-label">{{ ft('timeRange') }}</span>
         <el-radio-group v-model="rangeMonths" @change="load">
-          <el-radio-button :value="3">最近3个月</el-radio-button>
-          <el-radio-button :value="6">最近6个月</el-radio-button>
-          <el-radio-button :value="12">最近12个月</el-radio-button>
+          <el-radio-button :value="3">{{ ft('last3Months') }}</el-radio-button>
+          <el-radio-button :value="6">{{ ft('last6Months') }}</el-radio-button>
+          <el-radio-button :value="12">{{ ft('last12Months') }}</el-radio-button>
         </el-radio-group>
-        <el-select v-model="accountId" clearable placeholder="全部云账号" style="width: 180px" @change="load">
+        <el-select v-model="accountId" clearable :placeholder="ft('allCloudAccounts')" style="width: 180px" @change="load">
           <el-option v-for="item in accounts" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
-        <el-button type="primary" @click="load">刷新</el-button>
+        <el-button type="primary" @click="load">{{ ft('refresh') }}</el-button>
       </div>
     </section>
 
     <section class="finops-summary-cards">
-      <article class="finops-summary-card"><span class="finops-summary-icon blue">¥</span><div><small>{{ rangeLabel }}累计费用</small><strong>¥ {{ money(data.totalCost) }}</strong><p>{{ selectedAccountName }} · 已纳入 {{ data.recordCount || 0 }} 条账单</p></div></article>
-      <article class="finops-summary-card"><span class="finops-summary-icon purple">▣</span><div><small>本月费用</small><strong>¥ {{ money(currentMonthCost) }}</strong><p><b class="partial-badge">截至当前</b> {{ currentMonth }}</p></div></article>
-      <article class="finops-summary-card"><span class="finops-summary-icon green">↘</span><div><small>上月费用</small><strong>¥ {{ money(previousMonthCost) }}</strong><p>环比 <b :class="monthOverMonth > 0 ? 'rise' : 'fall'">{{ monthOverMonth === null ? '—' : `${monthOverMonth > 0 ? '+' : ''}${monthOverMonth.toFixed(2)}%` }}</b></p></div></article>
-      <article class="finops-summary-card"><span class="finops-summary-icon orange">↻</span><div><small>最近同步时间</small><strong class="sync-value">{{ latestSyncAt }}</strong><p>{{ data.accountCount || 0 }} 个云账号</p></div></article>
+      <article class="finops-summary-card"><span class="finops-summary-icon blue">¥</span><div><small>{{ ft('cumulativeCost', { range: rangeLabel }) }}</small><strong>¥ {{ money(data.totalCost) }}</strong><p>{{ ft('includedBills', { account: selectedAccountName, count: data.recordCount || 0 }) }}</p></div></article>
+      <article class="finops-summary-card"><span class="finops-summary-icon purple">▣</span><div><small>{{ ft('currentMonthCost') }}</small><strong>¥ {{ money(currentMonthCost) }}</strong><p><b class="partial-badge">{{ ft('throughToday') }}</b> {{ currentMonth }}</p></div></article>
+      <article class="finops-summary-card"><span class="finops-summary-icon green">↘</span><div><small>{{ ft('previousMonthCost') }}</small><strong>¥ {{ money(previousMonthCost) }}</strong><p>{{ ft('monthOverMonth') }} <b :class="monthOverMonth > 0 ? 'rise' : 'fall'">{{ monthOverMonth === null ? '—' : `${monthOverMonth > 0 ? '+' : ''}${monthOverMonth.toFixed(2)}%` }}</b></p></div></article>
+      <article class="finops-summary-card"><span class="finops-summary-icon orange">↻</span><div><small>{{ ft('latestSyncTime') }}</small><strong class="sync-value">{{ latestSyncAt }}</strong><p>{{ ft('cloudAccountsCount', { count: data.accountCount || 0 }) }}</p></div></article>
     </section>
 
     <div class="finops-dashboard-grid">
       <section class="finops-panel finops-trend-card">
-        <div class="finops-card-title"><div><h2>{{ rangeLabel }}费用趋势</h2><p>单位：人民币 · 无账单月份按 0 展示</p></div><div class="finops-chart-meta"><span>{{ selectedAccountName }}</span><b>按月</b></div></div>
-        <div class="finops-chart-legend"><i></i>实际费用 <span v-if="nonZeroTrendCount">· {{ nonZeroTrendCount }} 个月有账单</span></div>
-        <svg class="finops-line-chart" viewBox="0 0 1000 200" aria-label="月度费用趋势">
+        <div class="finops-card-title"><div><h2>{{ ft('costTrend', { range: rangeLabel }) }}</h2><p>{{ ft('cnyNoBillMonthsZero') }}</p></div><div class="finops-chart-meta"><span>{{ selectedAccountName }}</span><b>{{ ft('monthly') }}</b></div></div>
+        <div class="finops-chart-legend"><i></i>{{ ft('actualCost') }} <span v-if="nonZeroTrendCount">{{ ft('monthsWithBills', { count: nonZeroTrendCount }) }}</span></div>
+        <svg class="finops-line-chart" viewBox="0 0 1000 200" :aria-label="ft('monthlyCostTrend')">
           <path class="grid" d="M80 35H920M80 100H920M80 165H920" />
           <polygon :points="chartArea" class="area" />
           <polyline :points="chartPolyline" class="line" />
@@ -117,12 +118,12 @@ onMounted(load)
         </svg>
       </section>
       <section class="finops-panel finops-composition-card">
-        <div class="finops-card-title"><div><h2>费用构成</h2><p>{{ rangeLabel }} · {{ selectedAccountName }}</p></div><span class="finops-provider-count">{{ providers.length }} 个云厂商</span></div>
+        <div class="finops-card-title"><div><h2>{{ ft('costComposition') }}</h2><p>{{ rangeLabel }} · {{ selectedAccountName }}</p></div><span class="finops-provider-count">{{ ft('cloudProvidersCount', { count: providers.length }) }}</span></div>
         <div v-if="providers.length" class="finops-composition">
-          <div class="finops-donut" :style="donutStyle"><div><strong>¥{{ money(data.totalCost) }}</strong><span>费用总计</span></div></div>
+          <div class="finops-donut" :style="donutStyle"><div><strong>¥{{ money(data.totalCost) }}</strong><span>{{ ft('totalCost') }}</span></div></div>
           <div class="finops-provider-list"><div v-for="item in providers" :key="item.name"><i :style="{ background: item.color }"></i><b>{{ item.name }}</b><span>{{ item.percent.toFixed(1) }}%</span><em>¥{{ money(item.amount) }}</em></div></div>
         </div>
-        <el-empty v-else description="当前范围暂无费用数据" />
+        <el-empty v-else :description="ft('noCostData')" />
       </section>
     </div>
   </div>
