@@ -60,7 +60,7 @@ func (ctl *Controller) GetFinOpsAccountList(c *gin.Context) {
 func (ctl *Controller) SaveFinOpsAccount(c *gin.Context) {
 	var payload service.FinOpsAccountPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的云账号配置")
+		httpx.Failed(c, 400, "invalid cloud account configuration")
 		return
 	}
 	data, err := ctl.service.SaveFinOpsAccount(payload)
@@ -82,7 +82,7 @@ func (ctl *Controller) DeleteFinOpsAccount(c *gin.Context) {
 func (ctl *Controller) TestFinOpsAccount(c *gin.Context) {
 	var payload service.FinOpsAccountPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的云账号配置")
+		httpx.Failed(c, 400, "invalid cloud account configuration")
 		return
 	}
 	data, err := ctl.service.TestFinOpsAccount(payload)
@@ -96,7 +96,7 @@ func (ctl *Controller) TestFinOpsAccount(c *gin.Context) {
 func (ctl *Controller) GetFinOpsDashboard(c *gin.Context) {
 	start, end, err := finOpsDateRange(c)
 	if err != nil {
-		httpx.Failed(c, 400, "日期范围格式无效")
+		httpx.Failed(c, 400, "invalid date range format")
 		return
 	}
 	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
@@ -111,12 +111,12 @@ func (ctl *Controller) GetFinOpsDashboard(c *gin.Context) {
 func (ctl *Controller) GetFinOpsBreakdown(c *gin.Context) {
 	month := strings.TrimSpace(c.Query("month"))
 	if month == "" {
-		httpx.Failed(c, 400, "month 参数不能为空，格式为 YYYY-MM")
+		httpx.Failed(c, 400, "month is required and must use YYYY-MM format")
 		return
 	}
 	start, err := time.ParseInLocation("2006-01", month, time.Local)
 	if err != nil {
-		httpx.Failed(c, 400, "month 参数格式无效，格式为 YYYY-MM")
+		httpx.Failed(c, 400, "invalid month format; expected YYYY-MM")
 		return
 	}
 	end := start.AddDate(0, 1, 0)
@@ -146,12 +146,12 @@ func (ctl *Controller) GetFinOpsResources(c *gin.Context) {
 	}
 	accountID, _ := strconv.ParseUint(accountText, 10, 64)
 	if accountID == 0 || strings.TrimSpace(c.Query("start")) == "" || strings.TrimSpace(c.Query("end")) == "" {
-		httpx.Failed(c, 400, "请选择云账号、开始日期和结束日期后再进行资源拆分")
+		httpx.Failed(c, 400, "select a cloud account, start date, and end date before requesting resource breakdown")
 		return
 	}
 	start, end, err := finOpsDateRange(c)
 	if err != nil {
-		httpx.Failed(c, 400, "日期范围格式无效")
+		httpx.Failed(c, 400, "invalid date range format")
 		return
 	}
 	filters := func(key string) []string {
@@ -188,7 +188,7 @@ func (ctl *Controller) GetFinOpsRecommendationList(c *gin.Context) {
 func (ctl *Controller) GenerateFinOpsRecommendations(c *gin.Context) {
 	var payload service.FinOpsRecommendationGeneratePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的建议生成参数")
+		httpx.Failed(c, 400, "invalid recommendation generation payload")
 		return
 	}
 	count, mode, err := ctl.service.GenerateFinOpsRecommendations(payload.ModelID, payload.Strategy, payload.AccountID, payload.Month)
@@ -205,7 +205,7 @@ func (ctl *Controller) UpdateFinOpsRecommendation(c *gin.Context) {
 		Status string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的建议状态")
+		httpx.Failed(c, 400, "invalid recommendation status payload")
 		return
 	}
 	if err := ctl.service.UpdateFinOpsRecommendation(payload.ID, payload.Status); err != nil {
@@ -240,7 +240,7 @@ func (ctl *Controller) TriggerFinOpsSync(c *gin.Context) {
 		EndMonth   string `json:"end_month"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "请选择云账号")
+		httpx.Failed(c, 400, "select a cloud account")
 		return
 	}
 	now := time.Now()
@@ -261,7 +261,7 @@ func (ctl *Controller) TriggerFinOpsSync(c *gin.Context) {
 func (ctl *Controller) ImportFinOpsCosts(c *gin.Context) {
 	var payload service.FinOpsCostImportPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "账单 JSON 格式无效")
+		httpx.Failed(c, 400, "invalid billing JSON payload")
 		return
 	}
 	data, err := ctl.service.ImportFinOpsCosts(payload)
