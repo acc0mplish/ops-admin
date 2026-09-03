@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Delete, Document, DocumentCopy, Edit, EditPen, Plus, Upload, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -44,7 +45,7 @@ onMounted(load)
 <template>
   <div class="ai-page knowledge-page">
     <section class="ai-hero">
-      <div><div class="ai-kicker">LOCAL MARKDOWN KNOWLEDGE</div><h1>{{ it('knowledgeManagement') }}</h1><p>{{ it('knowledgeManagementDesc') }}</p></div>
+      <div><div class="ai-kicker">{{ uiT('localMarkdownKnowledge') }}</div><h1>{{ it('knowledgeManagement') }}</h1><p>{{ it('knowledgeManagementDesc') }}</p></div>
       <div class="knowledge-actions"><el-upload :show-file-list="false" :before-upload="upload" accept=".md"><el-button :loading="uploading" :icon="Upload">{{ it('uploadMarkdown') }}</el-button></el-upload><el-button type="primary" :icon="Plus" @click="createDocument">{{ it('newMarkdown') }}</el-button></div>
     </section>
     <section class="ai-panel">

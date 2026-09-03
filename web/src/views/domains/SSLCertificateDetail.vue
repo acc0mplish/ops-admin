@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -89,14 +90,14 @@ onBeforeUnmount(stopPolling)
       <div class="cert-hero">
         <div>
           <el-button link class="cert-back" @click="router.push('/domains/public/certificates')">← 返回 SSL 证书</el-button>
-          <div class="domain-eyebrow">TLS CERTIFICATE DETAIL</div>
+          <div class="domain-eyebrow">{{ uiT('tlsCertificateDetail') }}</div>
           <div class="cert-title"><h2>{{ certificate.name }}</h2><el-tag :type="statusType(certificate.status)" effect="light">{{ statusLabel(certificate.status) }}</el-tag></div>
           <p class="domain-mono">{{ certificate.domains.join(' · ') }}</p>
         </div>
         <div class="cert-actions">
           <el-dropdown trigger="click"><el-button>下载证书⌄</el-button><template #dropdown><el-dropdown-menu>
-            <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('certificate')">Certificate PEM</el-dropdown-item>
-            <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('chain')">Certificate Chain</el-dropdown-item>
+            <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('certificate')">{{ uiT('certificatePem') }}</el-dropdown-item>
+            <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('chain')">{{ uiT('certificateChain') }}</el-dropdown-item>
             <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" divided @click="download('private-key', true)">Private Key（敏感）</el-dropdown-item>
             <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" @click="download('zip', true)">完整 ZIP（敏感）</el-dropdown-item>
           </el-dropdown-menu></template></el-dropdown>

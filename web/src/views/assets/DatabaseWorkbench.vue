@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -1309,7 +1310,7 @@ onBeforeUnmount(() => {
   <div v-loading="loading" class="dbms-page">
     <header class="dbms-console-bar">
       <div class="dbms-console-identity">
-        <span>DBMS WORKBENCH</span>
+        <span>{{ uiT('dbmsWorkbench') }}</span>
         <strong>{{ connection?.name || connection?.databaseName || 'Database Workbench' }}</strong>
         <small>{{ connection?.host || connection?.address || 'Connection을 선택하면 Object 탐색, Statement 실행 및 결과 확인이 가능합니다.' }}</small>
       </div>
@@ -1323,7 +1324,7 @@ onBeforeUnmount(() => {
       <aside class="dbms-sidebar page-card">
         <section class="sidebar-section connection-section">
           <div class="sidebar-section-title">
-            <strong>Database Connection</strong>
+            <strong>{{ uiT('databaseConnection') }}</strong>
             <span>Connection을 클릭해 전환</span>
           </div>
           <DatabaseConnectionTree :active-id="databaseId" @select="switchDatabase" />
@@ -1331,7 +1332,7 @@ onBeforeUnmount(() => {
 
         <section class="sidebar-section schema-section">
           <div class="sidebar-section-title">
-            <strong>Database / Table Structure</strong>
+            <strong>{{ uiT('databaseTableStructure') }}</strong>
             <div class="schema-title-actions">
               <el-button v-if="supportsCreateDatabase" type="primary" link @click="openCreateDatabase">
                 추가{{ createDatabaseObjectLabel }}

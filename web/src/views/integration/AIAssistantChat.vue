@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -139,7 +140,7 @@ onMounted(async () => {
   <div class="ai-page chat-page">
     <section class="ai-hero">
       <div>
-        <div class="ai-kicker">AI OPERATIONS COPILOT</div>
+        <div class="ai-kicker">{{ uiT('aiOperationsCopilot') }}</div>
         <h1>{{ it('assistantChat') }}</h1>
         <p>{{ it('assistantChatDesc') }}</p>
       </div>

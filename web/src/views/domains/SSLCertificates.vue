@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -83,7 +84,7 @@ onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer) })
 <template>
   <section class="domain-page domain-panel page-card ssl-page">
     <div class="domain-page-head">
-      <div><div class="domain-eyebrow">TLS CERTIFICATE INVENTORY</div><h2>SSL 证书</h2><p>统一管理云端证书与平台 ACME 证书。Private Key 加密保存，普通查询接口永不返回密钥内容。</p></div>
+      <div><div class="domain-eyebrow">{{ uiT('tlsCertificateInventory') }}</div><h2>SSL 证书</h2><p>统一管理云端证书与平台 ACME 证书。Private Key 加密保存，普通查询接口永不返回密钥内容。</p></div>
       <div class="ssl-head-actions">
         <el-button v-permission="'domains:ssl:sync'" @click="syncVisible=true">从云端同步</el-button>
         <el-button v-permission="'domains:ssl:apply'" @click="resetApply">申请证书</el-button>

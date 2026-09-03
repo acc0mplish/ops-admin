@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -301,7 +302,7 @@ function confirmTemplate() {
     return
   }
   resetForm()
-  form.name = selectedTemplate.value.name.replace('General Template', 'Pipeline')
+  form.name = selectedTemplate.value.name.replace('General Template', uiT('pipeline'))
   form.techStack = selectedTemplate.value.techStack || 'custom'
   form.templateId = selectedTemplate.value.id
   form.description = selectedTemplate.value.description || ''
@@ -580,8 +581,8 @@ onBeforeUnmount(stopRunRefresh)
   <div class="pipeline-page">
     <div class="hero-panel">
       <div>
-        <span class="eyebrow">Cloud Native Delivery</span>
-        <h1>CI/CD Pipeline</h1>
+        <span class="eyebrow">{{ uiT('cloudNativeDelivery') }}</span>
+        <h1>{{ uiT('cicdPipeline') }}</h1>
         <p>Source Checkout부터 Build, Test, Artifact, Deploy, Notification까지 Application Delivery Flow를 통합 Orchestration합니다.</p>
       </div>
       <div class="hero-stats">
@@ -595,12 +596,12 @@ onBeforeUnmount(stopRunRefresh)
       <el-tab-pane label="Pipeline 목록" name="pipelines">
         <div class="filter-panel">
           <el-form inline>
-            <el-form-item label="Application">
+            <el-form-item :label="uiT('application')">
               <el-select v-model="query.appId" clearable filterable placeholder="전체 Application">
                 <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Environment">
+            <el-form-item :label="uiT('environment')">
               <el-select v-model="query.env" clearable placeholder="전체 Environment">
                 <el-option label="dev" value="dev" />
                 <el-option label="test" value="test" />
@@ -608,7 +609,7 @@ onBeforeUnmount(stopRunRefresh)
                 <el-option label="prod" value="prod" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Tech Stack">
+            <el-form-item :label="uiT('techStack')">
               <el-select v-model="query.techStack" clearable placeholder="전체 Tech Stack">
                 <el-option label="Go" value="go" />
                 <el-option label="Maven Java" value="maven" />
@@ -616,7 +617,7 @@ onBeforeUnmount(stopRunRefresh)
                 <el-option label="사용자 정의" value="custom" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Keyword">
+            <el-form-item :label="uiT('keyword')">
               <el-input v-model="query.keyword" clearable placeholder="Pipeline / Application / Repository 검색" @keyup.enter="loadData" />
             </el-form-item>
             <el-form-item>
@@ -628,7 +629,7 @@ onBeforeUnmount(stopRunRefresh)
         </div>
 
         <el-table v-loading="loading" :data="rows" class="pipeline-table">
-          <el-table-column label="Pipeline" min-width="220">
+          <el-table-column :label="uiT('pipeline')" min-width="220">
             <template #default="{ row }">
               <div class="name-cell">
                 <strong>{{ row.name }}</strong>
@@ -637,8 +638,8 @@ onBeforeUnmount(stopRunRefresh)
             </template>
           </el-table-column>
           <el-table-column prop="repoUrl" label="Repository Address" min-width="260" show-overflow-tooltip />
-          <el-table-column prop="env" label="Environment" width="100" />
-          <el-table-column prop="techStack" label="Tech Stack" width="120" />
+          <el-table-column prop="env" :label="uiT('environment')" width="100" />
+          <el-table-column prop="techStack" :label="uiT('techStack')" width="120" />
           <el-table-column label="실행 Node" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ executorHostName(row.executorHostId) }}</template></el-table-column>
           <el-table-column prop="stageCount" label="Stage 수" width="90" />
           <el-table-column label="상태" width="100">
@@ -681,7 +682,7 @@ onBeforeUnmount(stopRunRefresh)
       <el-tab-pane label="Run History" name="runs">
         <div class="filter-panel">
           <el-form inline>
-            <el-form-item label="Application">
+            <el-form-item :label="uiT('application')">
               <el-select v-model="runQuery.appId" clearable filterable placeholder="전체 Application">
                 <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
@@ -693,7 +694,7 @@ onBeforeUnmount(stopRunRefresh)
                 <el-option label="실패" value="failed" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Keyword">
+            <el-form-item :label="uiT('keyword')">
               <el-input v-model="runQuery.keyword" clearable placeholder="Pipeline / Application / Image Tag" @keyup.enter="loadRuns" />
             </el-form-item>
             <el-form-item>
@@ -704,9 +705,9 @@ onBeforeUnmount(stopRunRefresh)
         </div>
         <el-table v-loading="loading" :data="runRows" class="pipeline-table">
           <el-table-column prop="id" label="Run ID" width="100" />
-          <el-table-column prop="pipelineName" label="Pipeline" min-width="180" />
-          <el-table-column prop="appName" label="Application" min-width="160" />
-          <el-table-column prop="env" label="Environment" width="90" />
+          <el-table-column prop="pipelineName" :label="uiT('pipeline')" min-width="180" />
+          <el-table-column prop="appName" :label="uiT('application')" min-width="160" />
+          <el-table-column prop="env" :label="uiT('environment')" width="90" />
           <el-table-column prop="branch" label="Branch" width="130" />
           <el-table-column prop="imageTag" label="Image Tag" min-width="150" />
           <el-table-column label="상태" width="100">
@@ -764,7 +765,7 @@ onBeforeUnmount(stopRunRefresh)
       <el-form label-width="100px">
         <div class="form-grid">
           <el-form-item label="Pipeline 이름" required><el-input v-model="form.name" placeholder="입력하십시오: Pipeline 이름" /></el-form-item>
-          <el-form-item label="Application" required>
+          <el-form-item :label="uiT('application')" required>
             <el-select v-model="form.appId" filterable placeholder="선택하십시오: Application" @change="fillFromApp">
               <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
             </el-select>
@@ -778,7 +779,7 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="prod" value="prod" />
             </el-select>
           </el-form-item>
-          <el-form-item label="Tech Stack">
+          <el-form-item :label="uiT('techStack')">
             <el-select v-model="form.techStack">
               <el-option label="Go" value="go" />
               <el-option label="Maven Java" value="maven" />
@@ -915,7 +916,7 @@ onBeforeUnmount(stopRunRefresh)
 
     <el-dialog v-model="runVisible" title="Pipeline 즉시 실행" width="680px">
       <el-form label-width="100px">
-        <el-form-item label="Pipeline"><el-input v-model="runForm.pipelineName" disabled /></el-form-item>
+        <el-form-item :label="uiT('pipeline')"><el-input v-model="runForm.pipelineName" disabled /></el-form-item>
         <el-form-item label="실행 Environment">
           <el-select v-model="runForm.env">
             <el-option label="dev" value="dev" />
@@ -936,9 +937,9 @@ onBeforeUnmount(stopRunRefresh)
 
     <el-dialog v-model="runDetailVisible" title="Pipeline Run 상세" width="1080px" class="run-detail-dialog">
       <div class="run-summary">
-        <div><span>Pipeline</span><strong>{{ currentRun.run.pipelineName || '-' }}</strong></div>
+        <div><span>{{ uiT('pipeline') }}</span><strong>{{ currentRun.run.pipelineName || '-' }}</strong></div>
         <div><span>상태</span><el-tag :type="statusType(currentRun.run.status)">{{ statusText(currentRun.run.status) }}</el-tag></div>
-        <div><span>Environment</span><strong>{{ currentRun.run.env || '-' }}</strong></div>
+        <div><span>{{ uiT('environment') }}</span><strong>{{ currentRun.run.env || '-' }}</strong></div>
         <div><span>Duration</span><strong>{{ durationText(currentRun.run.durationMs) }}</strong></div>
       </div>
       <div class="run-detail-actions">

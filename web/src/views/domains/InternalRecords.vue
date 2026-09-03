@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -153,7 +154,7 @@ onMounted(load)
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div>
-        <div class="domain-eyebrow">AUTHORITATIVE RECORDS</div>
+        <div class="domain-eyebrow">{{ uiT('authoritativeRecords') }}</div>
         <h2 class="domain-mono">{{ zone.name || '内网 Zone' }}</h2>
         <p>支持 A 与 CNAME；单条或批量保存后统一原子刷新 DNS 内存快照，无需重启服务。</p>
       </div>

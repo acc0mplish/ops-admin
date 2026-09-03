@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Connection, FolderOpened, Key, Monitor, Coin, Warning, Grid } from '@element-plus/icons-vue'
@@ -199,7 +200,7 @@ onMounted(loadOverview)
   <div v-loading="loading" class="asset-overview-page">
     <section class="hero-card">
       <div class="hero-copy">
-        <p class="hero-kicker">ASSET CONTROL</p>
+        <p class="hero-kicker">{{ uiT('assetControl') }}</p>
         <h1>资产概览</h1>
         <p class="hero-text">
           统一查看主机、主机组、凭据、云账号、数据库和 K8s 集群状态，优先处理离线主机、认证失败和连接异常资源。

@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -41,7 +42,7 @@ const inspectionFilter = ref('all')
 
 const pageMode = computed(() => route.path.includes('/monitor/inspections') ? 'inspection' : 'dashboard')
 const pageLayout = computed(() => pageMode.value === 'inspection' ? 'list' : 'grid')
-const pageTitle = computed(() => pageMode.value === 'inspection' ? 'Inspection Dashboard' : 'Monitoring Dashboard')
+const pageTitle = computed(() => pageMode.value === 'inspection' ? 'Inspection Dashboard' : uiT('monitoringDashboard'))
 const pageDescription = computed(() => (
   pageMode.value === 'inspection'
     ? 'Inspection Checklist 방식으로 PromQL Panel 상태를 점검하고 Inspection Report PDF Export를 지원합니다.'
@@ -439,7 +440,7 @@ function exportInspectionReportPdf() {
         <table>
           <thead>
             <tr>
-              <th>#</th><th>Panel</th><th>상태</th><th>현재 값</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / Error</th>
+              <th>#</th><th>{{ uiT('panel') }}</th><th>상태</th><th>현재 값</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / Error</th>
             </tr>
           </thead>
           <tbody>${rows || '<tr><td colspan="8">Inspection Panel이 없습니다.</td></tr>'}</tbody>
@@ -746,7 +747,7 @@ onBeforeUnmount(() => {
       <div class="workspace-title">
         <span class="brand-mark">M</span>
         <div>
-          <strong>Monitoring Dashboard</strong>
+          <strong>{{ uiT('monitoringDashboard') }}</strong>
           <p>{{ pageDescription }}</p>
         </div>
       </div>
@@ -775,7 +776,7 @@ onBeforeUnmount(() => {
     <main class="dashboard-main observability-canvas" v-loading="loading">
       <section class="dashboard-hero">
         <div>
-          <div class="eyebrow">Monitoring Dashboard</div>
+          <div class="eyebrow">{{ uiT('monitoringDashboard') }}</div>
           <h2>{{ activeDashboard?.name || pageTitle }}</h2>
           <p>{{ activeDashboard?.description || pageDescription }}</p>
           <div v-if="activeDashboard" class="layout-hint">
@@ -805,7 +806,7 @@ onBeforeUnmount(() => {
           </el-select>
           <el-button @click="refreshAllPanels" :disabled="!activePanels.length">전체 Refresh</el-button>
           <el-button v-if="!isListLayout" @click="toggleFullscreen" :disabled="!activeDashboard">{{ isFullscreen ? '전체 화면 종료' : 'Dashboard 전체 화면' }}</el-button>
-          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">Inspection Report PDF Export</el-button>
+          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">{{ uiT('inspectionReportPdfExport') }}</el-button>
           <el-button v-if="!isFullscreen" @click="openEditDashboard" :disabled="!activeDashboard">{{ pageTitle }} 수정</el-button>
           <el-button v-if="!isFullscreen" type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">{{ pageTitle }} 삭제</el-button>
           <el-button v-if="!isFullscreen" type="primary" @click="openCreatePanel">Panel 추가</el-button>
@@ -850,13 +851,13 @@ onBeforeUnmount(() => {
         </div>
         <div class="inspection-head">
           <div>
-            <h3>Inspection Panel</h3>
+            <h3>{{ uiT('inspectionPanel') }}</h3>
             <p>Panel별 Query 상태, 현재 값, 반환 Series, PromQL을 확인하며 일상 Troubleshooting Inspection에 적합합니다.</p>
           </div>
           <el-button @click="refreshAllPanels" :disabled="!activePanels.length">Inspection 실행</el-button>
         </div>
         <el-table :data="inspectionPanels" class="inspection-table" row-key="id" empty-text="현재 Filter 조건에 해당하는 Panel이 없습니다.">
-          <el-table-column label="Panel" min-width="180">
+          <el-table-column :label="uiT('panel')" min-width="180">
             <template #default="{ row }">
               <div class="inspection-name">
                 <strong>{{ row.title }}</strong>

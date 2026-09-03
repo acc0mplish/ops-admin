@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -16,7 +17,7 @@ async function remove(row){await ElMessageBox.confirm(dt('deleteZoneConfirm',{na
 onMounted(load)
 </script>
 <template><section class="domain-page domain-panel page-card">
-  <div class="domain-page-head"><div><div class="domain-eyebrow">PRIVATE DNS ZONES</div><h2>{{dt('zoneManagement')}}</h2><p>{{dt('zoneManagementDesc')}}</p></div><div><el-button @click="router.push('/domains/internal/settings')">{{dt('dnsSettings')}}</el-button><el-button v-permission="'domains:internal:zone:add'" type="primary" @click="create">{{dt('createZone')}}</el-button></div></div>
+  <div class="domain-page-head"><div><div class="domain-eyebrow">{{ uiT('privateDnsZones') }}</div><h2>{{dt('zoneManagement')}}</h2><p>{{dt('zoneManagementDesc')}}</p></div><div><el-button @click="router.push('/domains/internal/settings')">{{dt('dnsSettings')}}</el-button><el-button v-permission="'domains:internal:zone:add'" type="primary" @click="create">{{dt('createZone')}}</el-button></div></div>
   <div class="domain-stat-grid"><div class="domain-stat"><div class="domain-stat__label">{{dt('dnsStatus')}}</div><div style="margin-top:12px"><span class="dns-state" :class="{'is-running':runtime.running,'is-error':runtime.lastError}">{{!settingsReady?dt('checking'):runtime.running?'Running':runtime.lastError?dt('startFailed'):dt('stopped')}}</span></div></div><div class="domain-stat"><div class="domain-stat__label">{{dt('listenAddress')}}</div><div class="domain-stat__value domain-mono" style="font-size:18px">{{runtime.listenAddress||'0.0.0.0:53'}}</div></div><div class="domain-stat"><div class="domain-stat__label">{{dt('zoneCount')}}</div><div class="domain-stat__value">{{runtime.zoneCount||zones.length}}</div></div><div class="domain-stat"><div class="domain-stat__label">{{dt('enabledRecords')}}</div><div class="domain-stat__value">{{runtime.recordCount||0}}</div></div></div>
   <el-alert v-if="runtime.lastError" type="error" :closable="false" :title="runtime.lastError" show-icon/>
   <div v-if="settingsReady&&!dnsEnabled&&!runtime.lastError" class="dns-setup-notice" role="status"><div><strong>{{settings.enabled?dt('dnsNotRunning'):dt('enableDnsFirst')}}</strong><p>{{settings.enabled?dt('dnsNotRunningDesc'):dt('enableDnsFirstDesc')}}</p></div><el-button type="primary" @click="router.push('/domains/internal/settings')">{{dt('goToDnsSettings')}}</el-button></div>

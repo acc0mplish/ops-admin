@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteDNSAccount, getDNSAccount, queryDNSAccounts, saveDNSAccount, testDNSAccount } from '../../api/domain'
@@ -21,7 +22,7 @@ onMounted(loadData)
 <template>
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
-      <div><div class="domain-eyebrow">PUBLIC DNS CREDENTIALS</div><h2>{{ dat('title') }}</h2><p>{{ dat('description') }}</p></div>
+      <div><div class="domain-eyebrow">{{ uiT('publicDnsCredentials') }}</div><h2>{{ dat('title') }}</h2><p>{{ dat('description') }}</p></div>
       <el-button v-permission="'domains:account:add'" type="primary" @click="openCreate">{{ dat('add') }}</el-button>
     </div>
     <div class="domain-toolbar" role="search">

@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -53,7 +54,7 @@ onMounted(async () => {
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div>
-        <div class="domain-eyebrow">PUBLIC DNS INVENTORY</div>
+        <div class="domain-eyebrow">{{ uiT('publicDnsInventory') }}</div>
         <h2>{{ dt('publicDomainsTitle') }}</h2>
         <p>{{ dt('publicDomainsDesc') }}</p>
       </div>

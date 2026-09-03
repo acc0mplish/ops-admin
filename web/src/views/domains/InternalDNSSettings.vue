@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getInternalDNSSettings, saveInternalDNSSettings } from '../../api/domain'
@@ -45,7 +46,7 @@ onMounted(load)
   <section v-loading="loading" class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div>
-        <div class="domain-eyebrow">DNS RUNTIME SETTINGS</div>
+        <div class="domain-eyebrow">{{ uiT('dnsRuntimeSettings') }}</div>
         <h2>{{ dt('internalSettingsTitle') }}</h2>
         <p>{{ dt('internalSettingsDesc') }}</p>
       </div>
