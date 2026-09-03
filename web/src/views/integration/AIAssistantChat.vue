@@ -15,6 +15,7 @@ import {
   saveAIConversation,
   sendAIChat
 } from '../../api/integration'
+import { it } from '../../utils/integration-i18n'
 import './ai.css'
 
 const models = ref([])
@@ -31,7 +32,7 @@ const markdown = new MarkdownIt({ breaks: true, linkify: true, typographer: true
 
 const activeConversation = computed(() => conversations.value.find((item) => item.id === currentId.value))
 const pendingActions = computed(() => actions.value.filter((item) => item.status === 'pending'))
-const suggestions = ['查询最近 6 个月云费用趋势', '分析本月云费用的产品和地域分布', '检查当前 K8s 集群健康状态', '分析 Pod 频繁重启的排障步骤']
+const suggestions = computed(() => [it('suggestionCostTrend'), it('suggestionCostDistribution'), it('suggestionK8sHealth'), it('suggestionPodRestart')])
 
 function renderMarkdown(content) {
   return DOMPurify.sanitize(markdown.render(String(content || '')))
@@ -68,7 +69,7 @@ async function send(content = input.value) {
   const text = String(content || '').trim()
   if (!text || sending.value) return
   if (!currentModelId.value) {
-    ElMessage.warning('请先在模型管理中配置并启用一个模型')
+    ElMessage.warning(it('configureModelFirst'))
     return
   }
   messages.value.push({ id: `local-${Date.now()}`, role: 'user', content: text, createTime: new Date().toISOString() })
@@ -101,21 +102,21 @@ async function togglePin() {
 
 async function removeConversation() {
   if (!currentId.value) return
-  await ElMessageBox.confirm('删除后将同时清理该会话的消息与待确认操作，是否继续？', '删除会话', { type: 'warning' })
+  await ElMessageBox.confirm(it('deleteConversationAllConfirm'), it('deleteConversationTitle'), { type: 'warning' })
   await deleteAIConversation(currentId.value)
   newConversation()
   await loadConversations()
-  ElMessage.success('会话已删除')
+  ElMessage.success(it('conversationDeleted'))
 }
 
 async function handleAction(action, accepted) {
   if (accepted) {
-    await ElMessageBox.confirm('该操作将修改 K8s 资源，请确认目标集群与参数无误。', '确认执行变更', { type: 'warning', confirmButtonText: '确认执行' })
+    await ElMessageBox.confirm(it('changeK8sResourceConfirm'), it('confirmChangeExecution'), { type: 'warning', confirmButtonText: it('confirmExecution') })
     await confirmAIAction(action.id)
-    ElMessage.success('操作执行完成')
+    ElMessage.success(it('actionCompleted'))
   } else {
     await rejectAIAction(action.id)
-    ElMessage.success('已拒绝执行')
+    ElMessage.success(it('actionRejected'))
   }
   await openConversation(currentId.value)
 }
@@ -139,69 +140,69 @@ onMounted(async () => {
     <section class="ai-hero">
       <div>
         <div class="ai-kicker">AI OPERATIONS COPILOT</div>
-        <h1>智能对话</h1>
-        <p>可查询本地监控、K8s 与已同步云账单数据；所有变更操作都需要人工确认。</p>
+        <h1>{{ it('assistantChat') }}</h1>
+        <p>{{ it('assistantChatDesc') }}</p>
       </div>
       <div class="hero-actions">
-        <el-select v-model="currentModelId" placeholder="选择模型" style="width: 220px">
+        <el-select v-model="currentModelId" :placeholder="it('selectModel')" style="width: 220px">
           <el-option v-for="item in models.filter((row) => row.status === 1)" :key="item.id" :label="item.name" :value="item.id">
             <span>{{ item.name }}</span><span class="model-code">{{ item.model }}</span>
           </el-option>
         </el-select>
-        <el-button :icon="Plus" type="primary" @click="newConversation">新建会话</el-button>
+        <el-button :icon="Plus" type="primary" @click="newConversation">{{ it('newChat') }}</el-button>
       </div>
     </section>
 
     <section class="chat-shell ai-panel">
       <aside class="conversation-rail">
-        <div class="rail-title"><strong>最近会话</strong><span>{{ conversations.length }}</span></div>
+        <div class="rail-title"><strong>{{ it('recentConversations') }}</strong><span>{{ conversations.length }}</span></div>
         <div class="conversation-list">
           <button v-for="item in conversations" :key="item.id" class="conversation-item" :class="{ active: item.id === currentId }" @click="openConversation(item.id)">
             <el-icon><StarFilled v-if="item.pinned"/><ChatLineRound v-else/></el-icon>
-            <span><strong>{{ item.title }}</strong><small>{{ item.modelName || '未配置模型' }} · {{ item.messageCount }} 条</small></span>
+            <span><strong>{{ item.title }}</strong><small>{{ item.modelName || it('modelNotConfigured') }} · {{ item.messageCount }}</small></span>
           </button>
         </div>
         <div class="rail-footer">
-          <el-button text :icon="Setting" @click="$router.push('/integration/ai/models')">模型管理</el-button>
+          <el-button text :icon="Setting" @click="$router.push('/integration/ai/models')">{{ it('modelManagement') }}</el-button>
         </div>
       </aside>
 
       <main class="chat-main">
         <header class="chat-head">
-          <div><strong>{{ activeConversation?.title || '新会话' }}</strong><span><i class="ai-status-dot"></i>工具调用已启用</span></div>
+          <div><strong>{{ activeConversation?.title || it('newConversationShort') }}</strong><span><i class="ai-status-dot"></i>{{ it('toolsEnabled') }}</span></div>
           <div v-if="currentId">
-            <el-button circle :icon="activeConversation?.pinned ? StarFilled : Star" title="置顶会话" @click="togglePin"/>
-            <el-button circle :icon="Delete" title="删除会话" @click="removeConversation"/>
+            <el-button circle :icon="activeConversation?.pinned ? StarFilled : Star" :title="it('pinConversation')" @click="togglePin"/>
+            <el-button circle :icon="Delete" :title="it('deleteConversationTitle')" @click="removeConversation"/>
           </div>
         </header>
 
         <div ref="scrollRef" class="message-stage">
           <div v-if="!messages.length" class="welcome-block">
             <div class="assistant-mark">AI</div>
-            <h2>今天需要排查什么？</h2>
-            <p>我可以读取平台中的监控、Grafana、Kubernetes，以及本地已同步的云费用账单数据。</p>
+            <h2>{{ it('whatToInvestigate') }}</h2>
+            <p>{{ it('assistantCapabilities') }}</p>
             <div class="suggestions">
               <button v-for="item in suggestions" :key="item" @click="send(item)">{{ item }}</button>
             </div>
           </div>
           <template v-else>
             <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
-              <div class="message-avatar">{{ message.role === 'user' ? '我' : 'AI' }}</div>
-              <div class="message-body"><div class="message-role">{{ message.role === 'user' ? '你' : '运维助手' }}</div><pre v-if="message.role === 'user'" class="user-message-content">{{ message.content }}</pre><div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div></div>
+              <div class="message-avatar">{{ message.role === 'user' ? it('me') : 'AI' }}</div>
+              <div class="message-body"><div class="message-role">{{ message.role === 'user' ? it('you') : it('operationsAssistant') }}</div><pre v-if="message.role === 'user'" class="user-message-content">{{ message.content }}</pre><div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div></div>
             </article>
           </template>
 
           <div v-for="action in pendingActions" :key="action.id" class="action-card">
-            <div><strong>待确认的变更操作</strong><el-tag type="warning" effect="plain">{{ action.toolKey }}</el-tag></div>
+            <div><strong>{{ it('pendingChange') }}</strong><el-tag type="warning" effect="plain">{{ action.toolKey }}</el-tag></div>
             <pre>{{ action.argumentsJson }}</pre>
-            <footer><el-button @click="handleAction(action, false)">拒绝</el-button><el-button type="warning" @click="handleAction(action, true)">确认执行</el-button></footer>
+            <footer><el-button @click="handleAction(action, false)">{{ it('reject') }}</el-button><el-button type="warning" @click="handleAction(action, true)">{{ it('confirmExecution') }}</el-button></footer>
           </div>
-          <div v-if="sending" class="thinking"><i></i><i></i><i></i><span>正在分析平台数据</span></div>
+          <div v-if="sending" class="thinking"><i></i><i></i><i></i><span>{{ it('analyzingPlatformData') }}</span></div>
         </div>
 
         <footer class="composer">
-          <el-input v-model="input" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" resize="none" placeholder="描述现象、资源范围或期望执行的操作，Enter 发送，Shift + Enter 换行" @keydown="keydown"/>
-          <div class="composer-foot"><span>费用分析仅查询本地已同步账单；不会调用云厂商接口</span><el-button type="primary" :icon="Promotion" :loading="sending" @click="send()">发送</el-button></div>
+          <el-input v-model="input" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" resize="none" :placeholder="it('composerPlaceholder')" @keydown="keydown"/>
+          <div class="composer-foot"><span>{{ it('localBillingOnly') }}</span><el-button type="primary" :icon="Promotion" :loading="sending" @click="send()">{{ it('send') }}</el-button></div>
         </footer>
       </main>
     </section>
@@ -248,19 +249,19 @@ onMounted(async () => {
 .message.user .message-body { max-width: min(76%, 920px); }
 .message-role { margin-bottom: 6px; color: #7788a3; font-size: 12px; }
 .message.user .message-role { text-align: right; }
-  .user-message-content, .markdown-content { width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 14px 16px; overflow-wrap: anywhere; line-height: 1.75; border-radius: 7px; }
-  .user-message-content { color: #fff; font-family: inherit; white-space: pre-wrap; background: #315fba; border: 1px solid #315fba; }
-  .markdown-content { color: #263a58; background: #fff; border: 1px solid #dfe7f2; }
-  .markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3) { margin: 20px 0 10px; color: #142b4d; line-height: 1.35; }
-  .markdown-content :deep(h1:first-child), .markdown-content :deep(h2:first-child), .markdown-content :deep(h3:first-child) { margin-top: 0; }
-  .markdown-content :deep(h1) { padding-bottom: 9px; font-size: 21px; border-bottom: 1px solid #e5ecf5; }
-  .markdown-content :deep(h2) { font-size: 18px; }.markdown-content :deep(h3) { font-size: 16px; }
-  .markdown-content :deep(p) { margin: 0 0 12px; }.markdown-content :deep(ul), .markdown-content :deep(ol) { padding-left: 24px; margin: 8px 0 14px; }.markdown-content :deep(li + li) { margin-top: 4px; }
-  .markdown-content :deep(blockquote) { margin: 14px 0; padding: 8px 13px; color: #5d7090; background: #f4f7fc; border-left: 3px solid #5a83e8; }
-  .markdown-content :deep(code) { padding: 2px 5px; color: #244f94; font-family: Consolas, Monaco, monospace; background: #edf3ff; border-radius: 4px; }
-  .markdown-content :deep(pre) { margin: 14px 0; padding: 14px; overflow: auto; color: #dbeafe; background: #111c31; border-radius: 6px; }.markdown-content :deep(pre code) { padding: 0; color: inherit; background: transparent; }
-  .markdown-content :deep(table) { display: block; width: 100%; margin: 14px 0; overflow-x: auto; border-collapse: collapse; }.markdown-content :deep(th), .markdown-content :deep(td) { min-width: 96px; padding: 8px 10px; text-align: left; border: 1px solid #dfe7f2; }.markdown-content :deep(th) { color: #36557e; background: #f4f7fc; }
-  .markdown-content :deep(a) { color: #2d67d9; text-decoration: none; }.markdown-content :deep(a:hover) { text-decoration: underline; }.markdown-content :deep(hr) { margin: 18px 0; border: 0; border-top: 1px solid #e4ebf5; }
+.user-message-content, .markdown-content { width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 14px 16px; overflow-wrap: anywhere; line-height: 1.75; border-radius: 7px; }
+.user-message-content { color: #fff; font-family: inherit; white-space: pre-wrap; background: #315fba; border: 1px solid #315fba; }
+.markdown-content { color: #263a58; background: #fff; border: 1px solid #dfe7f2; }
+.markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3) { margin: 20px 0 10px; color: #142b4d; line-height: 1.35; }
+.markdown-content :deep(h1:first-child), .markdown-content :deep(h2:first-child), .markdown-content :deep(h3:first-child) { margin-top: 0; }
+.markdown-content :deep(h1) { padding-bottom: 9px; font-size: 21px; border-bottom: 1px solid #e5ecf5; }
+.markdown-content :deep(h2) { font-size: 18px; }.markdown-content :deep(h3) { font-size: 16px; }
+.markdown-content :deep(p) { margin: 0 0 12px; }.markdown-content :deep(ul), .markdown-content :deep(ol) { padding-left: 24px; margin: 8px 0 14px; }.markdown-content :deep(li + li) { margin-top: 4px; }
+.markdown-content :deep(blockquote) { margin: 14px 0; padding: 8px 13px; color: #5d7090; background: #f4f7fc; border-left: 3px solid #5a83e8; }
+.markdown-content :deep(code) { padding: 2px 5px; color: #244f94; font-family: Consolas, Monaco, monospace; background: #edf3ff; border-radius: 4px; }
+.markdown-content :deep(pre) { margin: 14px 0; padding: 14px; overflow: auto; color: #dbeafe; background: #111c31; border-radius: 6px; }.markdown-content :deep(pre code) { padding: 0; color: inherit; background: transparent; }
+.markdown-content :deep(table) { display: block; width: 100%; margin: 14px 0; overflow-x: auto; border-collapse: collapse; }.markdown-content :deep(th), .markdown-content :deep(td) { min-width: 96px; padding: 8px 10px; text-align: left; border: 1px solid #dfe7f2; }.markdown-content :deep(th) { color: #36557e; background: #f4f7fc; }
+.markdown-content :deep(a) { color: #2d67d9; text-decoration: none; }.markdown-content :deep(a:hover) { text-decoration: underline; }.markdown-content :deep(hr) { margin: 18px 0; border: 0; border-top: 1px solid #e4ebf5; }
 .action-card { max-width: 760px; padding: 16px; margin: 0 auto 22px; background: #fffaf0; border: 1px solid #f0cd85; border-radius: 7px; }
 .action-card > div { display: flex; justify-content: space-between; }
 .action-card pre { padding: 10px; overflow: auto; color: #6f5218; background: #fff; border-radius: 4px; }
