@@ -220,12 +220,12 @@ func (m *Manager) Start(settings Settings) error {
 	// address therefore cannot take an existing DNS service offline.
 	packet, err := net.ListenPacket("udp", address)
 	if err != nil {
-		return fmt.Errorf("UDP %s 启动失败: %w", address, err)
+		return fmt.Errorf("failed to start UDP listener %s: %w", address, err)
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		_ = packet.Close()
-		return fmt.Errorf("TCP %s 启动失败: %w", address, err)
+		return fmt.Errorf("failed to start TCP listener %s: %w", address, err)
 	}
 	if err := m.stopLocked(); err != nil {
 		_ = packet.Close()
@@ -374,7 +374,7 @@ func (m *Manager) forward(ctx context.Context, request *dns.Msg) (*dns.Msg, erro
 	settings := m.settings
 	m.mu.Unlock()
 	if len(settings.Upstreams) == 0 {
-		return nil, fmt.Errorf("未配置上游 DNS")
+		return nil, fmt.Errorf("no upstream DNS server configured")
 	}
 	timeout := time.Duration(settings.TimeoutSeconds) * time.Second
 	for _, upstream := range settings.Upstreams {
@@ -399,7 +399,7 @@ func (m *Manager) forward(ctx context.Context, request *dns.Msg) (*dns.Msg, erro
 		m.cacheMu.Unlock()
 		return copy, nil
 	}
-	return nil, fmt.Errorf("所有上游 DNS 查询均失败")
+	return nil, fmt.Errorf("all upstream DNS queries failed")
 }
 
 func responseTTL(message *dns.Msg) time.Duration {

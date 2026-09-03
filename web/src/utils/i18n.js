@@ -562,9 +562,9 @@ export function translateRoute(path, fallback = '') {
 export function translateEntity(value, fallback = '-') {
   const map = {
     'Super Admin': 'superAdmin',
-    '超级管理员': 'superAdmin',
+    '\u8d85\u7ea7\u7ba1\u7406\u5458': 'superAdmin',
     'Headquarters': 'headquarters',
-    '总部': 'headquarters'
+    '\u603b\u90e8': 'headquarters'
   }
   return map[value] ? t(map[value]) : value || fallback
 }

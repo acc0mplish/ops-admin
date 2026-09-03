@@ -27,7 +27,7 @@ func TestFinOpsAliCloudRecordsUseRecordID(t *testing.T) {
 
 func TestFinOpsAliCloudEstimatedDailyRecordsKeepResourceFields(t *testing.T) {
 	records := finOpsAliCloudEstimatedDailyRecords([]map[string]any{{
-		"RecordID": "daily-1", "ProductName": "云服务器 ECS",
+		"RecordID": "daily-1", "ProductName": "Elastic Compute Service",
 		"Region": "cn-hangzhou", "InstanceID": "i-abc", "InstanceName": "production-api", "PretaxAmount": "8.50",
 	}}, model.IntegrationFinOpsAccount{}, "2026-06")
 	if len(records) != 30 {
@@ -41,8 +41,8 @@ func TestFinOpsAliCloudEstimatedDailyRecordsKeepResourceFields(t *testing.T) {
 
 func TestFinOpsAliCloudEstimatedDailyRecordsKeepRepeatedSourceRows(t *testing.T) {
 	records := finOpsAliCloudEstimatedDailyRecords([]map[string]any{
-		{"RecordID": "repeated", "ProductName": "云服务器 ECS", "PretaxAmount": "31.00"},
-		{"RecordID": "repeated", "ProductName": "云服务器 ECS", "PretaxAmount": "62.00"},
+		{"RecordID": "repeated", "ProductName": "Elastic Compute Service", "PretaxAmount": "31.00"},
+		{"RecordID": "repeated", "ProductName": "Elastic Compute Service", "PretaxAmount": "62.00"},
 	}, model.IntegrationFinOpsAccount{}, "2026-06")
 	if len(records) != 60 {
 		t.Fatalf("expected both source rows to produce daily records, got %d", len(records))
@@ -72,11 +72,11 @@ func TestFinOpsRecordDataQuality(t *testing.T) {
 }
 
 func TestExtractFinOpsRecommendationJSON(t *testing.T) {
-	content, err := extractFinOpsRecommendationJSON("分析结果如下：\n```json\n{\"recommendations\":[{\"title\":\"检查 NAT 网关\"}]}\n```\n请确认后执行。")
+	content, err := extractFinOpsRecommendationJSON("Analysis result:\n```json\n{\"recommendations\":[{\"title\":\"Review NAT gateway\"}]}\n```\nConfirm before execution.")
 	if err != nil {
 		t.Fatalf("expected fenced JSON to be extracted: %v", err)
 	}
-	if content != `{"recommendations":[{"title":"检查 NAT 网关"}]}` {
+	if content != `{"recommendations":[{"title":"Review NAT gateway"}]}` {
 		t.Fatalf("unexpected extracted content: %s", content)
 	}
 	if _, err := extractFinOpsRecommendationJSON(`{"recommendations": [`); err == nil {
@@ -205,7 +205,7 @@ func TestFinOpsAICostAnalysisProbe(t *testing.T) {
 	}
 	dashboard, _ := data["selectedMonthSummary"].(map[string]any)
 	t.Logf("AI FinOps tool selected month=%v source=%v records=%v total=%v", data["analysisMonth"], data["monthSource"], dashboard["recordCount"], dashboard["totalCost"])
-	resourceData, err := (&Service{db: db}).queryAIFinOpsAnalysis(map[string]any{"month": data["analysisMonth"], "service": "负载均衡", "includeResourceBreakdown": true})
+	resourceData, err := (&Service{db: db}).queryAIFinOpsAnalysis(map[string]any{"month": data["analysisMonth"], "service": "Load Balancer", "includeResourceBreakdown": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestIntegrationAIDSMLToolProbe(t *testing.T) {
 	}
 	messages := []map[string]any{
 		{"role": "system", "content": integrationAISystemPrompt(aiModel.SystemPrompt)},
-		{"role": "user", "content": "检查当前 K8s 集群健康状态。"},
+		{"role": "user", "content": "Check the current Kubernetes cluster health."},
 	}
 	response, err := service.callOpenAICompatible(aiModel, messages, tools)
 	if err != nil {

@@ -120,7 +120,7 @@ func (p *acmeDNSChallengeProvider) Present(domain, token, keyAuth string) error 
 	err = p.dns.CreateRecord(ctx, req)
 	cancel()
 	if err != nil {
-		return fmt.Errorf("创建 ACME TXT 记录失败: %w", err)
+		return fmt.Errorf("failed to create ACME TXT record: %w", err)
 	}
 	ids := p.findChallengeRecordIDs(host, value)
 	p.mu.Lock()
@@ -162,7 +162,7 @@ func (p *acmeDNSChallengeProvider) CleanUp(domain, token, keyAuth string) error 
 		p.onStage("ACME_VALIDATING", 62)
 	}
 	if cleanupErr != nil {
-		return fmt.Errorf("清理 ACME TXT 记录失败: %w", cleanupErr)
+		return fmt.Errorf("failed to clean up ACME TXT record: %w", cleanupErr)
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 	}
 	domains := s.loadCertificateDomainNames(cert.ID)
 	if len(domains) == 0 {
-		return errors.New("证书没有申请域名")
+		return errors.New("certificate has no requested domain")
 	}
 	oldStatus := cert.Status
 	workflowStatus := model.SSLCertificateApplying
@@ -227,7 +227,7 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 			_ = oldStatus
 		}
 		_ = s.db.Model(&model.SSLCertificate{}).Where("id = ?", cert.ID).Updates(updates).Error
-		s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, map[bool]string{true: "续签证书", false: "申请证书"}[task.TaskType == "RENEW"], cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, taskErr)
+		s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, map[bool]string{true: "Renew Certificate", false: "Apply Certificate"}[task.TaskType == "RENEW"], cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, taskErr)
 	}()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -240,11 +240,11 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 	config.Certificate.Timeout = 90 * time.Second
 	client, err := lego.NewClient(config)
 	if err != nil {
-		return fmt.Errorf("创建 ACME Client 失败: %w", err)
+		return fmt.Errorf("failed to create ACME client: %w", err)
 	}
 	registrationResource, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 	if err != nil {
-		return fmt.Errorf("注册 ACME 账号失败: %w", err)
+		return fmt.Errorf("failed to register ACME account: %w", err)
 	}
 	user.registration = registrationResource
 	dnsProvider, _, err := s.publicProvider(cert.DNSAccountID)
@@ -260,21 +260,21 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 		}
 	}}
 	if err := client.Challenge.SetDNS01Provider(challengeProvider); err != nil {
-		return fmt.Errorf("配置 DNS-01 失败: %w", err)
+		return fmt.Errorf("failed to configure DNS-01 challenge: %w", err)
 	}
 	s.updateCertificateTask(task.ID, "CREATING_ACME_ORDER", 12)
 	resource, err := client.Certificate.Obtain(certificate.ObtainRequest{Domains: domains, Bundle: false, AlwaysDeactivateAuthorizations: true})
 	if err != nil {
-		return fmt.Errorf("ACME 签发失败: %w", err)
+		return fmt.Errorf("ACME issuance failed: %w", err)
 	}
 	s.updateCertificateTask(task.ID, "SAVING_CERTIFICATE", 78)
 	parsed, err := parseCertificateAndKey(string(resource.Certificate), string(resource.PrivateKey))
 	if err != nil {
-		return fmt.Errorf("解析 ACME 签发结果失败: %w", err)
+		return fmt.Errorf("failed to parse ACME issuance result: %w", err)
 	}
 	cipherText, err := util.EncryptSecret(string(resource.PrivateKey))
 	if err != nil {
-		return fmt.Errorf("加密 Private Key 失败: %w", err)
+		return fmt.Errorf("failed to encrypt private key: %w", err)
 	}
 	notBefore, notAfter := parsed.Leaf.NotBefore, parsed.Leaf.NotAfter
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -293,7 +293,7 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 	if err != nil {
 		return err
 	}
-	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, map[bool]string{true: "续签证书", false: "申请证书"}[task.TaskType == "RENEW"], cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, nil)
+	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, map[bool]string{true: "Renew Certificate", false: "Apply Certificate"}[task.TaskType == "RENEW"], cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, nil)
 	s.updateCertificateTask(task.ID, "UPLOADING_CLOUD", 90)
 	if err := s.syncCertificateToCloudTask(task); err != nil {
 		// Issuance and cloud upload are deliberately independent. The certificate
@@ -340,7 +340,7 @@ func challengeHost(fqdn, mainDomain string) (string, error) {
 	}
 	suffix := "." + mainDomain
 	if !strings.HasSuffix(fqdn, suffix) {
-		return "", fmt.Errorf("ACME Challenge %s 不属于主域名 %s", fqdn, mainDomain)
+		return "", fmt.Errorf("ACME challenge %s does not belong to main domain %s", fqdn, mainDomain)
 	}
 	return strings.TrimSuffix(fqdn, suffix), nil
 }

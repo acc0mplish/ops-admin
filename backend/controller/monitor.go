@@ -14,16 +14,16 @@ import (
 func (ctl *Controller) GetMonitorOverview(c *gin.Context) {
 	startAt, err := parseMonitorOverviewDate(c.Query("startDate"), false)
 	if err != nil {
-		httpx.Failed(c, 400, "startDate 格式无效，应为 YYYY-MM-DD")
+		httpx.Failed(c, 400, "invalid startDate format; expected YYYY-MM-DD")
 		return
 	}
 	endAt, err := parseMonitorOverviewDate(c.Query("endDate"), true)
 	if err != nil {
-		httpx.Failed(c, 400, "endDate 格式无效，应为 YYYY-MM-DD")
+		httpx.Failed(c, 400, "invalid endDate format; expected YYYY-MM-DD")
 		return
 	}
 	if startAt != nil && endAt != nil && !startAt.Before(*endAt) {
-		httpx.Failed(c, 400, "开始日期必须早于结束日期")
+		httpx.Failed(c, 400, "start date must be earlier than end date")
 		return
 	}
 	data, err := ctl.service.GetMonitorOverview(startAt, endAt)
@@ -400,16 +400,16 @@ func (ctl *Controller) ParsePrometheusAlertTemplates(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "请粘贴 Prometheus Rule YAML")
+		httpx.Failed(c, 400, "Prometheus rule YAML is required")
 		return
 	}
 	content := strings.TrimSpace(payload.Content)
 	if content == "" {
-		httpx.Failed(c, 400, "请粘贴 Prometheus Rule YAML")
+		httpx.Failed(c, 400, "Prometheus rule YAML is required")
 		return
 	}
 	if len([]byte(content)) > 2*1024*1024 {
-		httpx.Failed(c, 400, "YAML 内容不能超过 2 MB")
+		httpx.Failed(c, 400, "YAML content must not exceed 2 MB")
 		return
 	}
 	data, err := service.ParsePrometheusAlertTemplates([]byte(content))
@@ -423,7 +423,7 @@ func (ctl *Controller) ParsePrometheusAlertTemplates(c *gin.Context) {
 func (ctl *Controller) ImportPrometheusAlertTemplates(c *gin.Context) {
 	var payload service.MonitorAlertTemplateImportPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的 Prometheus 模板导入参数")
+		httpx.Failed(c, 400, "invalid Prometheus template import payload")
 		return
 	}
 	data, err := ctl.service.ImportPrometheusAlertTemplates(payload)

@@ -120,9 +120,9 @@ func (s *Service) GetAssetServiceDiagnosisEnvironment(target AssetServiceDiagnos
 	}
 	output, err := s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "java -version 2>&1; test -r /opt/arthas-boot.jar; " + pidCheck})
 	if err != nil {
-		return map[string]any{"ready": false, "message": "Java、Arthas Jar 或目标进程不可用：" + err.Error()}, nil
+		return map[string]any{"ready": false, "message": "Java, the Arthas JAR, or the target process is unavailable: " + err.Error()}, nil
 	}
-	return map[string]any{"ready": true, "message": "Java、Arthas Jar 与目标进程均已就绪，可直接执行 Arthas CLI 诊断。", "detail": output}, nil
+	return map[string]any{"ready": true, "message": "Java, the Arthas JAR, and the target process are ready for Arthas CLI diagnostics.", "detail": output}, nil
 }
 
 func (s *Service) DownloadAssetServiceArthas(target AssetServiceDiagnosisTarget) (map[string]any, error) {

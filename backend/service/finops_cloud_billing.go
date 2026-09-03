@@ -48,18 +48,18 @@ func (s *Service) fetchFinOpsCostsForMonth(ctx context.Context, account model.In
 func finOpsBillingSource(provider string) string {
 	switch strings.ToLower(provider) {
 	case "alicloud":
-		return "阿里云官方账单 API"
+		return "Aliyun Official Billing API"
 	case "tencent":
-		return "腾讯云官方账单 API"
+		return "Tencent Cloud Official Billing API"
 	default:
-		return "自定义账单接口"
+		return "Custom Billing API"
 	}
 }
 
 func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.IntegrationFinOpsAccount, month string) ([]FinOpsCostInput, error) {
 	endpoint := strings.TrimSpace(account.BillingEndpoint)
 	if endpoint == "" {
-		return nil, fmt.Errorf("%s尚未配置账单 HTTP 地址", finOpsBillingSource(account.Provider))
+		return nil, fmt.Errorf("%s has no billing HTTP endpoint configured", finOpsBillingSource(account.Provider))
 	}
 	requestURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -83,14 +83,14 @@ func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.Integ
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("账单接口返回 HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("billing API returned HTTP %d", resp.StatusCode)
 	}
 	var wrapper struct {
 		Records []FinOpsCostInput `json:"records"`
 	}
 	if err = json.Unmarshal(body, &wrapper); err != nil || wrapper.Records == nil {
 		if err = json.Unmarshal(body, &wrapper.Records); err != nil {
-			return nil, fmt.Errorf("账单接口数据格式无效: %w", err)
+			return nil, fmt.Errorf("invalid billing API response format: %w", err)
 		}
 	}
 	return wrapper.Records, nil
@@ -98,7 +98,7 @@ func (s *Service) fetchCustomFinOpsBill(ctx context.Context, account model.Integ
 
 func (s *Service) fetchAliCloudBill(ctx context.Context, account model.IntegrationFinOpsAccount, cycle string, maxPages int) ([]FinOpsCostInput, error) {
 	if strings.TrimSpace(account.AccessKey) == "" || strings.TrimSpace(account.SecretKey) == "" {
-		return nil, fmt.Errorf("阿里云账单同步需要 AccessKey 与 SecretKey")
+		return nil, fmt.Errorf("Aliyun billing synchronization requires AccessKey and SecretKey")
 	}
 	if maxPages < 1 {
 		maxPages = 1
@@ -142,15 +142,15 @@ func (s *Service) fetchAliCloudMonthlyInstanceBill(ctx context.Context, account 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 		resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("阿里云账单接口返回 HTTP %d: %s", resp.StatusCode, finOpsAPIError(body))
+			return nil, fmt.Errorf("Aliyun billing API returned HTTP %d: %s", resp.StatusCode, finOpsAPIError(body))
 		}
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err != nil {
-			return nil, fmt.Errorf("解析阿里云账单响应失败: %w", err)
+			return nil, fmt.Errorf("failed to parse Aliyun billing response: %w", err)
 		}
 		items, declaredCount := finOpsAliCloudBillItems(payload)
 		if declaredCount > 0 && len(items) == 0 {
-			return nil, fmt.Errorf("阿里云账单接口声明 %d 条记录，但响应结构未解析到明细", declaredCount)
+			return nil, fmt.Errorf("Aliyun billing API declared %d records but no detail rows could be parsed", declaredCount)
 		}
 		// The instance bill does not always return a unique RecordID for every
 		// detail row. Prefix every source row with its page and row position so a
@@ -161,7 +161,7 @@ func (s *Service) fetchAliCloudMonthlyInstanceBill(ctx context.Context, account 
 			break
 		}
 		if seenTokens[nextToken] {
-			return nil, errors.New("阿里云账单接口返回重复的 NextToken，已停止以避免重复计费")
+			return nil, errors.New("Aliyun billing API returned a repeated NextToken; stopped to avoid duplicate charges")
 		}
 		seenTokens[nextToken] = true
 	}
@@ -170,7 +170,7 @@ func (s *Service) fetchAliCloudMonthlyInstanceBill(ctx context.Context, account 
 
 func (s *Service) fetchTencentBill(ctx context.Context, account model.IntegrationFinOpsAccount, month string, maxPages int) ([]FinOpsCostInput, error) {
 	if strings.TrimSpace(account.AccessKey) == "" || strings.TrimSpace(account.SecretKey) == "" {
-		return nil, fmt.Errorf("腾讯云账单同步需要 SecretId 与 SecretKey")
+		return nil, fmt.Errorf("Tencent Cloud billing synchronization requires SecretId and SecretKey")
 	}
 	if maxPages < 1 {
 		maxPages = 1
@@ -189,15 +189,15 @@ func (s *Service) fetchTencentBill(ctx context.Context, account model.Integratio
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
 		resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("腾讯云账单接口返回 HTTP %d: %s", resp.StatusCode, finOpsAPIError(responseBody))
+			return nil, fmt.Errorf("Tencent Cloud billing API returned HTTP %d: %s", resp.StatusCode, finOpsAPIError(responseBody))
 		}
 		var payload map[string]any
 		if err := json.Unmarshal(responseBody, &payload); err != nil {
-			return nil, fmt.Errorf("解析腾讯云账单响应失败: %w", err)
+			return nil, fmt.Errorf("failed to parse Tencent Cloud billing response: %w", err)
 		}
 		if response := finOpsMap(payload["Response"]); response != nil {
 			if apiError := finOpsMap(response["Error"]); apiError != nil {
-				return nil, fmt.Errorf("腾讯云账单接口错误: %s", finOpsString(apiError["Message"]))
+				return nil, fmt.Errorf("Tencent Cloud billing API error: %s", finOpsString(apiError["Message"]))
 			}
 			items := finOpsMaps(response["DetailSet"])
 			all = append(all, finOpsTencentRecords(items, account, month)...)

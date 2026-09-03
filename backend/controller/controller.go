@@ -68,7 +68,7 @@ func (ctl *Controller) RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie(refreshCookieName)
 	if err != nil {
 		clearRefreshCookie(c)
-		httpx.Failed(c, http.StatusUnauthorized, "登录已过期，请重新登录")
+		httpx.Failed(c, http.StatusUnauthorized, "session expired; sign in again")
 		return
 	}
 	reportedAt := time.Time{}
@@ -78,7 +78,7 @@ func (ctl *Controller) RefreshToken(c *gin.Context) {
 	data, nextRefreshToken, err := ctl.service.RefreshSession(refreshToken, reportedAt)
 	if err != nil {
 		clearRefreshCookie(c)
-		httpx.Failed(c, http.StatusUnauthorized, "登录已过期，请重新登录")
+		httpx.Failed(c, http.StatusUnauthorized, "session expired; sign in again")
 		return
 	}
 	maxAge := int(auth.SessionMaxTTL.Seconds())
@@ -145,7 +145,7 @@ func (ctl *Controller) UpdateSystemConfig(c *gin.Context) {
 func (ctl *Controller) UploadSystemAsset(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
-		httpx.Failed(c, 400, "请选择要上传的文件")
+		httpx.Failed(c, 400, "select a file to upload")
 		return
 	}
 
@@ -153,19 +153,19 @@ func (ctl *Controller) UploadSystemAsset(c *gin.Context) {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg":
 	default:
-		httpx.Failed(c, 400, "仅支持图片文件上传")
+		httpx.Failed(c, 400, "only image files are supported")
 		return
 	}
 
 	if err := os.MkdirAll("uploads/system", 0o755); err != nil {
-		httpx.Failed(c, 500, "创建上传目录失败")
+		httpx.Failed(c, 500, "failed to create upload directory")
 		return
 	}
 
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	target := filepath.Join("uploads", "system", filename)
 	if err := c.SaveUploadedFile(file, target); err != nil {
-		httpx.Failed(c, 500, "保存文件失败")
+		httpx.Failed(c, 500, "failed to save uploaded file")
 		return
 	}
 
@@ -177,7 +177,7 @@ func (ctl *Controller) UploadSystemAsset(c *gin.Context) {
 func (ctl *Controller) DownloadAssetHostTemplate(c *gin.Context) {
 	file := excelize.NewFile()
 	sheet := file.GetSheetName(0)
-	headers := []string{"主机名称*", "SSH地址*", "SSH端口", "SSH用户*", "认证凭据*", "连接方式*", "访问网关", "所属环境*", "私网IP", "公网IP", "云厂商", "所在区域", "备注"}
+	headers := []string{"호스트 이름*", "SSH 주소*", "SSH 포트", "SSH 사용자*", "인증 Credential*", "연결 방식*", "접속 Gateway", "소속 Environment*", "Private IP", "Public IP", "Cloud Provider", "Region", "비고"}
 	for idx, header := range headers {
 		cell, _ := excelize.CoordinatesToCellName(idx+1, 1)
 		_ = file.SetCellValue(sheet, cell, header)
@@ -190,19 +190,19 @@ func (ctl *Controller) DownloadAssetHostTemplate(c *gin.Context) {
 	_ = file.SetCellValue(sheet, "F2", "direct")
 	_ = file.SetCellValue(sheet, "H2", "production")
 	_ = file.SetCellValue(sheet, "I2", "192.168.101.159")
-	_ = file.SetCellValue(sheet, "K2", "自建")
-	_ = file.SetCellValue(sheet, "M2", "excel导入示例")
+	_ = file.SetCellValue(sheet, "K2", "On-premises")
+	_ = file.SetCellValue(sheet, "M2", "Excel Import 예시")
 	_ = file.SetColWidth(sheet, "A", "M", 18)
 	_ = file.SetColWidth(sheet, "M", "M", 30)
 	_ = file.SetPanes(sheet, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"})
-	_, err := file.NewSheet("填写说明")
+	_, err := file.NewSheet("작성 안내")
 	if err == nil {
-		_ = file.SetCellValue("填写说明", "A1", "字段说明")
-		_ = file.SetCellValue("填写说明", "A2", "带 * 的列为必填；目标主机组由导入弹窗统一选择。")
-		_ = file.SetCellValue("填写说明", "A3", "连接方式仅支持 direct（直连）或 gateway（通过网关）；gateway 时必须填写已启用的访问网关名称。")
-		_ = file.SetCellValue("填写说明", "A4", "认证凭据和访问网关均按名称匹配，必须已在平台中创建且启用。")
-		_ = file.SetCellValue("填写说明", "A5", "所属环境填写环境编码，例如 production、test；SSH 地址建议填写内网 IP。")
-		_ = file.SetColWidth("填写说明", "A", "A", 100)
+		_ = file.SetCellValue("작성 안내", "A1", "필드 설명")
+		_ = file.SetCellValue("작성 안내", "A2", "* 표시 열은 필수입니다. Target Host Group은 Import 대화상자에서 선택합니다.")
+		_ = file.SetCellValue("작성 안내", "A3", "연결 방식은 direct 또는 gateway만 지원합니다. gateway 사용 시 활성화된 접속 Gateway 이름이 필요합니다.")
+		_ = file.SetCellValue("작성 안내", "A4", "인증 Credential과 접속 Gateway는 이름으로 일치시키며 플랫폼에 생성되어 활성화되어 있어야 합니다.")
+		_ = file.SetCellValue("작성 안내", "A5", "Environment에는 production 또는 test와 같은 Code를 입력하고 SSH 주소에는 Private IP 사용을 권장합니다.")
+		_ = file.SetColWidth("작성 안내", "A", "A", 100)
 		file.SetActiveSheet(0)
 	}
 	buffer, err := file.WriteToBuffer()
@@ -898,7 +898,7 @@ func (ctl *Controller) ImportAssetHosts(c *gin.Context) {
 		return
 	}
 	if len(rows) == 0 || len(rows[0]) < 8 {
-		httpx.Failed(c, 400, "Excel 模板格式已更新，请下载最新模板后导入")
+		httpx.Failed(c, 400, "the Excel template format has changed; download the latest template before importing")
 		return
 	}
 
@@ -980,7 +980,7 @@ func (ctl *Controller) BatchSyncAssetHosts(c *gin.Context) {
 func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	token := c.Query("token")
 	if strings.TrimSpace(token) == "" {
-		httpx.Failed(c, http.StatusUnauthorized, "请先登录")
+		httpx.Failed(c, http.StatusUnauthorized, "authentication required")
 		return
 	}
 	if _, err := auth.ParseToken(token); err != nil {

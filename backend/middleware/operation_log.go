@@ -58,16 +58,16 @@ func auditRequestSummary(c *gin.Context) string {
 	}
 	if c.Request.Body != nil && c.Request.Method != "GET" {
 		if c.Request.URL.Path == "/api/v1/domain/public/certificates/upload" {
-			parts = append(parts, "body: SSL Certificate 与 Private Key 敏感正文，已跳过记录")
+			parts = append(parts, "body: sensitive SSL certificate and private-key content omitted")
 			return strings.Join(parts, "\n")
 		}
 		contentType := strings.ToLower(c.GetHeader("Content-Type"))
 		if strings.Contains(contentType, "multipart/form-data") {
-			parts = append(parts, "body: multipart/form-data 文件上传，已跳过正文记录")
+			parts = append(parts, "body: multipart/form-data upload content omitted")
 			return strings.Join(parts, "\n")
 		}
 		if c.Request.ContentLength > 4096 || c.Request.ContentLength < 0 {
-			parts = append(parts, "body: 请求体较大，已跳过正文记录")
+			parts = append(parts, "body: oversized request content omitted")
 			return strings.Join(parts, "\n")
 		}
 		data, _ := io.ReadAll(io.LimitReader(c.Request.Body, 4096))
@@ -100,7 +100,7 @@ func compactText(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + "...(已截断)"
+	return value[:limit] + "...(truncated)"
 }
 
 func riskLevel(path string, method string) string {
@@ -125,43 +125,43 @@ func riskLevel(path string, method string) string {
 func actionDescription(path string, method string) string {
 	switch {
 	case strings.Contains(path, "/asset/host"):
-		return "主机资产管理"
+		return "Host Asset Management"
 	case strings.Contains(path, "/asset/database"):
-		return "数据库资产管理"
+		return "Database Asset Management"
 	case strings.Contains(path, "/asset/gateway"):
-		return "网关资产管理"
+		return "Gateway Asset Management"
 	case strings.Contains(path, "/database"):
-		return "数据库工作台"
+		return "Database Workbench"
 	case strings.Contains(path, "/k8s"):
-		return "K8s 资源管理"
+		return "Kubernetes Resource Management"
 	case strings.Contains(path, "/ops/quick"):
-		return "快速执行"
+		return "Quick Execution"
 	case strings.Contains(path, "/ops/job"):
-		return "作业编排"
+		return "Job Orchestration"
 	case strings.Contains(path, "/ops/schedule"):
-		return "定时任务"
+		return "Scheduled Tasks"
 	case strings.Contains(path, "/ops/application"):
-		return "应用发布"
+		return "Application Delivery"
 	case strings.Contains(path, "/notify"):
-		return "消息通知"
+		return "Notifications"
 	case strings.Contains(path, "/monitor"):
-		return "监控中心"
+		return "Monitoring Center"
 	case strings.Contains(path, "/domain"):
-		return "域名管理"
+		return "Domain Management"
 	case strings.Contains(path, "/admin"):
-		return "用户管理"
+		return "User Management"
 	case strings.Contains(path, "/role"):
-		return "角色管理"
+		return "Role Management"
 	case strings.Contains(path, "/menu"):
-		return "菜单管理"
+		return "Menu Management"
 	case strings.Contains(path, "/dept"):
-		return "部门管理"
+		return "Department Management"
 	case strings.Contains(path, "/post"):
-		return "岗位管理"
+		return "Position Management"
 	case strings.Contains(path, "/sysLoginInfo"):
-		return "登录日志管理"
+		return "Login Log Management"
 	case strings.Contains(path, "/sysOperationLog"):
-		return "操作日志管理"
+		return "Operation Log Management"
 	default:
 		return method + " " + path
 	}
