@@ -79,26 +79,26 @@ type aiToolDefinition struct {
 }
 
 var integrationAIToolDefinitions = []aiToolDefinition{
-	{Key: "knowledge_base_search", Name: "知识库检索", Category: "知识库", Description: "仅检索知识库管理中已启用的本地 Markdown 文档，用于回答内部规范、运行手册和技术文档；不会访问外部文件或云服务。", Permission: "read", Parameters: knowledgeBaseToolSchema()},
-	{Key: "prometheus_query", Name: "PromQL 即时查询", Category: "监控中心", Description: "在 Prometheus 或 VictoriaMetrics 数据源执行即时 PromQL 查询。", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("数据源 ID，可留空使用默认数据源"), "query": stringProperty("PromQL 查询语句")}, []string{"query"})},
-	{Key: "monitor_log_query", Name: "日志即时查询", Category: "监控中心", Description: "在 Elasticsearch 或 VictoriaLogs 中按时间范围查询日志，支持统计命中数和查看少量明细。例如统计昨天 10:00 到 11:00 err.log 中 ERROR 日志数量。", Permission: "read", Parameters: logQueryToolSchema()},
-	{Key: "monitor_dashboard_list", Name: "监控大屏查询", Category: "Grafana 可视化", Description: "查询平台监控大屏与面板概况，为可视化排障提供入口。", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("大屏名称关键词")}, nil)},
-	{Key: "monitor_datasource_query", Name: "监控数据源查询", Category: "夜莺监控技能", Description: "查询已接入的监控和日志数据源、类型、健康状态、延迟与最近检查时间；不会返回地址中的敏感凭据。", Permission: "read", Parameters: datasourceQueryToolSchema()},
-	{Key: "monitor_alert_event_query", Name: "告警事件查询", Category: "夜莺监控技能", Description: "按关键词、状态、等级和时间范围查询监控告警事件，并返回数量和有限明细。", Permission: "read", Parameters: alertEventQueryToolSchema()},
-	{Key: "host_health_diagnose", Name: "主机健康诊断", Category: "夜莺监控技能", Description: "结合 CMDB 主机信息、最近 24 小时 CPU/内存/磁盘指标和关联告警，返回主机健康证据；仅查询，不执行任何修复操作。", Permission: "read", Parameters: hostHealthToolSchema()},
-	{Key: "ops_troubleshooting", Name: "智能排障", Category: "夜莺监控技能", Description: "围绕告警 ID、主机或问题关键词汇集告警、主机健康和数据源状态，形成有证据来源的排障上下文；模型必须区分事实与推测。", Permission: "read", Parameters: troubleshootingToolSchema()},
-	{Key: "monitor_dashboard_analyze", Name: "监控大屏分析", Category: "夜莺监控技能", Description: "读取大屏和面板的定义、数据源、PromQL 与说明，供模型分析指标含义和排障入口；不会修改大屏。", Permission: "read", Parameters: dashboardAnalyzeToolSchema()},
-	{Key: "monitor_alert_rule_draft", Name: "告警规则草稿", Category: "夜莺监控技能", Description: "创建一条默认停用且不发送通知的告警规则草稿。必须由用户确认后才会保存，保存后仍需在告警规则页面人工审核和启用。", Permission: "write", RequireConfirmation: true, Parameters: alertRuleDraftToolSchema()},
-	{Key: "finops_cost_analysis", Name: "云费用分析", Category: "云费用 FinOps", Description: "仅查询本地数据库中已通过账单同步导入的云费用数据。可返回费用总览、趋势、产品/地域拆分；询问某云产品的实例数或每实例费用时，传入 service 和 includeResourceBreakdown=true，按本地账单的资源 ID/名称聚合。绝不调用云厂商接口、不会同步账单。", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
-	{Key: "asset_host_list", Name: "服务器资产", Category: "资产管理", Description: "查询 CMDB 中的服务器、IP、环境、主机组与在线状态，不返回登录凭据。", Permission: "read", Parameters: assetQuerySchema("服务器名称、别名或 IP 关键词")},
-	{Key: "asset_mysql_list", Name: "MySQL 资产", Category: "资产管理", Description: "查询已纳管的 MySQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
-	{Key: "asset_postgresql_list", Name: "PostgreSQL 资产", Category: "资产管理", Description: "查询已纳管的 PostgreSQL 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
-	{Key: "asset_redis_list", Name: "Redis 资产", Category: "资产管理", Description: "查询已纳管的 Redis 实例、逻辑库、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("Redis 名称、地址或逻辑库关键词")},
-	{Key: "asset_mongodb_list", Name: "MongoDB 资产", Category: "资产管理", Description: "查询已纳管的 MongoDB 数据库连接、环境、版本和健康状态。", Permission: "read", Parameters: assetQuerySchema("数据库名称、地址或默认库关键词")},
-	{Key: "k8s_list_clusters", Name: "K8s 集群列表", Category: "Kubernetes", Description: "查询已接入集群、状态、版本和节点数量。", Permission: "read", Parameters: objectSchema(map[string]any{}, nil)},
-	{Key: "k8s_cluster_overview", Name: "K8s 集群概览", Category: "Kubernetes", Description: "查询指定集群的节点、工作负载、Pod 与健康概况。", Permission: "read", Parameters: objectSchema(map[string]any{"clusterId": integerProperty("K8s 集群 ID")}, []string{"clusterId"})},
-	{Key: "k8s_restart_workload", Name: "重启 K8s 工作负载", Category: "Kubernetes", Description: "对 Deployment、StatefulSet 或 DaemonSet 执行滚动重启。", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(false)},
-	{Key: "k8s_scale_workload", Name: "扩缩容 K8s 工作负载", Category: "Kubernetes", Description: "修改 Deployment 或 StatefulSet 的副本数。", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(true)},
+	{Key: "knowledge_base_search", Name: "Knowledge Base 검색", Category: "Knowledge Base", Description: "Knowledge Base 관리에서 활성화된 Local Markdown 문서만 검색합니다. Internal Standard, Runbook, Technical Document 답변에 사용하며 외부 File 또는 Cloud Service에는 접근하지 않습니다.", Permission: "read", Parameters: knowledgeBaseToolSchema()},
+	{Key: "prometheus_query", Name: "PromQL Instant Query", Category: "Monitoring Center", Description: "Prometheus 또는 VictoriaMetrics Datasource에서 Instant PromQL Query를 실행합니다.", Permission: "read", Parameters: objectSchema(map[string]any{"datasourceId": integerProperty("Datasource ID. 비워두면 Default Datasource를 사용합니다."), "query": stringProperty("PromQL Query")}, []string{"query"})},
+	{Key: "monitor_log_query", Name: "Log Instant Query", Category: "Monitoring Center", Description: "Elasticsearch 또는 VictoriaLogs에서 Time Range 기준으로 Log를 조회하고 Match Count와 일부 Detail을 반환합니다.", Permission: "read", Parameters: logQueryToolSchema()},
+	{Key: "monitor_dashboard_list", Name: "Monitoring Dashboard 조회", Category: "Grafana Visualization", Description: "Platform Monitoring Dashboard와 Panel Overview를 조회해 Visualization 기반 Troubleshooting Entry를 제공합니다.", Permission: "read", Parameters: objectSchema(map[string]any{"keyword": stringProperty("Dashboard 이름 Keyword")}, nil)},
+	{Key: "monitor_datasource_query", Name: "Monitoring Datasource 조회", Category: "Monitoring Skill", Description: "연결된 Monitoring 및 Log Datasource의 Type, Health, Latency, Last Check를 조회하며 Credential은 반환하지 않습니다.", Permission: "read", Parameters: datasourceQueryToolSchema()},
+	{Key: "monitor_alert_event_query", Name: "Alert Event 조회", Category: "Monitoring Skill", Description: "Keyword, Status, Severity, Time Range 기준으로 Alert Event를 조회하고 Count와 제한된 Detail을 반환합니다.", Permission: "read", Parameters: alertEventQueryToolSchema()},
+	{Key: "host_health_diagnose", Name: "Host 상태 진단", Category: "Monitoring Skill", Description: "CMDB Host 정보, 최근 24시간 CPU/Memory/Disk Metric, 연관 Alert를 결합해 상태 Evidence를 반환합니다. 수정 작업은 실행하지 않습니다.", Permission: "read", Parameters: hostHealthToolSchema()},
+	{Key: "ops_troubleshooting", Name: "지능형 Troubleshooting", Category: "Monitoring Skill", Description: "Alert ID, Host 또는 Issue Keyword를 기준으로 Alert, Host 상태, Datasource 상태를 수집해 Evidence 기반 Troubleshooting Context를 구성합니다.", Permission: "read", Parameters: troubleshootingToolSchema()},
+	{Key: "monitor_dashboard_analyze", Name: "Monitoring Dashboard 분석", Category: "Monitoring Skill", Description: "Dashboard와 Panel Definition, Datasource, PromQL, Description을 읽어 Metric 의미와 Troubleshooting Entry를 분석합니다. Dashboard는 수정하지 않습니다.", Permission: "read", Parameters: dashboardAnalyzeToolSchema()},
+	{Key: "monitor_alert_rule_draft", Name: "Alert Rule Draft", Category: "Monitoring Skill", Description: "기본 비활성 및 Notification 미전송 상태의 Alert Rule Draft를 생성합니다. 사용자 확인 후 저장하며 이후 Alert Rule Page에서 검토하고 활성화해야 합니다.", Permission: "write", RequireConfirmation: true, Parameters: alertRuleDraftToolSchema()},
+	{Key: "finops_cost_analysis", Name: "Cloud 비용 분석", Category: "Cloud Cost FinOps", Description: "Billing Sync를 통해 Local Database에 저장된 Cloud Cost만 조회합니다. Overview, Trend, Product/Region Breakdown을 반환하며 Cloud Provider API를 호출하거나 Billing을 동기화하지 않습니다.", Permission: "read", Parameters: finOpsAnalysisToolSchema()},
+	{Key: "asset_host_list", Name: "Server Asset", Category: "Asset Management", Description: "CMDB Server, IP, Environment, Host Group, Online Status를 조회하며 Login Credential은 반환하지 않습니다.", Permission: "read", Parameters: assetQuerySchema("Server 이름, Alias 또는 IP Keyword")},
+	{Key: "asset_mysql_list", Name: "MySQL Asset", Category: "Asset Management", Description: "관리 중인 MySQL Connection, Environment, Version, Health Status를 조회합니다.", Permission: "read", Parameters: assetQuerySchema("Database 이름, 주소 또는 Default Database Keyword")},
+	{Key: "asset_postgresql_list", Name: "PostgreSQL Asset", Category: "Asset Management", Description: "관리 중인 PostgreSQL Connection, Environment, Version, Health Status를 조회합니다.", Permission: "read", Parameters: assetQuerySchema("Database 이름, 주소 또는 Default Database Keyword")},
+	{Key: "asset_redis_list", Name: "Redis Asset", Category: "Asset Management", Description: "관리 중인 Redis Instance, Logical DB, Environment, Version, Health Status를 조회합니다.", Permission: "read", Parameters: assetQuerySchema("Redis 이름, 주소 또는 Logical DB Keyword")},
+	{Key: "asset_mongodb_list", Name: "MongoDB Asset", Category: "Asset Management", Description: "관리 중인 MongoDB Connection, Environment, Version, Health Status를 조회합니다.", Permission: "read", Parameters: assetQuerySchema("Database 이름, 주소 또는 Default Database Keyword")},
+	{Key: "k8s_list_clusters", Name: "Kubernetes Cluster 목록", Category: "Kubernetes", Description: "연결된 Cluster의 Status, Version, Node Count를 조회합니다.", Permission: "read", Parameters: objectSchema(map[string]any{}, nil)},
+	{Key: "k8s_cluster_overview", Name: "Kubernetes Cluster Overview", Category: "Kubernetes", Description: "지정한 Cluster의 Node, Workload, Pod, Health Overview를 조회합니다.", Permission: "read", Parameters: objectSchema(map[string]any{"clusterId": integerProperty("Kubernetes Cluster ID")}, []string{"clusterId"})},
+	{Key: "k8s_restart_workload", Name: "Kubernetes Workload Restart", Category: "Kubernetes", Description: "Deployment, StatefulSet 또는 DaemonSet에 Rolling Restart를 실행합니다.", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(false)},
+	{Key: "k8s_scale_workload", Name: "Kubernetes Workload Scale", Category: "Kubernetes", Description: "Deployment 또는 StatefulSet의 Replica 수를 변경합니다.", Permission: "write", RequireConfirmation: true, Parameters: workloadActionSchema(true)},
 }
 
 func stringProperty(description string) map[string]any {
@@ -121,79 +121,79 @@ func objectSchema(properties map[string]any, required []string) map[string]any {
 func assetQuerySchema(keywordDescription string) map[string]any {
 	return objectSchema(map[string]any{
 		"keyword":     stringProperty(keywordDescription),
-		"environment": stringProperty("环境编码，例如 dev、test、prod；留空查询全部环境"),
-		"limit":       integerProperty("最多返回多少条，范围 1 到 50，默认 20"),
+		"environment": stringProperty("Environment Code(예: dev, test, prod). 비워두면 전체 Environment를 조회합니다."),
+		"limit":       integerProperty("최대 반환 건수. 범위 1~50, 기본값 20"),
 	}, nil)
 }
 
 func finOpsAnalysisToolSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"accountId":                integerProperty("云账号 ID；留空则分析全部已同步云账号"),
-		"month":                    stringProperty("分析账期，格式 YYYY-MM；留空默认最近一个有本地同步账单的自然月"),
-		"trendMonths":              integerProperty("趋势月份数，1 到 12，默认 6"),
-		"service":                  stringProperty("云产品名称关键词；例如 负载均衡、NAT网关、ECS"),
-		"includeResourceBreakdown": booleanProperty("是否返回该云产品按实例/资源 ID 聚合的费用；询问实例数量或每实例费用时设为 true"),
+		"accountId":                integerProperty("Cloud Account ID. 비워두면 동기화된 모든 Cloud Account를 분석합니다."),
+		"month":                    stringProperty("분석 Billing Month(YYYY-MM). 비워두면 Local Billing이 있는 최근 Calendar Month를 사용합니다."),
+		"trendMonths":              integerProperty("Trend Month 수. 범위 1~12, 기본값 6"),
+		"service":                  stringProperty("Cloud Product Keyword(예: Load Balancer, NAT Gateway, ECS)"),
+		"includeResourceBreakdown": booleanProperty("Cloud Product 비용을 Instance/Resource ID 기준으로 집계할지 여부. Instance 수 또는 Instance별 비용 질의에는 true를 사용합니다."),
 	}, nil)
 }
 
 func knowledgeBaseToolSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"keyword":    stringProperty("需要检索的关键词或问题，例如：发布流程、Redis 故障处理"),
-		"documentId": integerProperty("可选，限定检索某篇知识库文档的 ID"),
-		"limit":      integerProperty("最多返回多少个匹配片段，范围 1 到 10，默认 5"),
+		"keyword":    stringProperty("검색할 Keyword 또는 Question(예: Release Process, Redis 장애 대응)"),
+		"documentId": integerProperty("선택 사항. 특정 Knowledge Base 문서 ID로 검색 범위를 제한합니다."),
+		"limit":      integerProperty("최대 Match Fragment 수. 범위 1~10, 기본값 5"),
 	}, []string{"keyword"})
 }
 
 func logQueryToolSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"datasourceId":   integerProperty("日志数据源 ID；留空则查询所有启用的 Elasticsearch 和 VictoriaLogs 数据源"),
-		"datasourceName": stringProperty("数据源名称关键词，仅在未指定 datasourceId 时使用"),
-		"index":          stringProperty("Elasticsearch 索引或索引模式，例如 logs-*；留空查询全部索引"),
-		"streams":        stringProperty("Stream/Topic，多个值用逗号分隔；默认按包含关系匹配，例如 err.log 可匹配 app.err.log.1053；使用 =app.err.log.1053 可精确匹配"),
-		"query":          stringProperty("日志条件：Elasticsearch 使用 Lucene，VictoriaLogs 使用 LogsQL；例如 level:ERROR，留空表示全部"),
-		"startTime":      stringProperty("开始时间，支持 RFC3339、YYYY-MM-DD HH:mm:ss、昨天 10:00 或 yesterday 10:00，时区 Asia/Shanghai"),
-		"endTime":        stringProperty("结束时间，格式与 startTime 相同，必须晚于开始时间"),
-		"mode":           stringProperty("返回模式：count 仅统计数量，list 返回少量日志明细；默认 count"),
-		"limit":          integerProperty("list 模式最多返回的日志条数，范围 1 到 50，默认 20"),
+		"datasourceId":   integerProperty("Log Datasource ID. 비워두면 활성화된 모든 Elasticsearch와 VictoriaLogs Datasource를 조회합니다."),
+		"datasourceName": stringProperty("Datasource 이름 Keyword. datasourceId를 지정하지 않았을 때만 사용합니다."),
+		"index":          stringProperty("Elasticsearch Index 또는 Pattern(예: logs-*). 비워두면 전체 Index를 조회합니다."),
+		"streams":        stringProperty("Stream/Topic. 여러 값은 comma로 구분합니다. 기본값은 contains match이며 =app.err.log.1053 형식은 exact match입니다."),
+		"query":          stringProperty("Log 조건. Elasticsearch는 Lucene, VictoriaLogs는 LogsQL을 사용합니다. 예: level:ERROR. 비워두면 전체입니다."),
+		"startTime":      stringProperty("시작 시각. RFC3339, YYYY-MM-DD HH:mm:ss, 어제 10:00 또는 yesterday 10:00을 지원하며 Timezone은 Asia/Seoul입니다."),
+		"endTime":        stringProperty("종료 시각. startTime과 같은 형식이며 시작 시각보다 늦어야 합니다."),
+		"mode":           stringProperty("반환 Mode. count는 건수만, list는 일부 Log Detail을 반환합니다. 기본값은 count입니다."),
+		"limit":          integerProperty("list Mode의 최대 Log 수. 범위 1~50, 기본값 20"),
 	}, []string{"startTime", "endTime"})
 }
 
 func datasourceQueryToolSchema() map[string]any {
-	return objectSchema(map[string]any{"keyword": stringProperty("数据源名称关键词"), "type": stringProperty("数据源类型：prometheus、victoriametrics、elasticsearch 或 victorialogs"), "healthStatus": stringProperty("健康状态，例如 healthy、unhealthy、unknown"), "limit": integerProperty("返回条数，1 到 50，默认 20")}, nil)
+	return objectSchema(map[string]any{"keyword": stringProperty("Datasource 이름 Keyword"), "type": stringProperty("Datasource Type: prometheus, victoriametrics, elasticsearch 또는 victorialogs"), "healthStatus": stringProperty("상태(예: healthy, unhealthy, unknown)"), "limit": integerProperty("반환 건수. 범위 1~50, 기본값 20")}, nil)
 }
 
 func alertEventQueryToolSchema() map[string]any {
-	return objectSchema(map[string]any{"keyword": stringProperty("规则名、指标、摘要或标签关键词"), "status": stringProperty("告警状态，例如 firing、claimed、recovered、resolved"), "severity": stringProperty("告警等级：P0、P1、P2、P3"), "startTime": stringProperty("可选，RFC3339 或 YYYY-MM-DD HH:mm:ss"), "endTime": stringProperty("可选，RFC3339 或 YYYY-MM-DD HH:mm:ss"), "limit": integerProperty("返回条数，1 到 50，默认 20")}, nil)
+	return objectSchema(map[string]any{"keyword": stringProperty("Rule 이름, Metric, Summary 또는 Label Keyword"), "status": stringProperty("Alert 상태(예: firing, claimed, recovered, resolved)"), "severity": stringProperty("Alert Severity: P0, P1, P2, P3"), "startTime": stringProperty("선택 사항. RFC3339 또는 YYYY-MM-DD HH:mm:ss"), "endTime": stringProperty("선택 사항. RFC3339 또는 YYYY-MM-DD HH:mm:ss"), "limit": integerProperty("반환 건수. 범위 1~50, 기본값 20")}, nil)
 }
 
 func hostHealthToolSchema() map[string]any {
-	return objectSchema(map[string]any{"hostId": integerProperty("CMDB 主机 ID；与 keyword 二选一"), "keyword": stringProperty("主机名、别名或 IP"), "range": stringProperty("指标时间范围：1h、6h、24h、7d，默认 24h")}, nil)
+	return objectSchema(map[string]any{"hostId": integerProperty("CMDB Host ID. keyword와 둘 중 하나를 사용합니다."), "keyword": stringProperty("Host 이름, Alias 또는 IP"), "range": stringProperty("Metric Time Range: 1h, 6h, 24h, 7d. 기본값 24h")}, nil)
 }
 
 func troubleshootingToolSchema() map[string]any {
-	return objectSchema(map[string]any{"alertEventId": integerProperty("可选，告警事件 ID"), "host": stringProperty("可选，主机名、别名或 IP"), "keyword": stringProperty("可选，问题、规则或指标关键词"), "range": stringProperty("主机指标时间范围：1h、6h、24h、7d，默认 24h")}, nil)
+	return objectSchema(map[string]any{"alertEventId": integerProperty("선택 사항. Alert Event ID"), "host": stringProperty("선택 사항. Host 이름, Alias 또는 IP"), "keyword": stringProperty("선택 사항. Issue, Rule 또는 Metric Keyword"), "range": stringProperty("Host Metric Time Range: 1h, 6h, 24h, 7d. 기본값 24h")}, nil)
 }
 
 func dashboardAnalyzeToolSchema() map[string]any {
-	return objectSchema(map[string]any{"dashboardId": integerProperty("监控大屏 ID"), "keyword": stringProperty("大屏名称关键词；未填写 ID 时使用")}, nil)
+	return objectSchema(map[string]any{"dashboardId": integerProperty("Monitoring Dashboard ID"), "keyword": stringProperty("Dashboard 이름 Keyword. ID가 없을 때 사용합니다.")}, nil)
 }
 
 func alertRuleDraftToolSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"name": stringProperty("规则名称"), "datasourceId": integerProperty("Prometheus/VictoriaMetrics 数据源 ID"), "promql": stringProperty("已校验的 PromQL"),
-		"comparator": stringProperty("比较符：>、>=、<、<=、==、!="), "threshold": stringProperty("阈值数字"), "forSeconds": integerProperty("持续秒数，默认 300"),
-		"severity": stringProperty("等级：P0、P1、P2、P3，默认 P2"), "description": stringProperty("规则说明"), "env": stringProperty("环境，例如 prod"),
+		"name": stringProperty("Rule 이름"), "datasourceId": integerProperty("Prometheus/VictoriaMetrics Datasource ID"), "promql": stringProperty("검증된 PromQL"),
+		"comparator": stringProperty("Comparator: >, >=, <, <=, ==, !="), "threshold": stringProperty("Threshold 숫자"), "forSeconds": integerProperty("지속 시간(초). 기본값 300"),
+		"severity": stringProperty("Severity: P0, P1, P2, P3. 기본값 P2"), "description": stringProperty("Rule 설명"), "env": stringProperty("Environment(예: prod)"),
 	}, []string{"name", "datasourceId", "promql"})
 }
 
 func workloadActionSchema(withReplicas bool) map[string]any {
 	properties := map[string]any{
-		"clusterId": integerProperty("K8s 集群 ID"), "namespace": stringProperty("命名空间"),
-		"workloadType": stringProperty("工作负载类型，例如 deployment"), "workloadName": stringProperty("工作负载名称"),
+		"clusterId": integerProperty("Kubernetes Cluster ID"), "namespace": stringProperty("Namespace"),
+		"workloadType": stringProperty("Workload Type(예: deployment)"), "workloadName": stringProperty("Workload 이름"),
 	}
 	required := []string{"clusterId", "namespace", "workloadType", "workloadName"}
 	if withReplicas {
-		properties["replicas"] = integerProperty("目标副本数")
+		properties["replicas"] = integerProperty("Target Replica 수")
 		required = append(required, "replicas")
 	}
 	return objectSchema(properties, required)
@@ -224,13 +224,13 @@ func (s *Service) SaveIntegrationAIKnowledgeDocument(payload IntegrationAIKnowle
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.Content = strings.TrimSpace(payload.Content)
 	if payload.Name == "" {
-		return nil, errors.New("知识库文档名称不能为空")
+		return nil, errors.New("knowledge-base document name is required")
 	}
 	if payload.Content == "" {
-		return nil, errors.New("Markdown 内容不能为空")
+		return nil, errors.New("Markdown content is required")
 	}
 	if len([]rune(payload.Content)) > 500000 {
-		return nil, errors.New("Markdown 内容不能超过 50 万字符")
+		return nil, errors.New("Markdown content must not exceed 500000 characters")
 	}
 	if payload.FileName == "" {
 		payload.FileName = payload.Name + ".md"
@@ -247,7 +247,7 @@ func (s *Service) SaveIntegrationAIKnowledgeDocument(payload IntegrationAIKnowle
 	item := model.IntegrationAIKnowledgeDocument{ID: payload.ID}
 	if payload.ID > 0 {
 		if err := s.db.First(&item, payload.ID).Error; err != nil {
-			return nil, errors.New("知识库文档不存在")
+			return nil, errors.New("knowledge-base document does not exist")
 		}
 	}
 	item.Name, item.FileName, item.Content, item.Status, item.SourceType = payload.Name, payload.FileName, payload.Content, payload.Status, payload.SourceType
@@ -265,7 +265,7 @@ func (s *Service) SaveIntegrationAIKnowledgeDocument(payload IntegrationAIKnowle
 
 func (s *Service) DeleteIntegrationAIKnowledgeDocument(id uint) error {
 	if id == 0 {
-		return errors.New("知识库文档 ID 不能为空")
+		return errors.New("knowledge-base document ID is required")
 	}
 	return s.db.Delete(&model.IntegrationAIKnowledgeDocument{}, id).Error
 }
@@ -313,10 +313,10 @@ func (s *Service) SaveIntegrationAIModel(payload IntegrationAIModelPayload) (map
 	payload.BaseURL = strings.TrimRight(strings.TrimSpace(payload.BaseURL), "/")
 	payload.Model = strings.TrimSpace(payload.Model)
 	if payload.Name == "" || payload.BaseURL == "" || payload.Model == "" {
-		return nil, errors.New("模型名称、API 地址和模型标识不能为空")
+		return nil, errors.New("model name, API URL, and model identifier are required")
 	}
 	if parsed, err := url.Parse(payload.BaseURL); err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, errors.New("请输入有效的 OpenAI 兼容 API 地址")
+		return nil, errors.New("enter a valid OpenAI-compatible API URL")
 	}
 	if payload.Provider == "" {
 		payload.Provider = "openai_compatible"
@@ -374,14 +374,14 @@ func (s *Service) SaveIntegrationAIModel(payload IntegrationAIModelPayload) (map
 
 func (s *Service) DeleteIntegrationAIModel(id uint) error {
 	if id == 0 {
-		return errors.New("模型 ID 不能为空")
+		return errors.New("model ID is required")
 	}
 	var count int64
 	if err := s.db.Model(&model.IntegrationAIConversation{}).Where("model_id = ?", id).Count(&count).Error; err != nil {
 		return err
 	}
 	if count > 0 {
-		return errors.New("该模型已被会话使用，请先停用模型，不能直接删除")
+		return errors.New("model is used by conversations and cannot be deleted directly; disable it first")
 	}
 	return s.db.Delete(&model.IntegrationAIModel{}, id).Error
 }
@@ -414,7 +414,7 @@ func (s *Service) TestIntegrationAIModel(payload IntegrationAIModelPayload) (map
 		item.Temperature = payload.Temperature
 	}
 	started := time.Now()
-	response, err := s.callOpenAICompatible(item, []map[string]any{{"role": "user", "content": "只回复 OK"}}, nil)
+	response, err := s.callOpenAICompatible(item, []map[string]any{{"role": "user", "content": "Reply only with OK"}}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +448,7 @@ func (s *Service) ListIntegrationAIConversations(userID uint, keyword string) ([
 func (s *Service) SaveIntegrationAIConversation(userID uint, username string, payload IntegrationAIConversationPayload) (*model.IntegrationAIConversation, error) {
 	title := strings.TrimSpace(payload.Title)
 	if title == "" {
-		title = "新会话"
+		title = "새 대화"
 	}
 	if payload.ModelID == 0 {
 		payload.ModelID = s.defaultAIModelID()
@@ -515,7 +515,7 @@ func (s *Service) DeleteIntegrationAIConversation(userID, id uint) error {
 func (s *Service) SendIntegrationAIChat(userID uint, username string, payload IntegrationAIChatPayload) (map[string]any, error) {
 	content := strings.TrimSpace(payload.Content)
 	if content == "" {
-		return nil, errors.New("请输入对话内容")
+		return nil, errors.New("conversation content is required")
 	}
 	var conversation model.IntegrationAIConversation
 	if payload.ConversationID == 0 {
@@ -533,7 +533,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 	}
 	var aiModel model.IntegrationAIModel
 	if err := s.db.Where("id = ? AND status = ?", conversation.ModelID, 1).First(&aiModel).Error; err != nil {
-		return nil, errors.New("请选择一个已启用的 AI 模型")
+		return nil, errors.New("select an enabled AI model")
 	}
 	userMessage := model.IntegrationAIMessage{ConversationID: conversation.ID, Role: "user", Content: content, Status: "completed"}
 	if err := s.db.Create(&userMessage).Error; err != nil {
@@ -560,7 +560,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 		repairMessages := append([]map[string]any{}, messages...)
 		repairMessages = append(repairMessages,
 			map[string]any{"role": "assistant", "content": response.Content},
-			map[string]any{"role": "user", "content": "不要输出内部工具调用标记或 XML/DSML。只能调用已提供的原生工具；如果没有可调用工具，请直接用简洁中文回答。"},
+			map[string]any{"role": "user", "content": "Internal tool-call markers and XML/DSML must not be exposed. Use only provided native tools; when no tool is available, answer concisely in Korean."},
 		)
 		response, err = s.callOpenAICompatible(aiModel, repairMessages, tools)
 		if err != nil {
@@ -592,7 +592,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 					return nil, err
 				}
 				actions = append(actions, action)
-				toolResult = map[string]any{"status": "pending_confirmation", "actionId": action.ID, "message": "该操作需要用户确认后执行"}
+				toolResult = map[string]any{"status": "pending_confirmation", "actionId": action.ID, "message": "사용자 확인 후 실행할 수 있습니다."}
 			} else {
 				toolResult, err = s.executeIntegrationAITool(call.Name, args)
 				if err != nil {
@@ -629,13 +629,13 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 		}
 	}
 	if len(response.ToolCalls) > 0 && strings.TrimSpace(response.Content) == "" {
-		response.Content = "工具调用轮次已达到安全上限，未继续执行。请缩小查询范围后重试。"
+		response.Content = "Tool 호출이 안전 제한에 도달해 실행을 중단했습니다. Query 범위를 줄여 다시 시도하십시오."
 	}
 	if strings.TrimSpace(response.Content) == "" {
-		response.Content = "操作已生成，请在下方确认后执行。"
+		response.Content = "작업을 생성했습니다. 아래에서 확인한 뒤 실행하십시오."
 	}
 	if hasUnsupportedAIToolProtocol(response.Content) {
-		response.Content = "模型返回了不受支持的内部工具调用格式，未执行任何操作。请重新提问，或切换支持原生工具调用的模型。"
+		response.Content = "Model이 지원되지 않는 내부 Tool 호출 형식을 반환하여 아무 작업도 실행하지 않았습니다. 질문을 다시 작성하거나 Native Tool Calling을 지원하는 Model로 전환하십시오."
 	}
 	assistantMessage := model.IntegrationAIMessage{ConversationID: conversation.ID, Role: "assistant", Content: response.Content, Status: "completed"}
 	if err := s.db.Create(&assistantMessage).Error; err != nil {
@@ -647,7 +647,7 @@ func (s *Service) SendIntegrationAIChat(userID uint, username string, payload In
 	}
 	now := time.Now()
 	updates := map[string]any{"message_count": gorm.Expr("message_count + ?", 2), "last_message_at": &now}
-	if conversation.Title == "新会话" {
+	if conversation.Title == "새 대화" {
 		updates["title"] = truncateRunes(content, 40)
 	}
 	_ = s.db.Model(&conversation).Updates(updates).Error
@@ -663,10 +663,10 @@ func truncateRunes(value string, limit int) string {
 }
 
 func integrationAISystemPrompt(custom string) string {
-	base := "你是 Ops Admin 平台的 DevOps/SRE 助手。回答必须使用中文，先给结论，再给证据和操作建议。回复必须使用标准 Markdown：按内容需要使用二、三级标题、无序/有序列表、加粗、引用、表格和代码块；不要把 Markdown 标记当作普通文本转义输出。涉及生产变更时说明风险，不得声称已执行未实际执行的操作。优先使用平台工具获取数据。只能调用本请求提供的原生工具名称；绝不在回复正文输出 XML、DSML、tool_calls、invoke 或其他内部工具协议。云费用相关问题只能使用云费用分析工具返回的本地已同步账单数据；绝不调用云厂商接口，也不得把账单数据表述为实时云端数据。"
-	base += "\n\n夜莺监控技能规范：遇到 PromQL 需求先生成表达式，必要时用 prometheus_query 验证；查询告警使用 monitor_alert_event_query；查询数据源使用 monitor_datasource_query；主机问题优先使用 host_health_diagnose；综合故障使用 ops_troubleshooting；大屏问题使用 monitor_dashboard_analyze。分析结论必须基于工具返回的证据，并明确区分已证实的现象和推测。创建告警时只能调用 monitor_alert_rule_draft，等待用户确认后创建停用草稿，不能承诺已启用或已发送通知。"
+	base := "당신은 Ops Admin Platform의 DevOps/SRE Assistant입니다. 답변은 한국어로 작성하고 결론, Evidence, 권고 작업 순서로 설명하십시오. 표준 Markdown을 사용하되 내부 XML, DSML, tool_calls, invoke 또는 기타 Tool Protocol을 노출하지 마십시오. Production 변경은 Risk를 명시하고 실제로 실행하지 않은 작업을 실행했다고 주장하지 마십시오. Cloud 비용 Question에는 Local Billing Data만 사용하고 Cloud Provider API를 호출하거나 Billing Data를 실시간 Cloud 상태로 표현하지 마십시오."
+	base += "\n\nMonitoring Skill 규칙: PromQL 요청은 Expression을 먼저 생성하고 필요하면 prometheus_query로 검증합니다. Alert 조회는 monitor_alert_event_query, Datasource 조회는 monitor_datasource_query, Host Issue는 host_health_diagnose, 종합 장애는 ops_troubleshooting, Dashboard Issue는 monitor_dashboard_analyze를 우선 사용합니다. 분석은 Tool Evidence를 근거로 하고 확인된 사실과 추정을 구분합니다. Alert 생성은 monitor_alert_rule_draft만 사용하며 사용자 확인 후 비활성 Draft로 저장합니다."
 	if strings.TrimSpace(custom) != "" {
-		return base + "\n\n附加指令：\n" + strings.TrimSpace(custom)
+		return base + "\n\n추가 지침:\n" + strings.TrimSpace(custom)
 	}
 	return base
 }
@@ -681,12 +681,12 @@ func sanitizeAIMessageContent(content string) string {
 	if !hasUnsupportedAIToolProtocol(content) {
 		return content
 	}
-	return "该历史消息包含模型未支持的内部工具调用格式，未执行任何操作。请重新发起查询。"
+	return "이 History Message에는 Model이 지원하지 않는 내부 Tool 호출 형식이 포함되어 있어 아무 작업도 실행하지 않았습니다. Query를 다시 실행하십시오."
 }
 
-const finOpsChatResponseInstruction = "云费用工具已返回结果。请使用简洁 Markdown 回答，不超过 8 行：可使用二、三级标题和无序列表，但不要使用表格、引用、代码块、漏斗图或长段落。普通费用问题格式：\n## 账期｜账号\n- **总费用**：金额（如为当前月须注明截至日期）\n- **主要产品**：仅列 Top 3，产品 + 金额 + 占比\n- **地域**：一句结论\n- **关注项**：最多 3 条，仅基于账单可验证的现象；没有监控数据时使用“建议核查”，不得断言资源闲置。\n当用户询问某产品的实例数量或每实例费用时：优先读取 resourceBreakdown，回答“实例数”和最多 5 个“实例名称/ID：费用”；若 resourceBreakdown.resourceCount 为 0，只能说明本地同步账单缺少可关联的资源 ID/名称及未关联金额，不能建议用户去云厂商控制台。不要推算整月费用、不要给出节省金额区间，除非用户明确要求。最后可用一句话说明“数据来自本地已同步账单”。"
+const finOpsChatResponseInstruction = "Cloud Cost Tool이 결과를 반환했습니다. 8줄 이내의 간결한 한국어 Markdown으로 답하십시오. 일반 비용 Question은 Billing Month와 Account, 총 비용, Top 3 Product, Region 요약, 최대 3개 확인 항목을 포함합니다. 실시간 Monitoring Data가 없으면 유휴 상태를 단정하지 말고 검증 필요성을 명시하십시오. Instance 수 또는 Instance별 비용 Question에는 resourceBreakdown을 우선 사용하고 최대 5개 Instance 이름/ID와 비용을 보여주십시오. Data Source가 Local Billing임을 마지막에 명시하십시오."
 
-const knowledgeBaseChatResponseInstruction = "知识库检索工具已返回本地 Markdown 片段。必须围绕用户问题重新归纳，不得把文档目录、标题或章节逐条复述，也不要以“根据知识库文档”开头。先用 1 至 2 句说明与提问最相关的结论，再按“平台定位 / 当前可直接使用的能力 / 推荐使用路径”组织，优先解释用户能获得什么价值、下一步能做什么。除非用户明确要求清单，否则最多列 5 个能力组；把相关模块合并为业务闭环，不要罗列所有菜单。明确区分“已实现/已具备”和“建议/规划”，不得把评审意见当作已实现功能。答案保持 6 至 10 行中文要点；只在用户要求来源或原文时才注明文档名或引用原文。"
+const knowledgeBaseChatResponseInstruction = "Knowledge Base Search Tool이 Local Markdown Fragment를 반환했습니다. 문서 목차를 나열하지 말고 User Question에 맞게 재구성하십시오. 1~2문장 결론 뒤에 Platform Position, 즉시 사용 가능한 Capability, 권장 사용 경로 순서로 설명하고 구현 완료와 제안을 명확히 구분하십시오. Source 또는 Original Text를 요청한 경우에만 문서 이름이나 Quote를 표시하십시오."
 
 type openAIResponse struct {
 	Content      string
@@ -773,12 +773,12 @@ func (s *Service) callOpenAICompatibleWithJSONMode(item model.IntegrationAIModel
 	}
 	response, err := (&http.Client{Timeout: time.Duration(timeout) * time.Second}).Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("模型请求失败: %w", err)
+		return nil, fmt.Errorf("model request failed: %w", err)
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("模型 API 返回 %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
+		return nil, fmt.Errorf("model API returned %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
 	var decoded struct {
 		Choices []struct {
@@ -804,7 +804,7 @@ func (s *Service) callOpenAICompatibleWithJSONMode(item model.IntegrationAIModel
 		return nil, errors.New(decoded.Error.Message)
 	}
 	if len(decoded.Choices) == 0 {
-		return nil, errors.New("模型 API 未返回有效内容")
+		return nil, errors.New("model API returned no valid content")
 	}
 	message := decoded.Choices[0].Message
 	result := &openAIResponse{Content: openAIContentString(message.Content), RawToolCalls: make([]any, 0, len(message.ToolCalls))}
@@ -906,7 +906,7 @@ func (s *Service) UpdateIntegrationAITool(payload IntegrationAIToolUpdatePayload
 			return s.db.Model(&model.IntegrationAIToolConfig{}).Where("tool_key = ?", payload.ToolKey).Updates(map[string]any{"enabled": payload.Enabled, "require_confirmation": payload.RequireConfirmation}).Error
 		}
 	}
-	return errors.New("未知的 AI 工具")
+	return errors.New("unknown AI tool")
 }
 
 func (s *Service) ExecuteIntegrationAITool(payload IntegrationAIToolExecutePayload) (any, error) {
@@ -920,7 +920,7 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 	case "prometheus_query":
 		query := strings.TrimSpace(anyString(args["query"]))
 		if query == "" {
-			return nil, errors.New("PromQL 不能为空")
+			return nil, errors.New("PromQL is required")
 		}
 		datasourceID := anyUint(args["datasourceId"])
 		var ds model.MonitorDatasource
@@ -931,7 +931,7 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 			q = q.Order("is_default DESC, id ASC")
 		}
 		if err := q.First(&ds).Error; err != nil {
-			return nil, errors.New("没有可用的 Prometheus/VictoriaMetrics 数据源")
+			return nil, errors.New("no Prometheus or VictoriaMetrics datasource is available")
 		}
 		return s.prometheusQuery(ds, query, time.Now())
 	case "monitor_log_query":
@@ -965,7 +965,7 @@ func (s *Service) executeIntegrationAITool(toolKey string, args map[string]any) 
 	case "k8s_cluster_overview":
 		return s.GetK8sClusterDetail(anyUint(args["clusterId"]))
 	default:
-		return nil, errors.New("该工具只能通过待确认动作执行")
+		return nil, errors.New("this tool can run only through a pending confirmation action")
 	}
 }
 
@@ -1054,7 +1054,7 @@ func (s *Service) queryAIHostHealth(args map[string]any) (map[string]any, error)
 	} else {
 		keyword := strings.TrimSpace(anyString(args["keyword"]))
 		if keyword == "" {
-			return nil, errors.New("请提供 hostId 或主机关键词")
+			return nil, errors.New("provide hostId or a host keyword")
 		}
 		like := "%" + keyword + "%"
 		if err := s.db.Where("host_name LIKE ? OR alias LIKE ? OR private_ip LIKE ? OR public_ip LIKE ? OR ssh_ip LIKE ?", like, like, like, like, like).Order("id DESC").First(&host).Error; err != nil {
@@ -1115,14 +1115,14 @@ func (s *Service) queryAIMonitorDashboard(args map[string]any) (any, error) {
 func (s *Service) queryAIKnowledgeBase(args map[string]any) (map[string]any, error) {
 	keyword := strings.TrimSpace(anyString(args["keyword"]))
 	if keyword == "" {
-		return nil, errors.New("知识库检索关键词不能为空")
+		return nil, errors.New("knowledge-base search keyword is required")
 	}
 	limit := int(anyUint(args["limit"]))
 	if limit == 0 {
 		limit = 5
 	}
 	if limit < 1 || limit > 10 {
-		return nil, errors.New("limit 必须在 1 到 10 之间")
+		return nil, errors.New("limit must be between 1 and 10")
 	}
 	query := s.db.Where("status = ?", 1)
 	if documentID := anyUint(args["documentId"]); documentID > 0 {
@@ -1200,7 +1200,7 @@ func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, er
 	}
 	monthStart, err := parseFinOpsMonth(analysisMonth)
 	if err != nil {
-		return nil, errors.New("month 参数格式无效，格式为 YYYY-MM")
+		return nil, errors.New("invalid month parameter; expected YYYY-MM")
 	}
 	accountID := anyUint(args["accountId"])
 	trendMonths := int(anyUint(args["trendMonths"]))
@@ -1208,7 +1208,7 @@ func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, er
 		trendMonths = 6
 	}
 	if trendMonths < 1 || trendMonths > 12 {
-		return nil, errors.New("trendMonths 必须在 1 到 12 之间")
+		return nil, errors.New("trendMonths must be between 1 and 12")
 	}
 
 	monthEnd := monthStart.AddDate(0, 1, 0)
@@ -1244,7 +1244,7 @@ func (s *Service) queryAIFinOpsAnalysis(args map[string]any) (map[string]any, er
 	}
 	return map[string]any{
 		"source":               "local_synced_finops_database",
-		"sourceDescription":    "仅使用本地已同步云账单数据；未调用云厂商接口",
+		"sourceDescription":    "로컬에 동기화된 Cloud Billing만 사용했으며 Cloud Provider API는 호출하지 않았습니다.",
 		"analysisMonth":        analysisMonth,
 		"monthSource":          monthSource,
 		"accountId":            accountID,
@@ -1311,24 +1311,24 @@ func (s *Service) queryAIFinOpsResourceBreakdown(start, end time.Time, accountID
 		"resourceCount":      len(items),
 		"unattributedCost":   unattributedCost,
 		"items":              limitAIFinOpsRows(items, 20),
-		"sourceDescription":  "按本地已同步账单的 resourceId/resourceName 聚合；不会查询云厂商接口",
+		"sourceDescription":  "Local Billing의 resourceId/resourceName 기준으로 집계했으며 Cloud Provider API는 조회하지 않습니다.",
 	}, nil
 }
 
 func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[string]any, error) {
 	startAt, err := parseAILogTime(anyString(args["startTime"]), now)
 	if err != nil {
-		return nil, fmt.Errorf("开始时间无效: %w", err)
+		return nil, fmt.Errorf("invalid start time: %w", err)
 	}
 	endAt, err := parseAILogTime(anyString(args["endTime"]), now)
 	if err != nil {
-		return nil, fmt.Errorf("结束时间无效: %w", err)
+		return nil, fmt.Errorf("invalid end time: %w", err)
 	}
 	if !endAt.After(startAt) {
-		return nil, errors.New("结束时间必须晚于开始时间")
+		return nil, errors.New("end time must be later than start time")
 	}
 	if endAt.Sub(startAt) > 31*24*time.Hour {
-		return nil, errors.New("单次日志查询时间范围不能超过 31 天")
+		return nil, errors.New("a single log query cannot span more than 31 days")
 	}
 
 	datasourceID := anyUint(args["datasourceId"])
@@ -1341,7 +1341,7 @@ func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[s
 		mode = "count"
 	}
 	if mode != "count" && mode != "list" {
-		return nil, errors.New("返回模式仅支持 count 或 list")
+		return nil, errors.New("return mode supports only count or list")
 	}
 	limit := aiAssetQueryLimit(args["limit"])
 	if mode == "count" {
@@ -1359,7 +1359,7 @@ func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[s
 		return nil, err
 	}
 	if len(datasources) == 0 {
-		return nil, errors.New("没有匹配且已启用的 Elasticsearch/VictoriaLogs 数据源")
+		return nil, errors.New("no matching enabled Elasticsearch or VictoriaLogs datasource was found")
 	}
 
 	results := make([]map[string]any, 0, len(datasources))
@@ -1401,7 +1401,7 @@ func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[s
 		results = append(results, item)
 	}
 	if len(results) == 0 {
-		return nil, fmt.Errorf("所有日志数据源查询均失败: %s", strings.Join(errorsByDatasource, "; "))
+		return nil, fmt.Errorf("all log datasource queries failed: %s", strings.Join(errorsByDatasource, "; "))
 	}
 	return map[string]any{
 		"mode": mode, "total": total, "query": query, "index": index, "streams": streams,
@@ -1413,7 +1413,7 @@ func (s *Service) queryAIRealtimeLogs(args map[string]any, now time.Time) (map[s
 func parseAILogTime(value string, now time.Time) (time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return time.Time{}, errors.New("时间不能为空")
+		return time.Time{}, errors.New("time is required")
 	}
 	location, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -1425,8 +1425,8 @@ func parseAILogTime(value string, now time.Time) (time.Time, error) {
 		prefix string
 		days   int
 	}{
-		{prefix: "昨天", days: -1}, {prefix: "yesterday", days: -1},
-		{prefix: "今天", days: 0}, {prefix: "today", days: 0},
+		{prefix: "어제", days: -1}, {prefix: "yesterday", days: -1},
+		{prefix: "오늘", days: 0}, {prefix: "today", days: 0},
 	} {
 		if strings.HasPrefix(lower, relative.prefix) {
 			clock := strings.TrimSpace(value[len(relative.prefix):])
@@ -1438,7 +1438,7 @@ func parseAILogTime(value string, now time.Time) (time.Time, error) {
 				parsedClock, parseErr = time.ParseInLocation("15:04", clock, location)
 			}
 			if parseErr != nil {
-				return time.Time{}, errors.New("相对时间应为‘昨天 10:00’或‘today 10:00’")
+				return time.Time{}, errors.New("relative time must use the form ‘어제 10:00’ or ‘today 10:00’")
 			}
 			date := now.AddDate(0, 0, relative.days)
 			return time.Date(date.Year(), date.Month(), date.Day(), parsedClock.Hour(), parsedClock.Minute(), parsedClock.Second(), 0, location), nil
@@ -1452,7 +1452,7 @@ func parseAILogTime(value string, now time.Time) (time.Time, error) {
 			return parsed, nil
 		}
 	}
-	return time.Time{}, errors.New("支持 RFC3339、YYYY-MM-DD HH:mm:ss 或‘昨天 10:00’")
+	return time.Time{}, errors.New("supported formats are RFC3339, YYYY-MM-DD HH:mm:ss, or ‘어제 10:00’")
 }
 
 func splitAIQueryValues(value string) []string {
@@ -1718,7 +1718,7 @@ func (s *Service) ConfirmIntegrationAIToolAction(userID uint, username string, i
 		return nil, err
 	}
 	if action.Status != "pending" {
-		return nil, errors.New("该动作已处理")
+		return nil, errors.New("action has already been processed")
 	}
 	var args map[string]any
 	if err := json.Unmarshal([]byte(action.ArgumentsJSON), &args); err != nil {
@@ -1735,7 +1735,7 @@ func (s *Service) ConfirmIntegrationAIToolAction(userID uint, username string, i
 	case "monitor_alert_rule_draft":
 		result, err = s.createAIMonitorAlertRuleDraft(args)
 	default:
-		err = errors.New("不支持的待确认动作")
+		err = errors.New("unsupported pending confirmation action")
 	}
 	now := time.Now()
 	action.ConfirmedAt, action.ConfirmedBy = &now, username
@@ -1759,7 +1759,7 @@ func (s *Service) createAIMonitorAlertRuleDraft(args map[string]any) (map[string
 	promQL := strings.TrimSpace(anyString(args["promql"]))
 	datasourceID := anyUint(args["datasourceId"])
 	if name == "" || promQL == "" || datasourceID == 0 {
-		return nil, errors.New("规则名称、数据源和 PromQL 不能为空")
+		return nil, errors.New("rule name, datasource, and PromQL are required")
 	}
 	payload := MonitorAlertRulePayload{
 		Name: name, AlertType: "metric", DatasourceScope: "specific", DatasourceID: datasourceID, PromQL: promQL,
@@ -1775,7 +1775,7 @@ func (s *Service) createAIMonitorAlertRuleDraft(args map[string]any) (map[string
 	if err := s.db.Where("name = ?", name).Order("id DESC").First(&rule).Error; err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": rule.ID, "name": rule.Name, "status": "draft_disabled", "message": "告警规则草稿已保存为停用状态，未启用通知；请在告警规则页面审核后再启用。"}, nil
+	return map[string]any{"id": rule.ID, "name": rule.Name, "status": "draft_disabled", "message": "Alert Rule Draft를 비활성 상태로 저장했으며 Notification은 활성화하지 않았습니다. Alert Rule Page에서 검토한 뒤 활성화하십시오."}, nil
 }
 
 func (s *Service) RejectIntegrationAIToolAction(userID, id uint) error {
