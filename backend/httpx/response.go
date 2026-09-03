@@ -1,8 +1,9 @@
 package httpx
 
 import (
-	"github.com/gin-gonic/gin"
 	"ops-admin/backend/apperr"
+
+	"github.com/gin-gonic/gin"
 )
 
 func Success(c *gin.Context, data any) {
@@ -13,14 +14,8 @@ func Success(c *gin.Context, data any) {
 	})
 }
 
-func Failed(c *gin.Context, code int, message string) {
-	c.JSON(code, gin.H{
-		"code":        code,
-		"message":     message,
-		"errorCode":   "",
-		"errorParams": gin.H{},
-		"data":        nil,
-	})
+func Failed(c *gin.Context, status int, message string) {
+	FailedError(c, status, apperr.FromLegacy(message, status))
 }
 
 func FailedCode(c *gin.Context, status int, errorCode string, params map[string]any) {
@@ -41,9 +36,13 @@ func FailedError(c *gin.Context, status int, err error) {
 		FailedCode(c, status, "OPERATION_FAILED", nil)
 		return
 	}
-	if errorCode, params, ok := apperr.Extract(err); ok {
-		FailedCode(c, status, errorCode, params)
-		return
+
+	appErr := err
+	if _, _, ok := apperr.Extract(appErr); !ok {
+		appErr = apperr.FromLegacy(err.Error(), status)
 	}
-	Failed(c, status, err.Error())
+	_ = c.Error(appErr)
+
+	errorCode, params, _ := apperr.Extract(appErr)
+	FailedCode(c, status, errorCode, params)
 }
