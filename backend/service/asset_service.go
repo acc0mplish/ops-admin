@@ -80,7 +80,7 @@ func (s *Service) SaveAssetService(payload AssetServicePayload) error {
 	}
 	item := model.AssetService{Name: name, ServiceUID: assetServiceUID(cluster.APIServer, namespace, name), K8sClusterID: payload.K8sClusterID, Namespace: namespace, ServiceType: Trimmed(payload.ServiceType), Status: payload.Status, Description: Trimmed(payload.Description)}
 	if item.ServiceType == "" {
-		item.ServiceType = "业务服务"
+		item.ServiceType = "Business Service"
 	}
 	if item.Status == 0 {
 		item.Status = 1
@@ -204,9 +204,6 @@ func (s *Service) GetAssetServiceRuntimeTopology(serviceID uint) (map[string]any
 	return result, nil
 }
 
-// GetAssetServiceWorkloadRuntime returns runtime data only for a workload that
-// belongs to the selected asset service.  It deliberately does not expose the
-// generic K8s endpoint as an asset-service API.
 func (s *Service) GetAssetServiceWorkloadRuntime(serviceID uint, workloadType, workloadName string) (model.K8sWorkloadDetail, error) {
 	service, err := s.GetAssetService(serviceID)
 	if err != nil {
@@ -218,8 +215,6 @@ func (s *Service) GetAssetServiceWorkloadRuntime(serviceID uint, workloadType, w
 	return s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
 }
 
-// GetAssetServiceWorkloadTopology exposes the actual Kubernetes objects for a
-// selected service workload: matching Service, workload, ReplicaSets and Pods.
 func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, workloadName string) (map[string]any, error) {
 	service, err := s.GetAssetService(serviceID)
 	if err != nil {
@@ -237,13 +232,10 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	if err != nil {
 		return result, nil
 	}
-
 	var serviceList kubeServiceListResponse
 	if err := k8sGetJSON(client, runtime, "/api/v1/namespaces/"+service.Namespace+"/services", &serviceList); err == nil {
 		items := make([]map[string]any, 0)
 		for _, item := range serviceList.Items {
-			// A Service targets Pod labels. The workload selector is preferred,
-			// while workload labels provide a fallback for StatefulSets.
 			if labelsMatch(item.Spec.Selector, detail.Selector) || labelsMatch(item.Spec.Selector, detail.Labels) {
 				items = append(items, map[string]any{"name": item.Metadata.Name, "type": item.Spec.Type, "clusterIP": item.Spec.ClusterIP, "age": humanizeAge(item.Metadata.CreationTimestamp), "healthy": true})
 			}
@@ -251,14 +243,7 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 		result["services"] = items
 	}
 	if strings.EqualFold(workloadType, "statefulset") {
-		result["statefulSet"] = map[string]any{
-			"name":      detail.Name,
-			"ready":     detail.Ready,
-			"available": detail.Available,
-			"age":       detail.Age,
-			"healthy":   workloadDetailHealthy(detail),
-			"pods":      detail.Pods,
-		}
+		result["statefulSet"] = map[string]any{"name": detail.Name, "ready": detail.Ready, "available": detail.Available, "age": detail.Age, "healthy": workloadDetailHealthy(detail), "pods": detail.Pods}
 		return result, nil
 	}
 	if !strings.EqualFold(workloadType, "deployment") {
@@ -276,15 +261,9 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	pods, _ := fetchPodsByNamespace(client, runtime, service.Namespace)
 	replicaSets := make([]map[string]any, 0)
 	for _, item := range replicaSetList.Items {
-		if !hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", workloadName) {
-			continue
-		}
+		if !hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", workloadName) { continue }
 		relatedPods := make([]kubePod, 0)
-		for _, pod := range pods {
-			if hasK8sOwner(pod.Metadata.OwnerReferences, "ReplicaSet", item.Metadata.Name) {
-				relatedPods = append(relatedPods, pod)
-			}
-		}
+		for _, pod := range pods { if hasK8sOwner(pod.Metadata.OwnerReferences, "ReplicaSet", item.Metadata.Name) { relatedPods = append(relatedPods, pod) } }
 		desired := intValue(item.Spec.Replicas)
 		revision := strings.TrimSpace(item.Metadata.Annotations["deployment.kubernetes.io/revision"])
 		replicaSets = append(replicaSets, map[string]any{"name": item.Metadata.Name, "revision": revision, "current": revision != "" && revision == currentRevision, "ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, desired), "available": item.Status.AvailableReplicas, "age": humanizeAge(item.Metadata.CreationTimestamp), "healthy": desired > 0 && item.Status.ReadyReplicas == desired && item.Status.AvailableReplicas >= desired, "pods": buildPodItems(relatedPods)})
@@ -293,124 +272,66 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	return result, nil
 }
 
-// GetAssetServiceWorkloadMetrics compares the current Pods of a workload using
-// the Prometheus or VictoriaMetrics datasource bound to its K8s cluster.
 func (s *Service) GetAssetServiceWorkloadMetrics(serviceID uint, workloadType, workloadName, rangeKey string) (map[string]any, error) {
 	service, err := s.GetAssetService(serviceID)
-	if err != nil {
-		return nil, err
-	}
-	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
-		return nil, errors.New("workload does not belong to this service")
-	}
+	if err != nil { return nil, err }
+	if !assetServiceContainsWorkload(service, workloadType, workloadName) { return nil, errors.New("workload does not belong to this service") }
 	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	podNames := make([]string, 0, len(detail.Pods))
-	for _, pod := range detail.Pods {
-		podNames = append(podNames, pod.Name)
-	}
+	for _, pod := range detail.Pods { podNames = append(podNames, pod.Name) }
 	return s.getK8sPodMetricComparison(service.K8sClusterID, service.Namespace, podNames, rangeKey)
 }
 
 func workloadDetailHealthy(detail model.K8sWorkloadDetail) bool {
 	parts := strings.Split(detail.Ready, "/")
-	if len(parts) != 2 {
-		return false
-	}
+	if len(parts) != 2 { return false }
 	ready, readyErr := strconv.Atoi(strings.TrimSpace(parts[0]))
 	desired, desiredErr := strconv.Atoi(strings.TrimSpace(parts[1]))
 	return readyErr == nil && desiredErr == nil && desired > 0 && ready == desired && detail.Available >= desired
 }
 
-// GetAssetServiceWorkloadRolloutHistory returns Deployment revisions which are
-// represented by ReplicaSets controlled by the selected Deployment.
 func (s *Service) GetAssetServiceWorkloadRolloutHistory(serviceID uint, workloadType, workloadName string) (map[string]any, error) {
 	service, err := s.GetAssetService(serviceID)
-	if err != nil {
-		return nil, err
-	}
-	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
-		return nil, errors.New("workload does not belong to this service")
-	}
-	if !strings.EqualFold(Trimmed(workloadType), "deployment") {
-		return nil, errors.New("only deployment supports version rollback")
-	}
+	if err != nil { return nil, err }
+	if !assetServiceContainsWorkload(service, workloadType, workloadName) { return nil, errors.New("workload does not belong to this service") }
+	if !strings.EqualFold(Trimmed(workloadType), "deployment") { return nil, errors.New("only deployment supports version rollback") }
 	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	var deployment kubeDeployment
 	deploymentPath := "/apis/apps/v1/namespaces/" + service.Namespace + "/deployments/" + workloadName
-	if err := k8sGetJSON(client, runtime, deploymentPath, &deployment); err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
+	if err := k8sGetJSON(client, runtime, deploymentPath, &deployment); err != nil { return nil, errors.New(k8sClusterConnectError) }
 	var replicaSets kubeReplicaSetListResponse
-	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil { return nil, errors.New(k8sClusterConnectError) }
 	currentRevision := deployment.Metadata.Annotations["deployment.kubernetes.io/revision"]
 	history := make([]map[string]any, 0)
 	for _, item := range replicaSets.Items {
-		if !hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", workloadName) {
-			continue
-		}
+		if !hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", workloadName) { continue }
 		revision := strings.TrimSpace(item.Metadata.Annotations["deployment.kubernetes.io/revision"])
-		if revision == "" || len(item.Spec.Template) == 0 {
-			continue
-		}
-		history = append(history, map[string]any{
-			"revision": revision, "replicaSet": item.Metadata.Name, "age": humanizeAge(item.Metadata.CreationTimestamp),
-			"images": workloadTemplateImages(item.Spec.Template), "current": revision == currentRevision,
-			"ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, intValue(item.Spec.Replicas)),
-		})
+		if revision == "" || len(item.Spec.Template) == 0 { continue }
+		history = append(history, map[string]any{"revision": revision, "replicaSet": item.Metadata.Name, "age": humanizeAge(item.Metadata.CreationTimestamp), "images": workloadTemplateImages(item.Spec.Template), "current": revision == currentRevision, "ready": fmt.Sprintf("%d/%d", item.Status.ReadyReplicas, intValue(item.Spec.Replicas))})
 	}
-	sort.Slice(history, func(i, j int) bool {
-		left, _ := strconv.Atoi(fmt.Sprint(history[i]["revision"]))
-		right, _ := strconv.Atoi(fmt.Sprint(history[j]["revision"]))
-		return left > right
-	})
+	sort.Slice(history, func(i, j int) bool { left, _ := strconv.Atoi(fmt.Sprint(history[i]["revision"])); right, _ := strconv.Atoi(fmt.Sprint(history[j]["revision"])); return left > right })
 	return map[string]any{"workloadName": workloadName, "currentRevision": currentRevision, "history": history}, nil
 }
 
-// RollbackAssetServiceWorkload restores the pod template from the requested
-// Deployment ReplicaSet revision. Kubernetes creates a new revision for this
-// operation, equivalent to kubectl rollout undo --to-revision.
 func (s *Service) RollbackAssetServiceWorkload(payload AssetServiceWorkloadRollbackPayload) (map[string]any, error) {
 	service, err := s.GetAssetService(payload.ServiceID)
-	if err != nil {
-		return nil, err
-	}
-	if !assetServiceContainsWorkload(service, payload.WorkloadType, payload.WorkloadName) {
-		return nil, errors.New("workload does not belong to this service")
-	}
-	if !strings.EqualFold(Trimmed(payload.WorkloadType), "deployment") || Trimmed(payload.Revision) == "" {
-		return nil, errors.New("only deployment supports version rollback")
-	}
+	if err != nil { return nil, err }
+	if !assetServiceContainsWorkload(service, payload.WorkloadType, payload.WorkloadName) { return nil, errors.New("workload does not belong to this service") }
+	if !strings.EqualFold(Trimmed(payload.WorkloadType), "deployment") || Trimmed(payload.Revision) == "" { return nil, errors.New("only deployment supports version rollback") }
 	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	var replicaSets kubeReplicaSetListResponse
-	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
+	if err := k8sGetJSON(client, runtime, "/apis/apps/v1/namespaces/"+service.Namespace+"/replicasets", &replicaSets); err != nil { return nil, errors.New(k8sClusterConnectError) }
 	var target *kubeReplicaSet
 	for i := range replicaSets.Items {
 		item := &replicaSets.Items[i]
-		if hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", payload.WorkloadName) && item.Metadata.Annotations["deployment.kubernetes.io/revision"] == Trimmed(payload.Revision) {
-			target = item
-			break
-		}
+		if hasK8sOwner(item.Metadata.OwnerReferences, "Deployment", payload.WorkloadName) && item.Metadata.Annotations["deployment.kubernetes.io/revision"] == Trimmed(payload.Revision) { target = item; break }
 	}
-	if target == nil || len(target.Spec.Template) == 0 {
-		return nil, errors.New("rollback revision does not exist")
-	}
+	if target == nil || len(target.Spec.Template) == 0 { return nil, errors.New("rollback revision does not exist") }
 	path := "/apis/apps/v1/namespaces/" + service.Namespace + "/deployments/" + payload.WorkloadName
-	if err := k8sPatchJSON(client, runtime, path, map[string]any{"spec": map[string]any{"template": target.Spec.Template}}, "application/strategic-merge-patch+json", nil); err != nil {
-		return nil, errors.New(k8sClusterConnectError)
-	}
+	if err := k8sPatchJSON(client, runtime, path, map[string]any{"spec": map[string]any{"template": target.Spec.Template}}, "application/strategic-merge-patch+json", nil); err != nil { return nil, errors.New(k8sClusterConnectError) }
 	return map[string]any{"workloadName": payload.WorkloadName, "rollbackRevision": payload.Revision, "replicaSet": target.Metadata.Name}, nil
 }
 
@@ -421,76 +342,42 @@ func workloadTemplateImages(template map[string]any) []string {
 	for _, raw := range containers {
 		container, _ := raw.(map[string]any)
 		name, image := strings.TrimSpace(fmt.Sprint(container["name"])), strings.TrimSpace(fmt.Sprint(container["image"]))
-		if image != "" {
-			images = append(images, strings.Trim(strings.TrimSpace(name+": "+image), ": "))
-		}
+		if image != "" { images = append(images, strings.Trim(strings.TrimSpace(name+": "+image), ": ")) }
 	}
 	return images
 }
 
-// GetAssetServiceWorkloadLogs limits pod logs to pods returned by the selected
-// service workload, so service management never becomes a free-form cluster
-// log browser.
 func (s *Service) GetAssetServiceWorkloadLogs(serviceID uint, workloadType, workloadName, podName, container string, tailLines int) (map[string]any, error) {
 	service, err := s.GetAssetService(serviceID)
-	if err != nil {
-		return nil, err
-	}
-	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
-		return nil, errors.New("workload does not belong to this service")
-	}
+	if err != nil { return nil, err }
+	if !assetServiceContainsWorkload(service, workloadType, workloadName) { return nil, errors.New("workload does not belong to this service") }
 	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	podName = Trimmed(podName)
-	for _, pod := range detail.Pods {
-		if pod.Name == podName {
-			return s.GetK8sPodLogs(service.K8sClusterID, service.Namespace, podName, container, tailLines)
-		}
-	}
+	for _, pod := range detail.Pods { if pod.Name == podName { return s.GetK8sPodLogs(service.K8sClusterID, service.Namespace, podName, container, tailLines) } }
 	return nil, errors.New("pod does not belong to this workload")
 }
 
 func assetServiceContainsWorkload(service *model.AssetService, workloadType, workloadName string) bool {
 	workloadType, workloadName = strings.ToLower(Trimmed(workloadType)), Trimmed(workloadName)
-	for _, item := range service.Workloads {
-		if strings.EqualFold(item.WorkloadType, workloadType) && item.WorkloadName == workloadName {
-			return true
-		}
-	}
+	for _, item := range service.Workloads { if strings.EqualFold(item.WorkloadType, workloadType) && item.WorkloadName == workloadName { return true } }
 	return false
 }
 
 func labelsMatch(required, actual map[string]string) bool {
-	if len(required) == 0 {
-		return false
-	}
-	for key, value := range required {
-		if actual[key] != value {
-			return false
-		}
-	}
+	if len(required) == 0 { return false }
+	for key, value := range required { if actual[key] != value { return false } }
 	return true
 }
 
-func hasK8sOwner(owners []struct {
-	Kind string `json:"kind"`
-	Name string `json:"name"`
-}, kind, name string) bool {
-	for _, owner := range owners {
-		if strings.EqualFold(owner.Kind, kind) && owner.Name == name {
-			return true
-		}
-	}
+func hasK8sOwner(owners []struct { Kind string `json:"kind"`; Name string `json:"name"` }, kind, name string) bool {
+	for _, owner := range owners { if strings.EqualFold(owner.Kind, kind) && owner.Name == name { return true } }
 	return false
 }
 
 func assetServiceUID(apiServer, namespace, name string) string {
 	host := strings.TrimSpace(apiServer)
-	if parsed, err := url.Parse(host); err == nil && parsed.Hostname() != "" {
-		host = parsed.Hostname()
-	}
+	if parsed, err := url.Parse(host); err == nil && parsed.Hostname() != "" { host = parsed.Hostname() }
 	host = strings.ReplaceAll(strings.Trim(strings.TrimSpace(host), "/"), ":", "-")
 	return strings.Join([]string{host, Trimmed(namespace), Trimmed(name)}, "-")
 }
