@@ -36,12 +36,12 @@ onMounted(async () => {
   <div class="dashboard-page">
     <section class="hero-card">
       <div class="hero-copy">
-        <p class="hero-kicker">CONTROL PLANE / SYSTEM GOVERNANCE</p>
+        <p class="hero-kicker">{{ t('systemGovernance') }}</p>
         <h1>{{ t('welcomeBack', { name: welcome }) }}</h1>
         <p class="hero-text">{{ t('dashboardDesc') }}</p>
       </div>
       <div class="hero-badge" :aria-label="t('consoleScope')">
-        <p>CONSOLE SCOPE</p>
+        <p>{{ t('consoleScope') }}</p>
         <span><i></i>{{ t('systemGovernance') }}</span>
         <span><i></i>{{ t('permissionConfiguration') }}</span>
         <span><i></i>{{ t('auditTrail') }}</span>
