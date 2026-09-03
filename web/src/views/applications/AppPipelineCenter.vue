@@ -873,7 +873,7 @@ onBeforeUnmount(stopRunRefresh)
           <div v-else-if="stage.type === 'k8sDeploy'" class="delivery-stage-config">
             <div class="delivery-stage-title"><b>Deploy Target</b><span>실행 Node의 kubectl로 Workload Image Update와 Health Check를 수행합니다.</span></div>
             <div class="stage-config-grid">
-            <label><span>Kubernetes Cluster</span><el-select v-model="stage.config.clusterId" filterable placeholder="选择 Kubernetes Cluster">
+            <label><span>Kubernetes Cluster</span><el-select v-model="stage.config.clusterId" filterable placeholder="Kubernetes Cluster 선택">
               <el-option
                 v-for="cluster in k8sClusterOptions"
                 :key="cluster.id"
