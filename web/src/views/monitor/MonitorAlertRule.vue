@@ -97,11 +97,11 @@ const alertTypeLabel = computed(() => alertTypeName(form.alertType))
 const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertType))
 const enabledOnPage = computed(() => rows.value.filter((item) => item.status === 1).length)
 const failedOnPage = computed(() => rows.value.filter((item) => item.lastEvalStatus === 'failed').length)
-const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? '批量修改持续时间' : '批量修改评估间隔')
-const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : '评估间隔')
+const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? 'Duration 일괄 변경' : 'Evaluation Interval 일괄 변경')
+const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : 'Evaluation Interval')
 const batchTimingTip = computed(() => batchTimingAction.value === 'update_for_seconds'
-  ? `持续时间仅对监控告警生效；已选 ${selectedRuleIds.value.length} 条规则中的日志告警不会变更。`
-  : `将统一更新已选 ${selectedRuleIds.value.length} 条告警规则的评估频率，并立即按新间隔重新调度。`)
+  ? `Duration은 Metric Alert에만 적용됩니다. 선택한 ${selectedRuleIds.value.length}개 Rule 중 Log Alert는 변경되지 않습니다.`
+  : `선택한 ${selectedRuleIds.value.length}개 Alert Rule의 Evaluation Frequency를 변경하고 새 Interval로 즉시 재예약합니다.`)
 const batchTimingMin = computed(() => batchTimingAction.value === 'update_for_seconds' ? 0 : 15)
 const batchTimingMax = computed(() => batchTimingAction.value === 'update_for_seconds' ? 86400 : 3600)
 const templateGroupTree = computed(() => {
@@ -120,23 +120,23 @@ const templateGroupTree = computed(() => {
   return roots.map(decorate)
 })
 const queryLabel = computed(() => {
-  if (form.alertType === 'log') return 'ES 查询语句'
-  if (form.alertType === 'victorialogs') return 'LogsQL 查询语句'
+  if (form.alertType === 'log') return 'Elasticsearch Query'
+  if (form.alertType === 'victorialogs') return 'LogsQL Query'
   return 'PromQL'
 })
 const queryPlaceholder = computed(() => {
-  if (form.alertType === 'log') return '例如：level:ERROR AND kubernetes.pod_namespace:"default"'
-  if (form.alertType === 'victorialogs') return '例如：kubernetes.pod_namespace:"default" AND _msg:~"(?i)error"'
-  return '例如：sum(kube_pod_status_phase{phase=~"Failed|Unknown"})'
+  if (form.alertType === 'log') return '예: level:ERROR AND kubernetes.pod_namespace:"default"'
+  if (form.alertType === 'victorialogs') return '예: kubernetes.pod_namespace:"default" AND _msg:~"(?i)error"'
+  return '예: sum(kube_pod_status_phase{phase=~"Failed|Unknown"})'
 })
 const queryHint = computed(() => {
-  if (form.alertType === 'log') return '使用 Elasticsearch query_string（Lucene）语法，告警值为查询窗口内命中的日志条数。'
-  if (form.alertType === 'victorialogs') return '使用 VictoriaLogs LogsQL 语法，告警值为查询窗口内命中的日志条数。'
-  return 'PromQL 返回的每条时间序列都会独立与阈值比较，标签会保留在告警事件中。'
+  if (form.alertType === 'log') return 'Elasticsearch query_string(Lucene) Syntax를 사용하며 Alert Value는 Query Window에서 Match된 Log 수입니다.'
+  if (form.alertType === 'victorialogs') return 'VictoriaLogs LogsQL Syntax를 사용하며 Alert Value는 Query Window에서 Match된 Log 수입니다.'
+  return 'PromQL이 반환한 각 Time Series를 Threshold와 독립적으로 비교하며 Label은 Alert Event에 보존됩니다.'
 })
 
 function alertTypeName(type) {
-  return ({ metric: '监控告警', log: 'ES 日志告警', victorialogs: 'VictoriaLogs 日志告警' }[type] || '监控告警')
+  return ({ metric: 'Metric Alert', log: 'Elasticsearch Log Alert', victorialogs: 'VictoriaLogs Log Alert' }[type] || 'Metric Alert')
 }
 
 function alertTypeTag(type) {
@@ -145,7 +145,7 @@ function alertTypeTag(type) {
 }
 
 function evalStatusText(status) {
-  return ({ success: '成功', ok: '成功', failed: '失败', running: '执行中' }[status] || '未执行')
+  return ({ success: '성공', ok: '성공', failed: '실패', running: '실행 중' }[status] || '미실행')
 }
 
 function evalStatusType(status) {
@@ -156,20 +156,20 @@ function evalStatusType(status) {
 }
 
 function formatEvalTime(value) {
-  if (!value) return '尚未评估'
+  if (!value) return '미평가'
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
-const dialogTitle = computed(() => (copyMode.value ? '复制告警规则' : (isEdit.value ? '编辑告警规则' : '新增告警规则')))
+const dialogTitle = computed(() => (copyMode.value ? 'Alert Rule 복제' : (isEdit.value ? 'Alert Rule 수정' : 'Alert Rule 추가')))
 
 const visibleRuleTemplates = computed(() => managedTemplates.value)
 const selectedManagedTemplates = computed(() => Array.from(selectedTemplateMap.value.values()))
 
 function formatNotifyInterval(seconds) {
   const value = Number(seconds) || 1800
-  if (value % 86400 === 0) return `${value / 86400} 天`
-  if (value % 3600 === 0) return `${value / 3600} 小时`
-  if (value % 60 === 0) return `${value / 60} 分钟`
-  return `${value} 秒`
+  if (value % 86400 === 0) return `${value / 86400}일`
+  if (value % 3600 === 0) return `${value / 3600}시간`
+  if (value % 60 === 0) return `${value / 60} 분`
+  return `${value}초`
 }
 
 function datasourceOptionsForType(type) {
@@ -186,7 +186,7 @@ function templateGroupPath(id) {
     parts.unshift(item.name)
     item = byId.get(item.parentId)
   }
-  return parts.join(' / ') || '未分组'
+  return parts.join(' / ') || '미분류'
 }
 
 function defaultQueryForType(type) {
@@ -290,7 +290,7 @@ async function openCopy(row) {
   Object.assign(form, {
     ...data,
     id: undefined,
-    name: `${data.name} - 副本`,
+    name: `${data.name} - Copy`,
     alertType: data.alertType || 'metric',
     datasourceScope: data.datasourceScope || 'specific',
     queryText: data.promql || '',
@@ -375,7 +375,7 @@ function clearTemplateSelection() {
 function buildTemplateImportPayload(template) {
   const alertType = templateAlertType(template)
   const datasource = datasourceOptionsForType(alertType)[0]
-  if (!datasource) throw new Error(`模板“${template.name}”没有可用的${alertTypeName(alertType)}数据源`)
+  if (!datasource) throw new Error(`Template “${template.name}”에 사용할 수 있는 ${alertTypeName(alertType)} Datasource가 없습니다.`)
   return {
     name: template.name,
     alertType,
@@ -404,19 +404,19 @@ function buildTemplateImportPayload(template) {
 async function importSelectedTemplates() {
   const templates = selectedManagedTemplates.value
   if (!templates.length) {
-    ElMessage.warning('请先选择需要导入的告警模板')
+    ElMessage.warning('Import할 Alert Template을 먼저 선택하십시오.')
     return
   }
   const invalid = templates.filter((item) => !datasourceOptionsForType(templateAlertType(item))[0])
   if (invalid.length) {
-    ElMessage.error(`以下模板没有匹配的可用数据源：${invalid.map((item) => item.name).join('、')}`)
+    ElMessage.error(`다음 Template에 일치하는 사용 가능한 Datasource가 없습니다: ${invalid.map((item) => item.name).join(', ')}`)
     return
   }
   try {
     await ElMessageBox.confirm(
-      `将从 ${templates.length} 个模板创建同名告警规则。新规则默认停用，确认测试后再启用。`,
-      '确认批量创建规则',
-      { type: 'warning', confirmButtonText: `创建 ${templates.length} 条规则`, cancelButtonText: '取消' }
+      `${templates.length}개 Template에서 같은 이름의 Alert Rule을 생성합니다. 새 Rule은 기본 비활성 상태이며 Test 후 활성화하십시오.`,
+      'Alert Rule 일괄 생성 확인',
+      { type: 'warning', confirmButtonText: `${templates.length}개 Rule 생성`, cancelButtonText: '취소' }
     )
   } catch {
     return
@@ -430,11 +430,11 @@ async function importSelectedTemplates() {
         await saveMonitorAlertRule(buildTemplateImportPayload(template))
         succeeded.push(template)
       } catch (error) {
-        failed.push({ template, message: error?.message || '创建失败' })
+        failed.push({ template, message: error?.message || '생성 실패' })
       }
     }
     if (succeeded.length) {
-      ElMessage.success(`已创建 ${succeeded.length} 条停用规则`)
+      ElMessage.success(`비활성 Rule ${succeeded.length}개를 생성했습니다.`)
       const remaining = new Map(selectedTemplateMap.value)
       succeeded.forEach((item) => remaining.delete(item.id))
       selectedTemplateMap.value = remaining
@@ -443,8 +443,8 @@ async function importSelectedTemplates() {
     if (failed.length) {
       await ElMessageBox.alert(
         failed.map((item) => `${item.template.name}：${item.message}`).join('\n'),
-        `${failed.length} 条规则创建失败`,
-        { type: 'error', confirmButtonText: '返回检查' }
+        `${failed.length} 개 Rule생성 실패`,
+        { type: 'error', confirmButtonText: '검토로 돌아가기' }
       )
       restoreTemplateSelection()
     } else {
@@ -499,11 +499,11 @@ async function applyManagedTemplate(id) {
 }
 
 function validateJsonFields() {
-  for (const [label, value] of [['标签 JSON', form.labelsJson], ['注解 JSON', form.annotationsJson]]) {
+  for (const [label, value] of [['Label JSON', form.labelsJson], ['Annotation JSON', form.annotationsJson]]) {
     try {
       JSON.parse(value || '{}')
     } catch {
-      ElMessage.warning(`${label} 格式不正确，请输入有效的 JSON 对象`)
+      ElMessage.warning(`${label} 형식이 올바르지 않습니다. 유효한 JSON Object를 입력하십시오.`)
       return false
     }
   }
@@ -512,16 +512,16 @@ function validateJsonFields() {
 
 async function submit() {
   if (!form.name.trim() || !form.queryText.trim() || (form.datasourceScope === 'specific' && !form.datasourceId)) {
-    ElMessage.warning(`请填写规则名称、${form.datasourceScope === 'specific' ? '数据源和' : ''}${form.alertType === 'log' ? ' Elasticsearch 查询语句' : ' PromQL'}`)
+    ElMessage.warning(`Rule 이름, ${form.datasourceScope === 'specific' ? 'Datasource 및 ' : ''}${form.alertType === 'log' ? 'Elasticsearch Query' : 'PromQL'}을(를) 입력하십시오.`)
     return
   }
   if (form.notifyEnabled && !form.notifyRuleId) {
-    ElMessage.warning('请选择通知规则')
+    ElMessage.warning('Notification Rule을 선택하십시오.')
     return
   }
   if (!validateJsonFields()) return
   if (form.status === 1 && form.datasourceScope === 'all') {
-    await ElMessageBox.confirm('该规则保存后会立即在全部同类型数据源上启用。请确认查询条件和阈值已经测试通过。', '确认启用全局规则', { type: 'warning', confirmButtonText: '确认启用', cancelButtonText: '返回检查' })
+    await ElMessageBox.confirm('이 Rule은 저장 즉시 같은 Type의 모든 Datasource에서 활성화됩니다. Query 조건과 Threshold Test가 통과했는지 확인하십시오.', 'Global Rule 활성화 확인', { type: 'warning', confirmButtonText: '활성화 확인', cancelButtonText: '검토로 돌아가기' })
   }
   saving.value = true
   try {
@@ -530,7 +530,7 @@ async function submit() {
       query: form.queryText,
       notifyRepeatIntervalSeconds: form.notifyRepeatIntervalMinutes * 60
     })
-    ElMessage.success('保存成功')
+    ElMessage.success('保存성공')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -548,7 +548,7 @@ function buildRulePayload() {
 
 async function handlePreview() {
   if (!form.queryText.trim() || (form.datasourceScope === 'specific' && !form.datasourceId)) {
-    ElMessage.warning(`请先填写${form.datasourceScope === 'specific' ? '数据源和' : ''}${form.alertType === 'log' ? ' Elasticsearch 查询语句' : ' PromQL'}`)
+    ElMessage.warning(`먼저 ${form.datasourceScope === 'specific' ? 'Datasource 및 ' : ''}${form.alertType === 'log' ? 'Elasticsearch Query' : 'PromQL'}을(를) 입력하십시오.`)
     return
   }
   previewVisible.value = true
@@ -558,7 +558,7 @@ async function handlePreview() {
   try {
     previewResult.value = await previewMonitorAlertRule(buildRulePayload())
   } catch (error) {
-    previewError.value = error?.message || '规则预览失败，请检查数据源与查询语句后重试。'
+    previewError.value = error?.message || 'Rule Preview에 실패했습니다. Datasource와 Query를 확인한 뒤 다시 시도하십시오.'
   } finally {
     previewLoading.value = false
   }
@@ -572,10 +572,10 @@ function sampleLabel(labels) {
 async function handleStatus(row) {
   const nextStatus = row.status === 1 ? 2 : 1
   if (nextStatus === 2) {
-    await ElMessageBox.confirm(`禁用后规则「${row.name}」将停止评估，也不会再产生新告警。`, '确认禁用规则', { type: 'warning', confirmButtonText: '确认禁用', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`Rule “${row.name}”을(를) 비활성화하면 Evaluation이 중지되고 새 Alert가 발생하지 않습니다.`, 'Rule 비활성화 확인', { type: 'warning', confirmButtonText: '비활성화 확인', cancelButtonText: '취소' })
   }
   await updateMonitorAlertRuleStatus({ id: row.id, status: nextStatus })
-  ElMessage.success('状态已更新')
+  ElMessage.success('상태를 업데이트했습니다.')
   await loadData()
 }
 
@@ -583,7 +583,7 @@ async function handleRun(row) {
   runningRuleId.value = row.id
   try {
     await runMonitorAlertRule(row.id)
-    ElMessage.success('评估任务已提交，结果稍后刷新')
+    ElMessage.success('Evaluation Task를 제출했습니다. 결과는 잠시 후 Refresh됩니다.')
     await new Promise((resolve) => setTimeout(resolve, 800))
     await loadData()
   } finally {
@@ -592,9 +592,9 @@ async function handleRun(row) {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除告警规则「${row.name}」吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Alert Rule “${row.name}”을(를) 삭제하시겠습니까?`, '提示', { type: 'warning' })
   await deleteMonitorAlertRule(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제성공')
   await loadData()
 }
 
@@ -605,12 +605,12 @@ function handleSelectionChange(selection) {
 async function handleBatchStatus(status) {
   if (!selectedRuleIds.value.length) return
   const action = status === 1 ? 'enable' : 'disable'
-  const label = status === 1 ? '启用' : '禁用'
-  await ElMessageBox.confirm(`确认批量${label}已选中的 ${selectedRuleIds.value.length} 条告警规则吗？`, '批量操作确认', { type: 'warning' })
+  const label = status === 1 ? '활성화' : '비활성화'
+  await ElMessageBox.confirm(`선택한 Alert Rule ${selectedRuleIds.value.length}개를 일괄 ${label}하시겠습니까?`, '批量작업确认', { type: 'warning' })
   batchLoading.value = true
   try {
     await batchUpdateMonitorAlertRules({ ids: selectedRuleIds.value, action })
-    ElMessage.success(`已批量${label}`)
+    ElMessage.success(`일괄 ${label}을(를) 완료했습니다.`)
     clearSelection()
     await loadData()
   } finally {
@@ -657,15 +657,15 @@ function handleRuleCommand(command, row) {
 
 async function submitBatchNotify() {
   if (!batchNotifyRuleId.value) {
-    ElMessage.warning('请选择通知规则')
+    ElMessage.warning('Notification Rule을 선택하십시오.')
     return
   }
   if (batchNotifyRepeatIntervalMinutes.value < 1 || batchNotifyRepeatIntervalMinutes.value > 10080) {
-    ElMessage.warning('重复通知间隔需在 1 分钟到 7 天之间')
+    ElMessage.warning('Repeat Notification Interval은 1분에서 7일 사이여야 합니다.')
     return
   }
   if (batchNotifyMaxCount.value < 0 || batchNotifyMaxCount.value > 1000) {
-    ElMessage.warning('最大发送次数需在 0 到 1000 之间')
+    ElMessage.warning('Maximum Send Count는 0에서 1000 사이여야 합니다.')
     return
   }
   batchNotifySaving.value = true
@@ -678,7 +678,7 @@ async function submitBatchNotify() {
       maxNotifyCount: batchNotifyMaxCount.value,
       notifyRecoveryEnabled: batchNotifyRecoveryEnabled.value
     })
-    ElMessage.success('已批量启用通知并绑定通知规则')
+    ElMessage.success('Notification을 일괄 활성화하고 Notification Rule을 연결했습니다.')
     batchNotifyVisible.value = false
     clearSelection()
     await loadData()
@@ -689,7 +689,7 @@ async function submitBatchNotify() {
 
 async function submitBatchTiming() {
   if (batchTimingValue.value === undefined || batchTimingValue.value === null) {
-    ElMessage.warning(`请填写${batchTimingLabel.value}`)
+    ElMessage.warning(`${batchTimingLabel.value}을(를) 입력하십시오.`)
     return
   }
   batchTimingSaving.value = true
@@ -700,7 +700,7 @@ async function submitBatchTiming() {
       action: batchTimingAction.value,
       ...(isDuration ? { forSeconds: batchTimingValue.value } : { evalIntervalSeconds: batchTimingValue.value })
     })
-    ElMessage.success(`已批量修改${batchTimingLabel.value}`)
+    ElMessage.success(`${batchTimingLabel.value}을(를) 일괄 변경했습니다.`)
     batchTimingVisible.value = false
     clearSelection()
     await loadData()
@@ -720,64 +720,64 @@ onMounted(async () => {
     <section class="page-header">
       <div class="header-icon"><el-icon><Bell /></el-icon></div>
       <div class="header-copy">
-        <h2>告警规则</h2>
-        <p>配置数据源作用域、触发条件与通知策略，统一管理指标和日志告警的执行生命周期。</p>
+        <h2>告警Rule</h2>
+        <p>Datasource Scope, Trigger Condition, Notification Policy를 구성해 Metric과 Log Alert Lifecycle을 통합 관리합니다.</p>
       </div>
-      <div class="header-metrics"><span>本页启用 <b>{{ enabledOnPage }}</b></span><span>评估失败 <b :class="{ danger: failedOnPage }">{{ failedOnPage }}</b></span></div>
+      <div class="header-metrics"><span>현재 Page 활성 <b>{{ enabledOnPage }}</b></span><span>Evaluation 실패 <b :class="{ danger: failedOnPage }">{{ failedOnPage }}</b></span></div>
       <div class="header-actions">
-        <el-button @click="openTemplateDialog"><el-icon><CollectionTag /></el-icon>从模板创建</el-button>
-        <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新增规则</el-button>
+        <el-button @click="openTemplateDialog"><el-icon><CollectionTag /></el-icon>Template에서 생성</el-button>
+        <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>Rule 추가</el-button>
       </div>
     </section>
 
     <section class="toolbar-card"><div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="搜索规则名称或查询语句" style="width: 260px" @keyup.enter="searchRules"><template #prefix><el-icon><Search /></el-icon></template></el-input>
-      <el-select v-model="query.alertType" clearable placeholder="告警类型" style="width: 130px">
-        <el-option label="监控告警" value="metric" />
-        <el-option label="ES 日志" value="log" />
+      <el-input v-model="query.keyword" clearable placeholder="Rule 이름 또는 Query 검색" style="width: 260px" @keyup.enter="searchRules"><template #prefix><el-icon><Search /></el-icon></template></el-input>
+      <el-select v-model="query.alertType" clearable placeholder="Alert Type" style="width: 130px">
+        <el-option label="Metric Alert" value="metric" />
+        <el-option label="Elasticsearch Log" value="log" />
         <el-option label="VictoriaLogs" value="victorialogs" />
       </el-select>
-      <el-select v-model="query.severity" clearable placeholder="等级" style="width: 120px">
+      <el-select v-model="query.severity" clearable placeholder="Severity" style="width: 120px">
         <el-option v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" :value="item" />
       </el-select>
-      <el-select v-model="query.status" clearable placeholder="状态" style="width: 120px">
-        <el-option label="启用" value="1" />
-        <el-option label="禁用" value="2" />
+      <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px">
+        <el-option label="활성화" value="1" />
+        <el-option label="비활성화" value="2" />
       </el-select>
-      <el-button type="primary" @click="searchRules">查询</el-button>
-      <el-button @click="resetQuery">重置</el-button>
-      <el-button class="refresh-button" @click="loadData"><el-icon><Refresh /></el-icon>刷新</el-button>
+      <el-button type="primary" @click="searchRules">조회</el-button>
+      <el-button @click="resetQuery">초기화</el-button>
+      <el-button class="refresh-button" @click="loadData"><el-icon><Refresh /></el-icon>Refresh</el-button>
     </div></section>
 
     <section class="rule-table-card">
-      <div class="table-card-head"><div><strong>规则清单</strong><span>共 {{ total }} 条规则，批量操作仅作用于当前页选中项。</span></div></div>
+      <div class="table-card-head"><div><strong>Rule 목록</strong><span>전체 {{ total }}개 Rule이며 Bulk Action은 현재 Page에서 선택한 항목에만 적용됩니다.</span></div></div>
 
     <div v-if="selectedRuleIds.length" v-loading="batchLoading" class="batch-toolbar">
-      <span>已选择 <b>{{ selectedRuleIds.length }}</b> 条规则</span>
-      <el-button size="small" type="success" @click="handleBatchStatus(1)">批量启用</el-button>
-      <el-button size="small" type="warning" @click="handleBatchStatus(2)">批量禁用</el-button>
-      <el-button size="small" type="primary" plain @click="openBatchNotify">批量启用通知</el-button>
-      <el-button size="small" type="primary" @click="openBatchTiming('update_for_seconds')">批量修改持续时间</el-button>
-      <el-button size="small" type="info" plain @click="openBatchTiming('update_eval_interval')">批量修改评估间隔</el-button>
-      <el-button size="small" link @click="clearSelection">取消选择</el-button>
+      <span>선택됨 <b>{{ selectedRuleIds.length }}</b> 개 Rule</span>
+      <el-button size="small" type="success" @click="handleBatchStatus(1)">批量활성화</el-button>
+      <el-button size="small" type="warning" @click="handleBatchStatus(2)">批量비활성화</el-button>
+      <el-button size="small" type="primary" plain @click="openBatchNotify">Notification 일괄 활성화</el-button>
+      <el-button size="small" type="primary" @click="openBatchTiming('update_for_seconds')">Duration 일괄 변경</el-button>
+      <el-button size="small" type="info" plain @click="openBatchTiming('update_eval_interval')">Evaluation Interval 일괄 변경</el-button>
+      <el-button size="small" link @click="clearSelection">선택 해제</el-button>
     </div>
 
     <el-table ref="ruleTableRef" v-loading="loading" :data="rows" class="rule-table" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="52" fixed="left" />
-      <el-table-column label="规则" min-width="255">
+      <el-table-column label="Rule" min-width="255">
         <template #default="{ row }"><div class="rule-name-cell"><strong>{{ row.name }}</strong><span><el-tag :type="alertTypeTag(row.alertType)" size="small" effect="plain">{{ alertTypeName(row.alertType) }}</el-tag></span></div></template>
       </el-table-column>
-      <el-table-column label="数据源范围" min-width="180"><template #default="{ row }"><div class="scope-cell"><strong>{{ row.datasourceName || '全部同类数据源' }}</strong><span>{{ row.datasourceScope === 'all' ? '动态匹配所有已启用数据源' : '指定数据源' }}</span></div></template></el-table-column>
-      <el-table-column label="触发条件" min-width="320" show-overflow-tooltip><template #default="{ row }"><div class="condition-cell"><code>{{ row.promql }}</code><span>{{ row.comparator }} {{ row.threshold }} · {{ row.alertType === 'metric' ? `持续 ${row.forSeconds || 0} 秒` : `窗口 ${row.logTimeRangeSeconds || 300} 秒` }}</span></div></template></el-table-column>
-      <el-table-column label="等级" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
-      <el-table-column label="评估状态" min-width="155"><template #default="{ row }"><div class="eval-cell"><span><el-tag :type="evalStatusType(row.lastEvalStatus)" size="small" effect="light">{{ evalStatusText(row.lastEvalStatus) }}</el-tag><em>每 {{ row.evalIntervalSeconds }} 秒</em></span><el-tooltip v-if="row.lastEvalMessage" :content="row.lastEvalMessage" placement="top"><small>{{ formatEvalTime(row.lastEvalAt) }}</small></el-tooltip><small v-else>{{ formatEvalTime(row.lastEvalAt) }}</small></div></template></el-table-column>
-      <el-table-column label="状态" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
-      <el-table-column label="通知" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag class="notification-state" :class="row.notifyEnabled ? 'is-notify-enabled' : 'is-notify-disabled'" size="small" effect="plain">{{ row.notifyEnabled ? '已开启' : '未开启' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
-      <el-table-column label="操作" width="168" fixed="right">
+      <el-table-column label="Datasource Scope" min-width="180"><template #default="{ row }"><div class="scope-cell"><strong>{{ row.datasourceName || '같은 Type의 전체 Datasource' }}</strong><span>{{ row.datasourceScope === 'all' ? '활성화된 모든 Datasource 자동 Match' : '지정 Datasource' }}</span></div></template></el-table-column>
+      <el-table-column label="Trigger Condition" min-width="320" show-overflow-tooltip><template #default="{ row }"><div class="condition-cell"><code>{{ row.promql }}</code><span>{{ row.comparator }} {{ row.threshold }} · {{ row.alertType === 'metric' ? `Duration ${row.forSeconds || 0}초` : `Window ${row.logTimeRangeSeconds || 300}초` }}</span></div></template></el-table-column>
+      <el-table-column label="Severity" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
+      <el-table-column label="Evaluation 상태" min-width="155"><template #default="{ row }"><div class="eval-cell"><span><el-tag :type="evalStatusType(row.lastEvalStatus)" size="small" effect="light">{{ evalStatusText(row.lastEvalStatus) }}</el-tag><em>{{ row.evalIntervalSeconds }}초마다</em></span><el-tooltip v-if="row.lastEvalMessage" :content="row.lastEvalMessage" placement="top"><small>{{ formatEvalTime(row.lastEvalAt) }}</small></el-tooltip><small v-else>{{ formatEvalTime(row.lastEvalAt) }}</small></div></template></el-table-column>
+      <el-table-column label="상태" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '활성화' : '停用' }}</el-tag></template></el-table-column>
+      <el-table-column label="Notification" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag class="notification-state" :class="row.notifyEnabled ? 'is-notify-enabled' : 'is-notify-disabled'" size="small" effect="plain">{{ row.notifyEnabled ? '활성' : '비활성' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
+      <el-table-column label="작업" width="168" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :loading="runningRuleId === row.id" @click="handleRun(row)">运行</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-dropdown trigger="click" @command="(command) => handleRuleCommand(command, row)"><el-button link type="primary">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy">复制规则</el-dropdown-item><el-dropdown-item command="status">{{ row.status === 1 ? '禁用规则' : '启用规则' }}</el-dropdown-item><el-dropdown-item command="delete" divided class="danger-menu-item">删除规则</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+          <el-button link type="primary" :loading="runningRuleId === row.id" @click="handleRun(row)">실행</el-button>
+          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+          <el-dropdown trigger="click" @command="(command) => handleRuleCommand(command, row)"><el-button link type="primary">더보기<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy">Rule 복제</el-dropdown-item><el-dropdown-item command="status">{{ row.status === 1 ? 'Rule 비활성화' : 'Rule 활성화' }}</el-dropdown-item><el-dropdown-item command="delete" divided class="danger-menu-item">Rule 삭제</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -786,157 +786,157 @@ onMounted(async () => {
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(1040px, 94vw)" top="4vh" class="rule-editor-dialog" destroy-on-close>
-      <div class="editor-intro"><div><el-icon><Operation /></el-icon></div><span><strong>配置执行规则</strong><small>新建和复制规则默认保存为停用状态，建议先测试再启用。</small></span><el-button plain @click="openTemplateDialog">选择告警模板</el-button></div>
+      <div class="editor-intro"><div><el-icon><Operation /></el-icon></div><span><strong>Execution Rule 구성</strong><small>新建和Rule 복제默认保存为停用상태，建议先测试再활성화。</small></span><el-button plain @click="openTemplateDialog">Alert Template 선택</el-button></div>
       <el-form label-position="top" class="rule-editor-form">
-        <section class="form-section"><div class="section-heading"><span>01</span><div><strong>基本信息</strong><small>定义规则名称、类型与启用状态。</small></div></div>
-        <div class="form-grid"><el-form-item label="规则名称" required><el-input v-model="form.name" placeholder="例如：生产集群 Pod 异常" /></el-form-item><el-form-item label="规则状态"><el-radio-group v-model="form.status"><el-radio-button :label="2">停用 / 草稿</el-radio-button><el-radio-button :label="1">启用</el-radio-button></el-radio-group></el-form-item></div>
-        <el-form-item label="告警类型" required>
+        <section class="form-section"><div class="section-heading"><span>01</span><div><strong>기본 정보</strong><small>Rule 이름, Type 및 활성 상태를 정의합니다.</small></div></div>
+        <div class="form-grid"><el-form-item label="Rule 이름" required><el-input v-model="form.name" placeholder="예: Production Cluster Pod 이상" /></el-form-item><el-form-item label="Rule 상태"><el-radio-group v-model="form.status"><el-radio-button :label="2">비활성 / Draft</el-radio-button><el-radio-button :label="1">활성화</el-radio-button></el-radio-group></el-form-item></div>
+        <el-form-item label="Alert Type" required>
           <el-radio-group v-model="form.alertType" @change="handleAlertTypeChange">
-            <el-radio-button label="metric">监控告警 / PromQL</el-radio-button>
-            <el-radio-button label="log">日志告警 / Elasticsearch</el-radio-button>
-            <el-radio-button label="victorialogs">日志告警 / VictoriaLogs</el-radio-button>
+            <el-radio-button label="metric">Metric Alert / PromQL</el-radio-button>
+            <el-radio-button label="log">Log Alert / Elasticsearch</el-radio-button>
+            <el-radio-button label="victorialogs">Log Alert / VictoriaLogs</el-radio-button>
           </el-radio-group>
         </el-form-item></section>
 
-        <section class="form-section"><div class="section-heading"><span>02</span><div><strong>数据源与查询</strong><small>明确规则作用范围并编写实际执行的查询语句。</small></div></div>
-        <el-form-item label="数据源范围" required>
+        <section class="form-section"><div class="section-heading"><span>02</span><div><strong>Datasource 및 Query</strong><small>Rule 적용 범위를 정하고 실제 실행할 Query를 작성합니다.</small></div></div>
+        <el-form-item label="Datasource Scope" required>
           <div class="datasource-scope">
             <el-radio-group v-model="form.datasourceScope" @change="applyDatasourceScope">
-              <el-radio-button label="all">匹配所有{{ alertTypeLabel }}数据源</el-radio-button>
-              <el-radio-button label="specific">指定数据源</el-radio-button>
+              <el-radio-button label="all">모든 {{ alertTypeLabel }} Datasource Match</el-radio-button>
+              <el-radio-button label="specific">지정 Datasource</el-radio-button>
             </el-radio-group>
-            <el-select v-if="form.datasourceScope === 'specific'" v-model="form.datasourceId" filterable style="width: 360px" placeholder="选择数据源">
+            <el-select v-if="form.datasourceScope === 'specific'" v-model="form.datasourceId" filterable style="width: 360px" placeholder="选择Datasource">
               <el-option v-for="item in availableDatasourceOptions" :key="item.id" :label="`${item.name} (${item.type})`" :value="item.id" />
             </el-select>
-            <span v-else class="form-tip">将对所有已启用的{{ form.alertType === 'log' ? ' Elasticsearch' : ' Prometheus / VictoriaMetrics' }}数据源分别执行规则。</span>
+            <span v-else class="form-tip">활성화된 모든 {{ form.alertType === 'log' ? 'Elasticsearch' : 'Prometheus / VictoriaMetrics' }} Datasource에서 Rule을 각각 실행합니다.</span>
           </div>
         </el-form-item>
-        <el-form-item v-if="form.alertType === 'log'" label="日志索引" required><el-input v-model="form.logIndex" placeholder="例如：logs-*、.ds-app-log-*；使用 _all 搜索全部索引" /></el-form-item>
+        <el-form-item v-if="form.alertType === 'log'" label="Log Index" required><el-input v-model="form.logIndex" placeholder="예: logs-*, .ds-app-log-*. _all은 전체 Index를 검색합니다." /></el-form-item>
         <el-form-item :label="queryLabel" required>
           <el-input v-model="form.queryText" type="textarea" :rows="4" :placeholder="queryPlaceholder" />
           <div class="form-tip">{{ queryHint }}</div>
         </el-form-item></section>
 
-        <section class="form-section"><div class="section-heading"><span>03</span><div><strong>触发条件</strong><small>配置阈值、持续时间和评估频率。</small></div></div>
+        <section class="form-section"><div class="section-heading"><span>03</span><div><strong>Trigger Condition</strong><small>Threshold, Duration 및 Evaluation Frequency를 구성합니다.</small></div></div>
         <section class="rule-parameters">
           <div class="parameter-card">
-            <span>比较符</span>
+            <span>Comparator</span>
             <el-select v-model="form.comparator"><el-option v-for="item in ['>','>=','<','<=','==','!=']" :key="item" :label="item" :value="item" /></el-select>
-            <small>与阈值进行比较</small>
+            <small>Threshold와 비교</small>
           </div>
           <div class="parameter-card">
-            <span>{{ isLogAlert ? '命中阈值' : '阈值' }}</span>
+            <span>{{ isLogAlert ? 'Match Threshold' : 'Threshold' }}</span>
             <el-input-number v-model="form.threshold" :precision="4" :step="isLogAlert ? 1 : 0.1" controls-position="right" />
-            <small>{{ isLogAlert ? '窗口内匹配日志条数' : '单条时间序列当前值' }}</small>
+            <small>{{ isLogAlert ? 'Window 내 Match Log 수' : '개별 Time Series 현재 값' }}</small>
           </div>
           <div class="parameter-card">
-            <span>{{ isLogAlert ? '查询窗口' : '持续时间' }}</span>
-            <div class="parameter-number"><el-input-number v-if="isLogAlert" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>秒</b></div>
-            <small>{{ isLogAlert ? '统计最近日志范围' : '连续命中后触发' }}</small>
+            <span>{{ isLogAlert ? 'Query Window' : '持续时间' }}</span>
+            <div class="parameter-number"><el-input-number v-if="isLogAlert" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>초</b></div>
+            <small>{{ isLogAlert ? '최근 Log 범위 집계' : '연속 Match 후 Trigger' }}</small>
           </div>
           <div class="parameter-card">
-            <span>评估间隔</span>
-            <div class="parameter-number"><el-input-number v-model="form.evalIntervalSeconds" :min="15" :max="3600" controls-position="right" /><b>秒</b></div>
-            <small>系统执行规则的频率</small>
+            <span>Evaluation Interval</span>
+            <div class="parameter-number"><el-input-number v-model="form.evalIntervalSeconds" :min="15" :max="3600" controls-position="right" /><b>초</b></div>
+            <small>System Rule 실행 주기</small>
           </div>
         </section>
-        <el-form-item label="告警等级"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" /></el-radio-group></el-form-item></section>
+        <el-form-item label="告警Severity"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" /></el-radio-group></el-form-item></section>
 
-        <section class="form-section"><div class="section-heading"><span>04</span><div><strong>通知与上下文</strong><small>补充事件标签、处置说明与消息发送策略。</small></div></div>
-        <div class="json-grid"><el-form-item label="标签 JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" placeholder='例如：{"team":"game"}' /></el-form-item><el-form-item label="注解 JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" placeholder='例如：{"summary":"请及时处理"}' /></el-form-item></div>
+        <section class="form-section"><div class="section-heading"><span>04</span><div><strong>Notification 및 Context</strong><small>Event Label, 대응 설명 및 Message Delivery Policy를 구성합니다.</small></div></div>
+        <div class="json-grid"><el-form-item label="Label JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" placeholder='예: {"team":"game"}' /></el-form-item><el-form-item label="Annotation JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" placeholder='예: {"summary":"즉시 확인 필요"}' /></el-form-item></div>
         <div class="notify-toggle" :class="{ 'is-enabled': form.notifyEnabled }">
-          <div class="notify-toggle-copy"><div class="notify-toggle-icon"><el-icon><Bell /></el-icon></div><span><strong>消息通知</strong><small>{{ form.notifyEnabled ? '规则触发或恢复后，将按通知策略发送消息。' : '当前未发送消息；开启后可配置通知策略。' }}</small></span></div>
-          <div class="notify-toggle-action"><el-tag :type="form.notifyEnabled ? 'success' : 'info'" effect="light">{{ form.notifyEnabled ? '已开启' : '未开启' }}</el-tag><el-switch v-model="form.notifyEnabled" /></div>
+          <div class="notify-toggle-copy"><div class="notify-toggle-icon"><el-icon><Bell /></el-icon></div><span><strong>Notification</strong><small>{{ form.notifyEnabled ? 'Rule Trigger 또는 Recovery 후 Notification Policy에 따라 Message를 전송합니다.' : '현재 Message를 전송하지 않습니다. 활성화하면 Notification Policy를 구성할 수 있습니다.' }}</small></span></div>
+          <div class="notify-toggle-action"><el-tag :type="form.notifyEnabled ? 'success' : 'info'" effect="light">{{ form.notifyEnabled ? '활성' : '비활성' }}</el-tag><el-switch v-model="form.notifyEnabled" /></div>
         </div>
-        <div v-if="form.notifyEnabled" class="notify-settings"><el-form-item label="通知规则" required><el-select v-model="form.notifyRuleId" filterable style="width: 100%"><el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><div class="form-grid"><el-form-item label="重复通知间隔"><div class="parameter-number"><el-input-number v-model="form.notifyRepeatIntervalMinutes" :min="1" :max="10080" controls-position="right" /><b>分钟</b></div></el-form-item><el-form-item label="最大发送次数"><el-input-number v-model="form.maxNotifyCount" :min="0" :max="1000" controls-position="right" /><div class="form-tip">0 表示不限制次数。</div></el-form-item></div><el-form-item label="恢复通知"><el-switch v-model="form.notifyRecoveryEnabled" /></el-form-item></div>
-        <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="补充影响范围、处置建议或值班说明" /></el-form-item></section>
+        <div v-if="form.notifyEnabled" class="notify-settings"><el-form-item label="NotificationRule" required><el-select v-model="form.notifyRuleId" filterable style="width: 100%"><el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><div class="form-grid"><el-form-item label="Repeat Notification Interval"><div class="parameter-number"><el-input-number v-model="form.notifyRepeatIntervalMinutes" :min="1" :max="10080" controls-position="right" /><b>분</b></div></el-form-item><el-form-item label="Maximum Send Count"><el-input-number v-model="form.maxNotifyCount" :min="0" :max="1000" controls-position="right" /><div class="form-tip">0은 횟수 제한 없음을 의미합니다.</div></el-form-item></div><el-form-item label="Recovery Notification"><el-switch v-model="form.notifyRecoveryEnabled" /></el-form-item></div>
+        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="영향 범위, 대응 권고 또는 On-call 설명" /></el-form-item></section>
       </el-form>
-      <template #footer><div class="rule-editor-footer"><span>建议先执行测试，确认查询和阈值符合预期。</span><div><el-button @click="dialogVisible = false">取消</el-button><el-button :loading="previewLoading" @click="handlePreview">测试规则</el-button><el-button type="primary" :loading="saving" @click="submit">保存规则</el-button></div></div></template>
+      <template #footer><div class="rule-editor-footer"><span>建议先执行测试，确认조회和Threshold符合预期。</span><div><el-button @click="dialogVisible = false">취소</el-button><el-button :loading="previewLoading" @click="handlePreview">Rule Test</el-button><el-button type="primary" :loading="saving" @click="submit">Rule 저장</el-button></div></div></template>
     </el-dialog>
 
-    <el-dialog v-model="previewVisible" title="规则执行预览" width="920px" append-to-body>
+    <el-dialog v-model="previewVisible" title="Rule Execution Preview" width="920px" append-to-body>
       <div v-loading="previewLoading" class="preview-body">
         <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" show-icon />
-        <el-alert v-else :title="previewResult.explanation || '正在执行规则预览'" :type="previewResult.failedDatasourceCount ? 'warning' : 'success'" :closable="false" show-icon />
+        <el-alert v-else :title="previewResult.explanation || 'Rule Preview 실행 중'" :type="previewResult.failedDatasourceCount ? 'warning' : 'success'" :closable="false" show-icon />
         <div class="preview-metrics">
-          <div><span>数据源</span><strong>{{ previewResult.datasourceCount || 0 }}</strong></div>
-          <div><span>返回序列</span><strong>{{ previewResult.totalSeries || 0 }}</strong></div>
-          <div><span>预计告警</span><strong class="matched">{{ previewResult.totalMatched || 0 }}</strong></div>
-          <div><span>查询失败</span><strong>{{ previewResult.failedDatasourceCount || 0 }}</strong></div>
+          <div><span>Datasource</span><strong>{{ previewResult.datasourceCount || 0 }}</strong></div>
+          <div><span>반환 Series</span><strong>{{ previewResult.totalSeries || 0 }}</strong></div>
+          <div><span>예상 Alert</span><strong class="matched">{{ previewResult.totalMatched || 0 }}</strong></div>
+          <div><span>Query 실패</span><strong>{{ previewResult.failedDatasourceCount || 0 }}</strong></div>
         </div>
         <div v-for="item in previewResult.results || []" :key="item.datasourceId" class="preview-source">
           <div class="preview-source-head">
             <strong>{{ item.datasourceName }}</strong>
-            <el-tag :type="item.status === 'success' ? 'success' : 'danger'">{{ item.status === 'success' ? '查询成功' : '查询失败' }}</el-tag>
+            <el-tag :type="item.status === 'success' ? 'success' : 'danger'">{{ item.status === 'success' ? 'Query 성공' : 'Query 실패' }}</el-tag>
           </div>
           <el-alert v-if="item.error" :title="item.error" type="error" :closable="false" />
-          <el-table v-else :data="item.samples || []" border max-height="300" empty-text="查询成功，但没有返回时间序列">
-            <el-table-column label="是否触发" width="100"><template #default="{ row }"><el-tag :type="row.matched ? 'danger' : 'success'">{{ row.matched ? '满足条件' : '未触发' }}</el-tag></template></el-table-column>
-            <el-table-column label="当前值" width="140"><template #default="{ row }">{{ Number(row.value || 0).toFixed(4) }}</template></el-table-column>
-            <el-table-column label="标签" min-width="480" show-overflow-tooltip><template #default="{ row }">{{ sampleLabel(row.labels) }}</template></el-table-column>
+          <el-table v-else :data="item.samples || []" border max-height="300" empty-text="Query 성공，但没有返回时间序列">
+            <el-table-column label="Trigger 여부" width="100"><template #default="{ row }"><el-tag :type="row.matched ? 'danger' : 'success'">{{ row.matched ? '조건 충족' : '미발생' }}</el-tag></template></el-table-column>
+            <el-table-column label="현재 값" width="140"><template #default="{ row }">{{ Number(row.value || 0).toFixed(4) }}</template></el-table-column>
+            <el-table-column label="Label" min-width="480" show-overflow-tooltip><template #default="{ row }">{{ sampleLabel(row.labels) }}</template></el-table-column>
           </el-table>
         </div>
       </div>
-      <template #footer><el-button type="primary" @click="previewVisible = false">关闭</el-button></template>
+      <template #footer><el-button type="primary" @click="previewVisible = false">비활성</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="templateDialogVisible" title="从告警模板批量创建规则" width="1120px" top="5vh" class="managed-template-dialog" destroy-on-close>
-      <div class="template-dialog-head"><div><strong>告警模板库</strong><span>勾选多个模板后可一次创建规则；新规则统一保存为停用状态，测试通过后再启用。</span></div><el-input v-model="templateKeyword" clearable placeholder="搜索模板名称或查询条件" style="width: 300px" @keyup.enter="loadManagedTemplates()"><template #prefix><el-icon><Search /></el-icon></template><template #append><el-button aria-label="查询模板" @click="loadManagedTemplates()"><el-icon><Search /></el-icon></el-button></template></el-input></div>
+    <el-dialog v-model="templateDialogVisible" title="Alert Template에서 Rule 일괄 생성" width="1120px" top="5vh" class="managed-template-dialog" destroy-on-close>
+      <div class="template-dialog-head"><div><strong>Alert Template Library</strong><span>여러 Template을 선택해 Rule을 한 번에 생성합니다. 새 Rule은 비활성 상태로 저장되며 Test 후 활성화하십시오.</span></div><el-input v-model="templateKeyword" clearable placeholder="Template 이름 또는 Query 조건 검색" style="width: 300px" @keyup.enter="loadManagedTemplates()"><template #prefix><el-icon><Search /></el-icon></template><template #append><el-button aria-label="Template 검색" @click="loadManagedTemplates()"><el-icon><Search /></el-icon></el-button></template></el-input></div>
       <div v-loading="templateLoading" class="template-library-layout">
-        <aside class="template-groups"><button :class="{ active: !selectedTemplateGroupId }" @click="selectTemplateGroup()"><el-icon><FolderOpened /></el-icon><span>全部模板</span></button><el-tree :data="templateGroupTree" node-key="id" :default-expand-all="true" :highlight-current="true" :current-node-key="selectedTemplateGroupId" @node-click="(data) => selectTemplateGroup(data.id)"><template #default="{ data }"><span class="template-group-node"><span>{{ data.name }}</span><small>{{ data.totalCount }}</small></span></template></el-tree></aside>
+        <aside class="template-groups"><button :class="{ active: !selectedTemplateGroupId }" @click="selectTemplateGroup()"><el-icon><FolderOpened /></el-icon><span>전체 Template</span></button><el-tree :data="templateGroupTree" node-key="id" :default-expand-all="true" :highlight-current="true" :current-node-key="selectedTemplateGroupId" @node-click="(data) => selectTemplateGroup(data.id)"><template #default="{ data }"><span class="template-group-node"><span>{{ data.name }}</span><small>{{ data.totalCount }}</small></span></template></el-tree></aside>
         <div class="rule-template-list">
           <el-table ref="templateTableRef" :data="visibleRuleTemplates" row-key="id" height="520" class="template-select-table" @selection-change="handleTemplateSelectionChange">
             <el-table-column type="selection" width="48" reserve-selection />
-            <el-table-column label="模板名称" min-width="230">
-              <template #default="{ row }"><div class="template-name-cell"><strong>{{ row.name }}</strong><span>{{ row.description || '基于该模板快速创建告警规则' }}</span></div></template>
+            <el-table-column label="Template 이름" min-width="230">
+              <template #default="{ row }"><div class="template-name-cell"><strong>{{ row.name }}</strong><span>{{ row.description || '이 Template을 기준으로 Alert Rule 빠른 생성' }}</span></div></template>
             </el-table-column>
-            <el-table-column label="模板分组" min-width="170"><template #default="{ row }"><el-tag type="primary" size="small" effect="plain">{{ templateGroupPath(row.groupId) }}</el-tag></template></el-table-column>
-            <el-table-column label="等级" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light" size="small">{{ row.severity }}</el-tag></template></el-table-column>
-            <el-table-column label="数据源" width="120"><template #default="{ row }"><span class="template-datasource">{{ row.datasourceType === 'victorialogs' ? 'VictoriaLogs' : (row.datasourceType === 'elasticsearch' ? 'Elasticsearch' : 'Prometheus') }}</span></template></el-table-column>
-            <el-table-column label="查询模板" min-width="260" show-overflow-tooltip><template #default="{ row }"><code class="template-query">{{ row.queryText }}</code></template></el-table-column>
-            <el-table-column label="操作" width="86" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="applyRuleTemplate(templateWithType(row))">单条配置</el-button></template></el-table-column>
-            <template #empty><el-empty description="当前条件下暂无告警模板" /></template>
+            <el-table-column label="Template Group" min-width="170"><template #default="{ row }"><el-tag type="primary" size="small" effect="plain">{{ templateGroupPath(row.groupId) }}</el-tag></template></el-table-column>
+            <el-table-column label="Severity" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light" size="small">{{ row.severity }}</el-tag></template></el-table-column>
+            <el-table-column label="Datasource" width="120"><template #default="{ row }"><span class="template-datasource">{{ row.datasourceType === 'victorialogs' ? 'VictoriaLogs' : (row.datasourceType === 'elasticsearch' ? 'Elasticsearch' : 'Prometheus') }}</span></template></el-table-column>
+            <el-table-column label="Template 검색" min-width="260" show-overflow-tooltip><template #default="{ row }"><code class="template-query">{{ row.queryText }}</code></template></el-table-column>
+            <el-table-column label="작업" width="86" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="applyRuleTemplate(templateWithType(row))">개별 구성</el-button></template></el-table-column>
+            <template #empty><el-empty description="현재 조건에 해당하는 Alert Template이 없습니다." /></template>
           </el-table>
         </div>
       </div>
       <template #footer>
         <div class="template-dialog-footer">
-          <div class="template-selection-summary"><span>已选择 <b>{{ selectedManagedTemplates.length }}</b> 个模板</span><el-button v-if="selectedManagedTemplates.length" link type="primary" @click="clearTemplateSelection">清空选择</el-button></div>
-          <div><el-button @click="templateDialogVisible = false">取消</el-button><el-button type="primary" :loading="templateImporting" :disabled="!selectedManagedTemplates.length" @click="importSelectedTemplates">批量创建规则<span v-if="selectedManagedTemplates.length">（{{ selectedManagedTemplates.length }}）</span></el-button></div>
+          <div class="template-selection-summary"><span>선택됨 <b>{{ selectedManagedTemplates.length }}</b> 개 Template</span><el-button v-if="selectedManagedTemplates.length" link type="primary" @click="clearTemplateSelection">선택 초기화</el-button></div>
+          <div><el-button @click="templateDialogVisible = false">취소</el-button><el-button type="primary" :loading="templateImporting" :disabled="!selectedManagedTemplates.length" @click="importSelectedTemplates">Rule 일괄 생성<span v-if="selectedManagedTemplates.length">（{{ selectedManagedTemplates.length }}）</span></el-button></div>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="batchNotifyVisible" title="批量启用通知" width="640px" append-to-body>
-      <p class="batch-dialog-tip">将为已选中的 {{ selectedRuleIds.length }} 条告警规则开启消息通知，并统一应用以下通知策略。</p>
+    <el-dialog v-model="batchNotifyVisible" title="Notification 일괄 활성화" width="640px" append-to-body>
+      <p class="batch-dialog-tip">将为已选中的 {{ selectedRuleIds.length }} 개告警Rule활성Notification，并统一应用以下Notification策略。</p>
       <el-form label-position="top" class="batch-notify-form">
-        <el-form-item label="通知规则" required>
-          <el-select v-model="batchNotifyRuleId" filterable style="width: 100%" placeholder="请选择通知规则">
+        <el-form-item label="NotificationRule" required>
+          <el-select v-model="batchNotifyRuleId" filterable style="width: 100%" placeholder="Notification Rule을 선택하십시오.">
             <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
         <div class="batch-notify-grid">
-          <el-form-item label="重复通知间隔" required>
+          <el-form-item label="Repeat Notification Interval" required>
             <div class="batch-number-input">
               <el-input-number v-model="batchNotifyRepeatIntervalMinutes" :min="1" :max="10080" :step="5" controls-position="right" />
-              <span>分钟</span>
+              <span>분</span>
             </div>
           </el-form-item>
-          <el-form-item label="最大发送次数" required>
+          <el-form-item label="Maximum Send Count" required>
             <div class="batch-number-input">
               <el-input-number v-model="batchNotifyMaxCount" :min="0" :max="1000" controls-position="right" />
-              <span>0 表示不限制次数</span>
+              <span>0은 횟수 제한 없음</span>
             </div>
           </el-form-item>
         </div>
-        <el-form-item class="batch-recovery-field" label="恢复通知">
+        <el-form-item class="batch-recovery-field" label="Recovery Notification">
           <div class="batch-recovery-control">
-            <el-switch v-model="batchNotifyRecoveryEnabled" active-text="开启" inactive-text="关闭" />
-            <span>告警恢复后发送恢复消息</span>
+            <el-switch v-model="batchNotifyRecoveryEnabled" active-text="활성" inactive-text="비활성" />
+            <span>Alert Recovery 후 Recovery Message 전송</span>
           </div>
         </el-form-item>
       </el-form>
-      <template #footer><el-button @click="batchNotifyVisible = false">取消</el-button><el-button type="primary" :loading="batchNotifySaving" @click="submitBatchNotify">确认启用</el-button></template>
+      <template #footer><el-button @click="batchNotifyVisible = false">취소</el-button><el-button type="primary" :loading="batchNotifySaving" @click="submitBatchNotify">활성화 확인</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="batchTimingVisible" :title="batchTimingTitle" width="520px" append-to-body>
@@ -945,12 +945,12 @@ onMounted(async () => {
         <el-form-item :label="batchTimingLabel" required>
           <div class="batch-timing-input">
             <el-input-number v-model="batchTimingValue" :min="batchTimingMin" :max="batchTimingMax" :step="batchTimingAction === 'update_for_seconds' ? 30 : 15" controls-position="right" />
-            <span>秒</span>
+            <span>초</span>
           </div>
         </el-form-item>
-        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? '0 秒表示条件命中后立即触发；最长不超过 24 小时。' : '评估间隔最短 15 秒，最长 1 小时。' }}</div>
+        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? '0초는 조건 Match 즉시 Trigger를 의미하며 최대 24시간입니다.' : 'Evaluation Interval最短 15초，最长 1시간。' }}</div>
       </el-form>
-      <template #footer><el-button @click="batchTimingVisible = false">取消</el-button><el-button type="primary" :loading="batchTimingSaving" @click="submitBatchTiming">保存修改</el-button></template>
+      <template #footer><el-button @click="batchTimingVisible = false">취소</el-button><el-button type="primary" :loading="batchTimingSaving" @click="submitBatchTiming">변경 저장</el-button></template>
     </el-dialog>
   </div>
 </template>
