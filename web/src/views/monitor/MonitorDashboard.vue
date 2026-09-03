@@ -126,8 +126,8 @@ const dashboardTemplates = [
       { title: '이상 Reason Top', chartType: 'bar', unit: '개', span: 12, promql: 'sum by (reason) (kube_pod_container_status_waiting_reason)' },
       { title: 'Pod 누적 Restart Top', chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))' },
       { title: '최근 1시간 Pod Restart 증가 Top', chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))' },
-      { title: '容器 CPU 사용 Trend', chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
-      { title: '容器Memory 사용 Trend', chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
+      { title: 'Container CPU 사용 Trend', chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
+      { title: 'Container Memory 사용 Trend', chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
       { title: 'Pod Network 수신 Rate', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_receive_bytes_total[5m]))' },
       { title: 'Pod Network 송신 Rate', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_transmit_bytes_total[5m]))' },
       { title: 'Pod 상세', chartType: 'table', unit: '', span: 24, promql: 'kube_pod_info' }
@@ -439,7 +439,7 @@ function exportInspectionReportPdf() {
         <table>
           <thead>
             <tr>
-              <th>#</th><th>Panel</th><th>상태</th><th>현재 값</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / 错误</th>
+              <th>#</th><th>Panel</th><th>상태</th><th>현재 값</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / Error</th>
             </tr>
           </thead>
           <tbody>${rows || '<tr><td colspan="8">Inspection Panel이 없습니다.</td></tr>'}</tbody>
@@ -545,7 +545,7 @@ async function submitDashboard() {
 
 async function handleDeleteDashboard() {
   if (!activeDashboard.value) return
-  await ElMessageBox.confirm(`${pageTitle.value} “${activeDashboard.value.name}”을(를) 삭제하시겠습니까? 연결된 Panel도 함께 삭제됩니다.`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`${pageTitle.value} “${activeDashboard.value.name}”을(를) 삭제하시겠습니까? 연결된 Panel도 함께 삭제됩니다.`, '확인', { type: 'warning' })
   await deleteMonitorDashboard(activeDashboard.value.id)
   ElMessage.success('삭제했습니다.')
   activeDashboardId.value = undefined
@@ -583,7 +583,7 @@ async function submitPanel() {
 }
 
 async function handleDeletePanel(row) {
-  await ElMessageBox.confirm(`Panel “${row.title}”을(를) 삭제하시겠습니까?`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Panel “${row.title}”을(를) 삭제하시겠습니까?`, '확인', { type: 'warning' })
   await deleteMonitorDashboardPanel(row.id)
   ElMessage.success('삭제했습니다.')
   await loadDashboard(activeDashboardId.value)
@@ -805,7 +805,7 @@ onBeforeUnmount(() => {
           </el-select>
           <el-button @click="refreshAllPanels" :disabled="!activePanels.length">전체 Refresh</el-button>
           <el-button v-if="!isListLayout" @click="toggleFullscreen" :disabled="!activeDashboard">{{ isFullscreen ? '전체 화면 종료' : 'Dashboard 전체 화면' }}</el-button>
-          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">导出Inspection Report PDF</el-button>
+          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">Inspection Report PDF Export</el-button>
           <el-button v-if="!isFullscreen" @click="openEditDashboard" :disabled="!activeDashboard">{{ pageTitle }} 수정</el-button>
           <el-button v-if="!isFullscreen" type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">{{ pageTitle }} 삭제</el-button>
           <el-button v-if="!isFullscreen" type="primary" @click="openCreatePanel">Panel 추가</el-button>
@@ -1006,7 +1006,7 @@ onBeforeUnmount(() => {
                   :style="{ stroke: series.color }"
                 />
               </svg>
-              <div class="trend-axis"><span>시작</span><span>当前</span></div>
+              <div class="trend-axis"><span>시작</span><span>현재</span></div>
             </div>
             <div v-if="panelLineSeries(panel).length > 1" class="trend-legend">
               <span v-for="(series, index) in panelLineSeries(panel).slice(0, 4)" :key="`${series.name}-legend-${index}`">
@@ -1023,7 +1023,7 @@ onBeforeUnmount(() => {
                 <div class="stat-value">{{ panelValue(panel) }}<small>{{ panel.unit }}</small></div>
                 <div class="stat-caption">
                   <span></span>
-                  실시간采样
+                  실시간 Sampling
                 </div>
               </div>
               <svg v-if="panel.chartType === 'line'" class="sparkline" viewBox="0 0 100 52" preserveAspectRatio="none">
@@ -1049,7 +1049,7 @@ onBeforeUnmount(() => {
           </div>
         </el-form-item>
         <el-form-item label="Type">
-          <el-tag type="primary" effect="light">{{ isListLayout ? 'Inspection Dashboard / List Inspection' : 'Monitoring Dashboard / 网格展示' }}</el-tag>
+          <el-tag type="primary" effect="light">{{ isListLayout ? 'Inspection Dashboard / List Inspection' : 'Monitoring Dashboard / Grid Layout' }}</el-tag>
         </el-form-item>
         <el-form-item label="상태">
           <el-radio-group v-model="dashboardForm.status">
