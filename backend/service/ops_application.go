@@ -1074,7 +1074,7 @@ func validateOpsPipelineStages(stages []OpsAppPipelineStageDefinition, validateD
 		}
 		if validateDeployTarget && stage.Type == "k8sDeploy" {
 			if opsPipelineConfigUint(stage.Config, "clusterId") == 0 || opsPipelineConfigString(stage.Config, "namespace") == "" || opsPipelineConfigString(stage.Config, "workload") == "" || opsPipelineConfigString(stage.Config, "container") == "" {
-				return fmt.Errorf("Kubernetes Deployment阶段「%s」缺少集群、命名空间、工作负载或容器配置", stage.Name)
+				return fmt.Errorf("Kubernetes deployment stage %q is missing cluster, namespace, workload, or container configuration", stage.Name)
 			}
 		}
 	}
@@ -1601,7 +1601,7 @@ func (s *Service) RollbackOpsAppPipelineRun(runID uint, operator string) (map[st
 		}
 	}
 	if len(stages) == 0 {
-		return nil, errors.New("当前流水线没有 Kubernetes Deployment阶段，无法自动回滚")
+		return nil, errors.New("the current pipeline has no Kubernetes deployment stage and cannot be rolled back automatically")
 	}
 	normalized, _ := json.Marshal(map[string]any{"stages": stages})
 	now := time.Now()
@@ -1687,7 +1687,7 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 	case "k8sDeploy":
 		clusterID := opsPipelineConfigUint(stage.Config, "clusterId")
 		if clusterID == 0 {
-			return header, errors.New("Kubernetes Deployment需要选择目标集群")
+			return header, errors.New("Kubernetes deployment requires a target cluster")
 		}
 		kubeconfigPath, cleanup, err := s.opsPipelineKubeconfigFile(clusterID)
 		if err != nil {
@@ -1759,7 +1759,7 @@ func (s *Service) executeOpsAppPipelineStage(execInfo opsPipelineExecution, stag
 		if queued == 0 {
 			return header, errors.New("selected notification rule produced no valid delivery; verify the rule, template, and channel status")
 		}
-		return header + fmt.Sprintf("Created %d delivery task(s) through notification rule #%d; review actual results in Notifications / Send Logs.\n", ruleID, queued), nil
+		return header + fmt.Sprintf("Created delivery tasks through notification rule #%d: %d task(s); review actual results in Notifications / Send Logs.\n", ruleID, queued), nil
 	default:
 		return header, fmt.Errorf("unsupported stage type: %s", stage.Type)
 	}
@@ -1783,14 +1783,14 @@ func (s *Service) executeOpsAppPipelineRemoteStage(execInfo opsPipelineExecution
 	workspace := filepath.ToSlash(execInfo.Workspace)
 	switch stage.Type {
 	case "checkout":
-		output, err := run("远程Source Checkout", s.remoteOpsAppCheckoutCommand(execInfo.App, workspace, execInfo.Branch))
+		output, err := run("Remote Source Checkout", s.remoteOpsAppCheckoutCommand(execInfo.App, workspace, execInfo.Branch))
 		return header + output, err
 	case "command", "test", "build":
 		script := opsPipelineConfigString(stage.Config, "script")
 		if script == "" {
 			return header, errors.New("stage script is required")
 		}
-		output, err := run("远程Execution Script", remoteOpsPipelineScriptCommand(workspace, script, execInfo))
+		output, err := run("Remote Script Execution", remoteOpsPipelineScriptCommand(workspace, script, execInfo))
 		return header + sectionLog("Execution Script", script) + output, err
 	case "dockerBuild":
 		image, err := s.opsPipelineImageName(stage.Config, execInfo)
@@ -1815,12 +1815,12 @@ func (s *Service) executeOpsAppPipelineRemoteStage(execInfo opsPipelineExecution
 		if err != nil {
 			return header, err
 		}
-		output, runErr := run("远程Push Image to Registry: "+image, "cd "+shellQuote(workspace)+" && "+login+" && docker push "+shellQuote(image))
+		output, runErr := run("Remote Registry Push: "+image, "cd "+shellQuote(workspace)+" && "+login+" && docker push "+shellQuote(image))
 		return header + output, runErr
 	case "k8sDeploy":
 		clusterID := opsPipelineConfigUint(stage.Config, "clusterId")
 		if clusterID == 0 {
-			return header, errors.New("Kubernetes Deployment需要选择目标集群")
+			return header, errors.New("Kubernetes deployment requires a target cluster")
 		}
 		kubeconfigPath, cleanup, err := s.opsPipelineKubeconfigFile(clusterID)
 		if err != nil {
@@ -1853,7 +1853,7 @@ func (s *Service) executeOpsAppPipelineRemoteStage(execInfo opsPipelineExecution
 		if healthURL == "" {
 			return header + output, nil
 		}
-		healthOutput, healthErr := run("远程Post-deployment Health Check: "+healthURL, "curl -fsS --max-time "+strconv.Itoa(seconds)+" "+shellQuote(healthURL))
+		healthOutput, healthErr := run("Remote Post-deployment Health Check: "+healthURL, "curl -fsS --max-time "+strconv.Itoa(seconds)+" "+shellQuote(healthURL))
 		return header + output + healthOutput, healthErr
 	default:
 		return header, fmt.Errorf("unsupported stage type: %s", stage.Type)
@@ -2062,7 +2062,7 @@ func (s *Service) opsPipelineImageName(config map[string]any, execInfo opsPipeli
 func (s *Service) loginOpsPipelineRegistry(config map[string]any, workspace string, timeout time.Duration) (string, error) {
 	registryID := opsPipelineConfigUint(config, "registryId")
 	if registryID == 0 {
-		return "未配置Image Registry Login凭据，跳过 docker login。\n", nil
+		return "Image registry credentials are not configured; skipping docker login.\n", nil
 	}
 	var registry model.OpsImageRegistry
 	if err := s.db.Where("id = ? AND status = ?", registryID, 1).First(&registry).Error; err != nil {
@@ -2175,14 +2175,14 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 				if checkoutResult.ErrorText != "" {
 					buildLogs.Append("\nERROR: " + checkoutResult.ErrorText + "\n")
 				}
-				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "远程Source Checkout失败")
+				status, stage, summary = "failed", "checkout", firstNonEmpty(checkoutResult.ErrorText, "Remote Source Checkout失败")
 			} else {
 				commitResult := s.execCommandOnHost(host, "cd "+shellQuote(remoteWorkspace)+" && (git rev-parse --short HEAD 2>/dev/null || svn info --show-item revision 2>/dev/null || true)", 30)
 				commitID = strings.TrimSpace(commitResult.Stdout)
 				variables := s.opsAppBuildEnvironment(execInfo, commitID, remoteWorkspace)
 				stage = "build"
 				buildLogs.Append(sectionLog("Remote Build", ""))
-				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "Executing构建脚本", "commit_id": commitID}).Error
+				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "Executing build script", "commit_id": commitID}).Error
 				buildResult := s.execCommandOnHostStreaming(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.BuildScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds), func(chunk string) {
 					buildLogs.Append(s.sanitizeOpsAppLog(execInfo.App, chunk))
 				})
@@ -2195,7 +2195,7 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 				} else if strings.TrimSpace(execInfo.DeployScript) != "" {
 					stage = "post_build"
 					postBuildLogs.Append(sectionLog("Remote Post Build", ""))
-					_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "Executing构建后操作"}).Error
+					_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{"stage": stage, "summary": "Executing post-build operation"}).Error
 					postResult := s.execCommandOnHostStreaming(host, remoteOpsAppScriptCommand(remoteWorkspace, execInfo.DeployScript, variables), normalizeOpsBuildTimeout(execInfo.TimeoutSeconds), func(chunk string) {
 						postBuildLogs.Append(s.sanitizeOpsAppLog(execInfo.App, chunk))
 					})
@@ -2223,7 +2223,7 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 			variables := s.opsAppBuildEnvironment(execInfo, commitID, workspace)
 			stage = "build"
 			_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-				"stage": stage, "summary": "Executing构建脚本", "build_log": buildLogs.String(), "commit_id": commitID,
+				"stage": stage, "summary": "Executing build script", "build_log": buildLogs.String(), "commit_id": commitID,
 			})
 			buildOutput, buildErr := runOpsAppShellWithEnv(execInfo.BuildScript, workspace, timeout, variables)
 			buildLogs.Append(sectionLog("Build", buildOutput))
@@ -2232,7 +2232,7 @@ func (s *Service) runOpsAppBuild(execInfo opsBuildExecution) {
 			} else if strings.TrimSpace(execInfo.DeployScript) != "" {
 				stage = "post_build"
 				_ = s.db.Model(&model.OpsAppRelease{}).Where("id = ?", execInfo.ReleaseID).Updates(map[string]any{
-					"stage": stage, "summary": "Executing构建后操作", "build_log": buildLogs.String(), "commit_id": commitID,
+					"stage": stage, "summary": "Executing post-build operation", "build_log": buildLogs.String(), "commit_id": commitID,
 				})
 				postOutput, postErr := runOpsAppShellWithEnv(execInfo.DeployScript, workspace, timeout, variables)
 				postBuildLogs.Append(sectionLog("Post Build", postOutput))
