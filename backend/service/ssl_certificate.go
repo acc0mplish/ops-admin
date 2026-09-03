@@ -217,21 +217,21 @@ func (s *Service) UploadSSLCertificate(payload SSLCertificateUploadPayload, acto
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.MainDomain = normalizePublicName(payload.MainDomain)
 	if payload.Name == "" {
-		return 0, errors.New("证书名称不能为空")
+		return 0, errors.New("certificate name is required")
 	}
 	parsed, err := parseCertificateAndKey(payload.CertificatePEM, payload.PrivateKeyPEM)
 	if err != nil {
-		s.writeCertificateAudit(actor, 0, "上传证书", payload.MainDomain, nil, "", 0, err)
+		s.writeCertificateAudit(actor, 0, "Upload Certificate", payload.MainDomain, nil, "", 0, err)
 		return 0, err
 	}
 	if time.Now().After(parsed.Leaf.NotAfter) {
-		err = errors.New("证书已过期，禁止上传")
-		s.writeCertificateAudit(actor, 0, "上传证书", payload.MainDomain, parsed.Domains, "", 0, err)
+		err = errors.New("expired certificate cannot be uploaded")
+		s.writeCertificateAudit(actor, 0, "Upload Certificate", payload.MainDomain, parsed.Domains, "", 0, err)
 		return 0, err
 	}
 	snapshot, err := s.resolvePublicDomainSnapshot(payload.MainDomain, parsed.Domains, 0)
 	if err != nil {
-		s.writeCertificateAudit(actor, 0, "上传证书", payload.MainDomain, parsed.Domains, "", 0, err)
+		s.writeCertificateAudit(actor, 0, "Upload Certificate", payload.MainDomain, parsed.Domains, "", 0, err)
 		return 0, err
 	}
 	if payload.MainDomain == "" {
@@ -239,7 +239,7 @@ func (s *Service) UploadSSLCertificate(payload SSLCertificateUploadPayload, acto
 	}
 	for _, domain := range parsed.Domains {
 		if !domainWithinMain(domain, payload.MainDomain) {
-			return 0, fmt.Errorf("证书域名 %s 不属于公网主域名 %s", domain, payload.MainDomain)
+			return 0, fmt.Errorf("certificate domain %s does not belong to public main domain %s", domain, payload.MainDomain)
 		}
 	}
 	cipherText, err := util.EncryptSecret(strings.TrimSpace(payload.PrivateKeyPEM))
@@ -257,7 +257,7 @@ func (s *Service) UploadSSLCertificate(payload SSLCertificateUploadPayload, acto
 		}
 		return replaceCertificateDomains(tx, item.ID, payload.MainDomain, parsed.Domains)
 	})
-	s.writeCertificateAudit(actor, item.ID, "上传证书", payload.MainDomain, parsed.Domains, item.Provider, item.DNSAccountID, err)
+	s.writeCertificateAudit(actor, item.ID, "Upload Certificate", payload.MainDomain, parsed.Domains, item.Provider, item.DNSAccountID, err)
 	if err == nil && payload.SyncToCloud {
 		_, _ = s.QueueCertificateTask(item.ID, "SYNC", actor)
 	}
@@ -268,19 +268,19 @@ func (s *Service) CreateSSLCertificateApplication(payload SSLCertificateApplyPay
 	payload.MainDomain = normalizePublicName(payload.MainDomain)
 	payload.CertificateDomain = normalizePublicName(payload.CertificateDomain)
 	if payload.MainDomain == "" || payload.CertificateDomain == "" {
-		return 0, 0, errors.New("主域名和证书域名不能为空")
+		return 0, 0, errors.New("main domain and certificate domain are required")
 	}
 	if payload.Type != model.SSLCertificateTypeSingle && payload.Type != model.SSLCertificateTypeWildcard {
-		return 0, 0, errors.New("第一阶段仅支持单域名和泛域名证书")
+		return 0, 0, errors.New("the current phase supports only single-domain and wildcard certificates")
 	}
 	if payload.Type == model.SSLCertificateTypeWildcard && !strings.HasPrefix(payload.CertificateDomain, "*.") {
-		return 0, 0, errors.New("泛域名证书必须使用 *.example.com 格式")
+		return 0, 0, errors.New("wildcard certificate must use the *.example.com format")
 	}
 	if payload.Type == model.SSLCertificateTypeSingle && strings.HasPrefix(payload.CertificateDomain, "*.") {
-		return 0, 0, errors.New("单域名证书不能包含通配符")
+		return 0, 0, errors.New("single-domain certificate cannot contain a wildcard")
 	}
 	if !domainWithinMain(payload.CertificateDomain, payload.MainDomain) {
-		return 0, 0, errors.New("证书域名不属于所选主域名")
+		return 0, 0, errors.New("certificate domain does not belong to the selected main domain")
 	}
 	snapshot, err := s.resolvePublicDomainSnapshot(payload.MainDomain, []string{payload.CertificateDomain}, 0)
 	if err != nil {
@@ -288,7 +288,7 @@ func (s *Service) CreateSSLCertificateApplication(payload SSLCertificateApplyPay
 	}
 	var account model.PublicDNSAccount
 	if err := s.db.First(&account, snapshot.AccountID).Error; err != nil || account.Status != 1 {
-		return 0, 0, errors.New("当前主域名未关联可用 DNS 云账号，无法执行 DNS 所有权验证")
+		return 0, 0, errors.New("the current main domain has no available DNS cloud account for DNS ownership validation")
 	}
 	if payload.Name = strings.TrimSpace(payload.Name); payload.Name == "" {
 		payload.Name = payload.CertificateDomain
@@ -301,7 +301,7 @@ func (s *Service) CreateSSLCertificateApplication(payload SSLCertificateApplyPay
 		email = strings.TrimSpace(s.certificateConfig.Email)
 	}
 	if email == "" {
-		return 0, 0, errors.New("ACME 联系邮箱未配置")
+		return 0, 0, errors.New("ACME contact email is not configured")
 	}
 	item := model.SSLCertificate{Name: payload.Name, MainDomain: payload.MainDomain, Type: payload.Type, Source: model.SSLCertificateSourceACME, Provider: snapshot.Provider, DNSAccountID: snapshot.AccountID, Status: model.SSLCertificatePending, AutoRenew: payload.AutoRenew, RenewBeforeDays: payload.RenewBeforeDays, CloudSyncStatus: model.SSLCertificateSyncLocal, ACMECA: ca, ACMEEmail: email, IncludeRootDomain: payload.IncludeRootDomain, CreatedBy: actor.AdminID}
 	domains := []string{payload.CertificateDomain}
@@ -318,7 +318,7 @@ func (s *Service) CreateSSLCertificateApplication(payload SSLCertificateApplyPay
 		return 0, 0, err
 	}
 	taskID, err := s.QueueCertificateTask(item.ID, "APPLY", actor)
-	s.writeCertificateAudit(actor, item.ID, "申请证书", item.MainDomain, domains, item.Provider, item.DNSAccountID, err)
+	s.writeCertificateAudit(actor, item.ID, "Apply Certificate", item.MainDomain, domains, item.Provider, item.DNSAccountID, err)
 	return item.ID, taskID, err
 }
 
@@ -332,7 +332,7 @@ func (s *Service) QueueCertificateCloudSync(accountID uint, actor DNSAuditActor)
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, errors.New("没有可用的 DNS 云账号")
+		return nil, errors.New("no available DNS cloud account")
 	}
 	ids := []uint{}
 	for _, account := range accounts {
@@ -361,14 +361,14 @@ func (s *Service) QueueCertificateCloudSync(accountID uint, actor DNSAuditActor)
 func (s *Service) QueueCertificateTask(certificateID uint, taskType string, actor DNSAuditActor) (uint, error) {
 	taskType = strings.ToUpper(strings.TrimSpace(taskType))
 	if taskType != "APPLY" && taskType != "RENEW" && taskType != "SYNC" && taskType != "DELETE" {
-		return 0, errors.New("不支持的证书任务类型")
+		return 0, errors.New("unsupported certificate task type")
 	}
 	var cert model.SSLCertificate
 	if err := s.db.First(&cert, certificateID).Error; err != nil {
 		return 0, err
 	}
 	if taskType == "RENEW" && cert.Source != model.SSLCertificateSourceACME {
-		return 0, errors.New("只有平台 ACME 申请的证书支持续签")
+		return 0, errors.New("only certificates issued by the platform ACME workflow support renewal")
 	}
 	keyType := strings.ToLower(taskType)
 	if taskType == "APPLY" || taskType == "RENEW" {
@@ -394,9 +394,9 @@ func (s *Service) QueueCertificateTask(certificateID uint, taskType string, acto
 
 func certificateTaskConflictError(taskType string) error {
 	if taskType == "APPLY" || taskType == "RENEW" {
-		return errors.New("该证书已有申请或续签任务正在执行")
+		return errors.New("an issuance or renewal task is already running for this certificate")
 	}
-	return errors.New("该证书已有相同任务正在执行")
+	return errors.New("an identical task is already running for this certificate")
 }
 
 func (s *Service) ListSSLCertificateTasks(certificateID uint, limit int) ([]model.SSLCertificateTask, error) {
@@ -424,7 +424,7 @@ func (s *Service) runCertificateTask(taskID uint) {
 	var err error
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("证书任务异常: %v", recovered)
+			err = fmt.Errorf("certificate task panic: %v", recovered)
 		}
 		finished := time.Now()
 		updates := map[string]any{"status": certificateTaskSuccess, "stage": "COMPLETED", "progress": 100, "finished_at": &finished, "error_message": "", "active_key": nil}
@@ -447,7 +447,7 @@ func (s *Service) runCertificateTask(taskID uint) {
 	case "DELETE":
 		err = s.deleteCertificateTask(task)
 	default:
-		err = errors.New("未知证书任务")
+		err = errors.New("unknown certificate task")
 	}
 }
 
@@ -471,13 +471,13 @@ func (s *Service) syncCloudAccountTask(task model.SSLCertificateTask) error {
 		}
 		s.updateCertificateTask(task.ID, "SAVING", 20+int(float64(index+1)/float64(max(1, len(items)))*70))
 	}
-	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, 0, "同步证书", "", nil, account.Provider, account.ID, nil)
+	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, 0, "Synchronize Certificate", "", nil, account.Provider, account.ID, nil)
 	return nil
 }
 
 func (s *Service) upsertCloudCertificate(account *model.PublicDNSAccount, cloud provider.CloudCertificate) error {
 	if strings.TrimSpace(cloud.ID) == "" {
-		return errors.New("云端证书缺少证书 ID")
+		return errors.New("cloud certificate is missing a certificate ID")
 	}
 	mainDomain := normalizePublicName(cloud.MainDomain)
 	snapshot, err := s.resolvePublicDomainSnapshot(mainDomain, cloud.Domains, account.ID)
@@ -516,7 +516,7 @@ func (s *Service) syncCertificateToCloudTask(task model.SSLCertificateTask) erro
 		return err
 	}
 	if cert.CertificatePEM == "" || cert.PrivateKeyCipher == "" {
-		return errors.New("当前证书没有可上传的证书内容和私钥")
+		return errors.New("the current certificate has no certificate body and private key available for upload")
 	}
 	privateKey, err := util.DecryptSecret(cert.PrivateKeyCipher)
 	if err != nil {
@@ -537,23 +537,23 @@ func (s *Service) syncCertificateToCloudTask(task model.SSLCertificateTask) erro
 		updates["cloud_sync_status"] = model.SSLCertificateCloudSyncFailed
 	}
 	_ = s.db.Model(&cert).Updates(updates).Error
-	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, "同步云端", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
+	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, "Synchronize to Cloud", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
 	return err
 }
 
 func (s *Service) UpdateSSLCertificateRenewSettings(payload SSLCertificateRenewSettingPayload, actor DNSAuditActor) error {
 	if payload.RenewBeforeDays < 1 || payload.RenewBeforeDays > 90 {
-		return errors.New("提前续签天数必须在 1 到 90 天之间")
+		return errors.New("renew-before days must be between 1 and 90")
 	}
 	var cert model.SSLCertificate
 	if err := s.db.First(&cert, payload.ID).Error; err != nil {
 		return err
 	}
 	if payload.AutoRenew && cert.Source != model.SSLCertificateSourceACME {
-		return errors.New("只有平台 ACME 证书支持自动续签")
+		return errors.New("only platform ACME certificates support automatic renewal")
 	}
 	err := s.db.Model(&cert).Updates(map[string]any{"auto_renew": payload.AutoRenew, "renew_before_days": payload.RenewBeforeDays}).Error
-	s.writeCertificateAudit(actor, cert.ID, "修改自动续签", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
+	s.writeCertificateAudit(actor, cert.ID, "Update Automatic Renewal", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
 	return err
 }
 
@@ -563,14 +563,14 @@ func (s *Service) DeleteSSLCertificate(payload SSLCertificateDeletePayload, acto
 		return 0, err
 	}
 	if err := s.validateCertificateDeletion(cert); err != nil {
-		s.writeCertificateAudit(actor, cert.ID, "删除证书", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
+		s.writeCertificateAudit(actor, cert.ID, "Delete Certificate", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
 		return 0, err
 	}
 	if payload.DeleteCloud && cert.CloudCertificateID != "" {
 		return s.QueueCertificateTask(cert.ID, "DELETE", actor)
 	}
 	err := s.deleteCertificateLocal(cert.ID)
-	s.writeCertificateAudit(actor, cert.ID, "删除证书", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
+	s.writeCertificateAudit(actor, cert.ID, "Delete Certificate", cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
 	return 0, err
 }
 
@@ -580,11 +580,11 @@ func (s *Service) validateCertificateDeletion(cert model.SSLCertificate) error {
 		return nil
 	}
 	if cert.Type == model.SSLCertificateTypeWildcard {
-		return errors.New("未过期的泛域名证书禁止删除")
+		return errors.New("an unexpired wildcard certificate cannot be deleted")
 	}
 	p, _, err := s.publicProvider(cert.DNSAccountID)
 	if err != nil {
-		return fmt.Errorf("删除前刷新公网 DNS 失败: %w", err)
+		return fmt.Errorf("failed to refresh public DNS before deletion: %w", err)
 	}
 	return validateCertificateDeletionWithProvider(cert, domains, p, time.Now())
 }
@@ -594,13 +594,13 @@ func validateCertificateDeletionWithProvider(cert model.SSLCertificate, domains 
 		return nil
 	}
 	if cert.Type == model.SSLCertificateTypeWildcard {
-		return errors.New("未过期的泛域名证书禁止删除")
+		return errors.New("an unexpired wildcard certificate cannot be deleted")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	records, err := p.ListRecords(ctx, cert.MainDomain)
 	if err != nil {
-		return fmt.Errorf("删除前刷新公网 DNS 失败: %w", err)
+		return fmt.Errorf("failed to refresh public DNS before deletion: %w", err)
 	}
 	for _, record := range records {
 		fqdn := normalizePublicName(record.Host + "." + record.Domain)
@@ -609,7 +609,7 @@ func validateCertificateDeletionWithProvider(cert model.SSLCertificate, domains 
 		}
 		for _, domain := range domains {
 			if fqdn == normalizePublicName(domain) {
-				return errors.New("该证书对应域名当前仍存在公网 DNS 解析记录，请先删除相关解析记录后再删除证书")
+				return errors.New("public DNS records still exist for this certificate domain; delete the related records before deleting the certificate")
 			}
 		}
 	}
@@ -648,13 +648,13 @@ func (s *Service) deleteCertificateTask(task model.SSLCertificateTask) error {
 			}
 		}
 		if stillExists {
-			return fmt.Errorf("云端删除失败，本地证书已保留: %w", err)
+			return fmt.Errorf("cloud deletion failed; local certificate was retained: %w", err)
 		}
 	}
 	s.updateCertificateTask(task.ID, "DELETING_LOCAL", 80)
 	domains := s.loadCertificateDomainNames(cert.ID)
 	err = s.deleteCertificateLocal(cert.ID)
-	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, "删除平台及云端证书", cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, err)
+	s.writeCertificateAudit(DNSAuditActor{AdminID: task.AdminID, Username: task.Username, IP: task.IPAddress}, cert.ID, "Delete Platform and Cloud Certificate", cert.MainDomain, domains, cert.Provider, cert.DNSAccountID, err)
 	return err
 }
 
@@ -683,13 +683,13 @@ func (s *Service) DownloadSSLCertificate(id uint, kind string) ([]byte, string, 
 		return []byte(cert.CertificateChain), base + ".chain.pem", "application/x-pem-file", nil
 	case "private-key":
 		if cert.PrivateKeyCipher == "" {
-			return nil, "", "", errors.New("该证书没有保存在平台的 Private Key")
+			return nil, "", "", errors.New("the certificate has no private key stored by the platform")
 		}
 		key, err := util.DecryptSecret(cert.PrivateKeyCipher)
 		return []byte(key), base + ".key.pem", "application/x-pem-file", err
 	case "zip":
 		if cert.PrivateKeyCipher == "" {
-			return nil, "", "", errors.New("该证书没有保存在平台的 Private Key")
+			return nil, "", "", errors.New("the certificate has no private key stored by the platform")
 		}
 		key, err := util.DecryptSecret(cert.PrivateKeyCipher)
 		if err != nil {
@@ -706,7 +706,7 @@ func (s *Service) DownloadSSLCertificate(id uint, kind string) ([]byte, string, 
 		}
 		return buffer.Bytes(), base + ".zip", "application/zip", nil
 	default:
-		return nil, "", "", errors.New("不支持的证书下载类型")
+		return nil, "", "", errors.New("unsupported certificate download type")
 	}
 }
 
@@ -715,9 +715,9 @@ func (s *Service) AuditSSLCertificateDownload(id uint, kind string, actor DNSAud
 	if loadErr := s.db.First(&cert, id).Error; loadErr != nil {
 		return
 	}
-	action := "下载证书"
+	action := "Download Certificate"
 	if kind == "private-key" || kind == "zip" {
-		action = "下载 Private Key"
+		action = "Download Private Key"
 	}
 	s.writeCertificateAudit(actor, cert.ID, action, cert.MainDomain, s.loadCertificateDomainNames(cert.ID), cert.Provider, cert.DNSAccountID, err)
 }
@@ -752,11 +752,11 @@ func (s *Service) SSLCertificateDomainOptions() ([]map[string]any, error) {
 func parseCertificateAndKey(certPEM, keyPEM string) (*certificateParsed, error) {
 	certBlock, _ := pem.Decode([]byte(strings.TrimSpace(certPEM)))
 	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
-		return nil, errors.New("Certificate PEM 格式不正确")
+		return nil, errors.New("invalid certificate PEM format")
 	}
 	leaf, err := x509.ParseCertificate(certBlock.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("解析证书失败: %w", err)
+		return nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 	privateKey, algorithm, err := parsePrivateKey([]byte(strings.TrimSpace(keyPEM)))
 	if err != nil {
@@ -771,7 +771,7 @@ func parseCertificateAndKey(certPEM, keyPEM string) (*certificateParsed, error) 
 		return nil, err
 	}
 	if !bytes.Equal(publicDER, certPublicDER) {
-		return nil, errors.New("Certificate 与 Private Key 不匹配")
+		return nil, errors.New("certificate and private key do not match")
 	}
 	domains := append([]string{}, leaf.DNSNames...)
 	if len(domains) == 0 && strings.TrimSpace(leaf.Subject.CommonName) != "" {
@@ -782,7 +782,7 @@ func parseCertificateAndKey(certPEM, keyPEM string) (*certificateParsed, error) 
 	}
 	domains = uniqueStrings(domains)
 	if len(domains) == 0 {
-		return nil, errors.New("证书不包含可识别的 CN 或 SAN 域名")
+		return nil, errors.New("certificate contains no recognizable CN or SAN domain")
 	}
 	typeValue := model.SSLCertificateTypeSingle
 	for _, domain := range domains {
@@ -801,7 +801,7 @@ func parseCertificateAndKey(certPEM, keyPEM string) (*certificateParsed, error) 
 func parsePrivateKey(data []byte) (crypto.Signer, string, error) {
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, "", errors.New("Private Key PEM 格式不正确")
+		return nil, "", errors.New("invalid private-key PEM format")
 	}
 	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
 		switch value := key.(type) {
@@ -817,7 +817,7 @@ func parsePrivateKey(data []byte) (crypto.Signer, string, error) {
 	if key, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
 		return key, "ECDSA-" + key.Curve.Params().Name, nil
 	}
-	return nil, "", errors.New("不支持或无法解析的 Private Key")
+	return nil, "", errors.New("unsupported or unparseable private key")
 }
 
 func (s *Service) certificateCloudProvider(accountID uint) (provider.CertificateCloudProvider, *model.PublicDNSAccount, error) {
@@ -826,7 +826,7 @@ func (s *Service) certificateCloudProvider(accountID uint) (provider.Certificate
 		return nil, nil, err
 	}
 	if account.Status != 1 {
-		return nil, nil, errors.New("DNS 云账号已停用")
+		return nil, nil, errors.New("DNS cloud account is disabled")
 	}
 	access, err := util.DecryptSecret(account.AccessKeyCipher)
 	if err != nil {
@@ -860,7 +860,7 @@ func (s *Service) resolvePublicDomainSnapshot(mainDomain string, domains []strin
 			}
 		}
 	}
-	return nil, errors.New("当前主域名未关联可用 DNS 云账号，无法执行 DNS 所有权验证")
+	return nil, errors.New("the current main domain has no available DNS cloud account for DNS ownership validation")
 }
 
 func replaceCertificateDomains(tx *gorm.DB, certificateID uint, mainDomain string, domains []string) error {
@@ -878,7 +878,7 @@ func replaceCertificateDomains(tx *gorm.DB, certificateID uint, mainDomain strin
 		rows = append(rows, model.SSLCertificateDomain{CertificateID: certificateID, Domain: normalizePublicName(domain), DomainType: domainType})
 	}
 	if len(rows) == 0 {
-		return errors.New("证书域名不能为空")
+		return errors.New("certificate domain is required")
 	}
 	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
 }

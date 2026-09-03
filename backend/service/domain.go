@@ -98,7 +98,7 @@ func (s *Service) ListPublicDNSAccounts(pageNum, pageSize int, keyword, provider
 	}
 	list := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		hint := "已配置"
+		hint := "Configured"
 		if value, err := util.DecryptSecret(item.AccessKeyCipher); err == nil {
 			hint = maskDNSKey(value)
 		}
@@ -128,10 +128,10 @@ func (s *Service) SavePublicDNSAccount(payload PublicDNSAccountPayload, actor DN
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.Provider = strings.ToLower(strings.TrimSpace(payload.Provider))
 	if payload.Name == "" {
-		return errors.New("账号名称不能为空")
+		return errors.New("account name is required")
 	}
 	if payload.Provider != "aliyun" && payload.Provider != "tencent" {
-		return errors.New("仅支持阿里云 DNS 和腾讯云 DNSPod")
+		return errors.New("only Aliyun DNS and Tencent Cloud DNSPod are supported")
 	}
 	if payload.Status == 0 {
 		payload.Status = 1
@@ -158,7 +158,7 @@ func (s *Service) SavePublicDNSAccount(payload PublicDNSAccountPayload, actor DN
 		}
 	}
 	if accessCipher == "" || secretCipher == "" {
-		return errors.New("AccessKey/SecretId 和 SecretKey 不能为空")
+		return errors.New("AccessKey or SecretId and SecretKey are required")
 	}
 	item := model.PublicDNSAccount{ID: payload.ID, Name: payload.Name, Provider: payload.Provider, AccessKeyCipher: accessCipher, SecretKeyCipher: secretCipher, Status: payload.Status}
 	if payload.ID == 0 {
@@ -166,9 +166,9 @@ func (s *Service) SavePublicDNSAccount(payload PublicDNSAccountPayload, actor DN
 	} else {
 		err = s.db.Model(&model.PublicDNSAccount{}).Where("id = ?", payload.ID).Updates(map[string]any{"name": item.Name, "provider": item.Provider, "access_key_cipher": accessCipher, "secret_key_cipher": secretCipher, "status": item.Status}).Error
 	}
-	action := "修改公网 DNS 账号"
+	action := "Update Public DNS Account"
 	if payload.ID == 0 {
-		action = "新增公网 DNS 账号"
+		action = "Create Public DNS Account"
 	}
 	s.writeDNSAudit(actor, action, payload.Provider, "", payload.Name, "", old.Name, payload.Name, err)
 	return err
@@ -183,7 +183,7 @@ func (s *Service) DeletePublicDNSAccount(id uint, actor DNSAuditActor) error {
 		return err
 	}
 	if certificateCount > 0 {
-		return fmt.Errorf("该 DNS 账号仍关联 %d 张 SSL 证书，请先迁移或删除关联证书", certificateCount)
+		return fmt.Errorf("the DNS account is still referenced by %d SSL certificate(s); migrate or delete the certificates first", certificateCount)
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("account_id = ?", id).Delete(&model.PublicDomainSnapshot{}).Error; err != nil {
@@ -191,7 +191,7 @@ func (s *Service) DeletePublicDNSAccount(id uint, actor DNSAuditActor) error {
 		}
 		return tx.Delete(&item).Error
 	})
-	s.writeDNSAudit(actor, "删除公网 DNS 账号", item.Provider, "", item.Name, "", item.Name, "", err)
+	s.writeDNSAudit(actor, "Delete Public DNS Account", item.Provider, "", item.Name, "", item.Name, "", err)
 	return err
 }
 func (s *Service) TestPublicDNSAccount(id uint) error {
@@ -217,7 +217,7 @@ func (s *Service) publicProvider(accountID uint) (provider.PublicDNSProvider, *m
 		return nil, nil, err
 	}
 	if account.Status != 1 {
-		return nil, nil, errors.New("DNS 账号已停用")
+		return nil, nil, errors.New("DNS account is disabled")
 	}
 	access, err := util.DecryptSecret(account.AccessKeyCipher)
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *Service) MutatePublicRecord(action string, accountID uint, req provider
 	}
 	req.Type = strings.ToUpper(strings.TrimSpace(req.Type))
 	if req.Domain == "" || req.RecordID == "" && action != "create" {
-		return errors.New("域名或记录 ID 缺失")
+		return errors.New("domain or record ID is missing")
 	}
 	var oldValue string
 	if action != "create" {
@@ -346,7 +346,7 @@ func (s *Service) MutatePublicRecord(action string, accountID uint, req provider
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	err = executeProviderAction(ctx, p, action, req)
-	s.writeDNSAudit(actor, "公网解析记录"+action, account.Provider, "", req.Domain, req.Type, oldValue, req.Value, err)
+	s.writeDNSAudit(actor, "Public DNS Record "+action, account.Provider, "", req.Domain, req.Type, oldValue, req.Value, err)
 	return err
 }
 func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditActor) map[string]any {
@@ -361,7 +361,7 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 	}
 	allowedActions := map[string]bool{"create": true, "update": true, "delete": true, "enable": true, "disable": true, "ttl": true, "value": true}
 	if !allowedActions[payload.Action] {
-		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "不支持的批量操作"}
+		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "unsupported batch operation"}
 	}
 	currentByID := map[string]provider.DNSRecord{}
 	if payload.Action != "create" {
@@ -384,7 +384,7 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 		}
 	}
 	if payload.Action == "value" && len(types) > 1 {
-		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "批量修改记录值要求所选记录类型一致"}
+		return map[string]any{"successCount": 0, "failureCount": len(payload.Records), "results": []map[string]any{}, "error": "batch value updates require all selected records to have the same type"}
 	}
 	results := make([]map[string]any, 0, len(payload.Records))
 	success := 0
@@ -392,7 +392,7 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 		item.Domain = payload.Domain
 		current, exists := currentByID[item.RecordID]
 		if payload.Action != "create" && !exists {
-			results = append(results, map[string]any{"recordId": item.RecordID, "host": item.Host, "success": false, "error": "记录不存在或不属于当前域名"})
+			results = append(results, map[string]any{"recordId": item.RecordID, "host": item.Host, "success": false, "error": "record does not exist or does not belong to the current domain"})
 			continue
 		}
 		if payload.Action == "delete" || payload.Action == "enable" || payload.Action == "disable" || payload.Action == "ttl" || payload.Action == "value" {
@@ -411,7 +411,7 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		err := executeProviderAction(ctx, p, action, item)
 		cancel()
-		s.writeDNSAudit(actor, "公网解析记录"+action, account.Provider, "", payload.Domain, item.Type, "", item.Value, err)
+		s.writeDNSAudit(actor, "Public DNS Record "+action, account.Provider, "", payload.Domain, item.Type, "", item.Value, err)
 		entry := map[string]any{"recordId": item.RecordID, "host": item.Host, "success": err == nil}
 		if err != nil {
 			entry["error"] = err.Error()
@@ -426,14 +426,14 @@ func (s *Service) BatchPublicRecords(payload PublicBatchPayload, actor DNSAuditA
 func (s *Service) requirePublicDomainSnapshot(accountID uint, domain string) (string, error) {
 	domain = normalizePublicName(domain)
 	if accountID == 0 || domain == "" {
-		return "", errors.New("DNS 账号或域名不能为空")
+		return "", errors.New("DNS account and domain are required")
 	}
 	var count int64
 	if err := s.db.Model(&model.PublicDomainSnapshot{}).Where("account_id = ? AND domain = ?", accountID, domain).Count(&count).Error; err != nil {
 		return "", err
 	}
 	if count == 0 {
-		return "", errors.New("该域名不存在或不属于当前 DNS 账号，请先刷新域名列表")
+		return "", errors.New("domain does not exist or is not owned by the current DNS account; refresh the domain list first")
 	}
 	return domain, nil
 }
@@ -450,7 +450,7 @@ func findProviderRecord(parent context.Context, p provider.PublicDNSProvider, do
 			return &records[index], nil
 		}
 	}
-	return nil, errors.New("记录不存在或不属于当前域名")
+	return nil, errors.New("record does not exist or does not belong to the current domain")
 }
 
 func executeProviderAction(ctx context.Context, p provider.PublicDNSProvider, action string, req provider.RecordRequest) error {
@@ -466,7 +466,7 @@ func executeProviderAction(ctx context.Context, p provider.PublicDNSProvider, ac
 	case "disable":
 		return p.DisableRecord(ctx, req.Domain, req.RecordID)
 	default:
-		return errors.New("不支持的记录操作")
+		return errors.New("unsupported record operation")
 	}
 }
 
@@ -490,7 +490,7 @@ func (s *Service) SaveInternalDNSSettings(payload InternalDNSSettingsPayload, ac
 	item := model.InternalDNSSetting{ID: 1, Enabled: payload.Enabled, ListenAddress: payload.ListenAddress, ListenPort: 53, UpstreamsJSON: string(data), TimeoutSeconds: payload.TimeoutSeconds}
 	if err := s.dnsManager.Apply(settings); err != nil {
 		_ = s.db.Model(&model.InternalDNSSetting{}).Where("id = ?", 1).Updates(map[string]any{"enabled": false, "last_error": err.Error()}).Error
-		s.writeDNSAudit(actor, "启用内网 DNS", "internal", "", "", "", "", "", err)
+		s.writeDNSAudit(actor, "Enable Internal DNS", "internal", "", "", "", "", "", err)
 		return err
 	}
 	now := time.Now()
@@ -502,7 +502,7 @@ func (s *Service) SaveInternalDNSSettings(payload InternalDNSSettingsPayload, ac
 	if err != nil {
 		_ = s.dnsManager.Apply(oldSettings)
 	}
-	s.writeDNSAudit(actor, "保存内网 DNS 设置", "internal", "", "", "", "", "", err)
+	s.writeDNSAudit(actor, "Save Internal DNS Settings", "internal", "", "", "", "", "", err)
 	return err
 }
 
@@ -545,7 +545,7 @@ func (s *Service) SaveInternalZone(payload InternalZonePayload, actor DNSAuditAc
 	if err == nil {
 		s.dnsManager.ReplaceSnapshot(snapshot)
 	}
-	s.writeDNSAudit(actor, map[bool]string{true: "新增内网 Zone", false: "修改内网 Zone"}[payload.ID == 0], "internal", name, name, "", old.Name, name, err)
+	s.writeDNSAudit(actor, map[bool]string{true: "Create Internal DNS Zone", false: "Update Internal DNS Zone"}[payload.ID == 0], "internal", name, name, "", old.Name, name, err)
 	return err
 }
 func (s *Service) DeleteInternalZone(id uint, actor DNSAuditActor) error {
@@ -568,7 +568,7 @@ func (s *Service) DeleteInternalZone(id uint, actor DNSAuditActor) error {
 	if err == nil {
 		s.dnsManager.ReplaceSnapshot(snapshot)
 	}
-	s.writeDNSAudit(actor, "删除内网 Zone", "internal", zone.Name, zone.Name, "", zone.Name, "", err)
+	s.writeDNSAudit(actor, "Delete Internal DNS Zone", "internal", zone.Name, zone.Name, "", zone.Name, "", err)
 	return err
 }
 func (s *Service) ListInternalRecords(zoneID uint, keyword string) ([]model.InternalDNSRecord, error) {
@@ -583,7 +583,7 @@ func (s *Service) ListInternalRecords(zoneID uint, keyword string) ([]model.Inte
 func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAuditActor) error {
 	var zone model.InternalDNSZone
 	if err := s.db.First(&zone, payload.ZoneID).Error; err != nil {
-		return errors.New("Zone 不存在")
+		return errors.New("DNS zone does not exist")
 	}
 	payload.Host = strings.ToLower(strings.TrimSpace(payload.Host))
 	payload.Type = strings.ToUpper(strings.TrimSpace(payload.Type))
@@ -600,7 +600,7 @@ func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAud
 	if payload.Type == "A" {
 		ip := net.ParseIP(payload.Value)
 		if ip == nil || ip.To4() == nil {
-			return errors.New("A 记录值必须是合法 IPv4 地址")
+			return errors.New("A record value must be a valid IPv4 address")
 		}
 	} else if payload.Type == "CNAME" {
 		normalized, err := normalizeFQDN(payload.Value)
@@ -609,7 +609,7 @@ func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAud
 		}
 		payload.Value = normalized
 	} else {
-		return errors.New("内网解析第一阶段仅支持 A 和 CNAME")
+		return errors.New("the current internal DNS phase supports only A and CNAME records")
 	}
 	var old model.InternalDNSRecord
 	var snapshot *dnsserver.Snapshot
@@ -630,7 +630,7 @@ func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAud
 		} else {
 			if err := tx.Where("id = ? AND zone_id = ?", payload.ID, payload.ZoneID).First(&old).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errors.New("解析记录不存在或不属于当前 Zone")
+					return errors.New("DNS record does not exist or does not belong to the current zone")
 				}
 				return err
 			}
@@ -646,7 +646,7 @@ func (s *Service) SaveInternalRecord(payload InternalRecordPayload, actor DNSAud
 		s.dnsManager.ReplaceSnapshot(snapshot)
 	}
 	domain := internalFQDN(payload.Host, zone.Name)
-	s.writeDNSAudit(actor, map[bool]string{true: "新增内网解析记录", false: "修改内网解析记录"}[payload.ID == 0], "internal", zone.Name, domain, payload.Type, old.Value, payload.Value, err)
+	s.writeDNSAudit(actor, map[bool]string{true: "Create Internal DNS Record", false: "Update Internal DNS Record"}[payload.ID == 0], "internal", zone.Name, domain, payload.Type, old.Value, payload.Value, err)
 	return err
 }
 func (s *Service) DeleteInternalRecord(id uint, actor DNSAuditActor) error {
@@ -668,19 +668,19 @@ func (s *Service) DeleteInternalRecord(id uint, actor DNSAuditActor) error {
 	if err == nil {
 		s.dnsManager.ReplaceSnapshot(snapshot)
 	}
-	s.writeDNSAudit(actor, "删除内网解析记录", "internal", zone.Name, internalFQDN(item.Host, zone.Name), item.Type, item.Value, "", err)
+	s.writeDNSAudit(actor, "Delete Internal DNS Record", "internal", zone.Name, internalFQDN(item.Host, zone.Name), item.Type, item.Value, "", err)
 	return err
 }
 func (s *Service) BatchInternalRecords(payload InternalRecordBatchPayload, actor DNSAuditActor) (int, error) {
 	var zone model.InternalDNSZone
 	if err := s.db.First(&zone, payload.ZoneID).Error; err != nil {
-		return 0, errors.New("Zone 不存在")
+		return 0, errors.New("DNS zone does not exist")
 	}
 	action := strings.ToLower(strings.TrimSpace(payload.Action))
-	actionNames := map[string]string{"create": "批量新增内网解析记录", "update": "批量修改内网解析记录", "delete": "批量删除内网解析记录", "enable": "批量启用内网解析记录", "disable": "批量禁用内网解析记录"}
+	actionNames := map[string]string{"create": "Batch Create Internal DNS Records", "update": "Batch Update Internal DNS Records", "delete": "Batch Delete Internal DNS Records", "enable": "Batch Enable Internal DNS Records", "disable": "Batch Disable Internal DNS Records"}
 	actionName, ok := actionNames[action]
 	if !ok {
-		return 0, errors.New("不支持的批量操作")
+		return 0, errors.New("unsupported batch operation")
 	}
 	var snapshot *dnsserver.Snapshot
 	affected := 0
@@ -688,53 +688,53 @@ func (s *Service) BatchInternalRecords(payload InternalRecordBatchPayload, actor
 		switch action {
 		case "create", "update":
 			if len(payload.Records) == 0 {
-				return errors.New("请至少提供一条解析记录")
+				return errors.New("provide at least one DNS record")
 			}
 			for index, record := range payload.Records {
 				record.ZoneID = payload.ZoneID
 				normalized, normalizeErr := normalizeInternalRecordPayload(record)
 				if normalizeErr != nil {
-					return fmt.Errorf("第 %d 条记录：%w", index+1, normalizeErr)
+					return fmt.Errorf("record %d: %w", index+1, normalizeErr)
 				}
 				if action == "create" {
 					normalized.ID = 0
 				} else if normalized.ID == 0 {
-					return fmt.Errorf("第 %d 条记录缺少 ID", index+1)
+					return fmt.Errorf("record %d is missing an ID", index+1)
 				} else {
 					var existing model.InternalDNSRecord
 					if findErr := tx.Where("id = ? AND zone_id = ?", normalized.ID, payload.ZoneID).First(&existing).Error; findErr != nil {
-						return fmt.Errorf("第 %d 条记录不存在", index+1)
+						return fmt.Errorf("record %d does not exist", index+1)
 					}
 				}
 				if validateErr := validateRecordConflict(tx, normalized); validateErr != nil {
-					return fmt.Errorf("第 %d 条记录：%w", index+1, validateErr)
+					return fmt.Errorf("record %d: %w", index+1, validateErr)
 				}
 				if normalized.Type == "CNAME" {
 					if loopErr := validateCNAMELoop(tx, normalized, zone.Name); loopErr != nil {
-						return fmt.Errorf("第 %d 条记录：%w", index+1, loopErr)
+						return fmt.Errorf("record %d: %w", index+1, loopErr)
 					}
 				}
 				item := model.InternalDNSRecord{ID: normalized.ID, ZoneID: normalized.ZoneID, Host: normalized.Host, Type: normalized.Type, Value: normalized.Value, TTL: normalized.TTL, Status: normalized.Status}
 				if action == "create" {
 					if createErr := tx.Create(&item).Error; createErr != nil {
-						return fmt.Errorf("第 %d 条记录保存失败：%w", index+1, createErr)
+						return fmt.Errorf("failed to save record %d: %w", index+1, createErr)
 					}
 				} else if updateErr := tx.Model(&model.InternalDNSRecord{}).Where("id = ? AND zone_id = ?", item.ID, payload.ZoneID).Updates(map[string]any{"host": item.Host, "type": item.Type, "value": item.Value, "ttl": item.TTL, "status": item.Status}).Error; updateErr != nil {
-					return fmt.Errorf("第 %d 条记录保存失败：%w", index+1, updateErr)
+					return fmt.Errorf("failed to save record %d: %w", index+1, updateErr)
 				}
 				affected++
 			}
 		case "delete", "enable", "disable":
 			ids := uniqueUintIDs(payload.IDs)
 			if len(ids) == 0 {
-				return errors.New("请至少选择一条解析记录")
+				return errors.New("select at least one DNS record")
 			}
 			var existing []model.InternalDNSRecord
 			if findErr := tx.Where("zone_id = ? AND id IN ?", payload.ZoneID, ids).Find(&existing).Error; findErr != nil {
 				return findErr
 			}
 			if len(existing) != len(ids) {
-				return errors.New("部分解析记录不存在或不属于当前 Zone")
+				return errors.New("some DNS records do not exist or do not belong to the current zone")
 			}
 			query := tx.Where("zone_id = ? AND id IN ?", payload.ZoneID, ids)
 			if action == "delete" {
@@ -759,7 +759,7 @@ func (s *Service) BatchInternalRecords(payload InternalRecordBatchPayload, actor
 	if err == nil {
 		s.dnsManager.ReplaceSnapshot(snapshot)
 	}
-	s.writeDNSAudit(actor, actionName, "internal", zone.Name, zone.Name, "", fmt.Sprintf("%d 条", affected), fmt.Sprintf("%d 条", affected), err)
+	s.writeDNSAudit(actor, actionName, "internal", zone.Name, zone.Name, "", fmt.Sprintf("%d records", affected), fmt.Sprintf("%d records", affected), err)
 	return affected, err
 }
 
@@ -779,7 +779,7 @@ func normalizeInternalRecordPayload(payload InternalRecordPayload) (InternalReco
 	if payload.Type == "A" {
 		ip := net.ParseIP(payload.Value)
 		if ip == nil || ip.To4() == nil {
-			return payload, errors.New("A 记录值必须是合法 IPv4 地址")
+			return payload, errors.New("A record value must be a valid IPv4 address")
 		}
 	} else if payload.Type == "CNAME" {
 		normalized, err := normalizeFQDN(payload.Value)
@@ -788,7 +788,7 @@ func normalizeInternalRecordPayload(payload InternalRecordPayload) (InternalReco
 		}
 		payload.Value = normalized
 	} else {
-		return payload, errors.New("内网解析第一阶段仅支持 A 和 CNAME")
+		return payload, errors.New("the current internal DNS phase supports only A and CNAME records")
 	}
 	return payload, nil
 }
@@ -812,7 +812,7 @@ func (s *Service) TestDNSResolution(domainName, recordType string) (map[string]a
 	recordType = strings.ToUpper(strings.TrimSpace(recordType))
 	qtype, ok := map[string]uint16{"A": dns.TypeA, "CNAME": dns.TypeCNAME}[recordType]
 	if !ok {
-		return nil, errors.New("测试类型仅支持 A 或 CNAME")
+		return nil, errors.New("test type supports only A or CNAME")
 	}
 	request := new(dns.Msg)
 	request.SetQuestion(dns.Fqdn(domainName), qtype)
@@ -873,11 +873,11 @@ func validateDNSHost(value string) error {
 		return nil
 	}
 	if value == "" {
-		return errors.New("主机记录不能为空")
+		return errors.New("host record is required")
 	}
 	for _, part := range strings.Split(value, ".") {
 		if !dnsLabelPattern.MatchString(part) {
-			return fmt.Errorf("主机记录 %q 格式不合法", value)
+			return fmt.Errorf("invalid host record format: %q", value)
 		}
 	}
 	return nil
@@ -885,7 +885,7 @@ func validateDNSHost(value string) error {
 func normalizeZone(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(value), "."))
 	if value == "" || !strings.Contains(value, ".") {
-		return "", errors.New("Zone 必须是完整域名，例如 ops.internal")
+		return "", errors.New("zone must be a fully qualified domain name, for example ops.internal")
 	}
 	if err := validateDNSHost(value); err != nil {
 		return "", err
@@ -896,7 +896,7 @@ func normalizeFQDN(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	trimmed := strings.TrimSuffix(value, ".")
 	if !strings.Contains(trimmed, ".") {
-		return "", errors.New("CNAME 记录值必须是完整域名")
+		return "", errors.New("CNAME record value must be a fully qualified domain name")
 	}
 	if err := validateDNSHost(trimmed); err != nil {
 		return "", err
@@ -923,7 +923,7 @@ func validateRecordConflict(tx *gorm.DB, payload InternalRecordPayload) error {
 		return err
 	}
 	if count > 0 {
-		return errors.New("同一名称不能同时配置 CNAME 和 A 记录")
+		return errors.New("CNAME and A records cannot coexist for the same name")
 	}
 	return nil
 }
@@ -931,7 +931,7 @@ func validateCNAMELoop(tx *gorm.DB, payload InternalRecordPayload, zone string) 
 	source := internalFQDN(payload.Host, zone)
 	target := dns.Fqdn(strings.ToLower(payload.Value))
 	if source == target {
-		return errors.New("CNAME 不能指向自身")
+		return errors.New("CNAME cannot point to itself")
 	}
 	var records []model.InternalDNSRecord
 	if err := tx.Where("zone_id = ? AND type = 'CNAME'", payload.ZoneID).Find(&records).Error; err != nil {
@@ -944,7 +944,7 @@ func validateCNAMELoop(tx *gorm.DB, payload InternalRecordPayload, zone string) 
 		}
 	}
 	if cnameHasLoop(edges, source) {
-		return errors.New("CNAME 配置形成循环")
+		return errors.New("CNAME configuration creates a cycle")
 	}
 	return nil
 }
