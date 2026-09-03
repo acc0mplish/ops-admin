@@ -32,7 +32,7 @@ func (ctl *Controller) GetIntegrationAIModelList(c *gin.Context) {
 func (ctl *Controller) SaveIntegrationAIModel(c *gin.Context) {
 	var payload service.IntegrationAIModelPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的模型配置")
+		httpx.Failed(c, 400, "invalid model configuration")
 		return
 	}
 	data, err := ctl.service.SaveIntegrationAIModel(payload)
@@ -46,7 +46,7 @@ func (ctl *Controller) SaveIntegrationAIModel(c *gin.Context) {
 func (ctl *Controller) DeleteIntegrationAIModel(c *gin.Context) {
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的模型 ID")
+		httpx.Failed(c, 400, "invalid model ID")
 		return
 	}
 	if err := ctl.service.DeleteIntegrationAIModel(payload.ID); err != nil {
@@ -59,7 +59,7 @@ func (ctl *Controller) DeleteIntegrationAIModel(c *gin.Context) {
 func (ctl *Controller) TestIntegrationAIModel(c *gin.Context) {
 	var payload service.IntegrationAIModelPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的模型配置")
+		httpx.Failed(c, 400, "invalid model configuration")
 		return
 	}
 	data, err := ctl.service.TestIntegrationAIModel(payload)
@@ -85,7 +85,7 @@ func (ctl *Controller) GetIntegrationAIConversationDetail(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Query("id"), 10, 64)
 	data, err := ctl.service.GetIntegrationAIConversation(userID, uint(id))
 	if err != nil {
-		httpx.Failed(c, 404, "会话不存在")
+		httpx.Failed(c, 404, "conversation not found")
 		return
 	}
 	httpx.Success(c, data)
@@ -95,7 +95,7 @@ func (ctl *Controller) SaveIntegrationAIConversation(c *gin.Context) {
 	userID, username := integrationAIUser(c)
 	var payload service.IntegrationAIConversationPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的会话参数")
+		httpx.Failed(c, 400, "invalid conversation payload")
 		return
 	}
 	data, err := ctl.service.SaveIntegrationAIConversation(userID, username, payload)
@@ -110,7 +110,7 @@ func (ctl *Controller) DeleteIntegrationAIConversation(c *gin.Context) {
 	userID, _ := integrationAIUser(c)
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的会话 ID")
+		httpx.Failed(c, 400, "invalid conversation ID")
 		return
 	}
 	if err := ctl.service.DeleteIntegrationAIConversation(userID, payload.ID); err != nil {
@@ -124,7 +124,7 @@ func (ctl *Controller) SendIntegrationAIChat(c *gin.Context) {
 	userID, username := integrationAIUser(c)
 	var payload service.IntegrationAIChatPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的对话内容")
+		httpx.Failed(c, 400, "invalid chat content")
 		return
 	}
 	data, err := ctl.service.SendIntegrationAIChat(userID, username, payload)
@@ -147,7 +147,7 @@ func (ctl *Controller) GetIntegrationAIKnowledgeDocumentList(c *gin.Context) {
 func (ctl *Controller) SaveIntegrationAIKnowledgeDocument(c *gin.Context) {
 	var payload service.IntegrationAIKnowledgeDocumentPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的知识库文档参数")
+		httpx.Failed(c, 400, "invalid knowledge document payload")
 		return
 	}
 	data, err := ctl.service.SaveIntegrationAIKnowledgeDocument(payload)
@@ -161,26 +161,26 @@ func (ctl *Controller) SaveIntegrationAIKnowledgeDocument(c *gin.Context) {
 func (ctl *Controller) UploadIntegrationAIKnowledgeDocument(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
-		httpx.Failed(c, 400, "请选择 Markdown 文件")
+		httpx.Failed(c, 400, "select a Markdown file")
 		return
 	}
 	if !strings.EqualFold(filepath.Ext(file.Filename), ".md") {
-		httpx.Failed(c, 400, "仅支持上传 .md 文件")
+		httpx.Failed(c, 400, "only .md files are supported")
 		return
 	}
 	source, err := file.Open()
 	if err != nil {
-		httpx.Failed(c, 400, "无法读取上传文件")
+		httpx.Failed(c, 400, "unable to open uploaded file")
 		return
 	}
 	defer source.Close()
 	content, err := io.ReadAll(io.LimitReader(source, 2*1024*1024+1))
 	if err != nil {
-		httpx.Failed(c, 400, "读取 Markdown 文件失败")
+		httpx.Failed(c, 400, "failed to read Markdown file")
 		return
 	}
 	if len(content) > 2*1024*1024 {
-		httpx.Failed(c, 400, "Markdown 文件不能超过 2MB")
+		httpx.Failed(c, 400, "Markdown file must not exceed 2MB")
 		return
 	}
 	name := strings.TrimSpace(c.PostForm("name"))
@@ -200,7 +200,7 @@ func (ctl *Controller) UploadIntegrationAIKnowledgeDocument(c *gin.Context) {
 func (ctl *Controller) DeleteIntegrationAIKnowledgeDocument(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Query("id"), 10, 64)
 	if id == 0 {
-		httpx.Failed(c, 400, "知识库文档 ID 不能为空")
+		httpx.Failed(c, 400, "knowledge document ID is required")
 		return
 	}
 	if err := ctl.service.DeleteIntegrationAIKnowledgeDocument(uint(id)); err != nil {
@@ -222,7 +222,7 @@ func (ctl *Controller) GetIntegrationAIToolList(c *gin.Context) {
 func (ctl *Controller) UpdateIntegrationAITool(c *gin.Context) {
 	var payload service.IntegrationAIToolUpdatePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的工具配置")
+		httpx.Failed(c, 400, "invalid tool configuration")
 		return
 	}
 	if err := ctl.service.UpdateIntegrationAITool(payload); err != nil {
@@ -235,7 +235,7 @@ func (ctl *Controller) UpdateIntegrationAITool(c *gin.Context) {
 func (ctl *Controller) ExecuteIntegrationAITool(c *gin.Context) {
 	var payload service.IntegrationAIToolExecutePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的工具参数")
+		httpx.Failed(c, 400, "invalid tool payload")
 		return
 	}
 	data, err := ctl.service.ExecuteIntegrationAITool(payload)
@@ -250,7 +250,7 @@ func (ctl *Controller) ConfirmIntegrationAIAction(c *gin.Context) {
 	userID, username := integrationAIUser(c)
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的操作 ID")
+		httpx.Failed(c, 400, "invalid action ID")
 		return
 	}
 	data, err := ctl.service.ConfirmIntegrationAIToolAction(userID, username, payload.ID)
@@ -265,7 +265,7 @@ func (ctl *Controller) RejectIntegrationAIAction(c *gin.Context) {
 	userID, _ := integrationAIUser(c)
 	var payload service.IDPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, 400, "无效的操作 ID")
+		httpx.Failed(c, 400, "invalid action ID")
 		return
 	}
 	if err := ctl.service.RejectIntegrationAIToolAction(userID, payload.ID); err != nil {
