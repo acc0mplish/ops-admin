@@ -25,7 +25,25 @@ const ko = {
   discount: '할인',
   actualPayment: '실제 결제',
   billingEntries: 'Billing 항목',
-  noResourceCost: '현재 필터 조건에 Resource 비용이 없습니다.'
+  noResourceCost: '현재 필터 조건에 Resource 비용이 없습니다.',
+  costBreakdownTitle: '비용 분석 — {year}년 {month}월',
+  costBreakdownDesc: '모든 통계는 선택한 자연월 범위에서 집계 결과를 표시합니다.',
+  allAccounts: '전체 Account',
+  query: '조회',
+  monthlyTotal: '월 비용 합계',
+  groupedByProductRegion: 'Product 및 Region 기준 집계',
+  byCloudProduct: 'Cloud Product별 분석',
+  topProducts: '이번 달 주요 Product 비용',
+  noMonthlyCost: '해당 월의 비용 데이터가 없습니다.',
+  byRegion: 'Region별 분석',
+  regionalCost: '이번 달 Region 비용 분포',
+  noRegionalCost: '해당 월의 Region Billing 데이터가 없습니다.',
+  advancedBreakdown: '고급 차원 분석',
+  advancedBreakdownDesc: 'Account, Resource 또는 Tag 기준으로 이번 달 비용을 분석합니다.',
+  byCloudAccount: 'Cloud Account 기준',
+  byResource: 'Resource 기준',
+  byTag: 'Tag 기준',
+  noDimensionCost: '선택한 차원에서 집계 가능한 데이터가 없습니다.'
 }
 
 const en = {
@@ -53,7 +71,25 @@ const en = {
   discount: 'Discount',
   actualPayment: 'Actual Payment',
   billingEntries: 'Billing Entries',
-  noResourceCost: 'No resource cost data matches the current filters.'
+  noResourceCost: 'No resource cost data matches the current filters.',
+  costBreakdownTitle: 'Cost Breakdown — {year}-{month}',
+  costBreakdownDesc: 'All statistics are constrained to the selected calendar month and show aggregated breakdown results.',
+  allAccounts: 'All Accounts',
+  query: 'Query',
+  monthlyTotal: 'Monthly Cost Total',
+  groupedByProductRegion: 'Grouped by product and region',
+  byCloudProduct: 'By Cloud Product',
+  topProducts: 'Primary product costs for the month',
+  noMonthlyCost: 'No cost data is available for this month.',
+  byRegion: 'By Region',
+  regionalCost: 'Regional cost distribution for the month',
+  noRegionalCost: 'No regional billing data is available for this month.',
+  advancedBreakdown: 'Advanced Dimension Breakdown',
+  advancedBreakdownDesc: 'View this month by account, resource, or tag.',
+  byCloudAccount: 'By Cloud Account',
+  byResource: 'By Resource',
+  byTag: 'By Tag',
+  noDimensionCost: 'No aggregatable data is available for this dimension.'
 }
 
 export function ft(key, params = {}) {
