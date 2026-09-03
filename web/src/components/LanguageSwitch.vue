@@ -1,5 +1,5 @@
 <script setup>
-import { currentLocale, setLocale } from '../utils/i18n-runtime'
+import { currentLocale, setLocale, t } from '../utils/i18n-runtime'
 
 function switchLocale(value) {
   setLocale(value)
@@ -8,9 +8,10 @@ function switchLocale(value) {
 </script>
 
 <template>
-  <div class="language-switch" aria-label="Language selector">
+  <div class="language-switch" :aria-label="t('switchLanguage')">
     <button
       type="button"
+      :aria-label="t('language')"
       :class="{ active: currentLocale === 'ko-KR' }"
       @click="switchLocale('ko-KR')"
     >
@@ -18,6 +19,7 @@ function switchLocale(value) {
     </button>
     <button
       type="button"
+      :aria-label="t('english')"
       :class="{ active: currentLocale === 'en-US' }"
       @click="switchLocale('en-US')"
     >
