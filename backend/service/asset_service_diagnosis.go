@@ -3,8 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"ops-admin/backend/apperr"
 	"regexp"
 	"strings"
 	"time"
@@ -35,15 +35,15 @@ func (s *Service) validateAssetServiceDiagnosisTarget(target AssetServiceDiagnos
 		return 0, "", err
 	}
 	if !assetServiceContainsWorkload(service, target.WorkloadType, target.WorkloadName) {
-		return 0, "", errors.New("workload does not belong to this service")
+		return 0, "", apperr.New("ASSET_SERVICE_WORKLOAD_MISMATCH", nil)
 	}
 	if Trimmed(target.PodName) == "" || Trimmed(target.Container) == "" {
-		return 0, "", errors.New("pod and container are required")
+		return 0, "", apperr.New("DIAGNOSIS_POD_CONTAINER_REQUIRED", nil)
 	}
 	if pid := Trimmed(target.PID); pid != "" {
 		for _, char := range pid {
 			if char < '0' || char > '9' {
-				return 0, "", errors.New("invalid process id")
+				return 0, "", apperr.New("INVALID_PROCESS_ID", nil)
 			}
 		}
 	}
@@ -57,12 +57,12 @@ func (s *Service) execAssetServiceDiagnosis(clusterID uint, namespace string, ta
 	}
 	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
-		return "", errors.New(k8sClusterConnectError)
+		return "", apperr.New("K8S_CLUSTER_CONNECTION_FAILED", nil)
 	}
 	defer cleanup()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return "", errors.New(k8sClusterConnectError)
+		return "", apperr.New("K8S_CLUSTER_CONNECTION_FAILED", nil)
 	}
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), target.PodName, metav1.GetOptions{})
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *Service) execAssetServiceDiagnosis(clusterID uint, namespace string, ta
 	}
 	container := chooseK8sContainerName(pod, target.Container)
 	if container == "" {
-		return "", errors.New("pod container not found")
+		return "", apperr.New("DIAGNOSIS_CONTAINER_NOT_FOUND", nil)
 	}
 	req := clientset.CoreV1().RESTClient().Post().Resource("pods").Name(target.PodName).Namespace(namespace).SubResource("exec")
 	req.VersionedParams(&corev1.PodExecOptions{Container: container, Command: command, Stdout: true, Stderr: true}, scheme.ParameterCodec)
@@ -83,7 +83,7 @@ func (s *Service) execAssetServiceDiagnosis(clusterID uint, namespace string, ta
 	defer cancel()
 	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{Stdout: &stdout, Stderr: &stderr})
 	if err != nil {
-		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		return "", apperr.Wrap("DIAGNOSIS_EXECUTION_FAILED", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String())), nil)
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
@@ -132,17 +132,17 @@ func (s *Service) DownloadAssetServiceArthas(target AssetServiceDiagnosisTarget)
 	}
 	_, err = s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "set -e; if command -v curl >/dev/null 2>&1; then curl -fsSL https://arthas.aliyun.com/arthas-boot.jar -o /opt/arthas-boot.jar; elif command -v wget >/dev/null 2>&1; then wget -qO /opt/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar; else exit 12; fi"})
 	if err != nil {
-		return nil, fmt.Errorf("Arthas download failed: %w", err)
+		return nil, apperr.Wrap("ARTHAS_DOWNLOAD_FAILED", err, nil)
 	}
 	return s.GetAssetServiceDiagnosisEnvironment(target)
 }
 
 func (s *Service) UploadAssetServiceArthas(target AssetServiceDiagnosisTarget, content []byte) (map[string]any, error) {
 	if len(content) == 0 {
-		return nil, errors.New("arthas-boot.jar is empty")
+		return nil, apperr.New("ARTHAS_FILE_EMPTY", nil)
 	}
 	if len(content) > 80*1024*1024 {
-		return nil, errors.New("arthas-boot.jar exceeds 80MB")
+		return nil, apperr.New("ARTHAS_FILE_TOO_LARGE", map[string]any{"maxMb": 80})
 	}
 	clusterID, namespace, err := s.validateAssetServiceDiagnosisTarget(target)
 	if err != nil {
@@ -154,12 +154,12 @@ func (s *Service) UploadAssetServiceArthas(target AssetServiceDiagnosisTarget, c
 	}
 	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
-		return nil, errors.New(k8sClusterConnectError)
+		return nil, apperr.New("K8S_CLUSTER_CONNECTION_FAILED", nil)
 	}
 	defer cleanup()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, errors.New(k8sClusterConnectError)
+		return nil, apperr.New("K8S_CLUSTER_CONNECTION_FAILED", nil)
 	}
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), target.PodName, metav1.GetOptions{})
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *Service) UploadAssetServiceArthas(target AssetServiceDiagnosisTarget, c
 	}
 	container := chooseK8sContainerName(pod, target.Container)
 	if container == "" {
-		return nil, errors.New("pod container not found")
+		return nil, apperr.New("DIAGNOSIS_CONTAINER_NOT_FOUND", nil)
 	}
 	req := clientset.CoreV1().RESTClient().Post().Resource("pods").Name(target.PodName).Namespace(namespace).SubResource("exec")
 	req.VersionedParams(&corev1.PodExecOptions{Container: container, Command: []string{"sh", "-c", "cat > /opt/arthas-boot.jar && test -s /opt/arthas-boot.jar"}, Stdin: true, Stdout: true, Stderr: true}, scheme.ParameterCodec)
@@ -179,7 +179,7 @@ func (s *Service) UploadAssetServiceArthas(target AssetServiceDiagnosisTarget, c
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if err := executor.StreamWithContext(ctx, remotecommand.StreamOptions{Stdin: bytes.NewReader(content), Stdout: &stdout, Stderr: &stderr}); err != nil {
-		return nil, fmt.Errorf("upload to container failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, apperr.Wrap("ARTHAS_UPLOAD_FAILED", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String())), nil)
 	}
 	return s.GetAssetServiceDiagnosisEnvironment(target)
 }
@@ -454,19 +454,19 @@ func (s *Service) getAssetServiceJVMDashboard(clusterID uint, namespace string, 
 func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, target AssetServiceDiagnosisTarget) (map[string]any, error) {
 	seconds := target.Seconds
 	if seconds != 10 && seconds != 30 && seconds != 60 && seconds != 120 {
-		return nil, errors.New("invalid flamegraph sampling duration")
+		return nil, apperr.New("INVALID_FLAMEGRAPH_DURATION", nil)
 	}
 	event := Trimmed(target.Event)
 	if event == "" {
 		event = "cpu"
 	}
 	if event != "cpu" && event != "alloc" {
-		return nil, errors.New("invalid flamegraph event")
+		return nil, apperr.New("INVALID_FLAMEGRAPH_EVENT", nil)
 	}
 	profilerEvent := event
 	file := fmt.Sprintf("/tmp/arthas-flame-%s-%s-%d-%d.html", event, Trimmed(target.PID), seconds, time.Now().UnixNano())
 	if _, err := s.runArthasCLI(clusterID, namespace, target, "profiler start --event "+profilerEvent); err != nil {
-		return nil, fmt.Errorf("start profiler failed: %w", err)
+		return nil, apperr.Wrap("FLAMEGRAPH_START_FAILED", err, nil)
 	}
 	defer func() {
 		_, _ = s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "rm -f " + shellQuote(file)})
@@ -474,20 +474,20 @@ func (s *Service) getAssetServiceFlamegraph(clusterID uint, namespace string, ta
 	time.Sleep(time.Duration(seconds) * time.Second)
 	stopOutput, stopErr := s.runArthasCLI(clusterID, namespace, target, "profiler stop --format html --file "+file)
 	if stopErr != nil {
-		return nil, fmt.Errorf("stop profiler failed: %w", stopErr)
+		return nil, apperr.Wrap("FLAMEGRAPH_STOP_FAILED", stopErr, nil)
 	}
 	html, err := s.execAssetServiceDiagnosis(clusterID, namespace, target, []string{"sh", "-c", "cat " + shellQuote(file)})
 	if err != nil {
-		return nil, fmt.Errorf("read flamegraph failed: %w", err)
+		return nil, apperr.Wrap("FLAMEGRAPH_READ_FAILED", err, nil)
 	}
 	if !strings.Contains(strings.ToLower(html), "<html") {
-		return nil, errors.New("generated flamegraph is not valid HTML")
+		return nil, apperr.New("FLAMEGRAPH_INVALID_OUTPUT", nil)
 	}
 	if !arthasFlameData.MatchString(html) {
 		if event == "cpu" {
-			return nil, errors.New("CPU profiler collected no samples; generate application load during the sampling period and try again")
+			return nil, apperr.New("FLAMEGRAPH_CPU_NO_SAMPLES", nil)
 		}
-		return nil, errors.New("allocation profiler collected no samples; trigger requests that allocate objects during the sampling period and try again")
+		return nil, apperr.New("FLAMEGRAPH_ALLOC_NO_SAMPLES", nil)
 	}
 	return map[string]any{"flameHtml": html, "event": event, "engine": profilerEvent, "raw": cleanArthasOutput(stopOutput)}, nil
 }
@@ -499,19 +499,19 @@ func (s *Service) RunAssetServiceDiagnosis(target AssetServiceDiagnosisTarget) (
 		return nil, err
 	}
 	if Trimmed(target.PID) == "" {
-		return nil, errors.New("process id is required")
+		return nil, apperr.New("PROCESS_ID_REQUIRED", nil)
 	}
 	if target.Operation == "dashboard" {
 		data, err := s.getAssetServiceJVMDashboard(clusterID, namespace, target)
 		if err != nil {
-			return nil, fmt.Errorf("Arthas JVM dashboard failed: %w", err)
+			return nil, apperr.Wrap("ARTHAS_DASHBOARD_FAILED", err, nil)
 		}
 		return map[string]any{"operation": target.Operation, "data": data}, nil
 	}
 	if target.Operation == "flame" {
 		data, err := s.getAssetServiceFlamegraph(clusterID, namespace, target)
 		if err != nil {
-			return nil, fmt.Errorf("Arthas flamegraph failed: %w", err)
+			return nil, apperr.Wrap("ARTHAS_FLAMEGRAPH_FAILED", err, nil)
 		}
 		return map[string]any{"operation": target.Operation, "data": data}, nil
 	}
@@ -530,16 +530,16 @@ func (s *Service) RunAssetServiceDiagnosis(target AssetServiceDiagnosisTarget) (
 	case "class":
 		pattern := Trimmed(target.Pattern)
 		if pattern == "" {
-			return nil, errors.New("class pattern is required")
+			return nil, apperr.New("CLASS_PATTERN_REQUIRED", nil)
 		}
 		for _, char := range pattern {
 			if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || strings.ContainsRune(".*$_-", char)) {
-				return nil, errors.New("invalid class pattern")
+				return nil, apperr.New("INVALID_CLASS_PATTERN", nil)
 			}
 		}
 		command = "sc -d " + pattern
 	default:
-		return nil, errors.New("unsupported diagnosis operation")
+		return nil, apperr.New("UNSUPPORTED_DIAGNOSIS_OPERATION", nil)
 	}
 	var output string
 	if target.Operation == "env" || target.Operation == "sysprop" {
@@ -548,7 +548,7 @@ func (s *Service) RunAssetServiceDiagnosis(target AssetServiceDiagnosisTarget) (
 		output, err = s.runArthasCLI(clusterID, namespace, target, command)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Arthas CLI diagnosis failed: %w", err)
+		return nil, apperr.Wrap("ARTHAS_CLI_FAILED", err, nil)
 	}
 	output = cleanArthasOutput(output)
 	rawOutput := output
