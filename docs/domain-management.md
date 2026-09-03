@@ -1,42 +1,42 @@
-# 域名管理模块
+# Domain 관리 Module
 
-## 数据表
+## Database Table
 
-| 表 | 用途 |
+| Table | 용도 |
 |---|---|
-| `domain_public_dns_account` | 公网 DNS 账号；AccessKey/Secret 均为 AES-GCM 密文 |
-| `domain_public_snapshot` | 从云厂商 API 同步的域名列表快照 |
-| `domain_internal_dns_setting` | 内网 DNS 启停、监听地址、上游与超时 |
-| `domain_internal_dns_zone` | 内网权威 Zone |
-| `domain_internal_dns_record` | A/CNAME 记录 |
-| `domain_dns_audit_log` | DNS 专项变更审计 |
-| `ssl_certificates` | SSL 证书元数据、加密后的 Private Key 与云端同步状态 |
-| `ssl_certificate_domains` | 证书 CN / SAN / Wildcard 域名关系 |
-| `ssl_certificate_versions` | ACME 续签前的历史证书版本 |
-| `ssl_certificate_tasks` | APPLY / RENEW / SYNC / DELETE 异步任务 |
-| `ssl_certificate_audit_logs` | 证书专项操作与敏感下载审计 |
+| `domain_public_dns_account` | Public DNS Account. AccessKey와 Secret은 AES-GCM Ciphertext로 저장합니다. |
+| `domain_public_snapshot` | Cloud Provider API에서 동기화한 Domain 목록 Snapshot |
+| `domain_internal_dns_setting` | Internal DNS 활성 상태, Listen Address, Upstream, Timeout 설정 |
+| `domain_internal_dns_zone` | Internal Authoritative Zone |
+| `domain_internal_dns_record` | A 및 CNAME Record |
+| `domain_dns_audit_log` | DNS 전용 변경 Audit |
+| `ssl_certificates` | SSL Certificate Metadata, 암호화한 Private Key, Cloud Sync 상태 |
+| `ssl_certificate_domains` | Certificate CN, SAN, Wildcard Domain 관계 |
+| `ssl_certificate_versions` | ACME Renewal 전 Historical Certificate Version |
+| `ssl_certificate_tasks` | APPLY, RENEW, SYNC, DELETE Async Task |
+| `ssl_certificate_audit_logs` | Certificate 전용 작업 및 Sensitive Download Audit |
 
-## 后端结构
+## Backend 구조
 
-- `internal/domain/provider`：公网 DNS Provider 接口、阿里云 DNS、腾讯云 DNSPod。
-- `internal/domain/provider/*certificate.go`：阿里云 CAS、腾讯云 SSL 统一证书 Provider。
-- `internal/domain/dnsserver`：不可变记录快照、UDP/TCP Server、转发与 TTL 缓存。
-- `service/domain.go`：账号、Zone、Record、批量操作、解析测试和审计业务。
-- `service/ssl_certificate.go`：同步、上传、下载、删除安全规则和证书审计。
-- `service/ssl_acme.go`：lego ACME DNS-01、任务恢复与自动续签。
-- `controller/domain.go`：`/api/v1/domain/*` HTTP API。
+- `internal/domain/provider`: Public DNS Provider Interface, Aliyun DNS, Tencent Cloud DNSPod 구현
+- `internal/domain/provider/*certificate.go`: Aliyun CAS와 Tencent Cloud SSL을 통합한 Certificate Provider
+- `internal/domain/dnsserver`: Immutable Record Snapshot, UDP/TCP Server, Forwarding, TTL Cache
+- `service/domain.go`: Account, Zone, Record, Batch Operation, Resolution Test, Audit Business Logic
+- `service/ssl_certificate.go`: Sync, Upload, Download, Delete Security Rule, Certificate Audit
+- `service/ssl_acme.go`: lego ACME DNS-01, Task Recovery, Automatic Renewal
+- `controller/domain.go`: `/api/v1/domain/*` HTTP API
 
-DNS 查询只读取 `atomic.Pointer` 指向的内存快照。Zone/Record 变更在数据库事务中生成新快照，提交成功后原子替换；查询过程不会访问 MySQL。
+DNS Query는 `atomic.Pointer`가 가리키는 Memory Snapshot만 읽습니다. Zone 또는 Record가 변경되면 Database Transaction 안에서 새 Snapshot을 생성하고 Commit 성공 후 Atomic Replacement를 수행합니다. Query 과정에서는 MySQL에 접근하지 않습니다.
 
-属于已启用内网 Zone 但未命中的名称返回 NXDOMAIN。只有不属于任何内网 Zone 的查询才会按顺序转发到上游 DNS；UDP 响应被截断时自动改用 TCP。
+활성화된 Internal Zone에 속하지만 일치하는 Record가 없는 이름에는 NXDOMAIN을 반환합니다. 어떤 Internal Zone에도 속하지 않는 Query만 Upstream DNS에 순서대로 Forwarding합니다. UDP Response가 Truncated 상태이면 자동으로 TCP를 사용합니다.
 
-## SSL 证书
+## SSL Certificate
 
-SSL 证书复用公网 DNS 账号和 Provider。ACME 申请只允许选择已同步并关联启用 DNS 账号的公网主域名，使用 DNS-01 自动创建/清理 TXT Challenge。签发成功与云端上传是独立状态，云端失败不会覆盖本地有效证书。
+SSL Certificate는 Public DNS Account와 Provider를 재사용합니다. ACME 신청은 동기화되어 있고 활성 DNS Account와 연결된 Public Main Domain만 선택할 수 있습니다. DNS-01 과정에서 TXT Challenge Record를 자동 생성하고 정리합니다. Certificate Issuance와 Cloud Upload는 독립된 상태로 관리하므로 Cloud Upload 실패가 Local Valid Certificate를 덮어쓰지 않습니다.
 
-Private Key 使用项目统一 AES-256-GCM Secret 工具加密；普通列表/详情 API 永不返回证书正文或密钥。Private Key 与 ZIP 下载使用独立权限并写专项审计；全局操作日志会完全跳过 SSL 上传正文。
+Private Key는 프로젝트 공통 AES-256-GCM Secret Utility로 암호화합니다. 일반 List 및 Detail API는 Certificate Body 또는 Private Key를 반환하지 않습니다. Private Key와 ZIP Download에는 별도 Permission을 적용하고 전용 Audit를 기록합니다. Global Operation Log는 SSL Upload Body 전체를 기록 대상에서 제외합니다.
 
-可配置项位于 `backend/config.yaml` 的 `ssl`：
+설정은 `backend/config.yaml`의 `ssl` Section에 둡니다.
 
 ```yaml
 ssl:
@@ -48,17 +48,17 @@ ssl:
   expiry-warning-days: 30
 ```
 
-相同配置可通过 `OPS_ADMIN_ACME_EMAIL`、`OPS_ADMIN_ACME_CA_PRODUCTION`、`OPS_ADMIN_ACME_CA_STAGING`、`OPS_ADMIN_ACME_DNS_POLLING_SECONDS`、`OPS_ADMIN_ACME_DNS_TIMEOUT_SECONDS`、`OPS_ADMIN_SSL_EXPIRY_WARNING_DAYS` 覆盖。
+같은 설정은 `OPS_ADMIN_ACME_EMAIL`, `OPS_ADMIN_ACME_CA_PRODUCTION`, `OPS_ADMIN_ACME_CA_STAGING`, `OPS_ADMIN_ACME_DNS_POLLING_SECONDS`, `OPS_ADMIN_ACME_DNS_TIMEOUT_SECONDS`, `OPS_ADMIN_SSL_EXPIRY_WARNING_DAYS` Environment Variable로 Override할 수 있습니다.
 
-## 部署
+## Deployment
 
-内网 DNS 默认关闭。生产环境必须在 `backend/config.yaml`（容器部署使用 `deploy/config.yaml`）设置：
+Internal DNS는 기본적으로 비활성 상태입니다. Production 환경에서는 `backend/config.yaml`, Container Deployment에서는 `deploy/config.yaml`에 다음 값을 설정해야 합니다.
 
 ```yaml
 security:
-  credential-key: <至少 32 字节的独立随机密钥>
+  credential-key: <32 byte 이상의 독립적인 random key>
 ```
 
-Linux 监听 53 端口使用 `CAP_NET_BIND_SERVICE`，不要以 root 身份运行整个 Web 平台。DNS 模块启动失败只更新运行状态与错误信息，不会导致 HTTP 平台退出。
+Linux에서 Port 53을 Listen하려면 `CAP_NET_BIND_SERVICE`를 사용합니다. Web Platform 전체를 root 권한으로 실행하지 않습니다. DNS Module Start 실패는 Runtime Status와 Error Information만 갱신하며 HTTP Platform Process를 종료하지 않습니다.
 
-必须限制配置文件的读取权限。密钥变更会导致已保存的 DNS 云凭据和 SSL Private Key 无法解密。ACME 生产环境启用前应先在 Staging 完成 DNS-01 验证；平台进程还需能够访问 ACME CA、权威 DNS 以及阿里云/腾讯云证书 API。
+Configuration File의 Read Permission을 제한해야 합니다. Encryption Key를 변경하면 기존 DNS Cloud Credential과 SSL Private Key를 복호화할 수 없습니다. ACME를 Production에서 활성화하기 전에 Staging에서 DNS-01 Validation을 완료합니다. Platform Process는 ACME CA, Authoritative DNS, Aliyun/Tencent Cloud Certificate API에 접근할 수 있어야 합니다.
