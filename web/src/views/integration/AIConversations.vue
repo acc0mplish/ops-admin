@@ -19,7 +19,7 @@ onMounted(load)
 
 <template>
   <div class="ai-page">
-    <section class="ai-hero"><div><div class="ai-kicker">CONVERSATION MEMORY</div><h1>{{ it('conversationManagement') }}</h1><p>{{ it('conversationManagementDesc') }}</p></div><el-button type="primary" :icon="ChatLineRound" @click="$router.push('/integration/ai/chat')">{{ it('newConversation') }}</el-button></section>
+    <section class="ai-hero"><div><div class="ai-kicker">{{ it('conversationManagement') }}</div><h1>{{ it('conversationManagement') }}</h1><p>{{ it('conversationManagementDesc') }}</p></div><el-button type="primary" :icon="ChatLineRound" @click="$router.push('/integration/ai/chat')">{{ it('newConversation') }}</el-button></section>
     <section class="ai-panel">
       <div class="conversation-toolbar"><el-input v-model="keyword" clearable :placeholder="it('searchConversationTitle')" :prefix-icon="Search" @keyup.enter="load"/><el-button type="primary" @click="load">{{ it('search') }}</el-button></div>
       <el-table v-loading="loading" :data="list" @row-dblclick="open">
