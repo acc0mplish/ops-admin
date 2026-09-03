@@ -1,11 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { queryAssetDatabaseList } from '../../../api/asset'
+import { at } from '../../../utils/asset-i18n'
 
-const props = defineProps({
-  activeId: { type: Number, default: 0 }
-})
-
+const props = defineProps({ activeId: { type: Number, default: 0 } })
 const emit = defineEmits(['select'])
 const loading = ref(false)
 const keyword = ref('')
@@ -17,20 +15,11 @@ const treeData = computed(() => {
   for (const item of databases.value) {
     const content = `${item.name} ${item.host} ${item.dbName || ''} ${item.env || ''}`.toLowerCase()
     if (search && !content.includes(search)) continue
-    const env = item.env || '未分配环境'
+    const env = item.env || at('unassignedEnvironment')
     if (!groups.has(env)) groups.set(env, [])
-    groups.get(env).push({
-      id: `database:${item.id}`,
-      label: item.name,
-      database: item,
-      isDatabase: true
-    })
+    groups.get(env).push({ id: `database:${item.id}`, label: item.name, database: item, isDatabase: true })
   }
-  return Array.from(groups.entries()).map(([env, children]) => ({
-    id: `environment:${env}`,
-    label: env,
-    children
-  }))
+  return Array.from(groups.entries()).map(([env, children]) => ({ id: `environment:${env}`, label: env, children }))
 })
 
 async function loadData() {
@@ -38,14 +27,10 @@ async function loadData() {
   try {
     const data = await queryAssetDatabaseList({ pageNum: 1, pageSize: 500, status: '1' })
     databases.value = data.list || []
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false }
 }
 
-function selectNode(data) {
-  if (data.isDatabase) emit('select', data.database)
-}
+function selectNode(data) { if (data.isDatabase) emit('select', data.database) }
 
 onMounted(loadData)
 defineExpose({ refresh: loadData })
@@ -54,50 +39,27 @@ defineExpose({ refresh: loadData })
 <template>
   <div class="connection-tree">
     <div class="connection-tree-toolbar">
-      <el-input v-model="keyword" clearable placeholder="搜索数据库连接" />
-      <el-button title="刷新连接" @click="loadData">刷新</el-button>
+      <el-input v-model="keyword" clearable :placeholder="at('searchDatabaseConnection')" />
+      <el-button :title="at('refreshConnections')" @click="loadData">{{ at('refresh') }}</el-button>
     </div>
-    <el-tree
-      v-loading="loading"
-      :data="treeData"
-      node-key="id"
-      default-expand-all
-      :expand-on-click-node="false"
-      @node-click="selectNode"
-    >
+    <el-tree v-loading="loading" :data="treeData" node-key="id" default-expand-all :expand-on-click-node="false" @node-click="selectNode">
       <template #default="{ data }">
         <div class="connection-node" :class="{ active: data.database?.id === activeId, disabled: data.database?.connectStatus !== 1 }">
           <template v-if="data.isDatabase">
             <span class="status-dot" :class="{ online: data.database.connectStatus === 1 }" />
             <div class="connection-label">
               <strong>{{ data.label }}</strong>
-              <small>{{ data.database.dbType?.toUpperCase() || 'MYSQL' }} · {{ data.database.dbName || data.database.host }} · {{ data.database.accessMode === 'readonly' ? '只读' : '读写' }}</small>
+              <small>{{ data.database.dbType?.toUpperCase() || 'MYSQL' }} · {{ data.database.dbName || data.database.host }} · {{ data.database.accessMode === 'readonly' ? at('readOnly') : at('readWrite') }}</small>
             </div>
           </template>
-          <template v-else>
-            <strong class="environment-label">{{ data.label }}</strong>
-            <small>{{ data.children?.length || 0 }}</small>
-          </template>
+          <template v-else><strong class="environment-label">{{ data.label }}</strong><small>{{ data.children?.length || 0 }}</small></template>
         </div>
       </template>
     </el-tree>
-    <el-empty v-if="!loading && !treeData.length" description="暂无数据库连接" :image-size="58" />
+    <el-empty v-if="!loading && !treeData.length" :description="at('noDatabaseConnections')" :image-size="58" />
   </div>
 </template>
 
 <style scoped>
-.connection-tree { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.connection-tree-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.connection-node { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 5px 8px; border-radius: 5px; }
-.connection-node.active { background: #e8f0ff; color: #255fc4; }
-.connection-node.disabled { opacity: 0.55; }
-.connection-label { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
-.connection-label strong, .connection-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.connection-label small { color: #8290a7; font-size: 11px; }
-.status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #ef4444; }
-.status-dot.online { background: #22c55e; }
-.environment-label { flex: 1; color: #42526d; }
-.connection-node > small { color: #8b98ad; }
-:deep(.el-tree-node__content) { min-height: 42px; height: auto; border-radius: 5px; }
-:deep(.el-tree-node__content:hover) { background: #f3f6fb; }
+.connection-tree { display:flex; flex-direction:column; gap:10px; min-height:0; }.connection-tree-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }.connection-node { display:flex; align-items:center; gap:8px; width:100%; min-width:0; padding:5px 8px; border-radius:5px; }.connection-node.active { background:#e8f0ff; color:#255fc4; }.connection-node.disabled { opacity:.55; }.connection-label { display:flex; flex:1; flex-direction:column; gap:2px; min-width:0; }.connection-label strong,.connection-label small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.connection-label small { color:#8290a7; font-size:11px; }.status-dot { width:8px; height:8px; flex:0 0 auto; border-radius:50%; background:#ef4444; }.status-dot.online { background:#22c55e; }.environment-label { flex:1; color:#42526d; }.connection-node>small { color:#8b98ad; }:deep(.el-tree-node__content) { min-height:42px; height:auto; border-radius:5px; }:deep(.el-tree-node__content:hover) { background:#f3f6fb; }
 </style>
