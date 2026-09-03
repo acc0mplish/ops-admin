@@ -76,6 +76,10 @@ const errorCodeMessages = {
   ASSET_SERVICE_POD_MISMATCH: {
     ko: '선택한 Pod가 이 Workload에 속하지 않습니다.',
     en: 'The selected Pod does not belong to this workload.'
+  },
+  SSL_CERTIFICATE_KEY_MISMATCH: {
+    ko: '인증서와 Private Key가 일치하지 않습니다.',
+    en: 'The certificate and private key do not match.'
   }
 }
 
