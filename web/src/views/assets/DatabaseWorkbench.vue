@@ -195,12 +195,12 @@ const supportsSQL = computed(() => capabilities.value.sql !== false)
 const isRedis = computed(() => connection.value?.dbType === 'redis')
 const isPostgres = computed(() => connection.value?.dbType === 'postgresql')
 const supportsCreateDatabase = computed(() => !isReadOnly.value && ['mysql', 'postgresql'].includes(connection.value?.dbType))
-const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : '数据库'))
+const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : '数据Database'))
 const sqlSnippets = computed(() => [
   ...baseSqlSnippets,
   isPostgres.value
     ? {
-        label: '查看表',
+        label: 'Table 보기',
         text: "SELECT table_schema, table_name\nFROM information_schema.tables\nWHERE table_type = 'BASE TABLE'\n  AND table_schema NOT IN ('pg_catalog', 'information_schema')\n  AND table_schema NOT LIKE 'pg_%'\nORDER BY table_schema, table_name;"
       }
     : { label: 'SHOW TABLES', text: 'SHOW TABLES;' }
@@ -216,7 +216,7 @@ const redisKeyValuePlaceholder = computed(() => {
   if (redisKeyForm.type === 'hash') return '{"field":"value"}'
   if (redisKeyForm.type === 'zset') return '[{"member":"user:1","score":100}]'
   if (['list', 'set'].includes(redisKeyForm.type)) return '["value-1", "value-2"]'
-  return '请输入字符串值'
+  return 'String Value를 입력하십시오.'
 })
 const sourceTables = computed(() => {
   const schema = sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)
@@ -314,7 +314,7 @@ function basicFormatSQL(source) {
 function formatSQL() {
   const editor = sqlEditorRef.value
   const source = selectedSQLText()
-  if (!source) return ElMessage.warning('请输入需要格式化的 SQL')
+  if (!source) return ElMessage.warning('Format할 SQL을 입력하십시오.')
   const formatted = basicFormatSQL(source)
   if (editor && editor.selectionStart !== editor.selectionEnd) {
     const before = sqlText.value.slice(0, editor.selectionStart)
@@ -324,22 +324,22 @@ function formatSQL() {
   } else {
     sqlText.value = formatted
   }
-  ElMessage.success('SQL 已格式化')
+  ElMessage.success('SQL Format을 완료했습니다.')
 }
 
 async function saveCurrentSQL() {
   const statement = selectedSQLText()
-  if (!statement) return ElMessage.warning('请输入需要收藏的 SQL')
-  const { value } = await ElMessageBox.prompt('为这条 SQL 设置名称，后续可一键填入编辑器。', '收藏 SQL', {
-    inputPlaceholder: '例如：查询近 24 小时订单',
+  if (!statement) return ElMessage.warning('Favorite에 저장할 SQL을 입력하십시오.')
+  const { value } = await ElMessageBox.prompt('이 SQL의 이름을 지정하면 이후 Editor에 바로 불러올 수 있습니다.', 'SQL Favorite', {
+    inputPlaceholder: '예: 최근 24시간 Order 조회',
     inputPattern: /\S+/,
-    inputErrorMessage: '请输入收藏名称',
-    confirmButtonText: '保存',
-    cancelButtonText: '取消'
+    inputErrorMessage: 'Favorite 이름을 입력하십시오.',
+    confirmButtonText: '저장',
+    cancelButtonText: '취소'
   })
   sqlFavorites.value.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: value.trim(), sqlText: statement, updatedAt: Date.now() })
   persistSqlFavorites()
-  ElMessage.success('SQL 已收藏')
+  ElMessage.success('SQL을 Favorite에 저장했습니다.')
 }
 
 function applySqlFavorite(item) {
@@ -359,7 +359,7 @@ function reuseHistorySQL(row) {
 }
 
 function exportResultCSV() {
-  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning('当前没有可导出的 SQL 结果')
+  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning('Export할 SQL 결과가 없습니다.')
   const escapeCSV = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
   const lines = [resultColumns.value, ...filteredResultRows.value.map((row) => resultColumns.value.map((column) => row[column]))]
     .map((row) => row.map(escapeCSV).join(','))
@@ -448,7 +448,7 @@ function isEditingCell(row, column, index) {
 
 function startCellEdit(row, column, index) {
   if (!canEditRows.value) {
-    ElMessage.warning(isReadOnly.value ? '当前数据库为只读模式' : '当前表没有主键，不能直接编辑')
+    ElMessage.warning(isReadOnly.value ? '현재 Database는 Read-only Mode입니다.' : '현재 Table에 Primary Key가 없어 직접 편집할 수 없습니다.')
     return
   }
   editingCell.rowKey = rowKeyFor(row, index)
@@ -477,7 +477,7 @@ async function commitCellEdit(row, column) {
     original: editingOriginalRow.value,
     current
   })
-  ElMessage.success('单元格已更新')
+  ElMessage.success('Cell을 업데이트했습니다.')
   cancelCellEdit()
   await Promise.all([loadTableData(), loadHistory()])
 }
@@ -542,7 +542,7 @@ async function onCreateDatabaseCharsetChange() {
 async function submitCreateDatabase() {
   const name = createDatabaseForm.name.trim()
   if (!name) {
-    ElMessage.warning(`请输入${createDatabaseObjectLabel.value}名称`)
+    ElMessage.warning(`${createDatabaseObjectLabel.value} 이름을 입력하십시오.`)
     return
   }
   creatingDatabase.value = true
@@ -669,7 +669,7 @@ async function initialize() {
 function switchDatabase(database) {
   if (!database?.id || Number(database.id) === databaseId.value) return
   if (database.connectStatus !== 1) {
-    ElMessage.warning('该数据库当前未连接，请先检查连接配置')
+    ElMessage.warning('현재 Database가 연결되지 않았습니다. Connection 설정을 확인하십시오.')
     return
   }
   router.replace({ name: 'DatabaseWorkbench', params: { id: database.id } })
@@ -718,7 +718,7 @@ function onTreeNodeClick(node) {
       selectedRows.value = []
       selectedTotal.value = 0
       activeTab.value = 'data'
-      ElMessage.info(`Schema ${node.name} 暂无可浏览的数据表`)
+      ElMessage.info(`Schema ${node.name}에 탐색 가능한 Table이 없습니다.`)
       return
     }
     treeRef.value?.setCurrentKey(firstTable.id)
@@ -735,7 +735,7 @@ function onTreeNodeClick(node) {
     return
   }
   if (!supportsTableData.value) {
-    ElMessage.info('当前数据库类型已支持连接和结构浏览，数据编辑功能将在后续版本提供')
+    ElMessage.info('현재 Database Type은 Connection과 Structure 탐색을 지원합니다. Data 편집은 추후 Version에서 제공합니다.')
     return
   }
   loadTableData()
@@ -750,11 +750,11 @@ function selectedSQLText() {
 
 function isProductionEnvironment(value) {
   const environment = String(value || '').toLowerCase()
-  return environment.includes('prod') || environment.includes('生产')
+  return environment.includes('prod') || environment.includes('\u751f\u4ea7')
 }
 
 function sqlConfirmationText() {
-  return isProductionEnvironment(sqlAnalysis.value?.environment) ? '生产环境' : '确认执行'
+  return isProductionEnvironment(sqlAnalysis.value?.environment) ? '운영 환경' : '실행 확인'
 }
 
 async function executeAnalyzedSQL(statement, confirmed = false) {
@@ -770,7 +770,7 @@ async function executeAnalyzedSQL(statement, confirmed = false) {
   execMeta.rowsAffected = Number(data.rowsAffected || 0)
   execMeta.durationMs = Number(data.durationMs || 0)
   activeTab.value = 'result'
-  ElMessage.success('SQL 执行完成')
+  ElMessage.success('SQL 실행을 완료했습니다.')
   await Promise.all([loadHistory(), loadTasks()])
   if (selectedTable.value) {
     await loadTableData()
@@ -779,12 +779,12 @@ async function executeAnalyzedSQL(statement, confirmed = false) {
 
 async function runSQL() {
   if (!supportsSQL.value) {
-    ElMessage.warning('当前数据库类型不使用 SQL 工作台，请通过左侧资源树查看连接与结构信息')
+    ElMessage.warning('현재 Database Type은 SQL Workbench를 사용하지 않습니다. 왼쪽 Resource Tree에서 Connection과 Structure를 확인하십시오.')
     return
   }
   const statement = selectedSQLText()
   if (!statement) {
-    ElMessage.warning('请输入要执行的 SQL')
+    ElMessage.warning('실행할 SQL을 입력하십시오.')
     return
   }
   sqlRunning.value = true
@@ -810,7 +810,7 @@ async function runSQL() {
 
 async function confirmSQLExecution() {
   if (sqlAcknowledgement.value !== sqlConfirmationText()) {
-    ElMessage.warning(`请输入“${sqlConfirmationText()}”以确认执行`)
+    ElMessage.warning(`실행을 확인하려면 “${sqlConfirmationText()}”을(를) 입력하십시오.`)
     return
   }
   sqlRunning.value = true
@@ -834,7 +834,7 @@ async function executeRedisCommandText(confirmed = false) {
   execMeta.rowsAffected = Number(data.rowsAffected || 0)
   execMeta.durationMs = Number(data.durationMs || 0)
   activeTab.value = 'result'
-  ElMessage.success('Redis 命令执行完成')
+  ElMessage.success('Redis Command 실행을 완료했습니다.')
   await loadHistory()
   if (selectedTable.value) await loadResourceData()
 }
@@ -842,7 +842,7 @@ async function executeRedisCommandText(confirmed = false) {
 async function runRedisCommand() {
   if (!isRedis.value) return
   if (!redisCommandText.value.trim()) {
-    ElMessage.warning('请输入 Redis 命令')
+    ElMessage.warning('Redis Command를 입력하십시오.')
     return
   }
   redisRunning.value = true
@@ -854,7 +854,7 @@ async function runRedisCommand() {
     })
     if (analysis.writeOperation) {
       await confirmRiskOperation({
-        operation: `Redis 写命令：${analysis.command}`,
+        operation: `Redis Write Command: ${analysis.command}`,
         targetSummary: `${connection.value?.databaseName || connection.value?.name || databaseId.value}`,
         production: isProductionEnvironment(connection.value?.environment),
         destructive: true
@@ -887,7 +887,7 @@ function openRedisKeyCreate() {
 
 function openRedisKeyEdit(row) {
   if (row.type === 'stream') {
-    ElMessage.warning('Stream 类型暂不支持可视化编辑，请使用上方 Redis 命令控制台')
+    ElMessage.warning('Stream Type은 아직 Visual Editing을 지원하지 않습니다. 위 Redis Command Console을 사용하십시오.')
     return
   }
   redisKeyDialogMode.value = 'edit'
@@ -905,35 +905,35 @@ function parseRedisValueArguments() {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('复杂类型的值必须填写合法 JSON')
+    throw new Error('Complex Type Value는 유효한 JSON이어야 합니다.')
   }
   if (redisKeyForm.type === 'hash') {
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Hash 值必须是 JSON 对象')
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Hash Value는 JSON Object여야 합니다.')
     const entries = Object.entries(parsed)
-    if (!entries.length) throw new Error('Hash 至少需要一个字段')
+    if (!entries.length) throw new Error('Hash에는 하나 이상의 Field가 필요합니다.')
     return entries.flatMap(([field, value]) => [quoteRedisArgument(field), quoteRedisArgument(value)])
   }
   if (redisKeyForm.type === 'zset') {
-    if (!Array.isArray(parsed) || !parsed.length) throw new Error('有序集合值必须是非空 JSON 数组')
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error('Sorted Set Value는 비어 있지 않은 JSON Array여야 합니다.')
     return parsed.flatMap((item) => {
-      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error('有序集合元素必须包含 member 和 score')
+      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error('Sorted Set Element에는 member와 score가 필요합니다.')
       return [quoteRedisArgument(item.score), quoteRedisArgument(item.member)]
     })
   }
-  if (!Array.isArray(parsed) || !parsed.length) throw new Error('List 或 Set 值必须是非空 JSON 数组')
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('List 또는 Set Value는 비어 있지 않은 JSON Array여야 합니다.')
   return parsed.map((item) => quoteRedisArgument(item))
 }
 
 function redisTTLCommand(key) {
   if (redisKeyForm.ttl === undefined || redisKeyForm.ttl === null || redisKeyForm.ttl === '') return ''
   const ttl = Number(redisKeyForm.ttl)
-  if (!Number.isInteger(ttl) || ttl < -1) throw new Error('TTL 只能设置为 -1 或非负整数秒')
+  if (!Number.isInteger(ttl) || ttl < -1) throw new Error('TTL은 -1 또는 0 이상의 정수 초로 설정해야 합니다.')
   return ttl === -1 ? `PERSIST ${quoteRedisArgument(key)}` : `EXPIRE ${quoteRedisArgument(key)} ${ttl}`
 }
 
 function buildRedisKeyCommands() {
   const key = redisKeyForm.key.trim()
-  if (!key) throw new Error('请输入 Key 名称')
+  if (!key) throw new Error('Key 이름을 입력하십시오.')
   const valueArgs = parseRedisValueArguments()
   const quotedKey = quoteRedisArgument(key)
   const editing = redisKeyDialogMode.value === 'edit'
@@ -946,7 +946,7 @@ function buildRedisKeyCommands() {
     case 'list': command = `RPUSH ${quotedKey} ${valueArgs.join(' ')}`; break
     case 'set': command = `SADD ${quotedKey} ${valueArgs.join(' ')}`; break
     case 'zset': command = `ZADD ${quotedKey} ${valueArgs.join(' ')}`; break
-    default: throw new Error('不支持的 Redis Key 类型')
+    default: throw new Error('지원하지 않는 Redis Key Type입니다.')
   }
   const commands = []
   if (editing && redisKeyForm.type !== 'string') commands.push(`DEL ${quotedKey}`)
@@ -961,10 +961,10 @@ async function submitRedisKey() {
   try {
     commands = buildRedisKeyCommands()
   } catch (error) {
-    ElMessage.warning(error.message || 'Key 内容不正确')
+    ElMessage.warning(error.message || 'Key 내용이 올바르지 않습니다.')
     return
   }
-  const action = redisKeyDialogMode.value === 'create' ? '新增' : '更新'
+  const action = redisKeyDialogMode.value === 'create' ? '추가' : '업데이트'
   try {
     await confirmRiskOperation({
       operation: `${action} Redis Key`,
@@ -994,7 +994,7 @@ async function submitRedisKey() {
 async function deleteRedisKey(row) {
   try {
     await confirmRiskOperation({
-      operation: '删除 Redis Key',
+      operation: 'Redis Key 삭제',
       targetSummary: row.key,
       production: isProductionEnvironment(connection.value?.environment),
       destructive: true
@@ -1011,7 +1011,7 @@ async function deleteRedisKey(row) {
       selectedColumns.value = []
     }
     await Promise.all([loadTree(), loadHistory()])
-    ElMessage.success('Redis Key 已删除')
+    ElMessage.success('Redis Key를 삭제했습니다.')
   } finally {
     redisRunning.value = false
   }
@@ -1095,7 +1095,7 @@ function openRollback(row) {
 
 async function copyRollback(row) {
   await navigator.clipboard.writeText(row.rollbackSql || '')
-  ElMessage.success('回滚 SQL 已复制')
+  ElMessage.success('Rollback SQL을 복사했습니다.')
 }
 
 function openInsertRow() {
@@ -1120,7 +1120,7 @@ function openEditRow(row) {
 
 async function submitRow() {
   await confirmRiskOperation({
-    operation: rowDialogMode.value === 'insert' ? '新增表数据' : '更新表数据',
+    operation: rowDialogMode.value === 'insert' ? 'Table Data 추가' : 'Table Data 업데이트',
     targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
     production: isProductionEnvironment(connection.value?.environment),
     destructive: rowDialogMode.value === 'update'
@@ -1132,7 +1132,7 @@ async function submitRow() {
       table: selectedTable.value,
       row: { ...rowForm }
     })
-    ElMessage.success('新增成功')
+    ElMessage.success('추가했습니다.')
   } else {
     await updateDBMSTableRow({
       databaseId: databaseId.value,
@@ -1141,7 +1141,7 @@ async function submitRow() {
       original: rowOriginal.value,
       current: { ...rowForm }
     })
-    ElMessage.success('更新成功')
+    ElMessage.success('업데이트했습니다.')
   }
   rowDialogVisible.value = false
   await Promise.all([loadTableData(), loadHistory()])
@@ -1149,7 +1149,7 @@ async function submitRow() {
 
 async function handleDeleteRow(row) {
   await confirmRiskOperation({
-    operation: '删除表数据行',
+    operation: 'Table Data Row 삭제',
     targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
     production: isProductionEnvironment(connection.value?.environment),
     destructive: true
@@ -1160,13 +1160,13 @@ async function handleDeleteRow(row) {
     table: selectedTable.value,
     row
   })
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await Promise.all([loadTableData(), loadHistory()])
 }
 
 async function createExportTask() {
   if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('请先选择要导出的表')
+    ElMessage.warning('Export할 Table을 먼저 선택하십시오.')
     return
   }
   await createDBMSExportTask({
@@ -1175,7 +1175,7 @@ async function createExportTask() {
     table: selectedTable.value,
     includeData: true
   })
-  ElMessage.success('导出任务已创建')
+  ElMessage.success('Export Task를 생성했습니다.')
   activeTab.value = 'tasks'
   await loadTasks()
 }
@@ -1199,16 +1199,16 @@ async function loadImportSchemas() {
 
 async function submitImportTask() {
   if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('请先选择当前工作台目标表')
+    ElMessage.warning('현재 Workbench의 Target Table을 먼저 선택하십시오.')
     return
   }
   if (!importPrecheck.value?.ready) {
-    ElMessage.warning('请先完成导入预检查')
+    ElMessage.warning('Import Precheck를 먼저 완료하십시오.')
     return
   }
   await createDBMSImportTask(importPayload())
   importDialogVisible.value = false
-  ElMessage.success('导入任务已创建')
+  ElMessage.success('Import Task를 생성했습니다.')
   activeTab.value = 'tasks'
   await loadTasks()
 }
@@ -1228,7 +1228,7 @@ function importPayload() {
 
 async function runImportPrecheck() {
   if (!importForm.sourceDatabaseId || !importForm.sourceSchema || !importForm.sourceTable || !selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('请完整选择源库、源表和目标表')
+    ElMessage.warning('Source Database, Source Table 및 Target Table을 모두 선택하십시오.')
     return
   }
   importPrechecking.value = true
@@ -1257,10 +1257,10 @@ function taskStatusType(status) {
 }
 
 function taskStatusText(status) {
-  if (status === 'success') return '成功'
-  if (status === 'failed') return '失败'
-  if (status === 'running') return '执行中'
-  return '等待中'
+  if (status === 'success') return '성공'
+  if (status === 'failed') return '실패'
+  if (status === 'running') return '실행 중'
+  return '대기 중'
 }
 
 watch(treeKeyword, () => {
@@ -1310,38 +1310,38 @@ onBeforeUnmount(() => {
     <header class="dbms-console-bar">
       <div class="dbms-console-identity">
         <span>DBMS WORKBENCH</span>
-        <strong>{{ connection?.name || connection?.databaseName || '数据库工作台' }}</strong>
-        <small>{{ connection?.host || connection?.address || '选择连接后可浏览对象、执行语句与查看结果' }}</small>
+        <strong>{{ connection?.name || connection?.databaseName || 'Database Workbench' }}</strong>
+        <small>{{ connection?.host || connection?.address || 'Connection을 선택하면 Object 탐색, Statement 실행 및 결과 확인이 가능합니다.' }}</small>
       </div>
       <div class="dbms-console-status">
         <el-tag effect="plain">{{ (connection?.dbType || 'DBMS').toUpperCase() }}</el-tag>
         <el-tag v-if="connection?.environment" type="info" effect="plain">{{ connection.environment }}</el-tag>
-        <el-tag :type="isReadOnly ? 'warning' : 'success'" effect="plain">{{ isReadOnly ? '只读连接' : '可写连接' }}</el-tag>
+        <el-tag :type="isReadOnly ? 'warning' : 'success'" effect="plain">{{ isReadOnly ? 'Read-only Connection' : 'Writable Connection' }}</el-tag>
       </div>
     </header>
     <div class="dbms-layout">
       <aside class="dbms-sidebar page-card">
         <section class="sidebar-section connection-section">
           <div class="sidebar-section-title">
-            <strong>数据库连接</strong>
-            <span>点击连接即可切换</span>
+            <strong>Database Connection</strong>
+            <span>Connection을 클릭해 전환</span>
           </div>
           <DatabaseConnectionTree :active-id="databaseId" @select="switchDatabase" />
         </section>
 
         <section class="sidebar-section schema-section">
           <div class="sidebar-section-title">
-            <strong>库表结构</strong>
+            <strong>Database / Table Structure</strong>
             <div class="schema-title-actions">
               <el-button v-if="supportsCreateDatabase" type="primary" link @click="openCreateDatabase">
-                新增{{ createDatabaseObjectLabel }}
+                추가{{ createDatabaseObjectLabel }}
               </el-button>
-              <span>{{ connection?.dbName || '全部数据库' }}</span>
+              <span>{{ connection?.dbName || '전체 Database' }}</span>
             </div>
           </div>
           <div class="sidebar-top">
-            <el-input v-model="treeKeyword" clearable placeholder="搜索数据库或数据表" />
-            <el-button @click="loadTree">刷新</el-button>
+            <el-input v-model="treeKeyword" clearable placeholder="Database 또는 Table 검색" />
+            <el-button @click="loadTree">새로고침</el-button>
           </div>
           <el-tree
             ref="treeRef"
@@ -1367,17 +1367,17 @@ onBeforeUnmount(() => {
                         text
                         size="small"
                         :disabled="data.currentPage <= 1"
-                        title="上一页"
+                        title="이전 Page"
                         @click.stop="changeSchemaTablePage(data, data.currentPage - 1)"
-                      >上一页</el-button>
+                      >이전 Page</el-button>
                       <span>{{ data.currentPage }}/{{ data.totalPages }}</span>
                       <el-button
                         text
                         size="small"
                         :disabled="data.currentPage >= data.totalPages"
-                        title="下一页"
+                        title="다음 Page"
                         @click.stop="changeSchemaTablePage(data, data.currentPage + 1)"
-                      >下一页</el-button>
+                      >다음 Page</el-button>
                     </span>
                   </span>
                 </template>
@@ -1391,29 +1391,29 @@ onBeforeUnmount(() => {
         <div class="dbms-editor page-card">
           <div class="panel-head">
             <div>
-              <h3>{{ supportsSQL ? 'SQL 编辑器' : isRedis ? 'Redis 命令控制台' : `${connection?.dbType?.toUpperCase() || '数据库'} 资源浏览` }}</h3>
-              <p v-if="supportsSQL">支持语法高亮、关键字/库表字段补全、常用语句模板和快捷执行。</p>
-              <p v-else-if="isRedis">支持常用 Redis 读取与变更命令，变更操作需二次确认并写入执行记录。</p>
-              <p v-else>当前类型支持连接检测和资源结构浏览；文档、键值和数据编辑能力将按类型逐步开放。</p>
+              <h3>{{ supportsSQL ? 'SQL Editor' : isRedis ? 'Redis Command Console' : `${connection?.dbType?.toUpperCase() || 'Database'} Resource Explorer` }}</h3>
+              <p v-if="supportsSQL">Syntax Highlighting, Keyword 및 Database/Table Column 자동완성, 자주 쓰는 Query Template과 Quick Execution을 지원합니다.</p>
+              <p v-else-if="isRedis">일반적인 Redis Read/Write Command를 지원합니다. Write 작업은 재확인 후 Execution History에 기록됩니다.</p>
+              <p v-else>현재 Type은 Connection Test와 Resource Structure 탐색을 지원합니다. Document, Key-Value 및 Data 편집 기능은 Type별로 단계적으로 제공합니다.</p>
             </div>
             <div class="panel-actions">
-              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">执行 SQL</el-button>
-              <el-button v-if="supportsSQL" @click="formatSQL">格式化</el-button>
-              <el-button v-if="supportsSQL" @click="saveCurrentSQL">收藏 SQL</el-button>
+              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">SQL 실행</el-button>
+              <el-button v-if="supportsSQL" @click="formatSQL">Format</el-button>
+              <el-button v-if="supportsSQL" @click="saveCurrentSQL">SQL Favorite</el-button>
               <el-dropdown v-if="supportsSQL && sqlFavorites.length" trigger="click">
-                <el-button>已收藏 {{ sqlFavorites.length }}</el-button>
+                <el-button>Favorite {{ sqlFavorites.length }}</el-button>
                 <template #dropdown>
                   <el-dropdown-menu class="sql-favorite-menu">
                     <el-dropdown-item v-for="item in sqlFavorites" :key="item.id" class="sql-favorite-item">
                       <span @click="applySqlFavorite(item)">{{ item.name }}</span>
-                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">删除</el-button>
+                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">삭제</el-button>
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
-              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">执行 Redis 命令</el-button>
-              <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">导出任务</el-button>
-              <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">导入任务</el-button>
+              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">Redis Command 실행</el-button>
+              <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">Export Task</el-button>
+              <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">Import Task</el-button>
             </div>
           </div>
 
@@ -1421,13 +1421,13 @@ onBeforeUnmount(() => {
             <el-button v-for="item in sqlSnippets" :key="item.label" size="small" plain @click="insertSnippet(item.text)">
               {{ item.label }}
             </el-button>
-              <span class="snippet-hint">`Ctrl + Enter` 可执行当前选中 SQL；格式化与收藏仅作用于选中 SQL，未选中时作用于全部内容。</span>
+              <span class="snippet-hint">`Ctrl + Enter`로 선택한 SQL을 실행합니다. Format과 Favorite는 선택한 SQL에만 적용되며 선택 영역이 없으면 전체 내용에 적용됩니다.</span>
           </div>
 
           <div v-else-if="isRedis" class="redis-command-console">
             <div class="redis-command-head">
-              <strong>Redis 命令控制台</strong>
-              <span>读取命令可直接执行，写入命令需确认；高危管理命令已禁用。</span>
+              <strong>Redis Command Console</strong>
+              <span>Read Command는 즉시 실행할 수 있고 Write Command는 확인이 필요합니다. 고위험 관리 Command는 비활성화되어 있습니다.</span>
             </div>
             <div class="redis-command-snippets">
               <el-button v-for="item in redisCommandSnippets" :key="item.label" size="small" plain @click="redisCommandText = item.text">
@@ -1440,15 +1440,15 @@ onBeforeUnmount(() => {
               type="textarea"
               :rows="6"
               spellcheck="false"
-              placeholder="例如：GET key、HGETALL hash_key 或 SET key value"
+              placeholder="예: GET key, HGETALL hash_key 또는 SET key value"
               @keydown.ctrl.enter.prevent="runRedisCommand"
               @keydown.meta.enter.prevent="runRedisCommand"
             />
-            <div class="redis-command-hint">支持带引号参数。按 Ctrl + Enter 执行，执行记录会保留在下方历史中。</div>
+            <div class="redis-command-hint">Quote가 포함된 Parameter를 지원합니다. Ctrl + Enter로 실행하며 기록은 아래 History에 보존됩니다.</div>
           </div>
 
-          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="当前数据库不是 SQL 类型">
-            可在左侧选择数据库、库与资源查看结构；MySQL 保留完整的数据编辑、导入导出与备份能力。
+          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="当前数据Database不是 SQL Type">
+            왼쪽에서 Database와 Resource를 선택해 Structure를 확인할 수 있습니다. MySQL은 전체 Data 편집, Import/Export 및 Backup 기능을 제공합니다.
           </el-alert>
 
           <div v-if="supportsSQL" ref="editorWrapRef" class="editor-shell">
@@ -1464,7 +1464,7 @@ onBeforeUnmount(() => {
                 v-model="sqlText"
                 class="sql-editor"
                 spellcheck="false"
-                placeholder="请输入 SQL，支持执行选中的语句。"
+                placeholder="SQL을 입력하십시오. 선택한 Statement를 실행할 수 있습니다."
                 @input="updateAutocomplete"
                 @click="updateAutocomplete"
                 @keyup="updateAutocomplete"
@@ -1488,8 +1488,8 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="execMeta.sqlType" class="exec-meta">
-            <span>类型：{{ execMeta.sqlType }}</span>
-            <span>影响行数：{{ execMeta.rowsAffected }}</span>
+            <span>Type：{{ execMeta.sqlType }}</span>
+            <span>Affected Rows：{{ execMeta.rowsAffected }}</span>
             <span>耗时：{{ execMeta.durationMs }} ms</span>
           </div>
         </div>
@@ -1497,24 +1497,24 @@ onBeforeUnmount(() => {
         <div class="dbms-content page-card">
           <div class="panel-head">
             <div>
-              <h3>工作区</h3>
+              <h3>Workspace</h3>
               <p v-if="selectedTable">{{ selectedSchema }} / {{ selectedTable }}</p>
-              <p v-else>先从左侧选中一张表，或直接执行 SQL 查看结果。</p>
+              <p v-else>왼쪽에서 Table을 선택하거나 SQL을 직접 실행해 결과를 확인하십시오.</p>
             </div>
             <div v-if="selectedTable || isRedis" class="panel-actions">
-              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">新增 Key</el-button>
-              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">新增数据</el-button>
-              <el-button @click="refreshSelectedData">刷新数据</el-button>
+              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">Key 추가</el-button>
+              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">Data 추가</el-button>
+              <el-button @click="refreshSelectedData">Data 새로고침</el-button>
             </div>
           </div>
 
           <el-tabs v-model="activeTab">
-            <el-tab-pane label="表数据" name="data">
+            <el-tab-pane label="Table Data" name="data">
               <div class="filter-row">
-                <el-select v-model="tableFilter.key" clearable placeholder="筛选字段" style="width: 180px">
+                <el-select v-model="tableFilter.key" clearable placeholder="Filter Column" style="width: 180px">
                   <el-option v-for="item in filterableColumns" :key="item" :label="item" :value="item" />
                 </el-select>
-                <el-input v-model="tableFilter.text" clearable placeholder="输入筛选值，支持模糊匹配" style="width: 280px" />
+                <el-input v-model="tableFilter.text" clearable placeholder="Filter Value 입력, Fuzzy Match 지원" style="width: 280px" />
               </div>
               <el-alert
                 v-if="supportsResourceData"
@@ -1522,23 +1522,23 @@ onBeforeUnmount(() => {
                 type="info"
                 :closable="false"
                 show-icon
-                :title="isRedis && canManageRedisKeys ? '当前 Redis 连接支持直接管理 Key' : '当前资源以只读方式浏览'"
+                :title="isRedis && canManageRedisKeys ? '현재 Redis Connection은 Key 직접 관리를 지원합니다.' : '현재 Resource는 Read-only로 탐색합니다.'"
               >
-                <template v-if="resourceType === 'collection'">可按字段筛选 MongoDB 文档；下方会展示集合索引摘要。</template>
+                <template v-if="resourceType === 'collection'">Column 기준으로 MongoDB Document를 Filter할 수 있으며 아래에 Collection Index 요약을 표시합니다.</template>
                 <template v-else-if="resourceType === 'key'">
-                  <span v-if="canManageRedisKeys">支持新增、编辑和删除 Redis Key；所有写入操作均需确认并记录审计。</span>
-                  <span v-else>展示 Redis Key 的类型、TTL 与值摘要，不会直接修改 Key。</span>
+                  <span v-if="canManageRedisKeys">Redis Key 추가, 수정, 삭제를 지원합니다. 모든 Write 작업은 확인 후 Audit에 기록됩니다.</span>
+                  <span v-else>Redis Key의 Type, TTL 및 Value 요약을 표시하며 Key를 직접 변경하지 않습니다.</span>
                 </template>
-                <template v-else>PostgreSQL 表数据支持分页与字段筛选；执行计划可直接在 SQL 编辑器中使用 EXPLAIN ANALYZE。</template>
+                <template v-else>PostgreSQL Table Data는 Pagination과 Column Filter를 지원합니다. SQL Editor에서 EXPLAIN ANALYZE로 Execution Plan을 확인할 수 있습니다.</template>
               </el-alert>
               <el-table v-if="supportsResourceData" v-loading="dataLoading" :data="selectedRows" border height="380">
                 <el-table-column v-for="col in selectedColumns" :key="col.name" :label="col.name" min-width="180" show-overflow-tooltip>
                   <template #default="{ row }">{{ formatResourceValue(row[col.name]) }}</template>
                 </el-table-column>
-                <el-table-column v-if="isRedis" label="操作" width="150" fixed="right">
+                <el-table-column v-if="isRedis" label="작업" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">编辑</el-button>
-                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">删除</el-button>
+                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">수정</el-button>
+                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">삭제</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -1557,15 +1557,15 @@ onBeforeUnmount(() => {
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="150" fixed="right">
+                <el-table-column label="작업" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">编辑</el-button>
-                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">删除</el-button>
+                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">수정</el-button>
+                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">삭제</el-button>
                   </template>
                 </el-table-column>
               </el-table>
               <div v-if="supportsResourceData && resourceIndexes.length" class="resource-indexes">
-                <strong>集合索引</strong>
+                <strong>Collection Index</strong>
                 <el-tag v-for="(item, index) in resourceIndexes" :key="index" effect="plain">
                   {{ formatResourceValue(item.name || item.key || item) }}
                 </el-tag>
@@ -1582,49 +1582,49 @@ onBeforeUnmount(() => {
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="SQL 结果" name="result">
+            <el-tab-pane label="SQL 결과" name="result">
               <div class="filter-row result-filter-row">
-                <el-select v-model="resultFilter.key" clearable placeholder="筛选字段" style="width: 180px">
+                <el-select v-model="resultFilter.key" clearable placeholder="Filter Column" style="width: 180px">
                   <el-option v-for="item in resultColumns" :key="item" :label="item" :value="item" />
                 </el-select>
-                <el-input v-model="resultFilter.text" clearable placeholder="筛选结果集" style="width: 280px" />
-                <el-button :disabled="!filteredResultRows.length" @click="exportResultCSV">导出 CSV</el-button>
+                <el-input v-model="resultFilter.text" clearable placeholder="Result Set Filter" style="width: 280px" />
+                <el-button :disabled="!filteredResultRows.length" @click="exportResultCSV">CSV Export</el-button>
               </div>
               <el-table :data="filteredResultRows" border height="380">
                 <el-table-column v-for="col in resultColumns" :key="col" :prop="col" :label="col" min-width="160" />
               </el-table>
             </el-tab-pane>
 
-            <el-tab-pane label="执行记录" name="history">
+            <el-tab-pane label="Execution History" name="history">
               <el-table v-loading="historyLoading" :data="historyList" border height="380">
-                <el-table-column prop="executionId" label="执行编号" min-width="190" show-overflow-tooltip />
-                <el-table-column prop="sqlType" label="类型" width="100" />
-                <el-table-column prop="environment" label="环境" width="90" />
-                <el-table-column prop="schemaName" label="库" width="120" />
-                <el-table-column prop="tableName" label="表" width="140" />
+                <el-table-column prop="executionId" label="Execution ID" min-width="190" show-overflow-tooltip />
+                <el-table-column prop="sqlType" label="Type" width="100" />
+                <el-table-column prop="environment" label="Environment" width="90" />
+                <el-table-column prop="schemaName" label="Database" width="120" />
+                <el-table-column prop="tableName" label="Table" width="140" />
                 <el-table-column prop="sqlText" label="SQL" min-width="320" show-overflow-tooltip />
-                <el-table-column label="状态" width="90">
+                <el-table-column label="상태" width="90">
                   <template #default="{ row }">
                     <el-tag :type="row.status === 1 ? 'success' : 'danger'" effect="light">
-                      {{ row.status === 1 ? '成功' : '失败' }}
+                      {{ row.status === 1 ? '성공' : '실패' }}
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="rowsAffected" label="影响行数" width="110" />
-                <el-table-column prop="durationMs" label="耗时(ms)" width="100" />
-                <el-table-column prop="operator" label="执行人" width="110" />
-                <el-table-column prop="clientIp" label="客户端 IP" width="140" />
-                <el-table-column prop="createTime" label="执行时间" min-width="160" />
-                <el-table-column label="回滚 SQL" width="150">
+                <el-table-column prop="rowsAffected" label="Affected Rows" width="110" />
+                <el-table-column prop="durationMs" label="Duration (ms)" width="100" />
+                <el-table-column prop="operator" label="Operator" width="110" />
+                <el-table-column prop="clientIp" label="Client IP" width="140" />
+                <el-table-column prop="createTime" label="Executed At" min-width="160" />
+                <el-table-column label="Rollback SQL" width="150">
                   <template #default="{ row }">
                     <el-tag v-if="row.rollbackSql" :type="row.rollbackConfidence === 'high' ? 'success' : 'warning'" size="small" effect="plain">
-                      {{ row.rollbackConfidence === 'high' ? '高可信' : '需复核' }}
+                      {{ row.rollbackConfidence === 'high' ? '높은 신뢰도' : '검토 필요' }}
                     </el-tag>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">查看</el-button>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">复制</el-button>
+                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">보기</el-button>
+                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">복사</el-button>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">复用</el-button></template></el-table-column>
+                <el-table-column label="작업" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">재사용</el-button></template></el-table-column>
               </el-table>
               <div class="pager">
                 <el-pagination
@@ -1638,37 +1638,37 @@ onBeforeUnmount(() => {
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="导入导出任务" name="tasks">
+            <el-tab-pane label="导入Export Task" name="tasks">
               <el-table v-loading="taskLoading" :data="taskList" border height="380">
-                <el-table-column prop="taskType" label="类型" width="90">
+                <el-table-column prop="taskType" label="Type" width="90">
                   <template #default="{ row }">{{ row.taskType === 'export' ? '导出' : '导入' }}</template>
                 </el-table-column>
-                <el-table-column label="源" min-width="220">
+                <el-table-column label="Source" min-width="220">
                   <template #default="{ row }">
                     <span v-if="row.taskType === 'import'">{{ row.sourceDatabase }} / {{ row.sourceSchema }} / {{ row.sourceTable }}</span>
                     <span v-else>{{ row.databaseName }} / {{ row.schemaName }} / {{ row.tableName }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="目标" min-width="220">
+                <el-table-column label="Target" min-width="220">
                   <template #default="{ row }">
                     <span v-if="row.taskType === 'import'">{{ row.targetDatabase }} / {{ row.targetSchema }} / {{ row.targetTable }}</span>
                     <span v-else>-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="状态" width="110">
+                <el-table-column label="상태" width="110">
                   <template #default="{ row }">
                     <el-tag :type="taskStatusType(row.status)" effect="light">{{ taskStatusText(row.status) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="进度" width="180">
+                <el-table-column label="진행률" width="180">
                   <template #default="{ row }">
                     <el-progress :percentage="Number(row.progress || 0)" :status="row.status === 'failed' ? 'exception' : row.status === 'success' ? 'success' : ''" />
                   </template>
                 </el-table-column>
-                <el-table-column prop="rowsAffected" label="行数" width="90" />
-                <el-table-column prop="message" label="说明" min-width="180" show-overflow-tooltip />
-                <el-table-column prop="createTime" label="创建时间" min-width="160" />
-                <el-table-column label="操作" width="120">
+                <el-table-column prop="rowsAffected" label="Row 수" width="90" />
+                <el-table-column prop="message" label="설명" min-width="180" show-overflow-tooltip />
+                <el-table-column prop="createTime" label="Created At" min-width="160" />
+                <el-table-column label="작업" width="120">
                   <template #default="{ row }">
                     <el-button
                       v-if="row.taskType === 'export' && row.status === 'success'"
@@ -1676,7 +1676,7 @@ onBeforeUnmount(() => {
                       type="primary"
                       @click="downloadTask(row)"
                     >
-                      下载
+                      Download
                     </el-button>
                   </template>
                 </el-table-column>
@@ -1697,50 +1697,50 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <el-dialog v-model="createDatabaseVisible" :title="`新增${createDatabaseObjectLabel}`" width="520px" destroy-on-close>
+    <el-dialog v-model="createDatabaseVisible" :title="`${createDatabaseObjectLabel} 추가`" width="520px" destroy-on-close>
       <el-alert
-        :title="isPostgres ? 'PostgreSQL 将在当前连接数据库中创建 Schema，创建后会立即显示在左侧结构树。' : '将直接在当前 MySQL 实例中创建数据库，创建后会立即显示在左侧结构树。'"
+        :title="isPostgres ? '현재 연결된 PostgreSQL Database에 Schema를 생성합니다. 생성 후 왼쪽 Structure Tree에 즉시 표시됩니다.' : '현재 MySQL Instance에 Database를 직접 생성합니다. 생성 후 왼쪽 Structure Tree에 즉시 표시됩니다.'"
         type="info"
         :closable="false"
         show-icon
       />
       <el-form label-width="112px" class="create-database-form">
-        <el-form-item :label="`${createDatabaseObjectLabel}名称`" required>
-          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit placeholder="例如：ops_reporting" @keyup.enter="submitCreateDatabase" />
+        <el-form-item :label="`${createDatabaseObjectLabel} 이름`" required>
+          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit placeholder="예: ops_reporting" @keyup.enter="submitCreateDatabase" />
         </el-form-item>
         <template v-if="!isPostgres">
-          <el-form-item label="字符集">
+          <el-form-item label="Character Set">
             <el-select v-model="createDatabaseForm.charset" style="width: 100%" :loading="charsetOptionsLoading" @change="onCreateDatabaseCharsetChange">
               <el-option v-for="item in mysqlCharsetOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="排序规则">
+          <el-form-item label="Collation">
             <el-select v-model="createDatabaseForm.collation" style="width: 100%" :loading="charsetOptionsLoading" :disabled="charsetOptionsLoading">
               <el-option v-for="item in availableCollations" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
         </template>
-        <p class="form-help">以字母或下划线开头，仅支持字母、数字和下划线。</p>
+        <p class="form-help">Letter 또는 underscore로 시작해야 하며 letter, number, underscore만 사용할 수 있습니다.</p>
       </el-form>
       <template #footer>
-        <el-button @click="createDatabaseVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">确认创建</el-button>
+        <el-button @click="createDatabaseVisible = false">취소</el-button>
+        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">생성 확인</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="sqlConfirmVisible" title="确认执行写操作 SQL" width="780px">
+    <el-dialog v-model="sqlConfirmVisible" title="SQL Write 실행 확인" width="780px">
       <div v-if="sqlAnalysis" class="sql-risk-panel">
         <div class="sql-risk-summary">
           <el-tag :type="riskTagType(sqlAnalysis.riskLevel)" effect="dark">
-            {{ sqlAnalysis.riskLevel === 'high' ? '高风险' : sqlAnalysis.riskLevel === 'medium' ? '中风险' : '低风险' }}
+            {{ sqlAnalysis.riskLevel === 'high' ? 'High Risk' : sqlAnalysis.riskLevel === 'medium' ? 'Medium Risk' : 'Low Risk' }}
           </el-tag>
           <strong>{{ sqlAnalysis.databaseName }} / {{ sqlAnalysis.schema }}</strong>
-          <span>{{ sqlAnalysis.environment || '未分配环境' }}</span>
+          <span>{{ sqlAnalysis.environment || 'Environment 미지정' }}</span>
         </div>
         <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="SQL 类型">{{ sqlAnalysis.sqlType }}</el-descriptions-item>
-          <el-descriptions-item label="语句数量">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
-          <el-descriptions-item label="访问模式">{{ sqlAnalysis.accessMode === 'readonly' ? '只读' : '读写' }}</el-descriptions-item>
+          <el-descriptions-item label="SQL Type">{{ sqlAnalysis.sqlType }}</el-descriptions-item>
+          <el-descriptions-item label="Statement 수">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
+          <el-descriptions-item label="Access Mode">{{ sqlAnalysis.accessMode === 'readonly' ? 'Read-only' : 'Read / Write' }}</el-descriptions-item>
         </el-descriptions>
         <ul class="risk-reasons">
           <li v-for="item in sqlAnalysis.reasons" :key="item">{{ item }}</li>
@@ -1748,86 +1748,86 @@ onBeforeUnmount(() => {
         <pre class="confirm-sql">{{ pendingSQL }}</pre>
         <el-alert
           v-if="sqlAnalysis.accessMode === 'readonly'"
-          title="当前数据库为只读模式，后端将拒绝执行该 SQL"
+          title="현재 Database는 Read-only Mode이므로 Backend가 이 SQL 실행을 거부합니다."
           type="error"
           :closable="false"
           show-icon
         />
-        <el-alert v-else title="请确认目标环境、数据库和 SQL 内容无误。写操作可能无法自动恢复。" type="warning" :closable="false" show-icon />
+        <el-alert v-else title="Target Environment, Database 및 SQL 내용을 확인하십시오. Write 작업은 자동 복구되지 않을 수 있습니다." type="warning" :closable="false" show-icon />
         <el-form-item class="sql-acknowledgement" :label="`请输入“${sqlConfirmationText()}”确认`">
           <el-input v-model="sqlAcknowledgement" :placeholder="sqlConfirmationText()" autocomplete="off" />
         </el-form-item>
       </div>
       <template #footer>
-        <el-button @click="sqlConfirmVisible = false">取消</el-button>
+        <el-button @click="sqlConfirmVisible = false">취소</el-button>
         <el-button
           type="danger"
           :loading="sqlRunning"
           :disabled="sqlAnalysis?.accessMode === 'readonly' || sqlAcknowledgement !== sqlConfirmationText()"
           @click="confirmSQLExecution"
         >
-          确认执行
+          실행 확인
         </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? '新增 Redis Key' : '编辑 Redis Key'" width="720px">
+    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? 'Redis Key 추가' : 'Redis Key 수정'" width="720px">
       <el-alert
         type="warning"
         :closable="false"
         show-icon
-        title="写入 Redis 将立即生效，并写入执行审计记录"
+        title="Redis Write는 즉시 적용되며 Execution Audit에 기록됩니다."
         class="redis-key-alert"
       />
       <el-form label-width="112px" class="redis-key-form">
-        <el-form-item label="Key 名称" required>
-          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" placeholder="例如：app:config" />
+        <el-form-item label="Key 이름" required>
+          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" placeholder="예: app:config" />
         </el-form-item>
-        <el-form-item label="数据类型">
+        <el-form-item label="Data Type">
           <el-select v-model="redisKeyForm.type" :disabled="redisKeyDialogMode === 'edit'" style="width: 100%">
             <el-option v-for="type in redisKeyTypes" :key="type" :label="type" :value="type" />
           </el-select>
         </el-form-item>
-        <el-form-item label="值" required>
+        <el-form-item label="Value" required>
           <el-input v-model="redisKeyForm.value" type="textarea" :rows="8" :placeholder="redisKeyValuePlaceholder" />
         </el-form-item>
-        <el-form-item label="TTL（秒）">
+        <el-form-item label="TTL (초)">
           <el-input-number v-model="redisKeyForm.ttl" :min="-1" :precision="0" controls-position="right" />
-          <span class="redis-key-help">留空表示不修改 TTL；-1 表示永不过期。</span>
+          <span class="redis-key-help">비워두면 TTL을 변경하지 않습니다. -1은 만료 없음입니다.</span>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="redisKeyDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">确认保存</el-button>
+        <el-button @click="redisKeyDialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">저장 확인</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? '新增数据行' : '编辑数据行'" width="720px">
+    <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? 'Data 추가행' : 'Data Row 수정'" width="720px">
       <el-form label-width="140px">
         <el-form-item v-for="col in selectedColumns" :key="col.name" :label="`${col.name} (${col.columnType})`">
           <el-input v-model="rowForm[col.name]" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="rowDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitRow">保存</el-button>
+        <el-button @click="rowDialogVisible = false">취소</el-button>
+        <el-button type="primary" @click="submitRow">저장</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="rollbackDialogVisible" title="回滚 SQL" width="860px">
+    <el-dialog v-model="rollbackDialogVisible" title="Rollback SQL" width="860px">
       <el-alert
-        :title="rollbackConfidence === 'high' ? '高可信度：基于主键和操作前数据生成，执行前仍需复核。' : '该回滚 SQL 可信度有限，请人工核对后使用。'"
+        :title="rollbackConfidence === 'high' ? '높은 신뢰도: Primary Key와 변경 전 Data를 기준으로 생성했습니다. 실행 전에도 반드시 검토하십시오.' : '이 Rollback SQL은 신뢰도가 제한적입니다. 수동 검토 후 사용하십시오.'"
         :type="rollbackConfidence === 'high' ? 'success' : 'warning'"
         :closable="false"
         show-icon
         class="rollback-alert"
       />
-      <pre class="rollback-box">{{ rollbackSQL || '当前记录没有回滚 SQL' }}</pre>
+      <pre class="rollback-box">{{ rollbackSQL || '当前记录没有Rollback SQL' }}</pre>
     </el-dialog>
 
-    <el-dialog v-model="importDialogVisible" title="创建导入任务" width="680px">
+    <el-dialog v-model="importDialogVisible" title="创建Import Task" width="680px">
       <el-form label-width="120px">
-        <el-form-item label="源数据库">
+        <el-form-item label="Source Database">
           <el-select v-model="importForm.sourceDatabaseId" filterable style="width: 100%">
               <el-option
                 v-for="item in importDatabaseOptions"
@@ -1837,43 +1837,43 @@ onBeforeUnmount(() => {
               />
           </el-select>
         </el-form-item>
-        <el-form-item label="源库">
+        <el-form-item label="Source Database">
           <el-select v-model="importForm.sourceSchema" filterable style="width: 100%">
             <el-option v-for="item in sourceSchemas" :key="item.name" :label="item.name" :value="item.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="源表">
+        <el-form-item label="Source Table">
           <el-select v-model="importForm.sourceTable" filterable style="width: 100%">
             <el-option v-for="item in sourceTables" :key="item.name" :label="item.name" :value="item.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="目标库表">
+        <el-form-item label="Target Table">
           <div>{{ selectedSchema || '-' }} / {{ selectedTable || '-' }}</div>
         </el-form-item>
-        <el-form-item label="自动建表">
+        <el-form-item label="Table 자동 생성">
           <el-switch v-model="importForm.createIfMissing" />
         </el-form-item>
-        <el-form-item label="清空目标表">
+        <el-form-item label="Target Table 비우기">
           <el-switch v-model="importForm.truncateTarget" />
         </el-form-item>
-        <el-form-item label="预检查">
-          <el-button :loading="importPrechecking" @click="runImportPrecheck">检查字段与影响范围</el-button>
+        <el-form-item label="Precheck">
+          <el-button :loading="importPrechecking" @click="runImportPrecheck">Column 및 영향 범위 검사</el-button>
         </el-form-item>
         <div v-if="importPrecheck" class="import-precheck" :class="{ danger: !importPrecheck.ready }">
           <div class="precheck-head">
-            <strong>{{ importPrecheck.ready ? '预检查通过' : '预检查未通过' }}</strong>
-            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ importPrecheck.estimatedRows }} 行</el-tag>
+            <strong>{{ importPrecheck.ready ? 'Precheck 통과' : 'Precheck 실패' }}</strong>
+            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ importPrecheck.estimatedRows }} 행</el-tag>
           </div>
-          <p>字段映射：{{ importPrecheck.commonColumns?.length || 0 }} 个，缺失字段：{{ importPrecheck.missingColumns?.length || 0 }} 个</p>
-          <p v-if="importPrecheck.missingColumns?.length">缺失：{{ importPrecheck.missingColumns.join(', ') }}</p>
+          <p>Column Mapping: {{ importPrecheck.commonColumns?.length || 0 }}개, 누락 Column: {{ importPrecheck.missingColumns?.length || 0 }}개</p>
+          <p v-if="importPrecheck.missingColumns?.length">누락: {{ importPrecheck.missingColumns.join(', ') }}</p>
           <ul v-if="importPrecheck.warnings?.length">
             <li v-for="item in importPrecheck.warnings" :key="item">{{ item }}</li>
           </ul>
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">开始导入</el-button>
+        <el-button @click="importDialogVisible = false">취소</el-button>
+        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">Import 시작</el-button>
       </template>
     </el-dialog>
   </div>
