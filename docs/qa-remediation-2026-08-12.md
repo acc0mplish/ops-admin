@@ -1,31 +1,31 @@
-# QA 整改与复测记录（2026-08-12）
+# QA 조치 및 재검증 기록 (2026-08-12)
 
-本记录对应 `qa-integration-test-report-2026-08-12.md` 中的发布阻断项；原报告保留为整改前的审计基线。
+이 기록은 `qa-integration-test-report-2026-08-12.md`의 Release Blocking 항목에 대한 조치 결과입니다. 원본 Report는 조치 전 Audit Baseline으로 유지합니다.
 
-## 已完成
+## 완료 항목
 
-| 优先级 | 整改项 | 复测证据 | 状态 |
+| Priority | 조치 항목 | 재검증 근거 | 상태 |
 | --- | --- | --- | --- |
-| P1 | HTTP 失败响应使用实际 HTTP 状态码 | 未携带令牌访问 `/api/v1/profile` 返回 HTTP 401；响应体业务码同步为 401 | 通过 |
-| P1 | 取消登录页预填 | 首次初始化密码由 `OPS_ADMIN_INITIAL_PASSWORD` 配置；浏览器登录页两个输入框均为空 | 通过 |
-| P2 | 详情、日志页缺失上下文 | 直达 `/containers/services/workload` 与 `/containers/services/logs` 显示指引空态，浏览器控制台无错误 | 通过 |
-| P2 | CORS 与安全响应头 | 仅接受 `OPS_ADMIN_CORS_ORIGINS` 明确列出的来源；未列出来源预检不返回允许源；API 返回 nosniff、DENY、Referrer/Permissions/CSP 头 | 通过 |
-| P2 | `go vet` | IPv6 地址改为 `net.JoinHostPort`，删除不可达代码；`go vet ./...` 退出码为 0 | 通过 |
-| P3 | Element Plus Radio 兼容性 | 将现存 `el-radio` 的 `label` 值迁移为 `value` | 通过 |
+| P1 | HTTP 실패 응답에 실제 HTTP Status Code 적용 | Token 없이 `/api/v1/profile`에 접근하면 HTTP 401을 반환하고 Response Body의 Business Code도 401로 일치 | 통과 |
+| P1 | Login Page 사전 입력 제거 | 초기 Password는 `OPS_ADMIN_INITIAL_PASSWORD`로 설정하며 브라우저 Login Page의 두 Input은 모두 빈 상태 | 통과 |
+| P2 | Detail 및 Log Page의 Context 누락 처리 | `/containers/services/workload`, `/containers/services/logs`에 직접 접근하면 안내 Empty State를 표시하고 Browser Console Error 없음 | 통과 |
+| P2 | CORS 및 Security Response Header | `OPS_ADMIN_CORS_ORIGINS`에 명시한 Origin만 허용하고 미등록 Origin의 Preflight에는 Allow-Origin을 반환하지 않음. API는 nosniff, DENY, Referrer/Permissions/CSP Header를 반환 | 통과 |
+| P2 | `go vet` | IPv6 Address를 `net.JoinHostPort`로 조합하고 Unreachable Code를 제거함. `go vet ./...` Exit Code 0 | 통과 |
+| P3 | Element Plus Radio 호환성 | 기존 `el-radio`의 `label` Value를 `value`로 Migration | 통과 |
 
-## 验证结果
+## 검증 결과
 
-- 后端：`go test ./...` 与 `go vet ./...` 均通过。
-- 前端：`npm run build` 通过（2,182 个模块）；仍存在 3.1 MB 初始 JS bundle 的构建警告，未在本轮为避免无关重构而拆包。
-- 浏览器：成功完成登出、空登录页检查、重新登录；服务工作负载和日志的直达空态均无控制台错误。
+- Backend: `go test ./...`, `go vet ./...` 모두 통과했습니다.
+- Frontend: `npm run build` 통과, 총 2,182개 Module을 Build했습니다. 초기 JavaScript Bundle이 3.1 MB라는 Warning은 남아 있으며 이번 조치 범위와 무관한 Refactoring을 피하기 위해 Code Splitting은 수행하지 않았습니다.
+- Browser: Logout, 빈 Login Page 확인, 재로그인을 완료했습니다. Service Workload와 Log Page의 Direct Access Empty State에서도 Console Error가 없었습니다.
 
-## 部署注意事项
+## Deployment 주의사항
 
-- 部署模板默认在 `deploy/.env` 配置 `OPS_ADMIN_INITIAL_USERNAME=admin` 与 `OPS_ADMIN_INITIAL_PASSWORD=admin@123`；生产环境应修改默认密码。
-- 如果 API 需被跨域调用，必须配置逗号分隔的 `OPS_ADMIN_CORS_ORIGINS` 白名单；同源 Nginx 部署不需要该变量。
+- Deployment Template의 `deploy/.env`에는 기본적으로 `OPS_ADMIN_INITIAL_USERNAME=admin`, `OPS_ADMIN_INITIAL_PASSWORD=admin@123`이 설정됩니다. Production 환경에서는 반드시 기본 Password를 변경합니다.
+- API를 Cross-Origin으로 호출해야 할 때는 comma로 구분한 `OPS_ADMIN_CORS_ORIGINS` Allowlist를 구성합니다. Same-Origin Nginx Deployment에서는 이 변수가 필요하지 않습니다.
 
-## 剩余发布关注项
+## 남은 Release 점검 항목
 
-1. 为 E2E、接口契约、安全扫描和性能预算接入 CI。
-2. 基于路由拆分前端大包，并以 Lighthouse 指标设定预算。
-3. 在 HTTPS 反向代理层按实际域名启用 HSTS。
+1. E2E, API Contract Test, Security Scan, Performance Budget을 CI에 연결합니다.
+2. Route 기반 Code Splitting으로 Frontend Bundle을 분할하고 Lighthouse Metric Budget을 설정합니다.
+3. 실제 Domain을 사용하는 HTTPS Reverse Proxy Layer에서 HSTS를 활성화합니다.
