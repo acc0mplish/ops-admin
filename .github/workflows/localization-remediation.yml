@@ -22,6 +22,7 @@ on:
       - .github/scripts/localize_web_batch10.py
       - .github/scripts/localize_web_batch10_cleanup.py
       - .github/scripts/localize_web_batch11.py
+      - .github/scripts/localize_web_batch11_cleanup.py
       - .github/workflows/localization-remediation.yml
 
 permissions:
@@ -58,7 +59,8 @@ jobs:
             .github/scripts/localize_remediation_batch9_cleanup.py \
             .github/scripts/localize_web_batch10.py \
             .github/scripts/localize_web_batch10_cleanup.py \
-            .github/scripts/localize_web_batch11.py
+            .github/scripts/localize_web_batch11.py \
+            .github/scripts/localize_web_batch11_cleanup.py
           do
             python3 "$script"
             code=$?
