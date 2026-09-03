@@ -29,7 +29,7 @@ onMounted(load)
 
 <template>
   <div class="ai-page">
-    <section class="ai-hero"><div><div class="ai-kicker">OPERATION TOOL REGISTRY</div><h1>{{ it('toolRegistry') }}</h1><p>{{ it('toolRegistryDesc') }}</p></div><div class="tool-summary"><strong>{{ tools.filter((item) => item.enabled).length }}</strong><span>{{ it('enabledCount', { total: tools.length }) }}</span></div></section>
+    <section class="ai-hero"><div><div class="ai-kicker">{{ it('toolRegistry') }}</div><h1>{{ it('toolRegistry') }}</h1><p>{{ it('toolRegistryDesc') }}</p></div><div class="tool-summary"><strong>{{ tools.filter((item) => item.enabled).length }}</strong><span>{{ it('enabledCount', { total: tools.length }) }}</span></div></section>
     <div v-loading="loading" class="tool-groups">
       <section v-for="[category, items] in grouped" :key="category" class="ai-panel tool-section">
         <div class="ai-panel-head"><h2>{{ integrationCategoryLabel(category) }}</h2><span class="ai-muted">{{ it('capabilityCount', { count: items.length }) }}</span></div>
