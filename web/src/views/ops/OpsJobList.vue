@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteOpsJob, queryOpsJobList, runOpsJob, updateOpsJobStatus } from '../../api/ops'
+import { ot } from '../../utils/ops-i18n'
 
 const router = useRouter()
 const loading = ref(false)
@@ -41,29 +42,30 @@ function openEdit(row) {
 }
 
 async function handleRun(row) {
-  await ElMessageBox.confirm(`确认立即执行作业“${row.name}”吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(ot('runJobConfirm', { name: row.name }), ot('runJobTitle'), { type: 'warning' })
   await runOpsJob(row.id)
-  ElMessage.success('作业已触发，请前往作业历史查看执行过程')
+  ElMessage.success(ot('jobTriggered'))
   loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除作业“${row.name}”吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(ot('deleteJobConfirm', { name: row.name }), ot('deleteJobTitle'), { type: 'warning' })
   await deleteOpsJob(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success(ot('deleteSuccess'))
   loadData()
 }
 
 async function toggleStatus(row) {
   const enabled = Number(row.status) === 1
-  await ElMessageBox.confirm(`确认${enabled ? '禁用' : '启用'}作业“${row.name}”吗？`, '提示', { type: 'warning' })
+  const action = enabled ? ot('disableAction') : ot('enableAction')
+  await ElMessageBox.confirm(ot('toggleJobConfirm', { name: row.name, action }), ot('toggleJobTitle'), { type: 'warning' })
   await updateOpsJobStatus({ id: row.id, status: enabled ? 2 : 1 })
-  ElMessage.success(enabled ? '作业已禁用' : '作业已启用')
+  ElMessage.success(enabled ? ot('jobDisabled') : ot('jobEnabled'))
   await loadData()
 }
 
 function statusLabel(status) {
-  return Number(status) === 1 ? '启用' : '禁用'
+  return Number(status) === 1 ? ot('enabled') : ot('disabled')
 }
 
 onMounted(loadData)
@@ -73,42 +75,42 @@ onMounted(loadData)
   <div class="page-card ops-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">作业列表</h2>
-        <p class="page-desc">查看所有作业定义，支持直接运行、继续编排与删除。</p>
+        <h2 class="page-title">{{ ot('jobs') }}</h2>
+        <p class="page-desc">{{ ot('jobsDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate">新建作业</el-button>
+      <el-button type="primary" @click="openCreate">{{ ot('newJob') }}</el-button>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input v-model="query.keyword" clearable placeholder="搜索作业名称 / 描述" style="width: 280px" @keyup.enter="loadData" />
-        <el-select v-model="query.status" clearable placeholder="状态" style="width: 120px">
-          <el-option label="启用" value="1" />
-          <el-option label="禁用" value="2" />
+        <el-input v-model="query.keyword" clearable :placeholder="ot('searchJob')" style="width: 280px" @keyup.enter="loadData" />
+        <el-select v-model="query.status" clearable :placeholder="ot('status')" style="width: 120px">
+          <el-option :label="ot('enabled')" value="1" />
+          <el-option :label="ot('disabled')" value="2" />
         </el-select>
-        <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="resetQuery">重置</el-button>
+        <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+        <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="name" label="作业名称" min-width="220" />
-      <el-table-column prop="description" label="描述" min-width="260" show-overflow-tooltip />
-      <el-table-column prop="templateId" label="来源模板" width="100" align="center">
+      <el-table-column prop="name" :label="ot('jobName')" min-width="220" />
+      <el-table-column prop="description" :label="ot('description')" min-width="260" show-overflow-tooltip />
+      <el-table-column prop="templateId" :label="ot('sourceTemplate')" width="100" align="center">
         <template #default="{ row }">{{ row.templateId || '-' }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="100" align="center">
+      <el-table-column :label="ot('status')" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light">{{ statusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="updateTime" label="更新时间" width="180" />
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column prop="updateTime" :label="ot('updatedAt')" width="180" />
+      <el-table-column :label="ot('actions')" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button link type="success" @click="handleRun(row)">运行</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编排</el-button>
-          <el-button link :class="Number(row.status) === 1 ? 'job-action-disable' : 'job-action-enable'" @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '禁用' : '启用' }}</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button link type="success" @click="handleRun(row)">{{ ot('run') }}</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ ot('orchestrate') }}</el-button>
+          <el-button link :class="Number(row.status) === 1 ? 'job-action-disable' : 'job-action-enable'" @click="toggleStatus(row)">{{ Number(row.status) === 1 ? ot('disabled') : ot('enabled') }}</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ ot('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
