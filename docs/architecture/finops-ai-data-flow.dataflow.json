@@ -2,51 +2,51 @@
   "schema_version": 1,
   "diagram_type": "dataflow",
   "meta": {
-    "title": "Ops Admin FinOps 与 AI 数据流",
-    "subtitle": "账单仅经同步入库；看板、建议与 AI 只读本地数据",
+    "title": "Ops Admin FinOps 및 AI Data Flow",
+    "subtitle": "Billing은 Sync를 통해서만 저장하며 Dashboard, Recommendation, AI는 Local Data만 Read합니다.",
     "output": "finops-ai-data-flow.html",
     "viewBox": [940, 720]
   },
   "stages": [
-    { "label": "账单来源" },
-    { "label": "受控入库" },
-    { "label": "本地存储" },
-    { "label": "只读消费" }
+    { "label": "Billing Source" },
+    { "label": "통제된 저장" },
+    { "label": "Local Storage" },
+    { "label": "Read-only Consumer" }
   ],
   "nodes": [
-    { "id": "cloud", "type": "external", "label": "云厂商账单 API", "sublabel": "仅同步服务访问", "stage": 0, "row": 0, "tag": "受控" },
-    { "id": "import", "type": "frontend", "label": "标准 JSON 导入", "sublabel": "人工导入账单", "stage": 0, "row": 3, "tag": "可选" },
-    { "id": "sync", "type": "backend", "label": "逐月账单同步", "sublabel": "独立成功 / 失败", "stage": 1, "row": 1, "tag": "upsert" },
-    { "id": "db", "type": "database", "label": "本地费用账单", "sublabel": "MySQL + 同步历史", "stage": 2, "row": 1, "tag": "唯一数据源" },
-    { "id": "dashboard", "type": "frontend", "label": "看板与拆分", "sublabel": "趋势 / 产品 / 资源", "stage": 3, "row": 0, "tag": "只读" },
-    { "id": "advice", "type": "backend", "label": "优化建议", "sublabel": "默认或 AI 策略", "stage": 3, "row": 2, "tag": "本地分析" },
-    { "id": "ai", "type": "security", "label": "AI 云费用工具", "sublabel": "finops_cost_analysis", "stage": 3, "row": 4, "tag": "只读" }
+    { "id": "cloud", "type": "external", "label": "Cloud Provider Billing API", "sublabel": "Billing Sync Service만 접근", "stage": 0, "row": 0, "tag": "통제" },
+    { "id": "import", "type": "frontend", "label": "Standard JSON Import", "sublabel": "수동 Billing Import", "stage": 0, "row": 3, "tag": "선택" },
+    { "id": "sync", "type": "backend", "label": "Monthly Billing Sync", "sublabel": "월별 독립 Success / Failure", "stage": 1, "row": 1, "tag": "upsert" },
+    { "id": "db", "type": "database", "label": "Local Cost Billing", "sublabel": "MySQL + Sync History", "stage": 2, "row": 1, "tag": "단일 Data Source" },
+    { "id": "dashboard", "type": "frontend", "label": "Dashboard 및 Breakdown", "sublabel": "Trend / Product / Resource", "stage": 3, "row": 0, "tag": "Read-only" },
+    { "id": "advice", "type": "backend", "label": "Optimization Recommendation", "sublabel": "Default 또는 AI Strategy", "stage": 3, "row": 2, "tag": "Local Analysis" },
+    { "id": "ai", "type": "security", "label": "AI Cloud Cost Tool", "sublabel": "finops_cost_analysis", "stage": 3, "row": 4, "tag": "Read-only" }
   ],
   "flows": [
-    { "from": "cloud", "to": "sync", "label": "月度账单", "classification": "账单 API", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[208, 157], [208, 271]], "labelAt": [180, 212] },
-    { "from": "import", "to": "sync", "label": "标准记录", "classification": "人工导入", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[220, 499], [220, 271]], "labelAt": [192, 390] },
-    { "from": "sync", "to": "db", "label": "幂等账单", "classification": "记录 + 日志", "variant": "emphasis", "route": "straight", "labelAt": [422, 264] },
-    { "from": "db", "to": "dashboard", "label": "聚合费用", "classification": "只读", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[638, 271], [638, 157]], "labelAt": [610, 212] },
-    { "from": "db", "to": "advice", "label": "分析数据", "classification": "只读", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[650, 271], [650, 385]], "labelAt": [622, 330] },
-    { "from": "db", "to": "ai", "label": "工具结果", "classification": "只读本地账单", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[662, 271], [662, 613]], "labelAt": [634, 492] }
+    { "from": "cloud", "to": "sync", "label": "Monthly Billing", "classification": "Billing API", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[208, 157], [208, 271]], "labelAt": [180, 212] },
+    { "from": "import", "to": "sync", "label": "Standard Record", "classification": "Manual Import", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[220, 499], [220, 271]], "labelAt": [192, 390] },
+    { "from": "sync", "to": "db", "label": "Idempotent Billing", "classification": "Record + Log", "variant": "emphasis", "route": "straight", "labelAt": [422, 264] },
+    { "from": "db", "to": "dashboard", "label": "Aggregated Cost", "classification": "Read-only", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[638, 271], [638, 157]], "labelAt": [610, 212] },
+    { "from": "db", "to": "advice", "label": "Analysis Data", "classification": "Read-only", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[650, 271], [650, 385]], "labelAt": [622, 330] },
+    { "from": "db", "to": "ai", "label": "Tool Result", "classification": "Local Billing Read-only", "variant": "security", "fromSide": "right", "toSide": "left", "via": [[662, 271], [662, 613]], "labelAt": [634, 492] }
   ],
   "cards": [
     {
       "dot": "emerald",
-      "title": "数据边界",
+      "title": "Data Boundary",
       "items": [
-        "云账单只由云账号测试与账单同步访问",
-        "同步逐月执行，失败月不阻断后续月份",
-        "消费端从本地 MySQL 聚合，不触发云侧读取"
+        "Cloud Billing은 Cloud Account Test와 Billing Sync에서만 접근합니다.",
+        "Sync는 월별로 실행하며 한 달의 실패가 이후 월을 중단하지 않습니다.",
+        "Consumer는 Local MySQL에서 Aggregate하며 Cloud-side Read를 실행하지 않습니다."
       ]
     },
     {
       "dot": "violet",
-      "title": "AI 边界",
+      "title": "AI Boundary",
       "items": [
-        "finops_cost_analysis 只查询已同步账单",
-        "AI 可用于本地分析和建议生成",
-        "可能改变外部状态的工具仍需人工确认"
+        "finops_cost_analysis는 동기화된 Billing만 Query합니다.",
+        "AI는 Local Analysis와 Recommendation 생성에 사용할 수 있습니다.",
+        "External State를 변경할 수 있는 Tool은 Human Confirmation이 필요합니다."
       ]
     }
   ]
