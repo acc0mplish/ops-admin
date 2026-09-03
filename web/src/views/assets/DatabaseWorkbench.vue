@@ -195,7 +195,7 @@ const supportsSQL = computed(() => capabilities.value.sql !== false)
 const isRedis = computed(() => connection.value?.dbType === 'redis')
 const isPostgres = computed(() => connection.value?.dbType === 'postgresql')
 const supportsCreateDatabase = computed(() => !isReadOnly.value && ['mysql', 'postgresql'].includes(connection.value?.dbType))
-const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : '数据Database'))
+const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : 'Database'))
 const sqlSnippets = computed(() => [
   ...baseSqlSnippets,
   isPostgres.value
@@ -557,7 +557,7 @@ async function submitCreateDatabase() {
     selectedTable.value = ''
     await loadTree()
     createDatabaseVisible.value = false
-    ElMessage.success(`${createDatabaseObjectLabel.value} ${name} 已创建`)
+    ElMessage.success(`${createDatabaseObjectLabel.value} ${name}을(를) 생성했습니다.`)
   } finally {
     creatingDatabase.value = false
   }
@@ -985,7 +985,7 @@ async function submitRedisKey() {
     selectedSchema.value = schemaTree.value?.[0]?.name || selectedSchema.value
     selectedTable.value = redisKeyForm.key
     await loadResourceData()
-    ElMessage.success(`Redis Key 已${action}`)
+    ElMessage.success(`Redis Key ${action}을(를) 완료했습니다.`)
   } finally {
     redisRunning.value = false
   }
@@ -1447,7 +1447,7 @@ onBeforeUnmount(() => {
             <div class="redis-command-hint">Quote가 포함된 Parameter를 지원합니다. Ctrl + Enter로 실행하며 기록은 아래 History에 보존됩니다.</div>
           </div>
 
-          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="当前数据Database不是 SQL Type">
+          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="현재 Database는 SQL Type이 아닙니다.">
             왼쪽에서 Database와 Resource를 선택해 Structure를 확인할 수 있습니다. MySQL은 전체 Data 편집, Import/Export 및 Backup 기능을 제공합니다.
           </el-alert>
 
@@ -1490,7 +1490,7 @@ onBeforeUnmount(() => {
           <div v-if="execMeta.sqlType" class="exec-meta">
             <span>Type：{{ execMeta.sqlType }}</span>
             <span>Affected Rows：{{ execMeta.rowsAffected }}</span>
-            <span>耗时：{{ execMeta.durationMs }} ms</span>
+            <span>Duration: {{ execMeta.durationMs }} ms</span>
           </div>
         </div>
 
@@ -1638,10 +1638,10 @@ onBeforeUnmount(() => {
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="导入Export Task" name="tasks">
+            <el-tab-pane label="Import / Export Task" name="tasks">
               <el-table v-loading="taskLoading" :data="taskList" border height="380">
                 <el-table-column prop="taskType" label="Type" width="90">
-                  <template #default="{ row }">{{ row.taskType === 'export' ? '导出' : '导入' }}</template>
+                  <template #default="{ row }">{{ row.taskType === 'export' ? 'Export' : 'Import' }}</template>
                 </el-table-column>
                 <el-table-column label="Source" min-width="220">
                   <template #default="{ row }">
@@ -1754,7 +1754,7 @@ onBeforeUnmount(() => {
           show-icon
         />
         <el-alert v-else title="Target Environment, Database 및 SQL 내용을 확인하십시오. Write 작업은 자동 복구되지 않을 수 있습니다." type="warning" :closable="false" show-icon />
-        <el-form-item class="sql-acknowledgement" :label="`请输入“${sqlConfirmationText()}”确认`">
+        <el-form-item class="sql-acknowledgement" :label="`실행을 확인하려면 “${sqlConfirmationText()}”을(를) 입력하십시오.`">
           <el-input v-model="sqlAcknowledgement" :placeholder="sqlConfirmationText()" autocomplete="off" />
         </el-form-item>
       </div>
@@ -1822,10 +1822,10 @@ onBeforeUnmount(() => {
         show-icon
         class="rollback-alert"
       />
-      <pre class="rollback-box">{{ rollbackSQL || '当前记录没有Rollback SQL' }}</pre>
+      <pre class="rollback-box">{{ rollbackSQL || '현재 Record에는 Rollback SQL이 없습니다.' }}</pre>
     </el-dialog>
 
-    <el-dialog v-model="importDialogVisible" title="创建Import Task" width="680px">
+    <el-dialog v-model="importDialogVisible" title="Import Task 생성" width="680px">
       <el-form label-width="120px">
         <el-form-item label="Source Database">
           <el-select v-model="importForm.sourceDatabaseId" filterable style="width: 100%">
