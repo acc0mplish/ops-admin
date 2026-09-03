@@ -34,7 +34,19 @@ jobs:
         run: python3 .github/scripts/remediate_english_errors_batch1.py
 
       - name: Format Go sources
-        run: gofmt -w backend/apperr/error.go backend/httpx/response.go backend/controller/asset_service.go backend/service/asset_service.go
+        run: >-
+          gofmt -w
+          backend/apperr/error.go
+          backend/httpx/response.go
+          backend/controller/asset_service.go
+          backend/service/asset_service.go
+          backend/middleware/operation_log.go
+          backend/middleware/operation_log_test.go
+          backend/service/integration_ai.go
+          backend/service/notify.go
+          backend/service/notify_test.go
+          backend/service/ssl_certificate.go
+          backend/service/ssl_certificate_test.go
 
       - name: Run backend tests
         working-directory: backend
