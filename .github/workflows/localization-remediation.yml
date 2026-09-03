@@ -12,6 +12,7 @@ on:
       - .github/scripts/localize_remediation_batch5_preface.py
       - .github/scripts/localize_remediation_batch5.py
       - .github/scripts/localize_remediation_batch6_preface.py
+      - .github/scripts/localize_remediation_batch6_preface2.py
       - .github/scripts/localize_remediation_batch6.py
       - .github/workflows/localization-remediation.yml
 
@@ -36,6 +37,7 @@ jobs:
           python3 .github/scripts/localize_remediation_batch5_preface.py
           python3 .github/scripts/localize_remediation_batch5.py
           python3 .github/scripts/localize_remediation_batch6_preface.py
+          python3 .github/scripts/localize_remediation_batch6_preface2.py
           python3 .github/scripts/localize_remediation_batch6.py
 
       - name: Commit remediated files
