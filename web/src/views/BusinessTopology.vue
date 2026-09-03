@@ -33,7 +33,7 @@ function selectNode(key) { selectedKey.value = selectedKey.value === key ? '' : 
 <template>
   <main class="business-topology-page">
     <section class="topology-hero">
-      <div><p>OPS ADMIN · BUSINESS TOPOLOGY</p><h1>{{ bt('title') }}</h1><span>{{ bt('heroDesc') }}</span></div>
+      <div><p>{{ bt('title') }}</p><h1>{{ bt('title') }}</h1><span>{{ bt('heroDesc') }}</span></div>
       <div class="hero-meta"><div><strong>{{ nodes.length }}</strong><span>{{ bt('businessApps') }}</span></div><div><strong>{{ capabilityCount }}</strong><span>{{ bt('implementedCapabilities') }}</span></div></div>
     </section>
 
@@ -53,7 +53,7 @@ function selectNode(key) { selectedKey.value = selectedKey.value === key ? '' : 
     </section>
 
     <section class="capability-section">
-      <div class="section-heading"><div><p>APPLICATION CAPABILITIES</p><h2>{{ selectedNode ? selectedNode.name : bt('featureDescription') }}</h2></div><el-button :icon="Refresh" @click="selectedKey = ''">{{ bt('clearSelection') }}</el-button></div>
+      <div class="section-heading"><div><p>{{ bt('implementedCapabilities') }}</p><h2>{{ selectedNode ? selectedNode.name : bt('featureDescription') }}</h2></div><el-button :icon="Refresh" @click="selectedKey = ''">{{ bt('clearSelection') }}</el-button></div>
       <div v-if="selectedNode" class="capability-detail" :class="`tone-${selectedNode.tone}`"><div><span>{{ bt('applicationRole') }}</span><strong>{{ selectedNode.role }}</strong><p>{{ selectedNode.description }}</p></div><div><span>{{ bt('implementedFeatures') }}</span><ul><li v-for="item in selectedNode.capabilities" :key="item">{{ item }}</li></ul></div><div><span>{{ bt('outputsTo') }}</span><ul><li v-for="key in selectedNode.consumers" :key="key">{{ nodes.find(item => item.key === key)?.name }}</li></ul></div></div>
       <div v-else class="capability-grid"><article v-for="node in nodes" :key="node.key" :class="`tone-${node.tone}`" @click="selectNode(node.key)"><strong>{{ node.name }}</strong><p>{{ node.description }}</p></article></div>
     </section>
