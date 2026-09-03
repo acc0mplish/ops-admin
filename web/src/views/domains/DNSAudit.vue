@@ -26,7 +26,7 @@ onMounted(load)
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div>
-        <div class="domain-eyebrow">DNS CHANGE AUDIT</div>
+        <div class="domain-eyebrow">{{ dt('auditTitle') }}</div>
         <h2>{{ dt('auditTitle') }}</h2>
         <p>{{ dt('auditDesc') }}</p>
       </div>
@@ -38,8 +38,8 @@ onMounted(load)
         <el-table-column prop="username" :label="dt('operator')" width="120" />
         <el-table-column prop="ipAddress" :label="dt('sourceIp')" width="140" />
         <el-table-column prop="action" :label="dt('actionType')" min-width="170" />
-        <el-table-column prop="provider" label="Provider" width="110" />
-        <el-table-column prop="zone" label="Zone" min-width="150" />
+        <el-table-column prop="provider" :label="dt('provider')" width="110" />
+        <el-table-column prop="zone" :label="dt('zoneName')" min-width="150" />
         <el-table-column prop="domain" :label="dt('domain')" min-width="210">
           <template #default="{ row }"><span class="domain-mono">{{ row.domain }}</span></template>
         </el-table-column>
