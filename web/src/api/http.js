@@ -9,6 +9,7 @@ import {
   setLastActivityAt,
   setToken
 } from '../utils/auth'
+import { resolveApiError } from '../utils/api-error-i18n'
 import { ct } from '../utils/common-i18n'
 
 const ACCESS_REFRESH_WINDOW = 5 * 60 * 1000
@@ -63,7 +64,7 @@ async function renewAccessToken(force = false) {
   if (!token) return ''
   if (sessionIsIdle()) {
     expireLocalSession(ct('idleSessionExpired'))
-    throw new Error('session idle timeout')
+    throw new Error(ct('idleSessionExpired'))
   }
   if (!force && getTokenExpiresAt() - Date.now() > ACCESS_REFRESH_WINDOW) return token
   if (!refreshPromise) {
@@ -72,7 +73,7 @@ async function renewAccessToken(force = false) {
     }).then((response) => {
       const payload = response.data
       if (payload?.code !== 200 || !payload.data?.token) {
-        throw new Error(payload?.message || 'token refresh failed')
+        throw new Error(resolveApiError(payload, 'tokenRefreshFailed'))
       }
       setToken(payload.data.token, payload.data.accessTokenExpiresAt)
       return payload.data.token
@@ -97,8 +98,9 @@ http.interceptors.response.use(
     if (response.config.responseType === 'blob') return response
     const res = response.data
     if (res.code !== 200) {
-      ElMessage.error(res.message || ct('requestFailed'))
-      return Promise.reject(new Error(res.message || 'request failed'))
+      const message = resolveApiError(res, 'requestFailed')
+      ElMessage.error(message)
+      return Promise.reject(new Error(message))
     }
     return res.data
   },
@@ -114,11 +116,11 @@ http.interceptors.response.use(
         return http(config)
       } catch {
         expireLocalSession()
-        return Promise.reject(new Error(res?.message || ct('sessionExpired')))
+        return Promise.reject(new Error(resolveApiError(res, 'sessionExpired')))
       }
     }
-    if (res?.code === 401) expireLocalSession(res.message)
-    const message = res?.message || error.message || ct('networkError')
+    if (res?.code === 401) expireLocalSession(resolveApiError(res, 'sessionExpired'))
+    const message = resolveApiError(res || error, error.response ? 'requestFailed' : 'networkError')
     if (res?.code !== 401) ElMessage.error(message)
     return Promise.reject(new Error(message))
   }
