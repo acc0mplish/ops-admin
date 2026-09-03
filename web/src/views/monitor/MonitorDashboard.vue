@@ -41,11 +41,11 @@ const inspectionFilter = ref('all')
 
 const pageMode = computed(() => route.path.includes('/monitor/inspections') ? 'inspection' : 'dashboard')
 const pageLayout = computed(() => pageMode.value === 'inspection' ? 'list' : 'grid')
-const pageTitle = computed(() => pageMode.value === 'inspection' ? '巡检大屏' : '监控大屏')
+const pageTitle = computed(() => pageMode.value === 'inspection' ? 'Inspection Dashboard' : 'Monitoring Dashboard')
 const pageDescription = computed(() => (
   pageMode.value === 'inspection'
-    ? '以巡检清单方式核查 PromQL 面板状态，并支持导出巡检报告 PDF。'
-    : '以网格大屏方式展示指标卡、趋势、排行和仪表盘，适合投屏观测。'
+    ? 'Inspection Checklist 방식으로 PromQL Panel 상태를 점검하고 Inspection Report PDF Export를 지원합니다.'
+    : 'Grid Dashboard 방식으로 Metric Card, Trend, Ranking, Gauge를 표시하며 대형 화면 관제에 적합합니다.'
 ))
 
 const dashboardForm = reactive({
@@ -73,64 +73,64 @@ const panelForm = reactive({
 const dashboardTemplates = [
   {
     key: 'blank',
-    name: '空白大屏',
-    description: '创建一个空白大屏，手动添加 PromQL 面板。',
+    name: '빈 Dashboard',
+    description: '빈 Dashboard를 생성하고 PromQL Panel을 직접 추가합니다.',
     panels: []
   },
   {
     key: 'host',
-    name: '主机资源大屏',
-    description: '参考 Node Exporter 大屏，覆盖在线状态、CPU、内存、磁盘、网络和系统负载。',
+    name: 'Host Resource Dashboard',
+    description: 'Node Exporter Dashboard를 기준으로 Online 상태, CPU, Memory, Disk, Network, System Load를 표시합니다.',
     panels: [
-      { title: '主机总数', chartType: 'stat', unit: '台', span: 6, promql: 'count(up{job=~"node.*|node-exporter"})' },
-      { title: '在线主机', chartType: 'stat', unit: '台', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 1)' },
-      { title: '离线主机', chartType: 'stat', unit: '台', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 0)' },
-      { title: '平均 CPU 使用率', chartType: 'gauge', unit: '%', span: 6, promql: '100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
-      { title: '平均内存使用率', chartType: 'gauge', unit: '%', span: 6, promql: '(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100' },
-      { title: '平均磁盘使用率', chartType: 'gauge', unit: '%', span: 6, promql: '100 - (sum(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) / sum(node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) * 100)' },
-      { title: 'CPU 使用率 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))' },
-      { title: '内存使用率 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)' },
-      { title: '磁盘使用率 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} * 100))' },
-      { title: '系统负载 Top', chartType: 'bar', unit: '', span: 12, promql: 'topk(10, node_load1)' },
-      { title: '网络接收速率 Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
-      { title: '网络发送速率 Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
-      { title: '磁盘读取速率 Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_read_bytes_total[5m])))' },
-      { title: '磁盘写入速率 Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_written_bytes_total[5m])))' },
-      { title: 'CPU 使用趋势', chartType: 'line', unit: '%', span: 12, promql: '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
-      { title: '内存使用趋势', chartType: 'line', unit: '%', span: 12, promql: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100' },
-      { title: '文件句柄使用率', chartType: 'gauge', unit: '%', span: 6, promql: 'sum(node_filefd_allocated) / sum(node_filefd_maximum) * 100' },
-      { title: '运行进程数', chartType: 'stat', unit: '个', span: 6, promql: 'sum(node_procs_running)' },
-      { title: '系统运行时间 Top', chartType: 'bar', unit: '天', span: 12, promql: 'topk(10, (time() - node_boot_time_seconds) / 86400)' },
-      { title: '主机信息', chartType: 'table', unit: '', span: 12, promql: 'node_uname_info' }
+      { title: '전체 Host', chartType: 'stat', unit: '대', span: 6, promql: 'count(up{job=~"node.*|node-exporter"})' },
+      { title: 'Online Host', chartType: 'stat', unit: '대', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 1)' },
+      { title: 'Offline Host', chartType: 'stat', unit: '대', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 0)' },
+      { title: '평균 CPU 사용률', chartType: 'gauge', unit: '%', span: 6, promql: '100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
+      { title: '평균 Memory 사용률', chartType: 'gauge', unit: '%', span: 6, promql: '(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100' },
+      { title: '평균 Disk 사용률', chartType: 'gauge', unit: '%', span: 6, promql: '100 - (sum(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) / sum(node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) * 100)' },
+      { title: 'CPU 사용률 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))' },
+      { title: 'Memory 사용률 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)' },
+      { title: 'Disk 사용률 Top', chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} * 100))' },
+      { title: 'System Load Top', chartType: 'bar', unit: '', span: 12, promql: 'topk(10, node_load1)' },
+      { title: 'Network 수신 Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
+      { title: 'Network 송신 Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
+      { title: 'Disk Read Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_read_bytes_total[5m])))' },
+      { title: 'Disk Write Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_written_bytes_total[5m])))' },
+      { title: 'CPU 사용 Trend', chartType: 'line', unit: '%', span: 12, promql: '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
+      { title: 'Memory 사용 Trend', chartType: 'line', unit: '%', span: 12, promql: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100' },
+      { title: 'File Handle 사용률', chartType: 'gauge', unit: '%', span: 6, promql: 'sum(node_filefd_allocated) / sum(node_filefd_maximum) * 100' },
+      { title: '실행 Process 수', chartType: 'stat', unit: '개', span: 6, promql: 'sum(node_procs_running)' },
+      { title: 'System Uptime Top', chartType: 'bar', unit: '일', span: 12, promql: 'topk(10, (time() - node_boot_time_seconds) / 86400)' },
+      { title: 'Host 정보', chartType: 'table', unit: '', span: 12, promql: 'node_uname_info' }
     ]
   },
   {
     key: 'k8s',
-    name: 'Kubernetes 大屏',
-    description: '参考 K8S Dashboard 大屏风格，覆盖集群资源、容量、工作负载和网络指标。',
+    name: 'Kubernetes Dashboard',
+    description: 'Kubernetes Dashboard 스타일로 Cluster Resource, Capacity, Workload, Network Metric을 표시합니다.',
     panels: [
-      { title: 'Pod 数量', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_pod_info)' },
-      { title: 'Running Pod', chartType: 'stat', unit: '个', span: 8, promql: 'sum(kube_pod_status_phase{phase="Running"})' },
-      { title: '异常 Pod', chartType: 'stat', unit: '个', span: 8, promql: 'sum(kube_pod_status_phase{phase=~"Failed|Unknown|Pending"})' },
-      { title: 'Ready 节点', chartType: 'stat', unit: '个', span: 8, promql: 'sum(kube_node_status_condition{condition="Ready",status="true"})' },
-      { title: '命名空间', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_namespace_created)' },
-      { title: 'Deployment', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_deployment_created)' },
-      { title: 'Service', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_service_info)' },
-      { title: 'Ingress', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_ingress_info)' },
-      { title: 'PVC', chartType: 'stat', unit: '个', span: 8, promql: 'count(kube_persistentvolumeclaim_info)' },
-      { title: 'CPU Request 使用率', chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="cpu"}) / sum(kube_node_status_allocatable{resource="cpu"}) * 100' },
-      { title: '内存 Request 使用率', chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="memory"}) / sum(kube_node_status_allocatable{resource="memory"}) * 100' },
-      { title: '命名空间 Pod 分布', chartType: 'bar', unit: '个', span: 12, promql: 'sum by (namespace) (kube_pod_info)' },
-      { title: '节点 Pod 分布', chartType: 'bar', unit: '个', span: 12, promql: 'sum by (node) (kube_pod_info)' },
-      { title: '工作负载副本可用率', chartType: 'bar', unit: '%', span: 12, promql: 'sum by (deployment) (kube_deployment_status_replicas_available) / sum by (deployment) (kube_deployment_spec_replicas) * 100' },
-      { title: '异常原因 Top', chartType: 'bar', unit: '个', span: 12, promql: 'sum by (reason) (kube_pod_container_status_waiting_reason)' },
-      { title: 'Pod 累计重启次数 Top', chartType: 'bar', unit: '次', span: 12, promql: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))' },
-      { title: 'Pod 最近 1 小时新增重启 Top', chartType: 'bar', unit: '次', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))' },
-      { title: '容器 CPU 使用趋势', chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
-      { title: '容器内存使用趋势', chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
-      { title: 'Pod 网络接收速率', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_receive_bytes_total[5m]))' },
-      { title: 'Pod 网络发送速率', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_transmit_bytes_total[5m]))' },
-      { title: 'Pod 明细', chartType: 'table', unit: '', span: 24, promql: 'kube_pod_info' }
+      { title: 'Pod 수', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_pod_info)' },
+      { title: 'Running Pod', chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_pod_status_phase{phase="Running"})' },
+      { title: '이상 Pod', chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_pod_status_phase{phase=~"Failed|Unknown|Pending"})' },
+      { title: 'Ready Node', chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_node_status_condition{condition="Ready",status="true"})' },
+      { title: 'Namespace', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_namespace_created)' },
+      { title: 'Deployment', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_deployment_created)' },
+      { title: 'Service', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_service_info)' },
+      { title: 'Ingress', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_ingress_info)' },
+      { title: 'PVC', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_persistentvolumeclaim_info)' },
+      { title: 'CPU Request 사용률', chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="cpu"}) / sum(kube_node_status_allocatable{resource="cpu"}) * 100' },
+      { title: 'Memory Request 사용률', chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="memory"}) / sum(kube_node_status_allocatable{resource="memory"}) * 100' },
+      { title: 'Namespace별 Pod 분포', chartType: 'bar', unit: '개', span: 12, promql: 'sum by (namespace) (kube_pod_info)' },
+      { title: 'Node별 Pod 분포', chartType: 'bar', unit: '개', span: 12, promql: 'sum by (node) (kube_pod_info)' },
+      { title: 'Workload Replica 가용률', chartType: 'bar', unit: '%', span: 12, promql: 'sum by (deployment) (kube_deployment_status_replicas_available) / sum by (deployment) (kube_deployment_spec_replicas) * 100' },
+      { title: '이상 Reason Top', chartType: 'bar', unit: '개', span: 12, promql: 'sum by (reason) (kube_pod_container_status_waiting_reason)' },
+      { title: 'Pod 누적 Restart Top', chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))' },
+      { title: '최근 1시간 Pod Restart 증가 Top', chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))' },
+      { title: '容器 CPU 사용 Trend', chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
+      { title: '容器Memory 사용 Trend', chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
+      { title: 'Pod Network 수신 Rate', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_receive_bytes_total[5m]))' },
+      { title: 'Pod Network 송신 Rate', chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_transmit_bytes_total[5m]))' },
+      { title: 'Pod 상세', chartType: 'table', unit: '', span: 24, promql: 'kube_pod_info' }
     ]
   }
 ]
@@ -157,13 +157,13 @@ const isK8sDashboard = computed(() => {
 })
 const dashboardHealth = computed(() => {
   const errors = activePanels.value.filter((panel) => panelResults[panel.id]?.error).length
-  if (!activeDashboard.value) return { text: '未选择', type: 'info' }
-  if (errors > 0) return { text: `${errors} 个异常`, type: 'danger' }
-  return { text: '正常', type: 'success' }
+  if (!activeDashboard.value) return { text: '미선택', type: 'info' }
+  if (errors > 0) return { text: `${errors} 개 이상`, type: 'danger' }
+  return { text: '정상', type: 'success' }
 })
 const defaultDatasourceId = computed(() => selectedDatasourceId.value || datasourceOptions.value[0]?.id)
 const currentTemplate = computed(() => dashboardTemplates.find((item) => item.key === activeTemplate.value) || dashboardTemplates[0])
-const currentDatasourceName = computed(() => datasourceOptions.value.find((item) => item.id === selectedDatasourceId.value)?.name || '未选择数据源')
+const currentDatasourceName = computed(() => datasourceOptions.value.find((item) => item.id === selectedDatasourceId.value)?.name || 'Datasource 미선택')
 const lastRefreshText = computed(() => lastRefreshAt.value.toLocaleTimeString('zh-CN', { hour12: false }))
 
 function resetDashboardForm() {
@@ -223,9 +223,9 @@ function formatByUnit(value, unit = '') {
     const signed = value < 0 ? -current : current
     return `${signed.toFixed(current >= 100 ? 0 : current >= 10 ? 1 : 2)} ${units[index]}`
   }
-  if (unit === '天') return `${value.toFixed(value >= 10 ? 0 : 1)} 天`
+  if (unit === '일') return `${value.toFixed(value >= 10 ? 0 : 1)}일`
   if (unit === '%') return `${value.toFixed(value >= 10 ? 1 : 2).replace(/\.?0+$/, '')}%`
-  if (unit && unit !== '个' && unit !== '台') return `${value.toFixed(value >= 100 ? 0 : 2).replace(/\.?0+$/, '')}${unit}`
+  if (unit && unit !== '개' && unit !== '대') return `${value.toFixed(value >= 100 ? 0 : 2).replace(/\.?0+$/, '')}${unit}`
   return value.toLocaleString(undefined, { maximumFractionDigits: value >= 100 ? 0 : 2 })
 }
 
@@ -300,7 +300,7 @@ function panelStats(panel) {
 }
 
 function panelChartLabel(chartType) {
-  return ({ stat: '指标', gauge: '仪表盘', bar: '排行', line: '趋势', table: '明细' })[chartType] || chartType
+  return ({ stat: 'Metric', gauge: 'Gauge', bar: 'Ranking', line: 'Trend', table: '상세' })[chartType] || chartType
 }
 
 function barRows(panel) {
@@ -327,10 +327,10 @@ function panelSpan(panel) {
 }
 
 function panelState(panel) {
-  if (panel.status !== 1) return '已禁用'
-  if (panelResults[panel.id]?.error) return '查询失败'
-  if (!panelRows(panel).length) return '暂无数据'
-  return '实时'
+  if (panel.status !== 1) return '비활성화됨'
+  if (panelResults[panel.id]?.error) return 'Query 실패'
+  if (!panelRows(panel).length) return 'Data 없음'
+  return '실시간'
 }
 
 function panelStateKey(panel) {
@@ -368,7 +368,7 @@ function escapeHtml(value) {
 
 function exportInspectionReportPdf() {
   if (!activeDashboard.value) {
-    ElMessage.warning('请先选择巡检大屏')
+    ElMessage.warning('Inspection Dashboard를 먼저 선택하십시오.')
     return
   }
   const now = new Date().toLocaleString()
@@ -390,7 +390,7 @@ function exportInspectionReportPdf() {
   }).join('')
   const win = window.open('', '_blank')
   if (!win) {
-    ElMessage.warning('浏览器阻止了报告窗口，请允许弹窗后重试')
+    ElMessage.warning('Browser가 Report Window를 차단했습니다. Popup을 허용한 뒤 다시 시도하십시오.')
     return
   }
   win.document.write(`
@@ -398,7 +398,7 @@ function exportInspectionReportPdf() {
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>${escapeHtml(activeDashboard.value.name)} - 巡检报告</title>
+        <title>${escapeHtml(activeDashboard.value.name)} - Inspection Report</title>
         <style>
           * { box-sizing: border-box; }
           body { margin: 0; padding: 28px; color: #10213f; font-family: Arial, "Microsoft YaHei", sans-serif; background: #fff; }
@@ -422,27 +422,27 @@ function exportInspectionReportPdf() {
         </style>
       </head>
       <body>
-        <button class="no-print" onclick="window.print()" style="float:right;padding:8px 14px;">打印 / 保存 PDF</button>
-        <h1>${escapeHtml(activeDashboard.value.name)} 巡检报告</h1>
+        <button class="no-print" onclick="window.print()" style="float:right;padding:8px 14px;">인쇄 / PDF 저장</button>
+        <h1>${escapeHtml(activeDashboard.value.name)} Inspection Report</h1>
         <div class="meta">
-          <span>生成时间：${escapeHtml(now)}</span>
-          <span>查询数据源：${escapeHtml(currentDatasourceName)}</span>
-          <span>大屏状态：${escapeHtml(dashboardHealth.value.text)}</span>
-          <span>刷新周期：${autoRefreshSeconds.value ? `${autoRefreshSeconds.value}s` : '关闭'}</span>
+          <span>생성 시각：${escapeHtml(now)}</span>
+          <span>Query Datasource：${escapeHtml(currentDatasourceName)}</span>
+          <span>Dashboard 상태：${escapeHtml(dashboardHealth.value.text)}</span>
+          <span>Refresh 주기：${autoRefreshSeconds.value ? `${autoRefreshSeconds.value}s` : '꺼짐'}</span>
         </div>
         <div class="summary">
-          <div class="card"><span>面板数量</span><strong>${panels.value.length}</strong></div>
-          <div class="card"><span>启用面板</span><strong>${activePanels.value.length}</strong></div>
-          <div class="card"><span>异常面板</span><strong>${activePanels.value.filter((panel) => panelResults[panel.id]?.error).length}</strong></div>
-          <div class="card"><span>巡检类型</span><strong>列表巡检</strong></div>
+          <div class="card"><span>Panel 수</span><strong>${panels.value.length}</strong></div>
+          <div class="card"><span>활성 Panel</span><strong>${activePanels.value.length}</strong></div>
+          <div class="card"><span>이상 Panel</span><strong>${activePanels.value.filter((panel) => panelResults[panel.id]?.error).length}</strong></div>
+          <div class="card"><span>Inspection Type</span><strong>List Inspection</strong></div>
         </div>
         <table>
           <thead>
             <tr>
-              <th>#</th><th>面板</th><th>状态</th><th>当前值</th><th>序列</th><th>数据源</th><th>类型</th><th>PromQL / 错误</th>
+              <th>#</th><th>Panel</th><th>상태</th><th>현재 값</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / 错误</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="8">暂无巡检面板</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="8">Inspection Panel이 없습니다.</td></tr>'}</tbody>
         </table>
       </body>
     </html>
@@ -522,16 +522,16 @@ async function createTemplatePanels(dashboardId) {
 
 async function submitDashboard() {
   if (!dashboardForm.name.trim()) {
-    ElMessage.warning(`请输入${pageTitle.value}名称`)
+    ElMessage.warning(`${pageTitle.value} 이름을 입력하십시오.`)
     return
   }
   dashboardForm.layout = pageLayout.value
   if (!editingDashboard.value && currentTemplate.value.panels.length && !defaultDatasourceId.value) {
-    ElMessage.warning('请先创建 Prometheus 数据源，再使用模板创建大屏')
+    ElMessage.warning('Prometheus Datasource를 먼저 생성한 뒤 Template으로 Dashboard를 생성하십시오.')
     return
   }
   const savedDashboard = await saveMonitorDashboard(dashboardForm)
-  ElMessage.success('保存成功')
+  ElMessage.success('저장했습니다.')
   dashboardDialogVisible.value = false
   await loadBase()
   const target = dashboards.value.find((item) => Number(item.id) === Number(savedDashboard?.id)) || savedDashboard || dashboards.value[0]
@@ -545,9 +545,9 @@ async function submitDashboard() {
 
 async function handleDeleteDashboard() {
   if (!activeDashboard.value) return
-  await ElMessageBox.confirm(`确认删除${pageTitle.value}「${activeDashboard.value.name}」吗？面板也会一起删除。`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`${pageTitle.value} “${activeDashboard.value.name}”을(를) 삭제하시겠습니까? 연결된 Panel도 함께 삭제됩니다.`, '提示', { type: 'warning' })
   await deleteMonitorDashboard(activeDashboard.value.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   activeDashboardId.value = undefined
   activeDashboard.value = null
   panels.value = []
@@ -557,7 +557,7 @@ async function handleDeleteDashboard() {
 
 function openCreatePanel() {
   if (!activeDashboardId.value) {
-    ElMessage.warning('请先创建或选择监控大屏')
+    ElMessage.warning('Monitoring Dashboard를 생성하거나 선택하십시오.')
     return
   }
   editingPanel.value = false
@@ -573,25 +573,25 @@ function openEditPanel(row) {
 
 async function submitPanel() {
   if (!panelForm.title.trim() || !panelForm.datasourceId || !panelForm.promql.trim()) {
-    ElMessage.warning('请填写面板标题、数据源和 PromQL')
+    ElMessage.warning('Panel 제목, Datasource 및 PromQL을 입력하십시오.')
     return
   }
   await saveMonitorDashboardPanel(panelForm)
-  ElMessage.success('保存成功')
+  ElMessage.success('저장했습니다.')
   panelDialogVisible.value = false
   await loadDashboard(activeDashboardId.value)
 }
 
 async function handleDeletePanel(row) {
-  await ElMessageBox.confirm(`确认删除面板「${row.title}」吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Panel “${row.title}”을(를) 삭제하시겠습니까?`, '提示', { type: 'warning' })
   await deleteMonitorDashboardPanel(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadDashboard(activeDashboardId.value)
 }
 
 async function refreshPanel(row) {
   if (!selectedDatasourceId.value) {
-    ElMessage.warning('请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源')
+    ElMessage.warning('Datasource 관리에서 Prometheus 또는 VictoriaMetrics Datasource를 먼저 구성하십시오.')
     return
   }
   await loadPanel(row, { force: true })
@@ -600,7 +600,7 @@ async function refreshPanel(row) {
 
 async function refreshProblemPanels() {
   const items = activePanels.value.filter((panel) => ['danger', 'warning'].includes(panelStateKey(panel)))
-  if (!items.length) return ElMessage.success('当前没有需要复核的异常面板')
+  if (!items.length) return ElMessage.success('현재 재검토할 이상 Panel이 없습니다.')
   const version = ++panelRefreshVersion
   await runPanelQueue(items, version, true)
   if (version === panelRefreshVersion) lastRefreshAt.value = new Date()
@@ -609,9 +609,9 @@ async function refreshProblemPanels() {
 async function copyPromql(promql) {
   try {
     await navigator.clipboard.writeText(promql || '')
-    ElMessage.success('PromQL 已复制')
+    ElMessage.success('PromQL을 복사했습니다.')
   } catch {
-    ElMessage.warning('复制失败，请手动复制 PromQL')
+    ElMessage.warning('복사에 실패했습니다. PromQL을 직접 복사하십시오.')
   }
 }
 
@@ -668,7 +668,7 @@ async function runPanelQueue(items, version, force) {
 
 async function refreshAllPanels({ progressive = false, force = true } = {}) {
   if (!selectedDatasourceId.value) {
-    const message = '请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源'
+    const message = 'Datasource 관리에서 Prometheus 또는 VictoriaMetrics Datasource를 먼저 구성하십시오.'
     for (const panel of panels.value.filter((item) => item.status === 1)) panelResults[panel.id] = { error: message }
     return
   }
@@ -746,7 +746,7 @@ onBeforeUnmount(() => {
       <div class="workspace-title">
         <span class="brand-mark">M</span>
         <div>
-          <strong>监控大屏</strong>
+          <strong>Monitoring Dashboard</strong>
           <p>{{ pageDescription }}</p>
         </div>
       </div>
@@ -762,14 +762,14 @@ onBeforeUnmount(() => {
             @click="loadDashboard(item.id)"
           >
             <strong>{{ item.name }}</strong>
-            <span>{{ item.panelCount || 0 }} 个面板</span>
+            <span>{{ item.panelCount || 0 }} 개Panel</span>
           </button>
-          <div v-if="!visibleDashboards.length" class="empty-switcher">暂无{{ pageTitle }}</div>
+          <div v-if="!visibleDashboards.length" class="empty-switcher">{{ pageTitle }} 없음</div>
           </div>
         </el-scrollbar>
       </div>
 
-      <el-button class="create-screen-btn" type="primary" @click="openCreateDashboard">创建{{ pageTitle }}</el-button>
+      <el-button class="create-screen-btn" type="primary" @click="openCreateDashboard">{{ pageTitle }} 생성</el-button>
     </section>
 
     <main class="dashboard-main observability-canvas" v-loading="loading">
@@ -779,105 +779,105 @@ onBeforeUnmount(() => {
           <h2>{{ activeDashboard?.name || pageTitle }}</h2>
           <p>{{ activeDashboard?.description || pageDescription }}</p>
           <div v-if="activeDashboard" class="layout-hint">
-            {{ isListLayout ? '当前布局：列表巡检，适合日常排障和逐项核查。' : '当前布局：网格大屏，适合投屏展示和整体观测。' }}
+            {{ isListLayout ? '현재 Layout: Inspection List. 일상 Troubleshooting과 항목별 점검에 적합합니다.' : '현재 Layout: Grid Dashboard. 대형 화면 표시와 전체 관제에 적합합니다.' }}
           </div>
           <div v-if="activeDashboard" class="dashboard-context">
             <span><i class="health-dot"></i>{{ currentDatasourceName }}</span>
-            <span>最近更新 {{ lastRefreshText }}</span>
-            <span>{{ activePanels.length }} 个启用面板</span>
+            <span>최근 업데이트 {{ lastRefreshText }}</span>
+            <span>{{ activePanels.length }} 개활성 Panel</span>
           </div>
         </div>
 		<div class="hero-actions">
-          <el-select v-model="selectedDatasourceId" placeholder="选择数据源" style="width: 180px" @change="handleDatasourceChange">
+          <el-select v-model="selectedDatasourceId" placeholder="Datasource 선택" style="width: 180px" @change="handleDatasourceChange">
             <el-option v-for="item in datasourceOptions" :key="item.id" :label="item.name" :value="item.id" />
 		  </el-select>
 		  <el-select v-model="timeRangeSeconds" style="width: 130px" @change="refreshAllPanels">
-			<el-option label="最近 15 分钟" :value="900" />
-			<el-option label="最近 1 小时" :value="3600" />
-			<el-option label="最近 6 小时" :value="21600" />
-			<el-option label="最近 24 小时" :value="86400" />
+			<el-option label="최근 15분" :value="900" />
+			<el-option label="최근 1시간" :value="3600" />
+			<el-option label="최근 6시간" :value="21600" />
+			<el-option label="최근 24시간" :value="86400" />
 		  </el-select>
           <el-select v-model="autoRefreshSeconds" style="width: 130px" @change="restartAutoRefresh">
-            <el-option label="关闭刷新" :value="0" />
-            <el-option label="10 秒刷新" :value="10" />
-            <el-option label="30 秒刷新" :value="30" />
-            <el-option label="60 秒刷新" :value="60" />
+            <el-option label="자동 Refresh 끄기" :value="0" />
+            <el-option label="10초 Refresh" :value="10" />
+            <el-option label="30초 Refresh" :value="30" />
+            <el-option label="60초 Refresh" :value="60" />
           </el-select>
-          <el-button @click="refreshAllPanels" :disabled="!activePanels.length">刷新全部</el-button>
-          <el-button v-if="!isListLayout" @click="toggleFullscreen" :disabled="!activeDashboard">{{ isFullscreen ? '退出全屏' : '大屏展示' }}</el-button>
-          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">导出巡检报告 PDF</el-button>
-          <el-button v-if="!isFullscreen" @click="openEditDashboard" :disabled="!activeDashboard">编辑{{ pageTitle }}</el-button>
-          <el-button v-if="!isFullscreen" type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">删除{{ pageTitle }}</el-button>
-          <el-button v-if="!isFullscreen" type="primary" @click="openCreatePanel">新增面板</el-button>
+          <el-button @click="refreshAllPanels" :disabled="!activePanels.length">전체 Refresh</el-button>
+          <el-button v-if="!isListLayout" @click="toggleFullscreen" :disabled="!activeDashboard">{{ isFullscreen ? '전체 화면 종료' : 'Dashboard 전체 화면' }}</el-button>
+          <el-button v-else @click="exportInspectionReportPdf" :disabled="!activeDashboard">导出Inspection Report PDF</el-button>
+          <el-button v-if="!isFullscreen" @click="openEditDashboard" :disabled="!activeDashboard">{{ pageTitle }} 수정</el-button>
+          <el-button v-if="!isFullscreen" type="danger" plain @click="handleDeleteDashboard" :disabled="!activeDashboard">{{ pageTitle }} 삭제</el-button>
+          <el-button v-if="!isFullscreen" type="primary" @click="openCreatePanel">Panel 추가</el-button>
         </div>
       </section>
 
       <section class="dashboard-summary">
         <div class="summary-card">
-          <span>面板数量</span>
+          <span>Panel 수</span>
           <strong>{{ panels.length }}</strong>
         </div>
         <div class="summary-card">
-          <span>启用面板</span>
+          <span>활성 Panel</span>
           <strong>{{ activePanels.length }}</strong>
         </div>
         <div class="summary-card">
-          <span>刷新周期</span>
-          <strong>{{ autoRefreshSeconds ? `${autoRefreshSeconds}s` : '关闭' }}</strong>
+          <span>Refresh 주기</span>
+          <strong>{{ autoRefreshSeconds ? `${autoRefreshSeconds}s` : '꺼짐' }}</strong>
         </div>
         <div class="summary-card">
-          <span>大屏状态</span>
+          <span>Dashboard 상태</span>
           <strong :class="`state-${dashboardHealth.type}`">{{ dashboardHealth.text }}</strong>
         </div>
       </section>
 
-      <el-empty v-if="!activeDashboard" description="还没有监控大屏，请先创建一个" />
-      <el-empty v-else-if="!panels.length" description="当前大屏还没有面板，可以新增面板或使用模板创建" />
+      <el-empty v-if="!activeDashboard" description="Monitoring Dashboard가 없습니다. 먼저 생성하십시오." />
+      <el-empty v-else-if="!panels.length" description="현재 Dashboard에 Panel이 없습니다. Panel을 추가하거나 Template으로 생성하십시오." />
 
       <section v-else-if="isListLayout" class="inspection-list">
         <div class="inspection-command-bar">
           <div class="inspection-filter">
-            <button :class="{ active: inspectionFilter === 'all' }" @click="inspectionFilter = 'all'">全部 {{ panels.length }}</button>
-            <button :class="{ active: inspectionFilter === 'danger' }" @click="inspectionFilter = 'danger'">异常 {{ inspectionSummary.danger }}</button>
-            <button :class="{ active: inspectionFilter === 'warning' }" @click="inspectionFilter = 'warning'">待核查 {{ inspectionSummary.warning }}</button>
-            <button :class="{ active: inspectionFilter === 'healthy' }" @click="inspectionFilter = 'healthy'">正常 {{ inspectionSummary.healthy }}</button>
+            <button :class="{ active: inspectionFilter === 'all' }" @click="inspectionFilter = 'all'">전체 {{ panels.length }}</button>
+            <button :class="{ active: inspectionFilter === 'danger' }" @click="inspectionFilter = 'danger'">이상 {{ inspectionSummary.danger }}</button>
+            <button :class="{ active: inspectionFilter === 'warning' }" @click="inspectionFilter = 'warning'">검토 필요 {{ inspectionSummary.warning }}</button>
+            <button :class="{ active: inspectionFilter === 'healthy' }" @click="inspectionFilter = 'healthy'">정상 {{ inspectionSummary.healthy }}</button>
           </div>
           <div class="inspection-command-actions">
-            <span>异常优先排序 · 当前展示 {{ inspectionPanels.length }} 项</span>
-            <el-button @click="refreshProblemPanels" :disabled="!activePanels.length">复核异常</el-button>
-            <el-button type="primary" @click="refreshAllPanels" :disabled="!activePanels.length">执行巡检</el-button>
+            <span>이상 항목 우선 정렬 · 현재 {{ inspectionPanels.length }}개 표시</span>
+            <el-button @click="refreshProblemPanels" :disabled="!activePanels.length">이상 재검토</el-button>
+            <el-button type="primary" @click="refreshAllPanels" :disabled="!activePanels.length">Inspection 실행</el-button>
           </div>
         </div>
         <div class="inspection-head">
           <div>
-            <h3>巡检面板</h3>
-            <p>按面板逐项查看查询状态、当前值、返回序列和 PromQL，适合日常排障巡检。</p>
+            <h3>Inspection Panel</h3>
+            <p>Panel별 Query 상태, 현재 값, 반환 Series, PromQL을 확인하며 일상 Troubleshooting Inspection에 적합합니다.</p>
           </div>
-          <el-button @click="refreshAllPanels" :disabled="!activePanels.length">执行巡检</el-button>
+          <el-button @click="refreshAllPanels" :disabled="!activePanels.length">Inspection 실행</el-button>
         </div>
-        <el-table :data="inspectionPanels" class="inspection-table" row-key="id" empty-text="当前筛选条件下暂无面板">
-          <el-table-column label="面板" min-width="180">
+        <el-table :data="inspectionPanels" class="inspection-table" row-key="id" empty-text="현재 Filter 조건에 해당하는 Panel이 없습니다.">
+          <el-table-column label="Panel" min-width="180">
             <template #default="{ row }">
               <div class="inspection-name">
                 <strong>{{ row.title }}</strong>
-                <span>{{ row.description || '未填写描述' }}</span>
+                <span>{{ row.description || '설명 없음' }}</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="110">
+          <el-table-column label="상태" width="110">
             <template #default="{ row }">
               <el-tag :type="panelStateType(row)" effect="light">{{ panelState(row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="当前值" width="150">
+          <el-table-column label="현재 값" width="150">
             <template #default="{ row }">
               <strong class="inspection-value">{{ panelDisplayValue(row) }}</strong>
             </template>
           </el-table-column>
-          <el-table-column label="返回序列" width="110">
+          <el-table-column label="반환 Series" width="110">
             <template #default="{ row }">{{ panelResultCount(row) }}</template>
           </el-table-column>
-          <el-table-column label="数据源 / 类型" width="180">
+          <el-table-column label="Datasource / Type" width="180">
             <template #default="{ row }">
               <div class="inspection-meta">
                 <span>{{ datasourceOptions.find((item) => item.id === selectedDatasourceId)?.name || row.datasourceName || '-' }}</span>
@@ -890,11 +890,11 @@ onBeforeUnmount(() => {
               <code class="inspection-promql">{{ row.promql }}</code>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="190" fixed="right">
+          <el-table-column label="작업" width="190" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="refreshPanel(row)">刷新</el-button>
-              <el-button link type="primary" @click="openEditPanel(row)">编辑</el-button>
-              <el-button link type="danger" @click="handleDeletePanel(row)">删除</el-button>
+              <el-button link type="primary" @click="refreshPanel(row)">Refresh</el-button>
+              <el-button link type="primary" @click="openEditPanel(row)">수정</el-button>
+              <el-button link type="danger" @click="handleDeletePanel(row)">삭제</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -903,14 +903,14 @@ onBeforeUnmount(() => {
       <section v-else class="dashboard-grid-shell">
         <div class="dashboard-grid-toolbar">
           <div class="dashboard-grid-status">
-            <span class="status-chip healthy"><i></i>正常 {{ inspectionSummary.healthy }}</span>
-            <span class="status-chip warning"><i></i>待确认 {{ inspectionSummary.warning }}</span>
-            <span class="status-chip danger"><i></i>异常 {{ inspectionSummary.danger }}</span>
-            <span class="status-chip muted"><i></i>已停用 {{ inspectionSummary.disabled }}</span>
+            <span class="status-chip healthy"><i></i>정상 {{ inspectionSummary.healthy }}</span>
+            <span class="status-chip warning"><i></i>확인 필요 {{ inspectionSummary.warning }}</span>
+            <span class="status-chip danger"><i></i>이상 {{ inspectionSummary.danger }}</span>
+            <span class="status-chip muted"><i></i>비활성 {{ inspectionSummary.disabled }}</span>
           </div>
           <div class="dashboard-grid-actions">
-            <span>最近刷新 {{ lastRefreshText }}</span>
-            <el-button size="small" @click="refreshProblemPanels" :disabled="!activePanels.length">复核异常</el-button>
+            <span>최근 Refresh {{ lastRefreshText }}</span>
+            <el-button size="small" @click="refreshProblemPanels" :disabled="!activePanels.length">이상 재검토</el-button>
           </div>
         </div>
         <div class="panel-grid" :class="{ 'k8s-panel-grid': isK8sDashboard }">
@@ -930,13 +930,13 @@ onBeforeUnmount(() => {
                 <i class="panel-signal"></i>
                 <strong>{{ panel.title }}</strong>
               </div>
-              <span>{{ panelChartLabel(panel.chartType) }} · {{ panelResultCount(panel) }} 条序列 · {{ currentDatasourceName }}</span>
+              <span>{{ panelChartLabel(panel.chartType) }} · {{ panelResultCount(panel) }} 개 Series · {{ currentDatasourceName }}</span>
             </div>
             <div class="panel-actions">
               <span class="panel-state" :class="`is-${panelStateType(panel)}`"><i></i>{{ panelState(panel) }}</span>
-              <el-button link type="primary" @click="refreshPanel(panel)">刷新</el-button>
-              <el-button link type="primary" @click="openEditPanel(panel)">编辑</el-button>
-              <el-button link type="danger" @click="handleDeletePanel(panel)">删除</el-button>
+              <el-button link type="primary" @click="refreshPanel(panel)">Refresh</el-button>
+              <el-button link type="primary" @click="openEditPanel(panel)">수정</el-button>
+              <el-button link type="danger" @click="handleDeletePanel(panel)">삭제</el-button>
             </div>
           </div>
 
@@ -979,13 +979,13 @@ onBeforeUnmount(() => {
           <template v-else-if="panel.chartType === 'line'">
             <div class="trend-summary">
               <div class="trend-current">
-                <span>当前值</span>
+                <span>현재 값</span>
                 <strong>{{ panelDisplayValue(panel) }}</strong>
               </div>
               <div class="trend-stats">
-                <span>最小 <b>{{ panelStats(panel).min }}</b></span>
-                <span>平均 <b>{{ panelStats(panel).avg }}</b></span>
-                <span>最大 <b>{{ panelStats(panel).max }}</b></span>
+                <span>최소 <b>{{ panelStats(panel).min }}</b></span>
+                <span>평균 <b>{{ panelStats(panel).avg }}</b></span>
+                <span>최대 <b>{{ panelStats(panel).max }}</b></span>
               </div>
             </div>
             <div class="trend-chart">
@@ -1006,7 +1006,7 @@ onBeforeUnmount(() => {
                   :style="{ stroke: series.color }"
                 />
               </svg>
-              <div class="trend-axis"><span>起始</span><span>当前</span></div>
+              <div class="trend-axis"><span>시작</span><span>当前</span></div>
             </div>
             <div v-if="panelLineSeries(panel).length > 1" class="trend-legend">
               <span v-for="(series, index) in panelLineSeries(panel).slice(0, 4)" :key="`${series.name}-legend-${index}`">
@@ -1023,7 +1023,7 @@ onBeforeUnmount(() => {
                 <div class="stat-value">{{ panelValue(panel) }}<small>{{ panel.unit }}</small></div>
                 <div class="stat-caption">
                   <span></span>
-                  实时采样
+                  실시간采样
                 </div>
               </div>
               <svg v-if="panel.chartType === 'line'" class="sparkline" viewBox="0 0 100 52" preserveAspectRatio="none">
@@ -1037,10 +1037,10 @@ onBeforeUnmount(() => {
       </section>
     </main>
 
-    <el-dialog v-model="dashboardDialogVisible" :title="editingDashboard ? `编辑${pageTitle}` : `创建${pageTitle}`" width="760px">
+    <el-dialog v-model="dashboardDialogVisible" :title="editingDashboard ? `${pageTitle} 수정` : `${pageTitle} 생성`" width="760px">
       <el-form label-width="100px">
-        <el-form-item label="名称" required><el-input v-model="dashboardForm.name" :placeholder="`例如：生产环境${pageTitle}`" /></el-form-item>
-        <el-form-item v-if="!editingDashboard" label="大屏模板">
+        <el-form-item label="이름" required><el-input v-model="dashboardForm.name" :placeholder="`예: Production ${pageTitle}`" /></el-form-item>
+        <el-form-item v-if="!editingDashboard" label="Dashboard Template">
           <div class="template-grid">
             <button v-for="item in dashboardTemplates" :key="item.key" type="button" class="template-card" :class="{ active: activeTemplate === item.key }" @click="activeTemplate = item.key">
               <strong>{{ item.name }}</strong>
@@ -1048,63 +1048,63 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </el-form-item>
-        <el-form-item label="类型">
-          <el-tag type="primary" effect="light">{{ isListLayout ? '巡检大屏 / 列表巡检' : '监控大屏 / 网格展示' }}</el-tag>
+        <el-form-item label="Type">
+          <el-tag type="primary" effect="light">{{ isListLayout ? 'Inspection Dashboard / List Inspection' : 'Monitoring Dashboard / 网格展示' }}</el-tag>
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="상태">
           <el-radio-group v-model="dashboardForm.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="2">禁用</el-radio>
+            <el-radio :value="1">활성화</el-radio>
+            <el-radio :value="2">비활성화</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="描述"><el-input v-model="dashboardForm.description" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="설명"><el-input v-model="dashboardForm.description" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dashboardDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitDashboard">{{ editingDashboard ? '保存' : '创建' }}</el-button>
+        <el-button @click="dashboardDialogVisible = false">취소</el-button>
+        <el-button type="primary" @click="submitDashboard">{{ editingDashboard ? '저장' : '생성' }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="panelDialogVisible" :title="editingPanel ? '编辑面板' : '新增面板'" width="820px">
+    <el-dialog v-model="panelDialogVisible" :title="editingPanel ? 'Panel 수정' : 'Panel 추가'" width="820px">
       <el-form label-width="110px">
-        <el-form-item label="标题" required><el-input v-model="panelForm.title" /></el-form-item>
-        <el-form-item label="数据源" required>
+        <el-form-item label="제목" required><el-input v-model="panelForm.title" /></el-form-item>
+        <el-form-item label="Datasource" required>
           <el-select v-model="panelForm.datasourceId" filterable style="width: 100%">
             <el-option v-for="item in datasourceOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="PromQL" required><el-input v-model="panelForm.promql" type="textarea" :rows="4" placeholder="例如：up 或 sum(rate(http_requests_total[5m]))" /></el-form-item>
+        <el-form-item label="PromQL" required><el-input v-model="panelForm.promql" type="textarea" :rows="4" placeholder="예: up 또는 sum(rate(http_requests_total[5m]))" /></el-form-item>
         <el-row :gutter="12">
           <el-col :span="8">
-            <el-form-item label="图表类型">
+            <el-form-item label="Chart Type">
               <el-select v-model="panelForm.chartType">
-                <el-option label="指标卡" value="stat" />
-                <el-option label="折线趋势" value="line" />
-                <el-option label="柱状排行" value="bar" />
-                <el-option label="仪表盘" value="gauge" />
-                <el-option label="表格" value="table" />
+                <el-option label="Metric Card" value="stat" />
+                <el-option label="Line Trend" value="line" />
+                <el-option label="Bar Ranking" value="bar" />
+                <el-option label="Gauge" value="gauge" />
+                <el-option label="Table" value="table" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8"><el-form-item label="单位"><el-input v-model="panelForm.unit" placeholder="%, ms, 个" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="宽度"><el-input-number v-model="panelForm.span" :min="6" :max="24" :step="6" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="Unit"><el-input v-model="panelForm.unit" placeholder="%, ms, 개" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="Width"><el-input-number v-model="panelForm.span" :min="6" :max="24" :step="6" style="width: 100%" /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="12">
-          <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="panelForm.sort" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="Sort"><el-input-number v-model="panelForm.sort" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="16">
-            <el-form-item label="状态">
+            <el-form-item label="상태">
               <el-radio-group v-model="panelForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="2">禁用</el-radio>
+                <el-radio :value="1">활성화</el-radio>
+                <el-radio :value="2">비활성화</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="描述"><el-input v-model="panelForm.description" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="설명"><el-input v-model="panelForm.description" type="textarea" :rows="2" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="panelDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitPanel">保存</el-button>
+        <el-button @click="panelDialogVisible = false">취소</el-button>
+        <el-button type="primary" @click="submitPanel">저장</el-button>
       </template>
     </el-dialog>
   </div>
