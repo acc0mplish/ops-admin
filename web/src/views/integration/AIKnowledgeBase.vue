@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Delete, Document, DocumentCopy, Edit, EditPen, Plus, Upload, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteAIKnowledgeDocument, queryAIKnowledgeDocuments, saveAIKnowledgeDocument, uploadAIKnowledgeDocument } from '../../api/integration'
+import { it } from '../../utils/integration-i18n'
 import './ai.css'
 
 const loading = ref(false)
@@ -20,22 +21,22 @@ async function load() { loading.value = true; try { documents.value = (await que
 function createDocument() { reset(); editorMode.value = 'edit'; dialogVisible.value = true }
 function editDocument(row) { Object.assign(form, { ...row, sourceType: row.sourceType || 'manual' }); editorMode.value = 'edit'; dialogVisible.value = true }
 async function save() {
-  if (!form.name.trim() || !form.content.trim()) return ElMessage.warning('请填写文档名称和 Markdown 内容')
+  if (!form.name.trim() || !form.content.trim()) return ElMessage.warning(it('documentRequired'))
   saving.value = true
-  try { await saveAIKnowledgeDocument(form); dialogVisible.value = false; await load(); ElMessage.success('知识库文档已保存') } finally { saving.value = false }
+  try { await saveAIKnowledgeDocument(form); dialogVisible.value = false; await load(); ElMessage.success(it('documentSaved')) } finally { saving.value = false }
 }
 async function remove(row) {
-  await ElMessageBox.confirm(`确定删除知识库文档“${row.name}”吗？`, '删除文档', { type: 'warning' })
-  await deleteAIKnowledgeDocument(row.id); await load(); ElMessage.success('文档已删除')
+  await ElMessageBox.confirm(it('deleteDocumentConfirm', { name: row.name }), it('deleteDocument'), { type: 'warning' })
+  await deleteAIKnowledgeDocument(row.id); await load(); ElMessage.success(it('documentDeleted'))
 }
 async function upload(file) {
-  if (!file.name.toLowerCase().endsWith('.md')) { ElMessage.error('仅支持上传 .md 文件'); return false }
-  if (file.size > 2 * 1024 * 1024) { ElMessage.error('Markdown 文件不能超过 2MB'); return false }
+  if (!file.name.toLowerCase().endsWith('.md')) { ElMessage.error(it('markdownOnly')); return false }
+  if (file.size > 2 * 1024 * 1024) { ElMessage.error(it('markdownMax2mb')); return false }
   uploading.value = true
-  try { const data = new FormData(); data.append('file', file); await uploadAIKnowledgeDocument(data); await load(); ElMessage.success('Markdown 文档已导入') } finally { uploading.value = false }
+  try { const data = new FormData(); data.append('file', file); await uploadAIKnowledgeDocument(data); await load(); ElMessage.success(it('markdownImported')) } finally { uploading.value = false }
   return false
 }
-function preview(content) { return (content || '').replace(/\s+/g, ' ').slice(0, 140) || '暂无内容' }
+function preview(content) { return (content || '').replace(/\s+/g, ' ').slice(0, 140) || it('noContent') }
 const contentLines = computed(() => (form.content || '').split('\n'))
 onMounted(load)
 </script>
@@ -43,30 +44,30 @@ onMounted(load)
 <template>
   <div class="ai-page knowledge-page">
     <section class="ai-hero">
-      <div><div class="ai-kicker">LOCAL MARKDOWN KNOWLEDGE</div><h1>知识库管理</h1><p>上传或在线维护本地 Markdown 文档；启用后的文档可由“知识库检索”工具提供给 AI 助手使用。</p></div>
-      <div class="knowledge-actions"><el-upload :show-file-list="false" :before-upload="upload" accept=".md"><el-button :loading="uploading" :icon="Upload">上传 .md</el-button></el-upload><el-button type="primary" :icon="Plus" @click="createDocument">新建 .md</el-button></div>
+      <div><div class="ai-kicker">LOCAL MARKDOWN KNOWLEDGE</div><h1>{{ it('knowledgeManagement') }}</h1><p>{{ it('knowledgeManagementDesc') }}</p></div>
+      <div class="knowledge-actions"><el-upload :show-file-list="false" :before-upload="upload" accept=".md"><el-button :loading="uploading" :icon="Upload">{{ it('uploadMarkdown') }}</el-button></el-upload><el-button type="primary" :icon="Plus" @click="createDocument">{{ it('newMarkdown') }}</el-button></div>
     </section>
     <section class="ai-panel">
-      <div class="ai-panel-head knowledge-head"><div><h2>本地知识文档</h2><span class="ai-muted">已启用 {{ activeCount }} / {{ documents.length }} 篇，仅启用内容会被 AI 检索。</span></div><el-input v-model="keyword" clearable placeholder="搜索文档名称" style="width: 240px" @keyup.enter="load" @clear="load"><template #append><el-button @click="load">搜索</el-button></template></el-input></div>
-      <el-table v-loading="loading" :data="documents" empty-text="尚未添加 Markdown 文档" style="width: 100%">
-        <el-table-column label="文档" min-width="260"><template #default="{ row }"><div class="doc-name"><el-icon><Document /></el-icon><div><strong>{{ row.name }}</strong><small>{{ row.fileName }}</small></div></div></template></el-table-column>
-        <el-table-column label="内容摘要" min-width="380" show-overflow-tooltip><template #default="{ row }">{{ preview(row.content) }}</template></el-table-column>
-        <el-table-column label="来源" width="100"><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.sourceType === 'upload' ? '上传' : '新建' }}</el-tag></template></el-table-column>
-        <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
-        <el-table-column prop="updateTime" label="更新时间" min-width="170"/>
-        <el-table-column label="操作" width="160"><template #default="{ row }"><div class="doc-actions"><el-button link type="primary" :icon="Edit" @click="editDocument(row)">编辑</el-button><el-button link type="danger" :icon="Delete" @click="remove(row)">删除</el-button></div></template></el-table-column>
+      <div class="ai-panel-head knowledge-head"><div><h2>{{ it('localKnowledgeDocuments') }}</h2><span class="ai-muted">{{ it('activeDocuments', { active: activeCount, total: documents.length }) }}</span></div><el-input v-model="keyword" clearable :placeholder="it('searchDocumentName')" style="width: 240px" @keyup.enter="load" @clear="load"><template #append><el-button @click="load">{{ it('search') }}</el-button></template></el-input></div>
+      <el-table v-loading="loading" :data="documents" :empty-text="it('noMarkdownDocuments')" style="width: 100%">
+        <el-table-column :label="it('document')" min-width="260"><template #default="{ row }"><div class="doc-name"><el-icon><Document /></el-icon><div><strong>{{ row.name }}</strong><small>{{ row.fileName }}</small></div></div></template></el-table-column>
+        <el-table-column :label="it('contentSummary')" min-width="380" show-overflow-tooltip><template #default="{ row }">{{ preview(row.content) }}</template></el-table-column>
+        <el-table-column :label="it('source')" width="100"><template #default="{ row }"><el-tag size="small" effect="plain">{{ row.sourceType === 'upload' ? it('upload') : it('create') }}</el-tag></template></el-table-column>
+        <el-table-column :label="it('status')" width="100"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? it('enabled') : it('disabled') }}</el-tag></template></el-table-column>
+        <el-table-column prop="updateTime" :label="it('updatedAt')" min-width="170"/>
+        <el-table-column :label="it('actions')" width="160"><template #default="{ row }"><div class="doc-actions"><el-button link type="primary" :icon="Edit" @click="editDocument(row)">{{ it('edit') }}</el-button><el-button link type="danger" :icon="Delete" @click="remove(row)">{{ it('delete') }}</el-button></div></template></el-table-column>
       </el-table>
     </section>
     <el-dialog v-model="dialogVisible" width="min(1120px, 92vw)" class="knowledge-editor-dialog" destroy-on-close>
       <template #header>
-        <div class="editor-dialog-head"><span class="editor-dialog-icon"><el-icon><DocumentCopy /></el-icon></span><div><div class="ai-kicker">MARKDOWN KNOWLEDGE DOCUMENT</div><h2>{{ form.id ? '编辑知识库文档' : '新建知识库文档' }}</h2><p>维护团队可检索的 Markdown 内容，保存后可由 AI 助手按需引用。</p></div><el-tag class="editor-source" effect="plain">{{ form.sourceType === 'upload' ? '已上传文档' : '在线编辑' }}</el-tag></div>
+        <div class="editor-dialog-head"><span class="editor-dialog-icon"><el-icon><DocumentCopy /></el-icon></span><div><div class="ai-kicker">MARKDOWN KNOWLEDGE DOCUMENT</div><h2>{{ form.id ? it('editKnowledgeDocument') : it('newKnowledgeDocument') }}</h2><p>{{ it('knowledgeEditorDesc') }}</p></div><el-tag class="editor-source" effect="plain">{{ form.sourceType === 'upload' ? it('uploadedDocument') : it('onlineEdit') }}</el-tag></div>
       </template>
       <el-form class="knowledge-editor-form" label-position="top">
-        <section class="editor-meta-card"><div class="editor-meta-title"><el-icon><EditPen /></el-icon><span>文档信息</span></div><div class="document-form-grid"><el-form-item label="文档名称" required><el-input v-model="form.name" placeholder="例如：生产发布规范"/></el-form-item><el-form-item label="文件名"><el-input v-model="form.fileName" placeholder="默认为“文档名称.md”"><template #append>.md</template></el-input></el-form-item></div></section>
-        <section class="editor-workspace"><div class="editor-workspace-head"><div><strong>Markdown 内容</strong><span>{{ form.content.length.toLocaleString() }} 字符</span></div><el-radio-group v-model="editorMode" size="small"><el-radio-button value="edit"><el-icon><EditPen /></el-icon> 编辑</el-radio-button><el-radio-button value="preview"><el-icon><View /></el-icon> 预览</el-radio-button></el-radio-group></div><el-input v-if="editorMode === 'edit'" v-model="form.content" class="markdown-input" type="textarea" :rows="20" resize="none" placeholder="# 标题\n\n在此编写知识库内容…"/><div v-else class="markdown-preview"><template v-for="(line, index) in contentLines" :key="index"><h1 v-if="line.startsWith('# ')" >{{ line.slice(2) }}</h1><h2 v-else-if="line.startsWith('## ')" >{{ line.slice(3) }}</h2><blockquote v-else-if="line.startsWith('> ')" >{{ line.slice(2) }}</blockquote><pre v-else-if="line.startsWith('```')" >{{ line }}</pre><p v-else>{{ line || ' ' }}</p></template></div></section>
-        <section class="retrieval-setting"><div><strong>AI 检索</strong><span>启用后，知识库检索工具可以将此文档的相关片段提供给智能对话。</span></div><el-switch v-model="form.status" :active-value="1" :inactive-value="2" active-text="已启用" inactive-text="已停用"/></section>
+        <section class="editor-meta-card"><div class="editor-meta-title"><el-icon><EditPen /></el-icon><span>{{ it('documentInfo') }}</span></div><div class="document-form-grid"><el-form-item :label="it('documentName')" required><el-input v-model="form.name" :placeholder="it('documentNameExample')"/></el-form-item><el-form-item :label="it('fileName')"><el-input v-model="form.fileName" :placeholder="it('defaultFileName')"><template #append>.md</template></el-input></el-form-item></div></section>
+        <section class="editor-workspace"><div class="editor-workspace-head"><div><strong>{{ it('markdownContent') }}</strong><span>{{ it('characters', { count: form.content.length.toLocaleString() }) }}</span></div><el-radio-group v-model="editorMode" size="small"><el-radio-button value="edit"><el-icon><EditPen /></el-icon> {{ it('edit') }}</el-radio-button><el-radio-button value="preview"><el-icon><View /></el-icon> {{ it('preview') }}</el-radio-button></el-radio-group></div><el-input v-if="editorMode === 'edit'" v-model="form.content" class="markdown-input" type="textarea" :rows="20" resize="none" :placeholder="it('markdownPlaceholder')"/><div v-else class="markdown-preview"><template v-for="(line, index) in contentLines" :key="index"><h1 v-if="line.startsWith('# ')" >{{ line.slice(2) }}</h1><h2 v-else-if="line.startsWith('## ')" >{{ line.slice(3) }}</h2><blockquote v-else-if="line.startsWith('> ')" >{{ line.slice(2) }}</blockquote><pre v-else-if="line.startsWith('```')" >{{ line }}</pre><p v-else>{{ line || ' ' }}</p></template></div></section>
+        <section class="retrieval-setting"><div><strong>{{ it('aiRetrieval') }}</strong><span>{{ it('aiRetrievalDesc') }}</span></div><el-switch v-model="form.status" :active-value="1" :inactive-value="2" :active-text="it('enabled')" :inactive-text="it('disabled')"/></section>
       </el-form>
-      <template #footer><div class="editor-footer"><span>仅保存到平台本地数据库</span><div><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存文档</el-button></div></div></template>
+      <template #footer><div class="editor-footer"><span>{{ it('localDatabaseOnly') }}</span><div><el-button @click="dialogVisible = false">{{ it('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="save">{{ it('saveDocument') }}</el-button></div></div></template>
     </el-dialog>
   </div>
 </template>
