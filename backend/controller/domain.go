@@ -303,11 +303,11 @@ func (ctl *Controller) downloadSSLCertificate(c *gin.Context, private bool) {
 	id := uint(mustAtoi(c.Query("id")))
 	kind := strings.ToLower(c.DefaultQuery("type", "certificate"))
 	if private && kind != "private-key" && kind != "zip" {
-		httpx.Failed(c, 400, "敏感下载接口仅支持 private-key 或 zip")
+		httpx.Failed(c, 400, "private download endpoint only supports private-key or zip")
 		return
 	}
 	if !private && kind != "certificate" && kind != "chain" {
-		httpx.Failed(c, 400, "普通下载接口仅支持 certificate 或 chain")
+		httpx.Failed(c, 400, "standard download endpoint only supports certificate or chain")
 		return
 	}
 	data, filename, contentType, err := ctl.service.DownloadSSLCertificate(id, kind)
