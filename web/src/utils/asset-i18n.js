@@ -9,7 +9,14 @@ const ko = {
   noLogContent: '표시할 Log 내용이 없습니다.',
   selectPodForLogs: 'Pod를 선택하면 최근 200줄의 Log를 불러옵니다.',
   noDatabaseConnection: '사용 가능한 Database 연결이 없습니다. Database 목록에서 연결을 먼저 구성하십시오.',
-  enteringDatabaseWorkbench: 'DBMS Workbench로 이동하고 있습니다...'
+  enteringDatabaseWorkbench: 'DBMS Workbench로 이동하고 있습니다...',
+  unassignedEnvironment: '환경 미지정',
+  searchDatabaseConnection: 'Database 연결 검색',
+  refreshConnections: '연결 새로고침',
+  refresh: '새로고침',
+  readOnly: '읽기 전용',
+  readWrite: '읽기/쓰기',
+  noDatabaseConnections: 'Database 연결이 없습니다.'
 }
 
 const en = {
@@ -21,7 +28,14 @@ const en = {
   noLogContent: 'No log content available.',
   selectPodForLogs: 'Select a Pod to load the latest 200 log lines.',
   noDatabaseConnection: 'No database connection is available. Configure a connection in the database list first.',
-  enteringDatabaseWorkbench: 'Opening DBMS Workbench...'
+  enteringDatabaseWorkbench: 'Opening DBMS Workbench...',
+  unassignedEnvironment: 'Unassigned Environment',
+  searchDatabaseConnection: 'Search database connections',
+  refreshConnections: 'Refresh Connections',
+  refresh: 'Refresh',
+  readOnly: 'Read Only',
+  readWrite: 'Read/Write',
+  noDatabaseConnections: 'No database connections.'
 }
 
 export function at(key, params = {}) {
