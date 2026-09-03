@@ -55,7 +55,30 @@ const errorCodeMessages = {
   CLASS_PATTERN_REQUIRED: { ko: 'Class Pattern을 입력하십시오.', en: 'Enter a class pattern.' },
   INVALID_CLASS_PATTERN: { ko: 'Class Pattern 형식이 올바르지 않습니다.', en: 'The class pattern is invalid.' },
   UNSUPPORTED_DIAGNOSIS_OPERATION: { ko: '지원하지 않는 진단 작업입니다.', en: 'The diagnosis operation is not supported.' },
-  ARTHAS_CLI_FAILED: { ko: 'Arthas CLI 진단 실행에 실패했습니다.', en: 'Failed to execute the Arthas CLI diagnosis.' }
+  ARTHAS_CLI_FAILED: { ko: 'Arthas CLI 진단 실행에 실패했습니다.', en: 'Failed to execute the Arthas CLI diagnosis.' },
+  MONITOR_INVALID_DATE_RANGE: { ko: '모니터링 조회 기간 형식 또는 범위가 올바르지 않습니다.', en: 'The monitoring date range is invalid.' },
+  MONITOR_DATASOURCE_NAME_REQUIRED: { ko: '데이터소스 이름을 입력하십시오.', en: 'Enter a datasource name.' },
+  MONITOR_DATASOURCE_URL_REQUIRED: { ko: '데이터소스 URL을 입력하십시오.', en: 'Enter a datasource URL.' },
+  MONITOR_DATASOURCE_IN_USE: { ko: '사용 중인 데이터소스는 삭제할 수 없습니다.', en: 'A datasource that is in use cannot be deleted.' },
+  MONITOR_QUERY_REQUIRED: { ko: '모니터링 Query를 입력하십시오.', en: 'Enter a monitoring query.' },
+  MONITOR_DATASOURCE_TYPE_UNSUPPORTED: { ko: '선택한 작업에서 지원하지 않는 데이터소스 유형입니다.', en: 'The datasource type is not supported for this operation.' },
+  MONITOR_TIME_RANGE_INVALID: { ko: '종료 시간은 시작 시간보다 이후여야 합니다.', en: 'The end time must be later than the start time.' },
+  MONITOR_TRACE_ID_REQUIRED: { ko: '데이터소스와 Trace ID를 입력하십시오.', en: 'Datasource and trace ID are required.' },
+  MONITOR_TRACE_ID_INVALID: { ko: 'Trace ID 형식이 올바르지 않습니다.', en: 'The trace ID format is invalid.' },
+  MONITOR_TRACE_NOT_FOUND: { ko: '요청한 Trace를 찾을 수 없습니다.', en: 'The requested trace was not found.' },
+  MONITOR_DATASOURCE_UNAVAILABLE: { ko: '조건에 맞는 모니터링 데이터소스를 사용할 수 없습니다.', en: 'No matching monitoring datasource is available.' },
+  MONITOR_UPSTREAM_REQUEST_FAILED: { ko: '{system} 요청을 처리하지 못했습니다.', en: 'The {system} request failed.' },
+  K8S_CLUSTER_ALREADY_EXISTS: { ko: '같은 이름의 Kubernetes 클러스터가 이미 존재합니다.', en: 'A Kubernetes cluster with the same name already exists.' },
+  K8S_INVALID_CLUSTER_CONFIG: { ko: 'Kubernetes 클러스터 설정 또는 Kubeconfig가 올바르지 않습니다.', en: 'The Kubernetes cluster configuration or kubeconfig is invalid.' },
+  K8S_INVALID_YAML: { ko: 'Kubernetes YAML 형식 또는 내용이 올바르지 않습니다.', en: 'The Kubernetes YAML is invalid.' },
+  K8S_RESOURCE_NOT_FOUND: { ko: 'Kubernetes 리소스를 찾을 수 없습니다.', en: 'The Kubernetes resource was not found.' },
+  K8S_TRAFFIC_WEIGHT_INVALID: { ko: 'Traffic Weight는 0 이상이어야 하며 합계가 100이어야 합니다.', en: 'Traffic weights must be non-negative and total 100.' },
+  K8S_WORKLOAD_SELECTION_REQUIRED: { ko: '하나 이상의 Workload를 선택하십시오.', en: 'Select at least one workload.' },
+  K8S_CONTAINER_NOT_FOUND: { ko: '선택한 Workload에서 Container를 찾을 수 없습니다.', en: 'No matching container was found in the selected workload.' },
+  K8S_NAMESPACE_REQUIRED: { ko: 'Namespace를 입력하십시오.', en: 'Enter a namespace.' },
+  K8S_RESOURCE_ID_REQUIRED: { ko: 'Kubernetes 리소스의 Namespace와 이름을 입력하십시오.', en: 'Enter the Kubernetes resource namespace and name.' },
+  K8S_RESOURCE_IMMUTABLE: { ko: '변경할 수 없는 Kubernetes 필드가 포함되어 있습니다. 리소스를 다시 생성하거나 변경 가능한 필드만 수정하십시오.', en: 'The request changes immutable Kubernetes fields. Recreate the resource or update only mutable fields.' },
+  K8S_RESOURCE_CONFLICT: { ko: 'YAML 리소스 식별자가 기존 Kubernetes 리소스와 충돌합니다.', en: 'The YAML resource identity conflicts with an existing Kubernetes resource.' }
 }
 
 const legacyEnglishPatterns = [
