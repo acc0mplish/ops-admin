@@ -1,0 +1,55 @@
+name: Diagnosis error remediation
+
+on:
+  push:
+    branches:
+      - localize/ko-KR-adversarial
+    paths:
+      - .github/scripts/remediate_english_errors_batch2.py
+      - .github/workflows/english-error-remediation-batch2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diagnosis-error-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  remediate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: localize/ko-KR-adversarial
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Apply diagnosis error remediation
+        run: python3 .github/scripts/remediate_english_errors_batch2.py
+
+      - name: Format Go source
+        run: gofmt -w backend/service/asset_service_diagnosis.go
+
+      - name: Run backend tests
+        working-directory: backend
+        run: go test ./...
+
+      - name: Commit remediated source
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No source changes were required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/service/asset_service_diagnosis.go
+          git commit -m "refactor(api): convert diagnosis errors to stable codes"
+          git pull --rebase origin localize/ko-KR-adversarial
+          git push origin HEAD:localize/ko-KR-adversarial
