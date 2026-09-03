@@ -42,6 +42,7 @@ replacements = [
     ("{时间}", "{Time}"),
     ("K8s 集群", "Kubernetes Cluster"),
     ("选择 K8s 集群", "Kubernetes Cluster 선택"),
+    ("选择 Kubernetes Cluster", "Kubernetes Cluster 선택"),
     (">刷新<", ">새로고침<"),
 ]
 for old, new in replacements:
