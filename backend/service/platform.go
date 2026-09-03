@@ -35,9 +35,9 @@ func (s *Service) ensureDefaultEnvironments() {
 	}
 
 	defaults := []model.OpsEnvironment{
-		{Name: "开发环境", Code: "dev", Sort: 10, Status: 1, Description: "开发联调与日常验证环境"},
-		{Name: "测试环境", Code: "test", Sort: 20, Status: 1, Description: "功能测试、集成测试与预发布验证环境"},
-		{Name: "生产环境", Code: "prod", Sort: 30, Status: 1, Description: "正式对外服务环境"},
+		{Name: "Development", Code: "dev", Sort: 10, Status: 1, Description: "Development integration and routine validation environment"},
+		{Name: "Test", Code: "test", Sort: 20, Status: 1, Description: "Functional, integration, and pre-release validation environment"},
+		{Name: "Production", Code: "prod", Sort: 30, Status: 1, Description: "Production environment serving external traffic"},
 	}
 	for _, item := range defaults {
 		var count int64
@@ -71,7 +71,7 @@ func (s *Service) SaveOpsEnvironment(payload OpsEnvironmentPayload) error {
 		Description: Trimmed(payload.Description),
 	}
 	if item.Name == "" || item.Code == "" {
-		return errors.New("环境名称和环境标识不能为空")
+		return errors.New("environment name and code are required")
 	}
 	if item.Status == 0 {
 		item.Status = 1
@@ -82,7 +82,7 @@ func (s *Service) SaveOpsEnvironment(payload OpsEnvironmentPayload) error {
 			return err
 		}
 		if existing.Code != item.Code {
-			return errors.New("环境标识创建后不可修改，请新建环境并迁移资源")
+			return errors.New("environment code cannot be changed after creation; create a new environment and migrate resources")
 		}
 		return s.db.Model(&model.OpsEnvironment{}).Where("id = ?", payload.ID).Updates(item).Error
 	}
@@ -91,7 +91,7 @@ func (s *Service) SaveOpsEnvironment(payload OpsEnvironmentPayload) error {
 
 func (s *Service) DeleteOpsEnvironment(id uint) error {
 	if id == 0 {
-		return errors.New("请选择要删除的环境")
+		return errors.New("select an environment to delete")
 	}
 	var environment model.OpsEnvironment
 	if err := s.db.First(&environment, id).Error; err != nil {
@@ -102,12 +102,12 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 		entity any
 		field  string
 	}{
-		{name: "应用", entity: &model.OpsApplication{}, field: "env"},
-		{name: "主机", entity: &model.AssetHost{}, field: "environment"},
-		{name: "数据库", entity: &model.AssetDatabase{}, field: "env"},
-		{name: "K8s 集群", entity: &model.K8sCluster{}, field: "env"},
-		{name: "监控数据源", entity: &model.MonitorDatasource{}, field: "env"},
-		{name: "告警规则", entity: &model.MonitorAlertRule{}, field: "env"},
+		{name: "application", entity: &model.OpsApplication{}, field: "env"},
+		{name: "host", entity: &model.AssetHost{}, field: "environment"},
+		{name: "database", entity: &model.AssetDatabase{}, field: "env"},
+		{name: "Kubernetes cluster", entity: &model.K8sCluster{}, field: "env"},
+		{name: "monitoring datasource", entity: &model.MonitorDatasource{}, field: "env"},
+		{name: "alert rule", entity: &model.MonitorAlertRule{}, field: "env"},
 	}
 	for _, reference := range references {
 		var count int64
@@ -115,7 +115,7 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 			return err
 		}
 		if count > 0 {
-			return fmt.Errorf("环境“%s”仍被 %d 个%s引用，请先迁移相关资源", environment.Name, count, reference.name)
+			return fmt.Errorf("environment %q is still referenced by %d %s resource(s); migrate them first", environment.Name, count, reference.name)
 		}
 	}
 	return s.db.Delete(&model.OpsEnvironment{}, id).Error
@@ -142,23 +142,23 @@ func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (
 	}
 	if actionType == "job" {
 		if payload.TargetID == 0 {
-			return nil, errors.New("请选择要触发的作业")
+			return nil, errors.New("select a job to trigger")
 		}
 		if err := s.RunOpsJob(payload.TargetID); err != nil {
 			action.Status = "failed"
 			action.Result = err.Error()
 			_ = s.db.Create(&action).Error
-			s.appendMonitorAlertTimeline(event.ID, "action_failed", "联动处置触发失败", err.Error(), action.Operator, map[string]any{"actionType": actionType, "targetId": payload.TargetID})
+			s.appendMonitorAlertTimeline(event.ID, "action_failed", "linked remediation trigger failed", err.Error(), action.Operator, map[string]any{"actionType": actionType, "targetId": payload.TargetID})
 			return nil, err
 		}
-		action.Result = "已触发作业执行"
+		action.Result = "job execution triggered"
 	} else {
-		action.Result = "已记录诊断处置动作，可在快速执行或作业中继续处理"
+		action.Result = "diagnostic remediation action recorded; continue from Quick Execution or Jobs"
 	}
 	if err := s.db.Create(&action).Error; err != nil {
 		return nil, err
 	}
-	s.appendMonitorAlertTimeline(event.ID, "action", "已触发联动处置", firstNonEmpty(action.Summary, action.Result), action.Operator, map[string]any{
+	s.appendMonitorAlertTimeline(event.ID, "action", "linked remediation triggered", firstNonEmpty(action.Summary, action.Result), action.Operator, map[string]any{
 		"actionType": action.ActionType, "targetId": action.TargetID, "targetName": action.TargetName,
 	})
 	return map[string]any{"action": action}, nil
@@ -167,11 +167,11 @@ func (s *Service) TriggerMonitorAlertAction(payload MonitorAlertActionPayload) (
 func normalizeEnvCode(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
-	case "开发", "开发环境":
+	case "dev", "development", "\u5f00\u53d1", "\u5f00\u53d1\u73af\u5883":
 		return "dev"
-	case "测试", "测试环境":
+	case "test", "testing", "\u6d4b\u8bd5", "\u6d4b\u8bd5\u73af\u5883":
 		return "test"
-	case "生产", "生产环境":
+	case "prod", "production", "\u751f\u4ea7", "\u751f\u4ea7\u73af\u5883":
 		return "prod"
 	default:
 		return value

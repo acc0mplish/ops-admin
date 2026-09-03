@@ -80,7 +80,7 @@ func databaseMode(dbType string) string {
 // other database engines through a direct API call.
 func ensureMySQLFeature(item *model.AssetDatabase) error {
 	if normalizeDatabaseType(item.DBType) != "mysql" {
-		return fmt.Errorf("%s 暂不支持该操作，请在工作台使用该类型支持的能力", databaseTypeDisplayName(item.DBType))
+		return fmt.Errorf("%s does not support this operation; use capabilities supported by this database type in the workbench", databaseTypeDisplayName(item.DBType))
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func ensureRelationalImportFeature(item *model.AssetDatabase) error {
 	case "mysql", "postgresql":
 		return nil
 	default:
-		return fmt.Errorf("%s 暂不支持表数据导入", databaseTypeDisplayName(item.DBType))
+		return fmt.Errorf("%s does not support table-data import", databaseTypeDisplayName(item.DBType))
 	}
 }
 
@@ -170,7 +170,7 @@ func (s *Service) createPostgresImportTable(sourceDB, targetDB *sql.DB, sourceSc
 		return err
 	}
 	if len(definitions) == 0 {
-		return fmt.Errorf("源表不存在或没有可导入字段")
+		return fmt.Errorf("source table does not exist or has no importable columns")
 	}
 
 	primaryRows, err := sourceDB.Query(`
@@ -638,7 +638,7 @@ func postgresFilterClause(columns []databaseTableColumn, key, text string) (stri
 				return " WHERE CAST(" + postgresQuoteIdentifier(key) + " AS TEXT) ILIKE $1", []any{"%" + text + "%"}, nil
 			}
 		}
-		return "", nil, fmt.Errorf("筛选字段不存在")
+		return "", nil, fmt.Errorf("filter column does not exist")
 	}
 	parts := make([]string, 0, len(columns))
 	for _, column := range columns {
@@ -653,14 +653,14 @@ func postgresFilterClause(columns []databaseTableColumn, key, text string) (stri
 func postgresWhereByPrimaryKey(columns []databaseTableColumn, row map[string]any, offset int) (string, []any, error) {
 	keys := postgresPrimaryKeys(columns)
 	if len(keys) == 0 {
-		return "", nil, fmt.Errorf("当前表没有主键，不能直接修改或删除数据")
+		return "", nil, fmt.Errorf("the current table has no primary key; rows cannot be updated or deleted directly")
 	}
 	clauses := make([]string, 0, len(keys))
 	args := make([]any, 0, len(keys))
 	for index, key := range keys {
 		value, exists := row[key]
 		if !exists {
-			return "", nil, fmt.Errorf("缺少主键字段 %s", key)
+			return "", nil, fmt.Errorf("missing primary-key column %s", key)
 		}
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", postgresQuoteIdentifier(key), offset+index+1))
 		args = append(args, normalizeJSONValue(value))
@@ -746,7 +746,7 @@ func (s *Service) getPostgresTableData(item *model.AssetDatabase, payload DBMSTa
 		return nil, err
 	}
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("数据表不存在或没有可读取的字段")
+		return nil, fmt.Errorf("table does not exist or has no readable columns")
 	}
 	where, args, err := postgresFilterClause(columns, payload.FilterKey, payload.FilterText)
 	if err != nil {
@@ -809,7 +809,7 @@ func (s *Service) insertPostgresTableRow(item *model.AssetDatabase, payload DBMS
 		}
 	}
 	if len(insertColumns) == 0 {
-		return nil, fmt.Errorf("没有可插入的数据")
+		return nil, fmt.Errorf("no rows are available to insert")
 	}
 	placeholders := make([]string, 0, len(insertColumns))
 	for index := range insertColumns {
@@ -862,7 +862,7 @@ func (s *Service) updatePostgresTableRow(item *model.AssetDatabase, payload DBMS
 		return nil, err
 	}
 	if !databaseColumnsHavePrimaryKey(columns) {
-		return nil, fmt.Errorf("当前表没有主键，不能直接编辑数据")
+		return nil, fmt.Errorf("the current table has no primary key; rows cannot be edited directly")
 	}
 	setParts := make([]string, 0)
 	args := make([]any, 0)
@@ -1045,11 +1045,11 @@ func (s *Service) getRedisResourceData(item *model.AssetDatabase, payload DBMSTa
 		value = keyType
 	}
 	ttlSeconds := int64(ttl / time.Second)
-	ttlText := fmt.Sprintf("%d 秒", ttlSeconds)
+	ttlText := fmt.Sprintf("%d seconds", ttlSeconds)
 	if ttl == -1*time.Nanosecond {
-		ttlSeconds, ttlText = -1, "永不过期"
+		ttlSeconds, ttlText = -1, "Never expires"
 	} else if ttl == -2*time.Nanosecond {
-		ttlSeconds, ttlText = -2, "已过期"
+		ttlSeconds, ttlText = -2, "Expired"
 	}
 	return map[string]any{
 		"schema": payload.Schema, "table": key, "columns": []databaseTableColumn{{Name: "key"}, {Name: "type"}, {Name: "ttl"}, {Name: "value"}},
@@ -1078,7 +1078,7 @@ type RedisCommandAnalysis struct {
 func splitRedisCommand(input string) ([]string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return nil, fmt.Errorf("请输入 Redis 命令")
+		return nil, fmt.Errorf("enter a Redis command")
 	}
 	args := make([]string, 0)
 	var current strings.Builder
@@ -1116,13 +1116,13 @@ func splitRedisCommand(input string) ([]string, error) {
 		current.WriteRune(char)
 	}
 	if escaped || quote != 0 {
-		return nil, fmt.Errorf("Redis 命令中的引号未闭合")
+		return nil, fmt.Errorf("Redis command contains an unclosed quote")
 	}
 	if current.Len() > 0 {
 		args = append(args, current.String())
 	}
 	if len(args) == 0 {
-		return nil, fmt.Errorf("请输入 Redis 命令")
+		return nil, fmt.Errorf("enter a Redis command")
 	}
 	return args, nil
 }
@@ -1151,7 +1151,7 @@ func (s *Service) AnalyzeRedisCommand(payload RedisCommandPayload) (*RedisComman
 		return nil, err
 	}
 	if normalizeDatabaseType(item.DBType) != "redis" {
-		return nil, fmt.Errorf("所选数据库不是 Redis")
+		return nil, fmt.Errorf("selected database is not Redis")
 	}
 	args, err := splitRedisCommand(payload.CommandText)
 	if err != nil {
@@ -1159,17 +1159,17 @@ func (s *Service) AnalyzeRedisCommand(payload RedisCommandPayload) (*RedisComman
 	}
 	command := strings.ToUpper(args[0])
 	if isBlockedRedisCommand(command) {
-		return nil, fmt.Errorf("Redis 命令控制台不允许执行 %s", command)
+		return nil, fmt.Errorf("Redis command console does not allow %s", command)
 	}
 	writeOperation := !isRedisReadCommand(command)
-	reason := "只读命令，可直接执行"
+	reason := "read-only command; execution is allowed"
 	riskLevel := "low"
 	if writeOperation {
-		reason = "写入命令，需要二次确认"
+		reason = "write command; explicit confirmation is required"
 		riskLevel = "medium"
 	}
 	if writeOperation && normalizeDatabaseAccessMode(item.AccessMode) == "readonly" {
-		reason = "当前 Redis 连接为只读模式"
+		reason = "current Redis connection is read-only"
 		riskLevel = "high"
 	}
 	return &RedisCommandAnalysis{Command: command, Arguments: len(args) - 1, WriteOperation: writeOperation, RiskLevel: riskLevel, Reason: reason, AccessMode: normalizeDatabaseAccessMode(item.AccessMode)}, nil
@@ -1201,10 +1201,10 @@ func (s *Service) ExecuteRedisCommand(payload RedisCommandPayload) (map[string]a
 		return nil, err
 	}
 	if analysis.WriteOperation && analysis.AccessMode == "readonly" {
-		return nil, fmt.Errorf("当前 Redis 连接为只读模式，不能执行写入命令")
+		return nil, fmt.Errorf("current Redis connection is read-only; write commands are not allowed")
 	}
 	if analysis.WriteOperation && !payload.Confirmed {
-		return nil, fmt.Errorf("写入命令需要确认后才能执行")
+		return nil, fmt.Errorf("write command requires confirmation before execution")
 	}
 	args, _ := splitRedisCommand(payload.CommandText)
 	item, err := s.getAssetDatabase(payload.DatabaseID)

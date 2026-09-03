@@ -84,22 +84,22 @@ func normalizeJobNodeType(value string) string {
 func parseOpsJobDefinition(raw string) (*OpsJobDefinition, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return nil, errors.New("作业编排定义不能为空")
+		return nil, errors.New("job orchestration definition is required")
 	}
 	var definition OpsJobDefinition
 	if err := json.Unmarshal([]byte(value), &definition); err != nil {
-		return nil, errors.New("作业编排定义格式不正确")
+		return nil, errors.New("invalid job orchestration definition format")
 	}
 	if len(definition.Nodes) == 0 {
-		return nil, errors.New("请至少添加一个作业步骤")
+		return nil, errors.New("add at least one job step")
 	}
 	for index := range definition.Nodes {
 		definition.Nodes[index].Type = normalizeJobNodeType(definition.Nodes[index].Type)
 		if strings.TrimSpace(definition.Nodes[index].ID) == "" {
-			return nil, errors.New("存在缺少 ID 的作业步骤")
+			return nil, errors.New("a job step is missing its ID")
 		}
 		if strings.TrimSpace(definition.Nodes[index].Label) == "" {
-			definition.Nodes[index].Label = fmt.Sprintf("步骤 %d", index+1)
+			definition.Nodes[index].Label = fmt.Sprintf("Step %d", index+1)
 		}
 		if definition.Nodes[index].Config == nil {
 			definition.Nodes[index].Config = map[string]any{}
@@ -154,7 +154,7 @@ func (s *Service) normalizeOpsJobDefinitionVariables(raw, existingRaw string) (s
 		}
 		stored, _, err := resolveScheduleScriptVariables(script, stringConfigMap(node.Config["variables"]), existingValues)
 		if err != nil {
-			return "", fmt.Errorf("步骤“%s”：%w", node.Label, err)
+			return "", fmt.Errorf("step %q: %w", node.Label, err)
 		}
 		delete(node.Config, "parameters")
 		node.Config["variables"] = map[string]string(stored)
@@ -235,7 +235,7 @@ func (s *Service) GetOpsJobForView(id uint) (*model.OpsJob, error) {
 
 func (s *Service) CreateOpsJob(payload OpsJobPayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
-		return errors.New("作业名称不能为空")
+		return errors.New("job name is required")
 	}
 	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, "")
 	if err != nil {
@@ -256,10 +256,10 @@ func (s *Service) CreateOpsJob(payload OpsJobPayload) error {
 
 func (s *Service) UpdateOpsJob(payload OpsJobPayload) error {
 	if payload.ID == 0 {
-		return errors.New("作业 ID 不能为空")
+		return errors.New("job ID is required")
 	}
 	if strings.TrimSpace(payload.Name) == "" {
-		return errors.New("作业名称不能为空")
+		return errors.New("job name is required")
 	}
 	var existing model.OpsJob
 	if err := s.db.First(&existing, payload.ID).Error; err != nil {
@@ -287,7 +287,7 @@ func (s *Service) DeleteOpsJob(id uint) error {
 
 func (s *Service) UpdateOpsJobStatus(payload OpsJobStatusPayload) error {
 	if payload.ID == 0 {
-		return errors.New("作业 ID 不能为空")
+		return errors.New("job ID is required")
 	}
 	return s.db.Model(&model.OpsJob{}).Where("id = ?", payload.ID).Update("status", normalizeJobStatus(payload.Status)).Error
 }
@@ -350,7 +350,7 @@ func (s *Service) GetOpsJobTemplateForView(id uint) (*model.OpsJobTemplate, erro
 
 func (s *Service) CreateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 	if strings.TrimSpace(payload.Name) == "" {
-		return errors.New("作业模板名称不能为空")
+		return errors.New("job template name is required")
 	}
 	definitionJSON, err := s.normalizeOpsJobDefinitionVariables(payload.DefinitionJSON, "")
 	if err != nil {
@@ -368,10 +368,10 @@ func (s *Service) CreateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 
 func (s *Service) UpdateOpsJobTemplate(payload OpsJobTemplatePayload) error {
 	if payload.ID == 0 {
-		return errors.New("作业模板 ID 不能为空")
+		return errors.New("job template ID is required")
 	}
 	if strings.TrimSpace(payload.Name) == "" {
-		return errors.New("作业模板名称不能为空")
+		return errors.New("job template name is required")
 	}
 	var existing model.OpsJobTemplate
 	if err := s.db.First(&existing, payload.ID).Error; err != nil {
@@ -396,7 +396,7 @@ func (s *Service) DeleteOpsJobTemplate(id uint) error {
 
 func (s *Service) UpdateOpsJobTemplateStatus(payload OpsJobStatusPayload) error {
 	if payload.ID == 0 {
-		return errors.New("作业模板 ID 不能为空")
+		return errors.New("job template ID is required")
 	}
 	return s.db.Model(&model.OpsJobTemplate{}).Where("id = ?", payload.ID).Update("status", normalizeJobStatus(payload.Status)).Error
 }
@@ -453,7 +453,7 @@ func (s *Service) RunOpsJob(id uint) error {
 		return err
 	}
 	if job.Status != 1 {
-		return errors.New("当前作业已禁用，无法执行")
+		return errors.New("the current job is disabled and cannot be executed")
 	}
 	definition, err := parseOpsJobDefinition(job.DefinitionJSON)
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *Service) RunOpsJob(id uint) error {
 		JobName:        job.Name,
 		TriggerType:    "manual",
 		Status:         "running",
-		Summary:        "作业已触发，正在执行",
+		Summary:        "job triggered and running",
 		DefinitionJSON: job.DefinitionJSON,
 		StartedAt:      &startedAt,
 	}
@@ -482,14 +482,14 @@ func (s *Service) ApproveOpsJobHistoryStep(payload OpsJobHistoryApprovalPayload)
 		return err
 	}
 	if history.Status != "waiting_approval" {
-		return errors.New("当前作业不处于待确认状态")
+		return errors.New("the current job is not awaiting approval")
 	}
 	var step model.OpsJobHistoryStep
 	if err := s.db.Where("history_id = ? AND step_id = ?", payload.HistoryID, payload.StepID).First(&step).Error; err != nil {
 		return err
 	}
 	if step.Status != "waiting_approval" {
-		return errors.New("当前步骤不处于待确认状态")
+		return errors.New("the current step is not awaiting approval")
 	}
 	finishedAt := time.Now()
 	duration := int64(0)
@@ -498,7 +498,7 @@ func (s *Service) ApproveOpsJobHistoryStep(payload OpsJobHistoryApprovalPayload)
 	}
 	if err := s.db.Model(&model.OpsJobHistoryStep{}).Where("id = ?", step.ID).Updates(map[string]any{
 		"status":            "success",
-		"summary":           firstNonEmpty(step.Summary, "人工确认已通过"),
+		"summary":           firstNonEmpty(step.Summary, "manual approval granted"),
 		"approval_decision": "approved",
 		"approval_note":     strings.TrimSpace(payload.Note),
 		"finished_at":       &finishedAt,
@@ -508,7 +508,7 @@ func (s *Service) ApproveOpsJobHistoryStep(payload OpsJobHistoryApprovalPayload)
 	}
 	var definition OpsJobDefinition
 	if err := json.Unmarshal([]byte(history.DefinitionJSON), &definition); err != nil {
-		return errors.New("作业定义已损坏，无法继续执行")
+		return errors.New("job definition is invalid and execution cannot continue")
 	}
 	go s.resumeOpsJobDefinition(payload.HistoryID, definition, payload.StepID)
 	return nil
@@ -530,7 +530,7 @@ func (s *Service) RejectOpsJobHistoryStep(payload OpsJobHistoryApprovalPayload) 
 	}
 	if err := s.db.Model(&model.OpsJobHistoryStep{}).Where("id = ?", step.ID).Updates(map[string]any{
 		"status":            "rejected",
-		"summary":           "人工确认已拒绝",
+		"summary":           "manual approval rejected",
 		"approval_decision": "rejected",
 		"approval_note":     strings.TrimSpace(payload.Note),
 		"finished_at":       &finishedAt,
@@ -540,7 +540,7 @@ func (s *Service) RejectOpsJobHistoryStep(payload OpsJobHistoryApprovalPayload) 
 	}
 	return s.db.Model(&model.OpsJobHistory{}).Where("id = ?", payload.HistoryID).Updates(map[string]any{
 		"status":            "rejected",
-		"summary":           "作业被人工确认步骤拒绝",
+		"summary":           "job was rejected at a manual approval step",
 		"current_step_id":   step.StepID,
 		"current_step_name": step.StepName,
 		"finished_at":       &finishedAt,
@@ -587,7 +587,7 @@ func buildOpsJobNodeOrder(definition OpsJobDefinition) ([]OpsJobNode, error) {
 		}
 	}
 	if len(order) != len(definition.Nodes) {
-		return nil, errors.New("作业编排中存在循环依赖，请检查连线关系")
+		return nil, errors.New("job orchestration contains a cyclic dependency; review step connections")
 	}
 	return order, nil
 }
@@ -604,7 +604,7 @@ func (s *Service) runOpsJobDefinition(historyID uint, definition OpsJobDefinitio
 			return
 		}
 	}
-	s.finishOpsJobHistory(historyID, "success", "作业执行完成", "", "")
+	s.finishOpsJobHistory(historyID, "success", "job execution completed", "", "")
 }
 
 func (s *Service) resumeOpsJobDefinition(historyID uint, definition OpsJobDefinition, approvedStepID string) {
@@ -626,7 +626,7 @@ func (s *Service) resumeOpsJobDefinition(historyID uint, definition OpsJobDefini
 			return
 		}
 	}
-	s.finishOpsJobHistory(historyID, "success", "作业执行完成", "", "")
+	s.finishOpsJobHistory(historyID, "success", "job execution completed", "", "")
 }
 
 func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused bool, failed bool) {
@@ -638,7 +638,7 @@ func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused b
 		StepName:  stepName,
 		StepType:  node.Type,
 		Status:    "running",
-		Summary:   "步骤开始执行",
+		Summary:   "step execution started",
 		StartedAt: &now,
 	}
 	if err := s.db.Create(&step).Error; err != nil {
@@ -647,7 +647,7 @@ func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused b
 	}
 	_ = s.db.Model(&model.OpsJobHistory{}).Where("id = ?", historyID).Updates(map[string]any{
 		"status":            "running",
-		"summary":           fmt.Sprintf("正在执行步骤：%s", stepName),
+		"summary":           fmt.Sprintf("executing step: %s", stepName),
 		"current_step_id":   node.ID,
 		"current_step_name": stepName,
 	}).Error
@@ -671,12 +671,12 @@ func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused b
 	case "approval":
 		_ = s.db.Model(&model.OpsJobHistoryStep{}).Where("id = ?", step.ID).Updates(map[string]any{
 			"status":  "waiting_approval",
-			"summary": firstNonEmpty(stringConfig(node.Config, "message"), "等待人工确认"),
-			"output":  firstNonEmpty(stringConfig(node.Config, "content"), "请确认后继续执行该作业"),
+			"summary": firstNonEmpty(stringConfig(node.Config, "message"), "awaiting manual approval"),
+			"output":  firstNonEmpty(stringConfig(node.Config, "content"), "approve to continue job execution"),
 		}).Error
 		_ = s.db.Model(&model.OpsJobHistory{}).Where("id = ?", historyID).Updates(map[string]any{
 			"status":            "waiting_approval",
-			"summary":           fmt.Sprintf("等待人工确认：%s", stepName),
+			"summary":           fmt.Sprintf("awaiting manual approval: %s", stepName),
 			"current_step_id":   node.ID,
 			"current_step_name": stepName,
 		}).Error
@@ -722,7 +722,7 @@ func (s *Service) runSingleOpsJobNode(historyID uint, node OpsJobNode) (paused b
 func (s *Service) executeOpsJobScriptNode(stepName string, config map[string]any) (string, string, string, uint, error) {
 	scriptID := uint(numberConfig(config, "scriptId"))
 	if scriptID == 0 {
-		return "failed", "缺少脚本配置", "", 0, errors.New("缺少脚本配置")
+		return "failed", "missing script configuration", "", 0, errors.New("missing script configuration")
 	}
 	script, err := s.GetOpsScript(scriptID)
 	if err != nil {
@@ -743,7 +743,7 @@ func (s *Service) executeOpsJobScriptNode(stepName string, config map[string]any
 		Concurrency:    normalizeOpsConcurrency(numberConfig(config, "concurrency")),
 		TimeoutSeconds: normalizeOpsTimeout(script.TimeoutSeconds),
 		Status:         "running",
-		Summary:        "作业步骤执行中",
+		Summary:        "job step running",
 		HostCount:      len(hosts),
 		Operator:       "job-engine",
 		Source:         "job",
@@ -779,7 +779,7 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 	sourcePath := strings.TrimSpace(stringConfig(config, "sourcePath"))
 	targetPath := strings.TrimSpace(stringConfig(config, "targetPath"))
 	if sourceHostID == 0 || sourcePath == "" || targetPath == "" {
-		return "failed", "文件分发配置不完整", "", 0, errors.New("文件分发配置不完整")
+		return "failed", "file-distribution configuration is incomplete", "", 0, errors.New("file-distribution configuration is incomplete")
 	}
 	hostIDs, groupIDs := opsJobTargetIDs(config)
 	hosts, err := s.resolveOpsTargetHosts(hostIDs, groupIDs)
@@ -802,7 +802,7 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 		Concurrency:    normalizeOpsConcurrency(numberConfig(config, "concurrency")),
 		TimeoutSeconds: normalizeOpsTimeout(numberConfig(config, "timeoutSeconds")),
 		Status:         "running",
-		Summary:        "作业步骤执行中",
+		Summary:        "job step running",
 		HostCount:      len(hosts),
 		Operator:       "job-engine",
 		Source:         "job",
@@ -832,7 +832,7 @@ func (s *Service) executeOpsJobFileNode(stepName string, config map[string]any) 
 func (s *Service) executeOpsJobNotifyNode(historyID uint, stepName string, node OpsJobNode) (string, string, string, error) {
 	ruleID := uint(numberConfig(node.Config, "notifyRuleId"))
 	if ruleID == 0 {
-		return "failed", "缺少通知规则", "", errors.New("缺少通知规则")
+		return "failed", "missing notification rule", "", errors.New("missing notification rule")
 	}
 	var history model.OpsJobHistory
 	if err := s.db.First(&history, historyID).Error; err != nil {
@@ -867,7 +867,7 @@ func (s *Service) executeOpsJobNotifyNode(historyID uint, stepName string, node 
 			"currentStepName": stepName,
 		},
 	})
-	return "success", "通知已触发", detail, nil
+	return "success", "notification triggered", detail, nil
 }
 
 func (s *Service) finishOpsJobHistory(historyID uint, status, summary, currentStepID, currentStepName string) {

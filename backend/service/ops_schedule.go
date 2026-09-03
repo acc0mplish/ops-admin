@@ -143,7 +143,7 @@ func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string
 	}
 	for name := range supplied {
 		if _, ok := declared[name]; !ok {
-			return nil, nil, fmt.Errorf("变量 VARIABLE_%s 未在脚本中声明", name)
+			return nil, nil, fmt.Errorf("variable VARIABLE_%s is not declared by the script", name)
 		}
 	}
 	stored := model.OpsScriptVariableValues{}
@@ -155,7 +155,7 @@ func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string
 			if variable.Secret {
 				plain, err := util.DecryptSecret(existingValue)
 				if err != nil {
-					return nil, nil, fmt.Errorf("读取变量 VARIABLE_%s 失败: %w", name, err)
+					return nil, nil, fmt.Errorf("failed to read variable VARIABLE_%s: %w", name, err)
 				}
 				value = plain
 			} else {
@@ -166,7 +166,7 @@ func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string
 			value = variable.DefaultValue
 		}
 		if variable.Required && value == "" {
-			return nil, nil, fmt.Errorf("请配置必填变量 VARIABLE_%s", name)
+			return nil, nil, fmt.Errorf("configure required variable VARIABLE_%s", name)
 		}
 		if value == "" {
 			continue
@@ -207,7 +207,7 @@ func normalizeHeadersJSON(raw string) (string, error) {
 	}
 	var headers map[string]string
 	if err := json.Unmarshal([]byte(value), &headers); err != nil {
-		return "", errors.New("请求头必须是 JSON 对象")
+		return "", errors.New("request headers must be a JSON object")
 	}
 	data, _ := json.Marshal(headers)
 	return string(data), nil
@@ -227,7 +227,7 @@ func parseHeaderMap(raw string) map[string]string {
 func parseCronExpr(expr string) (cron.Schedule, error) {
 	expr = normalizeCronExpr(expr)
 	if expr == "" {
-		return nil, errors.New("Cron 表达式不能为空")
+		return nil, errors.New("Cron expression is required")
 	}
 	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 	return parser.Parse(expr)
@@ -410,10 +410,10 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 	taskType := normalizeScheduleTaskType(payload.TaskType)
 	name := Trimmed(payload.Name)
 	if name == "" {
-		return nil, errors.New("任务名称不能为空")
+		return nil, errors.New("task name is required")
 	}
 	if _, err := parseCronExpr(payload.CronExpr); err != nil {
-		return nil, errors.New("Cron 表达式格式不正确")
+		return nil, errors.New("invalid Cron expression format")
 	}
 	headersJSON, err := normalizeHeadersJSON(payload.HeadersJSON)
 	if err != nil {
@@ -446,20 +446,20 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 	switch taskType {
 	case "script":
 		if payload.ScriptID == 0 {
-			return nil, errors.New("请选择脚本")
+			return nil, errors.New("select a script")
 		}
 		script, err := s.GetOpsScript(payload.ScriptID)
 		if err != nil {
 			return nil, err
 		}
 		if script.Status != 1 {
-			return nil, errors.New("脚本已禁用，不能用于定时任务")
+			return nil, errors.New("disabled script cannot be used by a scheduled task")
 		}
 		if len(payload.HostIDs) == 0 && len(payload.GroupIDs) == 0 {
-			return nil, errors.New("请选择目标主机或主机组")
+			return nil, errors.New("select target hosts or a host group")
 		}
 		if len(payload.HostIDs) > 0 && len(payload.GroupIDs) > 0 {
-			return nil, errors.New("目标主机和主机组只能二选一")
+			return nil, errors.New("target hosts and host groups are mutually exclusive")
 		}
 		updates["script_id"] = script.ID
 		updates["script_name"] = script.Name
@@ -481,7 +481,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		updates["expected_status"] = 0
 	case "http":
 		if strings.TrimSpace(payload.URL) == "" {
-			return nil, errors.New("HTTP 地址不能为空")
+			return nil, errors.New("HTTP URL is required")
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
@@ -490,7 +490,7 @@ func (s *Service) buildOpsScheduleTaskUpdates(payload OpsScheduleTaskPayload, ex
 		updates["group_ids_json"] = "[]"
 		updates["concurrency"] = 1
 	default:
-		return nil, errors.New("不支持的任务类型")
+		return nil, errors.New("unsupported task type")
 	}
 
 	if existing != nil {
@@ -569,7 +569,7 @@ func (s *Service) BatchDeleteOpsScheduleTasks(ids []uint) error {
 
 func (s *Service) UpdateOpsScheduleTaskStatus(payload OpsScheduleTaskStatusPayload) error {
 	if len(payload.IDs) == 0 {
-		return errors.New("请选择任务")
+		return errors.New("select a task")
 	}
 	status := normalizeScheduleStatus(payload.Status)
 	if err := s.db.Model(&model.OpsScheduleTask{}).Where("id IN ?", payload.IDs).Update("status", status).Error; err != nil {
@@ -656,7 +656,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	taskType := normalizeScheduleTaskType(payload.TaskType)
 	name := Trimmed(payload.Name)
 	if name == "" {
-		return nil, errors.New("模板名称不能为空")
+		return nil, errors.New("template name is required")
 	}
 	headersJSON, err := normalizeHeadersJSON(payload.HeadersJSON)
 	if err != nil {
@@ -664,7 +664,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	}
 	if strings.TrimSpace(payload.CronExpr) != "" {
 		if _, err := parseCronExpr(payload.CronExpr); err != nil {
-			return nil, errors.New("Cron 表达式格式不正确")
+			return nil, errors.New("invalid Cron expression format")
 		}
 	}
 	updates := map[string]any{
@@ -684,7 +684,7 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 	switch taskType {
 	case "script":
 		if payload.ScriptID == 0 {
-			return nil, errors.New("请选择脚本")
+			return nil, errors.New("select a script")
 		}
 		script, err := s.GetOpsScript(payload.ScriptID)
 		if err != nil {
@@ -710,13 +710,13 @@ func (s *Service) buildOpsScheduleTemplateUpdates(payload OpsScheduleTemplatePay
 		updates["expected_status"] = 0
 	case "http":
 		if strings.TrimSpace(payload.URL) == "" {
-			return nil, errors.New("HTTP 地址不能为空")
+			return nil, errors.New("HTTP URL is required")
 		}
 		updates["script_id"] = 0
 		updates["script_name"] = ""
 		updates["variables"] = model.OpsScriptVariableValues{}
 	default:
-		return nil, errors.New("不支持的模板类型")
+		return nil, errors.New("unsupported template type")
 	}
 	return updates, nil
 }
@@ -747,7 +747,7 @@ func (s *Service) DeleteOpsScheduleTemplate(id uint) error {
 		return err
 	}
 	if count > 0 {
-		return errors.New("该模板仍被任务引用，不能删除")
+		return errors.New("template is still referenced by tasks and cannot be deleted")
 	}
 	return s.db.Delete(&model.OpsScheduleTemplate{}, id).Error
 }
@@ -874,7 +874,7 @@ func (s *Service) executeScheduledTask(taskID uint, triggerType string) {
 				"httpStatus":     formatScheduleHTTPStatus(httpCode),
 				"expectedStatus": fmt.Sprintf("%d", normalizeExpectedStatus(task.ExpectedStatus)),
 				"alertName":      task.Name,
-				"severity":       "定时任务",
+				"severity":       "Scheduled Task",
 			},
 		})
 	}
@@ -889,12 +889,12 @@ func compactScheduleNotifyDetail(task model.OpsScheduleTask, status, detail stri
 
 func scheduleHTTPNotifyDetail(status string, httpCode, expectedStatus int) string {
 	if strings.EqualFold(status, "success") {
-		return fmt.Sprintf("HTTP 探针返回 %d，符合预期状态码 %d。", httpCode, expectedStatus)
+		return fmt.Sprintf("HTTP probe returned %d, matching expected status %d.", httpCode, expectedStatus)
 	}
 	if httpCode > 0 {
-		return fmt.Sprintf("HTTP 探针返回 %d，未达到预期状态码 %d。完整响应内容请在任务日志中查看。", httpCode, expectedStatus)
+		return fmt.Sprintf("HTTP probe returned %d instead of expected status %d. See task logs for the complete response.", httpCode, expectedStatus)
 	}
-	return "HTTP 探针请求失败。完整错误信息请在任务日志中查看。"
+	return "HTTP probe request failed. See task logs for complete error details."
 }
 
 func trimNotifyText(value string, limit int) string {
@@ -905,26 +905,26 @@ func trimNotifyText(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + "\n...（执行详情已截断，请在任务日志中查看完整输出）"
+	return value[:limit] + "\n...(execution details truncated; see task logs for complete output)"
 }
 
 func scheduleTaskTypeLabel(value string) string {
 	if value == "http" {
-		return "HTTP 探针"
+		return "HTTP Probe"
 	}
-	return "脚本任务"
+	return "Script Task"
 }
 
 func scheduleTriggerTypeLabel(value string) string {
 	if value == "manual" {
-		return "手动执行"
+		return "Manual"
 	}
-	return "定时触发"
+	return "Scheduled"
 }
 
 func formatScheduleDuration(value time.Duration) string {
 	if value < time.Second {
-		return fmt.Sprintf("%d 毫秒", value.Milliseconds())
+		return fmt.Sprintf("%d ms", value.Milliseconds())
 	}
 	return value.Round(time.Millisecond).String()
 }
@@ -958,14 +958,14 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 	}
 	execTask := model.OpsExecTask{
 		TaskType:       "script",
-		Title:          fmt.Sprintf("定时任务 - %s", task.Name),
+		Title:          fmt.Sprintf("Scheduled Task - %s", task.Name),
 		ScriptID:       script.ID,
 		ScriptName:     script.Name,
 		Parameters:     "",
 		Concurrency:    normalizeOpsConcurrency(task.Concurrency),
 		TimeoutSeconds: normalizeOpsTimeout(script.TimeoutSeconds),
 		Status:         "running",
-		Summary:        "定时任务执行中",
+		Summary:        "scheduled task running",
 		HostCount:      len(hosts),
 		Operator:       "scheduler",
 		Source:         "schedule",
@@ -990,7 +990,7 @@ func (s *Service) runScheduledScriptTask(task model.OpsScheduleTask) (string, st
 		lines = append(lines, fmt.Sprintf("%s [%s] exit=%d", row.HostName, row.Status, row.ExitCode))
 	}
 	status := firstNonEmpty(taskInfo.Status, "success")
-	return status, firstNonEmpty(taskInfo.Summary, "执行完成"), strings.Join(lines, "\n"), taskInfo.ID
+	return status, firstNonEmpty(taskInfo.Summary, "execution completed"), strings.Join(lines, "\n"), taskInfo.ID
 }
 
 func (s *Service) runScheduledHTTPTask(task model.OpsScheduleTask) (string, string, string, int, string) {
@@ -1013,5 +1013,5 @@ func (s *Service) runScheduledHTTPTask(task model.OpsScheduleTask) (string, stri
 	if response.StatusCode == normalizeExpectedStatus(task.ExpectedStatus) {
 		return "success", summary, responseBody, response.StatusCode, responseBody
 	}
-	return "failed", fmt.Sprintf("%s，期望状态码 %d", summary, normalizeExpectedStatus(task.ExpectedStatus)), responseBody, response.StatusCode, responseBody
+	return "failed", fmt.Sprintf("%s; expected HTTP status %d", summary, normalizeExpectedStatus(task.ExpectedStatus)), responseBody, response.StatusCode, responseBody
 }
