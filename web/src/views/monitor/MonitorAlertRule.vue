@@ -1,4 +1,5 @@
 <script setup>
+import { uiT } from '../../utils/english-hardcoding-i18n'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -98,7 +99,7 @@ const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertTyp
 const enabledOnPage = computed(() => rows.value.filter((item) => item.status === 1).length)
 const failedOnPage = computed(() => rows.value.filter((item) => item.lastEvalStatus === 'failed').length)
 const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? 'Duration 일괄 변경' : 'Evaluation Interval 일괄 변경')
-const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : 'Evaluation Interval')
+const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : uiT('evaluationInterval'))
 const batchTimingTip = computed(() => batchTimingAction.value === 'update_for_seconds'
   ? `Duration은 Metric Alert에만 적용됩니다. 선택한 ${selectedRuleIds.value.length}개 Rule 중 Log Alert는 변경되지 않습니다.`
   : `선택한 ${selectedRuleIds.value.length}개 Alert Rule의 Evaluation Frequency를 변경하고 새 Interval로 즉시 재예약합니다.`)
@@ -737,7 +738,7 @@ onMounted(async () => {
         <el-option label="Elasticsearch Log" value="log" />
         <el-option label="VictoriaLogs" value="victorialogs" />
       </el-select>
-      <el-select v-model="query.severity" clearable placeholder="Severity" style="width: 120px">
+      <el-select v-model="query.severity" clearable :placeholder="uiT('severity')" style="width: 120px">
         <el-option v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" :value="item" />
       </el-select>
       <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px">
@@ -769,7 +770,7 @@ onMounted(async () => {
       </el-table-column>
       <el-table-column label="Datasource Scope" min-width="180"><template #default="{ row }"><div class="scope-cell"><strong>{{ row.datasourceName || '같은 Type의 전체 Datasource' }}</strong><span>{{ row.datasourceScope === 'all' ? '활성화된 모든 Datasource 자동 Match' : '지정 Datasource' }}</span></div></template></el-table-column>
       <el-table-column label="Trigger Condition" min-width="320" show-overflow-tooltip><template #default="{ row }"><div class="condition-cell"><code>{{ row.promql }}</code><span>{{ row.comparator }} {{ row.threshold }} · {{ row.alertType === 'metric' ? `Duration ${row.forSeconds || 0}초` : `Window ${row.logTimeRangeSeconds || 300}초` }}</span></div></template></el-table-column>
-      <el-table-column label="Severity" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
+      <el-table-column :label="uiT('severity')" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
       <el-table-column label="Evaluation 상태" min-width="155"><template #default="{ row }"><div class="eval-cell"><span><el-tag :type="evalStatusType(row.lastEvalStatus)" size="small" effect="light">{{ evalStatusText(row.lastEvalStatus) }}</el-tag><em>{{ row.evalIntervalSeconds }}초마다</em></span><el-tooltip v-if="row.lastEvalMessage" :content="row.lastEvalMessage" placement="top"><small>{{ formatEvalTime(row.lastEvalAt) }}</small></el-tooltip><small v-else>{{ formatEvalTime(row.lastEvalAt) }}</small></div></template></el-table-column>
       <el-table-column label="상태" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '활성화' : '停用' }}</el-tag></template></el-table-column>
       <el-table-column label="Notification" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag class="notification-state" :class="row.notifyEnabled ? 'is-notify-enabled' : 'is-notify-disabled'" size="small" effect="plain">{{ row.notifyEnabled ? '활성' : '비활성' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
@@ -835,7 +836,7 @@ onMounted(async () => {
             <small>{{ isLogAlert ? '최근 Log 범위 집계' : '연속 Match 후 Trigger' }}</small>
           </div>
           <div class="parameter-card">
-            <span>Evaluation Interval</span>
+            <span>{{ uiT('evaluationInterval') }}</span>
             <div class="parameter-number"><el-input-number v-model="form.evalIntervalSeconds" :min="15" :max="3600" controls-position="right" /><b>초</b></div>
             <small>System Rule 실행 주기</small>
           </div>
@@ -891,7 +892,7 @@ onMounted(async () => {
               <template #default="{ row }"><div class="template-name-cell"><strong>{{ row.name }}</strong><span>{{ row.description || '이 Template을 기준으로 Alert Rule 빠른 생성' }}</span></div></template>
             </el-table-column>
             <el-table-column label="Template Group" min-width="170"><template #default="{ row }"><el-tag type="primary" size="small" effect="plain">{{ templateGroupPath(row.groupId) }}</el-tag></template></el-table-column>
-            <el-table-column label="Severity" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light" size="small">{{ row.severity }}</el-tag></template></el-table-column>
+            <el-table-column :label="uiT('severity')" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light" size="small">{{ row.severity }}</el-tag></template></el-table-column>
             <el-table-column label="Datasource" width="120"><template #default="{ row }"><span class="template-datasource">{{ row.datasourceType === 'victorialogs' ? 'VictoriaLogs' : (row.datasourceType === 'elasticsearch' ? 'Elasticsearch' : 'Prometheus') }}</span></template></el-table-column>
             <el-table-column label="Template 검색" min-width="260" show-overflow-tooltip><template #default="{ row }"><code class="template-query">{{ row.queryText }}</code></template></el-table-column>
             <el-table-column label="작업" width="86" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="applyRuleTemplate(templateWithType(row))">개별 구성</el-button></template></el-table-column>

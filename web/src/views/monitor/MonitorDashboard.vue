@@ -1087,7 +1087,7 @@ onBeforeUnmount(() => {
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8"><el-form-item label="Unit"><el-input v-model="panelForm.unit" placeholder="%, ms, 개" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="uiT('unit')"><el-input v-model="panelForm.unit" placeholder="%, ms, 개" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="Width"><el-input-number v-model="panelForm.span" :min="6" :max="24" :step="6" style="width: 100%" /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="12">

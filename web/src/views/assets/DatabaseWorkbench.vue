@@ -785,7 +785,7 @@ async function runSQL() {
   }
   const statement = selectedSQLText()
   if (!statement) {
-    ElMessage.warning('실행할 SQL을 입력하십시오.')
+    ElMessage.warning(uiT('sqlRequired'))
     return
   }
   sqlRunning.value = true
