@@ -21,17 +21,17 @@ async function run() {
   <section class="domain-page domain-panel page-card">
     <div class="domain-page-head">
       <div>
-        <div class="domain-eyebrow">DNS DIAGNOSTICS</div>
+        <div class="domain-eyebrow">{{ dt('queryTestTitle') }}</div>
         <h2>{{ dt('queryTestTitle') }}</h2>
         <p>{{ dt('queryTestDesc') }}</p>
       </div>
     </div>
     <div class="query-workbench">
       <el-form label-position="top">
-        <el-form-item label="Domain" required>
+        <el-form-item :label="dt('domain')" required>
           <el-input v-model="form.domain" size="large" placeholder="grafana.ops.internal" @keyup.enter="run" />
         </el-form-item>
-        <el-form-item label="Type">
+        <el-form-item :label="dt('type')">
           <el-radio-group v-model="form.type"><el-radio-button value="A">A</el-radio-button><el-radio-button value="CNAME">CNAME</el-radio-button></el-radio-group>
         </el-form-item>
         <el-button type="primary" size="large" :loading="loading" @click="run">{{ dt('startResolution') }}</el-button>
@@ -43,7 +43,7 @@ async function run() {
             <strong>{{ result.responseTimeMs }} ms</strong>
           </div>
           <dl>
-            <div><dt>DNS Server</dt><dd class="domain-mono">{{ result.dnsServer || '—' }}</dd></div>
+            <div><dt>{{ dt('upstreamDns') }}</dt><dd class="domain-mono">{{ result.dnsServer || '—' }}</dd></div>
             <div><dt>{{ dt('responseCode') }}</dt><dd>{{ result.rcode || 'NOERROR' }}</dd></div>
           </dl>
           <div v-for="answer in result.answers" :key="`${answer.type}-${answer.value}`" class="answer-row">
