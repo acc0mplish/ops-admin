@@ -7,6 +7,7 @@ import {
   queryOpsJobHistoryList,
   rejectOpsJobHistory
 } from '../../api/ops'
+import { ot } from '../../utils/ops-i18n'
 
 const loading = ref(false)
 const rows = ref([])
@@ -72,7 +73,7 @@ async function handleApprove() {
     stepId: step.stepId,
     note: approvalNote.value
   })
-  ElMessage.success('已通过人工确认，作业将继续执行')
+  ElMessage.success(ot('approvalPassed'))
   detailVisible.value = false
   await loadData()
 }
@@ -85,7 +86,7 @@ async function handleReject() {
     stepId: step.stepId,
     note: approvalNote.value
   })
-  ElMessage.success('已拒绝该作业')
+  ElMessage.success(ot('approvalRejected'))
   detailVisible.value = false
   await loadData()
 }
@@ -112,32 +113,32 @@ onMounted(loadData)
   <div class="page-card ops-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">人工确认</h2>
-        <p class="page-desc">集中处理卡在人工确认步骤的作业，确认通过后继续执行，拒绝后终止作业。</p>
+        <h2 class="page-title">{{ ot('approvals') }}</h2>
+        <p class="page-desc">{{ ot('approvalsDesc') }}</p>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input v-model="query.keyword" clearable placeholder="搜索作业名称 / 摘要 / 当前步骤" style="width: 320px" @keyup.enter="loadData" />
-        <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="resetQuery">重置</el-button>
+        <el-input v-model="query.keyword" clearable :placeholder="ot('searchApproval')" style="width: 320px" @keyup.enter="loadData" />
+        <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+        <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="jobName" label="作业名称" min-width="220" />
-      <el-table-column label="状态" width="120" align="center">
+      <el-table-column prop="jobName" :label="ot('jobName')" min-width="220" />
+      <el-table-column :label="ot('status')" width="120" align="center">
         <template #default="{ row }">
           <el-tag :type="statusTagType(row.status)" effect="light">{{ row.status }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="summary" label="摘要" min-width="260" show-overflow-tooltip />
-      <el-table-column prop="currentStepName" label="待确认步骤" width="220" show-overflow-tooltip />
-      <el-table-column prop="startedAt" label="开始时间" width="180" />
-      <el-table-column label="操作" width="100" fixed="right">
+      <el-table-column prop="summary" :label="ot('summary')" min-width="260" show-overflow-tooltip />
+      <el-table-column prop="currentStepName" :label="ot('pendingApprovalStep')" width="220" show-overflow-tooltip />
+      <el-table-column prop="startedAt" :label="ot('startedAt')" width="180" />
+      <el-table-column :label="ot('actions')" width="100" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">处理</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ ot('process') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -153,42 +154,33 @@ onMounted(loadData)
       />
     </div>
 
-    <el-drawer v-model="detailVisible" size="70%" title="人工确认处理">
+    <el-drawer v-model="detailVisible" size="70%" :title="ot('approvalDrawer')">
       <div v-loading="detailLoading" class="approval-detail">
         <div v-if="detail.history" class="detail-summary">
-          <div class="summary-card"><span>作业名称</span><strong>{{ detail.history.jobName }}</strong></div>
-          <div class="summary-card"><span>当前状态</span><strong>{{ detail.history.status }}</strong></div>
-          <div class="summary-card"><span>当前步骤</span><strong>{{ detail.history.currentStepName || '-' }}</strong></div>
+          <div class="summary-card"><span>{{ ot('jobName') }}</span><strong>{{ detail.history.jobName }}</strong></div>
+          <div class="summary-card"><span>{{ ot('currentStatus') }}</span><strong>{{ detail.history.status }}</strong></div>
+          <div class="summary-card"><span>{{ ot('currentStep') }}</span><strong>{{ detail.history.currentStepName || '-' }}</strong></div>
         </div>
 
-        <el-alert
-          type="warning"
-          :closable="false"
-          title="请在确认内容无误后放行，放行后作业会从当前节点继续向下执行。"
-        />
+        <el-alert type="warning" :closable="false" :title="ot('approvalWarning')" />
 
-        <el-input
-          v-model="approvalNote"
-          type="textarea"
-          :rows="3"
-          placeholder="确认备注，可选"
-        />
+        <el-input v-model="approvalNote" type="textarea" :rows="3" :placeholder="ot('approvalNotePlaceholder')" />
 
         <el-table :data="detail.steps" border>
-          <el-table-column prop="stepName" label="步骤名称" min-width="180" />
-          <el-table-column prop="stepType" label="步骤类型" width="120" />
-          <el-table-column label="状态" width="140" align="center">
+          <el-table-column prop="stepName" :label="ot('stepName')" min-width="180" />
+          <el-table-column prop="stepType" :label="ot('stepType')" width="120" />
+          <el-table-column :label="ot('status')" width="140" align="center">
             <template #default="{ row }">
               <el-tag :type="statusTagType(row.status)" effect="light">{{ row.status }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="output" label="输出内容" min-width="320" show-overflow-tooltip />
+          <el-table-column prop="summary" :label="ot('summary')" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="output" :label="ot('output')" min-width="320" show-overflow-tooltip />
         </el-table>
 
         <div class="detail-actions">
-          <el-button type="danger" plain @click="handleReject">拒绝</el-button>
-          <el-button type="primary" @click="handleApprove">确认通过</el-button>
+          <el-button type="danger" plain @click="handleReject">{{ ot('reject') }}</el-button>
+          <el-button type="primary" @click="handleApprove">{{ ot('approve') }}</el-button>
         </div>
       </div>
     </el-drawer>
