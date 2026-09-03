@@ -332,16 +332,16 @@ type profileRow struct {
 func (s *Service) Login(req LoginRequest, ip string, browser string, osName string) (map[string]any, string, error) {
 	var admin model.Admin
 	if err := s.db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
-		s.createLoginLog(req.Username, ip, browser, osName, 2, "用户名或密码错误")
-		return nil, "", errors.New("用户名或密码错误")
+		s.createLoginLog(req.Username, ip, browser, osName, 2, "invalid username or password")
+		return nil, "", errors.New("invalid username or password")
 	}
 	if admin.Status != 1 {
-		s.createLoginLog(req.Username, ip, browser, osName, 2, "账号已停用")
-		return nil, "", errors.New("账号已停用")
+		s.createLoginLog(req.Username, ip, browser, osName, 2, "account is disabled")
+		return nil, "", errors.New("account is disabled")
 	}
 	if !util.CheckPassword(admin.Password, req.Password) {
-		s.createLoginLog(req.Username, ip, browser, osName, 2, "用户名或密码错误")
-		return nil, "", errors.New("用户名或密码错误")
+		s.createLoginLog(req.Username, ip, browser, osName, 2, "invalid username or password")
+		return nil, "", errors.New("invalid username or password")
 	}
 
 	sessionID, err := auth.NewOpaqueToken()
@@ -368,7 +368,7 @@ func (s *Service) Login(req LoginRequest, ip string, browser string, osName stri
 		_ = s.db.Delete(&session).Error
 		return nil, "", err
 	}
-	s.createLoginLog(req.Username, ip, browser, osName, 1, "登录成功")
+	s.createLoginLog(req.Username, ip, browser, osName, 1, "login successful")
 
 	roleID := s.getRoleID(admin.ID)
 	config, _ := s.GetSystemConfig()
@@ -386,11 +386,11 @@ func (s *Service) Login(req LoginRequest, ip string, browser string, osName stri
 
 func (s *Service) RefreshSession(refreshToken string, reportedActivityAt time.Time) (map[string]any, string, error) {
 	if strings.TrimSpace(refreshToken) == "" {
-		return nil, "", errors.New("刷新凭证缺失")
+		return nil, "", errors.New("refresh token is missing")
 	}
 	var session model.AuthSession
 	if err := s.db.Where("refresh_token_hash = ?", auth.HashOpaqueToken(refreshToken)).First(&session).Error; err != nil {
-		return nil, "", errors.New("登录会话无效")
+		return nil, "", errors.New("login session is invalid")
 	}
 	now := time.Now()
 	lastActivityAt := session.LastActivityAt
@@ -398,12 +398,12 @@ func (s *Service) RefreshSession(refreshToken string, reportedActivityAt time.Ti
 		lastActivityAt = reportedActivityAt
 	}
 	if session.RevokedAt != nil || !now.Before(session.ExpiresAt) || now.Sub(lastActivityAt) >= auth.SessionIdleTTL {
-		return nil, "", errors.New("登录已过期")
+		return nil, "", errors.New("login session has expired")
 	}
 
 	var admin model.Admin
 	if err := s.db.First(&admin, session.AdminID).Error; err != nil || admin.Status != 1 {
-		return nil, "", errors.New("账号不可用")
+		return nil, "", errors.New("account is unavailable")
 	}
 	if err := s.db.Model(&model.AuthSession{}).Where("id = ? AND revoked_at IS NULL", session.ID).Updates(map[string]any{
 		"last_activity_at": lastActivityAt,
@@ -516,11 +516,11 @@ func (s *Service) ensureSystemConfig() (model.SystemConfig, error) {
 
 	cfg = model.SystemConfig{
 		SiteName:           "Ops Admin",
-		SiteSlogan:         "个人运维管理平台",
+		SiteSlogan:         "Personal Operations Management Platform",
 		LogoType:           "text",
 		LogoValue:          "OA",
 		LoginTitle:         "Ops Admin",
-		LoginSubtitle:      "系统管理与运维控制台",
+		LoginSubtitle:      "System Administration and Operations Console",
 		UseLoginBackground: false,
 		PrimaryColor:       "#5b6cf9",
 		SidebarTheme:       "dark",
@@ -688,7 +688,7 @@ func (s *Service) CreateAdmin(payload AdminPayload) error {
 	var count int64
 	s.db.Model(&model.Admin{}).Where("username = ?", payload.Username).Count(&count)
 	if count > 0 {
-		return errors.New("用户名已存在")
+		return errors.New("username already exists")
 	}
 	admin := model.Admin{
 		PostID:   payload.PostID,
@@ -742,7 +742,7 @@ func (s *Service) DeleteAdmin(id uint) error {
 		return err
 	}
 	if admin.Username == "admin" {
-		return errors.New("默认管理员不允许删除")
+		return errors.New("default administrator cannot be deleted")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Delete(&model.Admin{}, id).Error; err != nil {
@@ -776,7 +776,7 @@ func (s *Service) UpdateProfilePassword(userID uint, oldPassword string, newPass
 		return err
 	}
 	if !util.CheckPassword(admin.Password, oldPassword) {
-		return errors.New("原密码不正确")
+		return errors.New("current password is incorrect")
 	}
 	return s.db.Model(&admin).Update("password", util.HashPassword(newPassword)).Error
 }
@@ -1120,7 +1120,7 @@ func (s *Service) GetAssetHost(id uint) (*model.AssetHost, error) {
 func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 	host := assetHostFromPayload(payload)
 	if host.Environment == "" {
-		return errors.New("请选择所属环境")
+		return errors.New("select an environment")
 	}
 	if err := validateGatewaySelection(host.ConnectionMode, host.GatewayID); err != nil {
 		return err
@@ -1138,7 +1138,7 @@ func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 		return syncAssetHostGroups(tx, host.ID, payload.GroupIDs, host.GroupID)
 	})
 	if err == nil {
-		s.recordAssetChange("host", host.ID, host.HostName, "create", "新增主机资产", payload.Operator)
+		s.recordAssetChange("host", host.ID, host.HostName, "create", "Create Host Asset", payload.Operator)
 	}
 	return err
 }
@@ -1146,7 +1146,7 @@ func (s *Service) CreateAssetHost(payload AssetHostPayload) error {
 func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 	updates := assetHostUpdates(payload)
 	if normalizeEnvCode(payload.Environment) == "" {
-		return errors.New("请选择所属环境")
+		return errors.New("select an environment")
 	}
 	if err := validateGatewaySelection(normalizeConnectionMode(payload.ConnectionMode), optionalGatewayID(payload.ConnectionMode, payload.GatewayID)); err != nil {
 		return err
@@ -1158,7 +1158,7 @@ func (s *Service) UpdateAssetHost(payload AssetHostPayload) error {
 		return syncAssetHostGroups(tx, payload.ID, payload.GroupIDs, payload.GroupID)
 	})
 	if err == nil {
-		s.recordAssetChange("host", payload.ID, payload.HostName, "update", "更新主机基础信息", payload.Operator)
+		s.recordAssetChange("host", payload.ID, payload.HostName, "update", "Update Host Details", payload.Operator)
 	}
 	return err
 }
@@ -1229,7 +1229,7 @@ func (s *Service) SyncAssetHost(id uint) (*model.AssetHost, error) {
 	if err := s.db.Model(&host).Updates(updates).Error; err != nil {
 		return nil, err
 	}
-	s.recordAssetChange("host", host.ID, host.HostName, "sync", "同步主机配置与连接状态", "system")
+	s.recordAssetChange("host", host.ID, host.HostName, "sync", "Synchronize Host Configuration and Connection Status", "system")
 	return s.GetAssetHost(id)
 }
 
@@ -1296,7 +1296,7 @@ func (s *Service) ImportAssetHosts(groupID uint, rows []AssetHostImportRow) (map
 			AuthStatus:     2,
 			AliveStatus:    2,
 			Description:    Trimmed(row.Description),
-			Provider:       firstNonEmpty(Trimmed(row.Provider), "自建"),
+			Provider:       firstNonEmpty(Trimmed(row.Provider), "On-premises"),
 			Region:         Trimmed(row.Region),
 		}
 		if err := s.db.Create(&host).Error; err != nil {
@@ -1322,15 +1322,15 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 	}
 	credentialID := optionalUint(payload.CredentialID)
 	if credentialID == nil {
-		return nil, errors.New("请选择认证凭据")
+		return nil, errors.New("select an authentication credential")
 	}
 	var credential model.AssetCredential
 	if err := s.db.Where("id = ? AND status = ?", *credentialID, 1).First(&credential).Error; err != nil {
-		return nil, errors.New("所选认证凭据不存在或已停用")
+		return nil, errors.New("selected authentication credential does not exist or is disabled")
 	}
 	environment := normalizeEnvCode(payload.Environment)
 	if environment == "" {
-		return nil, errors.New("请选择所属环境")
+		return nil, errors.New("select an environment")
 	}
 	connectionMode := normalizeConnectionMode(payload.ConnectionMode)
 	gatewayID := optionalGatewayID(connectionMode, payload.GatewayID)
@@ -1340,7 +1340,7 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 	if gatewayID != nil {
 		var gateway model.AssetGateway
 		if err := s.db.Where("id = ? AND status = ?", *gatewayID, 1).First(&gateway).Error; err != nil {
-			return nil, errors.New("所选访问网关不存在或已停用")
+			return nil, errors.New("selected access gateway does not exist or is disabled")
 		}
 	}
 	if !payload.UseExistingAccount {
@@ -1390,7 +1390,7 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 		sshIP := firstNonEmpty(item.PrivateIP, item.PublicIP)
 		if sshIP == "" {
 			skipped++
-			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, "unknown")+"：未返回公网或私网 IP")
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, "unknown")+": no public or private IP was returned")
 			continue
 		}
 
@@ -1413,7 +1413,7 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 			// Discovery must never overwrite an existing host. Cloud credentials,
 			// routing, environment and manually maintained host metadata stay intact.
 			skipped++
-			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+"：主机已存在，未覆盖")
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+": host already exists and was not overwritten")
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			newHost := model.AssetHost{
 				HostName:       firstNonEmpty(item.HostName, item.InstanceID, sshIP),
@@ -1445,11 +1445,11 @@ func (s *Service) SyncAssetHostsFromCloud(payload AssetCloudSyncPayload) (map[st
 				addedHosts = append(addedHosts, newHost.HostName)
 			} else {
 				skipped++
-				skippedHosts = append(skippedHosts, newHost.HostName+"：新增失败："+createErr.Error())
+				skippedHosts = append(skippedHosts, newHost.HostName+": creation failed: "+createErr.Error())
 			}
 		default:
 			skipped++
-			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+"：查询已有主机失败")
+			skippedHosts = append(skippedHosts, firstNonEmpty(item.HostName, item.InstanceID, sshIP)+": failed to query existing host")
 		}
 	}
 
@@ -1543,7 +1543,7 @@ func (s *Service) DeleteAssetHost(id uint) error {
 		return tx.Delete(&model.AssetHost{}, id).Error
 	})
 	if err == nil {
-		s.recordAssetChange("host", id, host.HostName, "delete", "删除主机资产", "system")
+		s.recordAssetChange("host", id, host.HostName, "delete", "Delete Host Asset", "system")
 	}
 	return err
 }
@@ -1707,7 +1707,7 @@ func (s *Service) GetAssetHostGroup(id uint) (*AssetHostGroupNode, error) {
 func (s *Service) CreateAssetHostGroup(payload AssetHostGroupPayload) error {
 	name := Trimmed(payload.Name)
 	if name == "" {
-		return errors.New("主机组名称不能为空")
+		return errors.New("host group name is required")
 	}
 	if err := s.validateAssetHostGroupParent(0, payload.ParentID); err != nil {
 		return err
@@ -1729,10 +1729,10 @@ func (s *Service) CreateAssetHostGroup(payload AssetHostGroupPayload) error {
 func (s *Service) UpdateAssetHostGroup(payload AssetHostGroupPayload) error {
 	name := Trimmed(payload.Name)
 	if payload.ID == 0 {
-		return errors.New("主机组不存在")
+		return errors.New("host group does not exist")
 	}
 	if name == "" {
-		return errors.New("主机组名称不能为空")
+		return errors.New("host group name is required")
 	}
 	if err := s.validateAssetHostGroupParent(payload.ID, payload.ParentID); err != nil {
 		return err
@@ -1749,21 +1749,21 @@ func (s *Service) UpdateAssetHostGroup(payload AssetHostGroupPayload) error {
 
 func (s *Service) DeleteAssetHostGroup(id uint) error {
 	if id == 0 {
-		return errors.New("主机组不存在")
+		return errors.New("host group does not exist")
 	}
 	hostCount, err := s.assetHostGroupHostCount(id)
 	if err != nil {
 		return err
 	}
 	if hostCount > 0 {
-		return errors.New("当前主机组下仍有关联主机，不能删除")
+		return errors.New("host group still contains hosts and cannot be deleted")
 	}
 	var childCount int64
 	if err := s.db.Model(&model.AssetHostGroup{}).Where("parent_id = ?", id).Count(&childCount).Error; err != nil {
 		return err
 	}
 	if childCount > 0 {
-		return errors.New("当前主机组下仍有子分组，不能删除")
+		return errors.New("host group still contains child groups and cannot be deleted")
 	}
 	return s.db.Delete(&model.AssetHostGroup{}, id).Error
 }
@@ -1773,12 +1773,12 @@ func (s *Service) validateAssetHostGroupParent(id uint, parentID uint) error {
 		return nil
 	}
 	if id != 0 && id == parentID {
-		return errors.New("上级主机组不能选择自己")
+		return errors.New("a host group cannot be its own parent")
 	}
 	var parent model.AssetHostGroup
 	if err := s.db.First(&parent, parentID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("上级主机组不存在")
+			return errors.New("parent host group does not exist")
 		}
 		return err
 	}
@@ -1795,7 +1795,7 @@ func (s *Service) validateAssetHostGroupParent(id uint, parentID uint) error {
 	}
 	for current := parentID; current != 0; {
 		if current == id {
-			return errors.New("上级主机组不能选择当前分组或其子分组")
+			return errors.New("parent host group cannot be the current group or one of its descendants")
 		}
 		next, ok := parentMap[current]
 		if !ok || next == current {
@@ -1983,7 +1983,7 @@ func (s *Service) DeleteAssetCredential(id uint) error {
 	var count int64
 	s.db.Model(&model.AssetHost{}).Where("credential_id = ?", id).Count(&count)
 	if count > 0 {
-		return errors.New("凭据已被主机关联，不能删除")
+		return errors.New("credential is referenced by hosts and cannot be deleted")
 	}
 	return s.db.Delete(&model.AssetCredential{}, id).Error
 }
@@ -2121,7 +2121,7 @@ func (s *Service) DeleteAssetCloudAccount(id uint) error {
 	var count int64
 	s.db.Model(&model.AssetHost{}).Where("cloud_account_id = ?", id).Count(&count)
 	if count > 0 {
-		return errors.New("云账号已被主机关联，不能删除")
+		return errors.New("cloud account is referenced by hosts and cannot be deleted")
 	}
 	return s.db.Delete(&model.AssetCloudAccount{}, id).Error
 }
@@ -2206,8 +2206,8 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 
 	var providerRows []distributionRow
 	if err := s.db.Model(&model.AssetHost{}).
-		Select("COALESCE(NULLIF(provider, ''), '自建') as name, COUNT(*) as count").
-		Group("COALESCE(NULLIF(provider, ''), '自建')").
+		Select("COALESCE(NULLIF(provider, ''), 'On-premises') as name, COUNT(*) as count").
+		Group("COALESCE(NULLIF(provider, ''), 'On-premises')").
 		Order("count DESC").
 		Limit(8).
 		Scan(&providerRows).Error; err != nil {
@@ -2571,7 +2571,7 @@ func ensureHostGroupFallbackList(list []model.AssetHost) {
 
 func normalizedAuthType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "key", "private_key", "密钥认证":
+	case "key", "private_key", "\u5bc6\u94a5\u8ba4\u8bc1":
 		return "key"
 	default:
 		return "password"
@@ -2597,17 +2597,17 @@ func (s *Service) newSSHClient(host model.AssetHost) (*ssh.Client, error) {
 
 func (s *Service) newSSHClientWithTimeout(host model.AssetHost, timeout time.Duration) (*ssh.Client, error) {
 	if host.SSHIP == "" {
-		return nil, errors.New("主机未配置 SSH 地址")
+		return nil, errors.New("host has no SSH address configured")
 	}
 	if host.SSHUser == "" {
-		return nil, errors.New("主机未配置 SSH 用户")
+		return nil, errors.New("host has no SSH user configured")
 	}
 	authMethod, err := credentialAuthMethod(host.Credential)
 	if err != nil {
 		return nil, err
 	}
 	if timeout <= 0 {
-		return nil, errors.New("主机同步超时")
+		return nil, errors.New("host synchronization timed out")
 	}
 	config := &ssh.ClientConfig{
 		User:            host.SSHUser,
@@ -2668,7 +2668,7 @@ func credentialAuthMethod(credential model.AssetCredential) (ssh.AuthMethod, err
 		return ssh.PublicKeys(signer), nil
 	default:
 		if credential.Password == "" {
-			return nil, errors.New("密码凭据为空")
+			return nil, errors.New("password credential is empty")
 		}
 		return ssh.Password(credential.Password), nil
 	}
@@ -2706,7 +2706,7 @@ func collectHostInfo(client *ssh.Client, deadline time.Time) (map[string]string,
 			return result, true
 		}
 		if field == "cpu" && value != "" {
-			value = value + "核"
+			value = value + " cores"
 		}
 		result[field] = value
 	}
@@ -2799,7 +2799,7 @@ func fetchCloudInstances(provider, accessKey, secretKey, region string) ([]cloud
 				HostName:   firstNonEmpty(item.HostName, item.InstanceID),
 				PrivateIP:  item.PrivateIP,
 				PublicIP:   item.PublicIP,
-				CPU:        fmt.Sprintf("%d核", item.CPU),
+				CPU:        fmt.Sprintf("%d cores", item.CPU),
 				Memory:     fmt.Sprintf("%dGB", item.Memory/1024),
 				Disk:       fmt.Sprintf("%dGB", item.Disk),
 				OS:         item.OS,
