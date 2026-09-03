@@ -61,7 +61,7 @@ func (s *Service) ListIntegrationNavigationGroups(keyword string) ([]map[string]
 func (s *Service) SaveIntegrationNavigationGroup(payload IntegrationNavigationGroupPayload) (model.IntegrationNavigationGroup, error) {
 	name := strings.TrimSpace(payload.Name)
 	if name == "" {
-		return model.IntegrationNavigationGroup{}, errors.New("导航组名称不能为空")
+		return model.IntegrationNavigationGroup{}, errors.New("navigation group name is required")
 	}
 	status := payload.Status
 	if status != 2 {
@@ -93,7 +93,7 @@ func (s *Service) SaveIntegrationNavigationGroup(payload IntegrationNavigationGr
 
 func (s *Service) DeleteIntegrationNavigationGroup(id uint) error {
 	if id == 0 {
-		return errors.New("导航组 ID 不能为空")
+		return errors.New("navigation group ID is required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("group_id = ?", id).Delete(&model.IntegrationNavigation{}).Error; err != nil {
@@ -144,7 +144,7 @@ func (s *Service) SaveIntegrationNavigation(payload IntegrationNavigationPayload
 	name := strings.TrimSpace(payload.Name)
 	targetURL := strings.TrimSpace(payload.URL)
 	if name == "" || payload.GroupID == 0 || targetURL == "" {
-		return model.IntegrationNavigation{}, errors.New("导航名称、所属分组和访问地址不能为空")
+		return model.IntegrationNavigation{}, errors.New("navigation name, group, and target URL are required")
 	}
 	if err := validatePublicNavigationURL(targetURL); err != nil {
 		return model.IntegrationNavigation{}, err
@@ -152,12 +152,12 @@ func (s *Service) SaveIntegrationNavigation(payload IntegrationNavigationPayload
 	iconURL := strings.TrimSpace(payload.IconURL)
 	if iconURL != "" {
 		if err := validatePublicNavigationURL(iconURL); err != nil {
-			return model.IntegrationNavigation{}, errors.New("图标地址必须是有效的 HTTP/HTTPS 地址")
+			return model.IntegrationNavigation{}, errors.New("icon URL must be a valid HTTP/HTTPS address")
 		}
 	}
 	var group model.IntegrationNavigationGroup
 	if err := s.db.First(&group, payload.GroupID).Error; err != nil {
-		return model.IntegrationNavigation{}, errors.New("所属导航组不存在")
+		return model.IntegrationNavigation{}, errors.New("navigation group does not exist")
 	}
 	status := payload.Status
 	if status != 2 {
@@ -189,7 +189,7 @@ func (s *Service) SaveIntegrationNavigation(payload IntegrationNavigationPayload
 
 func (s *Service) DeleteIntegrationNavigation(id uint) error {
 	if id == 0 {
-		return errors.New("导航 ID 不能为空")
+		return errors.New("navigation ID is required")
 	}
 	result := s.db.Delete(&model.IntegrationNavigation{}, id)
 	if result.Error != nil {
@@ -233,7 +233,7 @@ func newPublicNavigationToken() (string, error) {
 func validatePublicNavigationURL(value string) error {
 	parsed, err := url.ParseRequestURI(value)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return errors.New("访问地址必须是有效的 HTTP/HTTPS 地址")
+		return errors.New("target URL must be a valid HTTP/HTTPS address")
 	}
 	return nil
 }
