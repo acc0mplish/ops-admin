@@ -8,6 +8,7 @@ on:
       - .github/scripts/localize_remediation.py
       - .github/scripts/localize_remediation_batch2.py
       - .github/scripts/localize_remediation_batch3.py
+      - .github/scripts/localize_remediation_batch4.py
       - .github/workflows/localization-remediation.yml
 
 permissions:
@@ -27,6 +28,7 @@ jobs:
           python3 .github/scripts/localize_remediation.py
           python3 .github/scripts/localize_remediation_batch2.py
           python3 .github/scripts/localize_remediation_batch3.py
+          python3 .github/scripts/localize_remediation_batch4.py
 
       - name: Commit remediated files
         shell: bash
@@ -38,5 +40,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend web/src
-          git commit -m "fix(i18n): remediate core service remnants"
+          git commit -m "fix(i18n): remediate DNS and certificate remnants"
           git push origin HEAD:localize/ko-KR-adversarial
