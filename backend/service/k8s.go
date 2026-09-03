@@ -29,7 +29,7 @@ import (
 	ksyaml "sigs.k8s.io/yaml"
 )
 
-const k8sClusterConnectError = "集群连接失败，请检查 kubeconfig"
+const k8sClusterConnectError = "cluster connection failed; verify kubeconfig"
 
 type kubeConfig struct {
 	APIVersion     string `yaml:"apiVersion"`
@@ -695,7 +695,7 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		return cluster, err
 	}
 	if count > 0 {
-		return cluster, errors.New("K8s 集群名称已存在")
+		return cluster, errors.New("Kubernetes cluster name already exists")
 	}
 
 	probe, err := s.probeK8sCluster(cluster)
@@ -713,7 +713,7 @@ func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	if err := s.db.Create(&cluster).Error; err != nil {
 		return cluster, err
 	}
-	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "create", "新增 K8s 集群", payload.Operator)
+	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "create", "Create Kubernetes Cluster", payload.Operator)
 	return cluster, nil
 }
 
@@ -745,7 +745,7 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 		return cluster, err
 	}
 	if count > 0 {
-		return cluster, errors.New("K8s 集群名称已存在")
+		return cluster, errors.New("Kubernetes cluster name already exists")
 	}
 
 	probe, err := s.probeK8sCluster(cluster)
@@ -763,7 +763,7 @@ func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCl
 	if err := s.db.Save(&cluster).Error; err != nil {
 		return cluster, err
 	}
-	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "update", "更新 K8s 集群配置并校验连接", payload.Operator)
+	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "update", "Update Kubernetes Cluster Configuration and Validate Connection", payload.Operator)
 	return cluster, nil
 }
 
@@ -772,7 +772,7 @@ func (s *Service) DeleteK8sCluster(id uint) error {
 	if err := s.db.Delete(&model.K8sCluster{}, id).Error; err != nil {
 		return err
 	}
-	s.recordAssetChange("k8s", id, cluster.Name, "delete", "删除 K8s 集群", "system")
+	s.recordAssetChange("k8s", id, cluster.Name, "delete", "Delete Kubernetes Cluster", "system")
 	return nil
 }
 
@@ -831,24 +831,24 @@ func (s *Service) getK8sClusterDetailUncached(clusterID uint) (model.K8sClusterD
 
 	runtime, err := parseKubeConfig(cluster.KubeConfig)
 	if err != nil {
-		return model.K8sClusterDetail{}, fmt.Errorf("解析 kubeconfig 失败: %w", err)
+		return model.K8sClusterDetail{}, fmt.Errorf("failed to parse kubeconfig: %w", err)
 	}
-	// 集群详情必须复用与集群连接方式一致的客户端。对于 gateway 模式，
-	// 该客户端会先连接网关，再由网关访问私网 Kubernetes API；不能在
-	// Ops Admin 所在机器上直接拨号 kubeconfig 中的私网地址。
+	// Cluster details must use a client that matches the configured connection mode.
+	// In gateway mode, the client connects to the gateway before accessing the private Kubernetes API;
+	// the Ops Admin host must not dial the private kubeconfig address directly.
 	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
 	if err != nil {
-		return model.K8sClusterDetail{}, fmt.Errorf("创建 Kubernetes API 客户端失败: %w", err)
+		return model.K8sClusterDetail{}, fmt.Errorf("failed to create Kubernetes API client: %w", err)
 	}
 	defer cleanup()
 
 	data, err := fetchK8sData(client, runtime)
 	if err != nil {
-		route := "直连"
+		route := "direct connection"
 		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
-			route = "网关转发"
+			route = "gateway relay"
 		}
-		return model.K8sClusterDetail{}, fmt.Errorf("通过%s获取 Kubernetes 集群详情失败: %w", route, err)
+		return model.K8sClusterDetail{}, fmt.Errorf("failed to retrieve Kubernetes cluster details through %s: %w", route, err)
 	}
 
 	metrics := calculateK8sAggregateMetrics(data.Nodes, data.Pods)
@@ -962,7 +962,7 @@ func (s *Service) UpdateK8sNodeLabels(payload model.K8sNodeLabelsPayload) error 
 	for key, value := range payload.Labels {
 		key = strings.TrimSpace(key)
 		if key == "" {
-			return errors.New("节点标签键不能为空")
+			return errors.New("node label key is required")
 		}
 		labelsPatch[key] = strings.TrimSpace(value)
 	}
@@ -1256,10 +1256,10 @@ func (s *Service) resolveK8sMonitorDatasource(datasourceID uint) (*uint, error) 
 	}
 	var datasource model.MonitorDatasource
 	if err := s.db.First(&datasource, datasourceID).Error; err != nil {
-		return nil, errors.New("监控数据源不存在")
+		return nil, errors.New("monitoring datasource does not exist")
 	}
 	if datasource.Status != 1 || !isMonitorMetricDatasource(datasource.Type) {
-		return nil, errors.New("请选择已启用的 Prometheus 或 VictoriaMetrics 数据源")
+		return nil, errors.New("select an enabled Prometheus or VictoriaMetrics datasource")
 	}
 	id := datasource.ID
 	return &id, nil
@@ -2323,9 +2323,9 @@ func (s *Service) GetK8sIngressDetail(clusterID uint, namespace string, ingressN
 		address = firstNonEmpty(ingress.Status.LoadBalancer.Ingress[0].IP, ingress.Status.LoadBalancer.Ingress[0].Hostname)
 	}
 
-	tls := "未启用"
+	tls := "Disabled"
 	if len(ingress.Spec.TLS) > 0 {
-		tls = "已启用"
+		tls = "Enabled"
 	}
 
 	hosts := make([]string, 0, len(ingress.Spec.Rules))
@@ -2453,8 +2453,8 @@ func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace str
 			Kind:      "PVC",
 			Namespace: fallbackText(item.Metadata.Namespace),
 			Status:    fallbackText(item.Status.Phase),
-			// PVC 列表与详情应展示用户声明的申请容量；绑定后 status.capacity
-			// 表示实际绑定 PV 的容量，可能大于 PVC 请求容量。
+			// PVC lists and details should display the requested capacity declared by the user; after binding, status.capacity
+			// represents the actual PV capacity and may be larger than the PVC request.
 			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
 			StorageClass: fallbackText(item.Spec.StorageClassName),
 			AccessModes:  strings.Join(item.Spec.AccessModes, ", "),
@@ -2472,7 +2472,7 @@ func (s *Service) GetK8sStorageDetail(clusterID uint, kind string, namespace str
 		return model.K8sStorageDetail{
 			Name:           item.Metadata.Name,
 			Kind:           "PV",
-			Namespace:      "集群级",
+			Namespace:      "Cluster-scoped",
 			NamespaceScope: storageNamespaceScope(item.Metadata.Annotations),
 			Status:         fallbackText(item.Status.Phase),
 			Capacity:       fallbackText(firstNonEmpty(item.Status.Capacity["storage"], item.Spec.Capacity["storage"])),
@@ -2895,11 +2895,11 @@ func buildCronJobDetail(client *http.Client, runtime kubeClusterRuntime, item ku
 func buildOverviewDistribution(cluster model.K8sClusterView, nodes []kubeNode, configMaps []kubeConfigMap) []model.K8sKVTextItem {
 	serviceCIDR, podCIDR := resolveK8sNetworkCIDRs(nodes, configMaps)
 	return []model.K8sKVTextItem{
-		{Label: "集群状态", Value: cluster.StatusText},
-		{Label: "集群版本", Value: fallbackText(cluster.Version)},
-		{Label: "节点数量", Value: intLabel(cluster.NodeCount, " 个")},
-		{Label: "Service IP 段", Value: serviceCIDR},
-		{Label: "容器网络", Value: podCIDR},
+		{Label: "Cluster Status", Value: cluster.StatusText},
+		{Label: "Cluster Version", Value: fallbackText(cluster.Version)},
+		{Label: "Node Count", Value: intLabel(cluster.NodeCount, " nodes")},
+		{Label: "Service CIDR", Value: serviceCIDR},
+		{Label: "Pod Network", Value: podCIDR},
 	}
 }
 
@@ -2908,7 +2908,7 @@ func buildOverviewDistribution(cluster model.K8sClusterView, nodes []kubeNode, c
 // Kubernetes does not expose the Service CIDR from a stable core API, so an
 // unavailable value is intentionally reported as unavailable instead of guessed.
 func resolveK8sNetworkCIDRs(nodes []kubeNode, configMaps []kubeConfigMap) (string, string) {
-	serviceCIDR, podCIDR := "未识别", "未识别"
+	serviceCIDR, podCIDR := "Unknown", "Unknown"
 	for _, configMap := range configMaps {
 		if configMap.Metadata.Namespace != "kube-system" || configMap.Metadata.Name != "kubeadm-config" {
 			continue
@@ -2933,7 +2933,7 @@ func resolveK8sNetworkCIDRs(nodes []kubeNode, configMaps []kubeConfigMap) (strin
 			}
 		}
 	}
-	if podCIDR == "未识别" {
+	if podCIDR == "Unknown" {
 		cidrs := make([]string, 0)
 		seen := map[string]struct{}{}
 		for _, node := range nodes {
@@ -2962,10 +2962,10 @@ func resolveK8sNetworkCIDRs(nodes []kubeNode, configMaps []kubeConfigMap) (strin
 
 func buildOverviewCertificates(runtime kubeClusterRuntime) []model.K8sCertificate {
 	certificates := make([]model.K8sCertificate, 0, 2)
-	if certificate, ok := parseOverviewCertificate("CA 证书", "certificate-authority", runtime.CertificateAuthority); ok {
+	if certificate, ok := parseOverviewCertificate("CA Certificate", "certificate-authority", runtime.CertificateAuthority); ok {
 		certificates = append(certificates, certificate)
 	}
-	if certificate, ok := parseOverviewCertificate("客户端证书", "client-certificate", runtime.ClientCertificateData); ok {
+	if certificate, ok := parseOverviewCertificate("Client Certificate", "client-certificate", runtime.ClientCertificateData); ok {
 		certificates = append(certificates, certificate)
 	}
 	return certificates
@@ -3019,11 +3019,11 @@ func k8sCertificateStatus(notAfter time.Time) (string, string) {
 	remaining := time.Until(notAfter)
 	switch {
 	case remaining <= 0:
-		return "expired", "已过期"
+		return "expired", "Expired"
 	case remaining <= 30*24*time.Hour:
-		return "warning", "即将到期"
+		return "warning", "Expiring Soon"
 	default:
-		return "valid", "有效"
+		return "valid", "Valid"
 	}
 }
 
@@ -3243,8 +3243,8 @@ func buildPodItemsWithWorkloads(data k8sFetchedData) []model.K8sPodItem {
 		if refs[key].Name != "" {
 			continue
 		}
-		// 部分受限集群不会返回 ownerReferences；在这种情况下按 Kubernetes
-		// 控制器生成的 Pod 名称前缀兜底，并优先选择最长的工作负载名称。
+		// Some restricted clusters do not return ownerReferences. In that case, use Kubernetes
+		// controller-generated Pod name prefixes as a fallback and prefer the longest matching workload name.
 		for _, candidate := range workloadsByNamespace[pod.Metadata.Namespace] {
 			if strings.HasPrefix(pod.Metadata.Name, candidate.Name+"-") && len(candidate.Name) > len(refs[key].Name) {
 				refs[key] = candidate
@@ -3428,8 +3428,8 @@ func serviceExternalIP(service kubeService) string {
 }
 
 func k8sWorkloadResourcePath(namespace string, workloadType string, workloadName string) (string, error) {
-	// 页面列表展示的是 Deployment / StatefulSet 等 Kubernetes Kind，
-	// 而 API 调用也可能传入小写形式；路径选择统一按规范化的小写值处理。
+	// The UI lists Kubernetes kinds such as Deployment and StatefulSet, while API calls may use lowercase values.
+	// Normalize to lowercase before selecting the resource path.
 	switch strings.ToLower(strings.TrimSpace(workloadType)) {
 	case "deployment":
 		return fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, workloadName), nil
@@ -3552,7 +3552,7 @@ func formatK8sEnvSource(valueFrom map[string]any) string {
 		}
 		return sourceType
 	}
-	return "由 Kubernetes 引用提供"
+	return "Provided by Kubernetes reference"
 }
 
 func buildWorkloadImagePatchBody(containers []map[string]any) map[string]any {
@@ -3607,7 +3607,7 @@ func formatWorkloadResourceSummary(containers []kubeContainer, requests bool) st
 
 func formatCPUMilli(value int64) string {
 	if value >= 1000 && value%1000 == 0 {
-		return fmt.Sprintf("%d核", value/1000)
+		return fmt.Sprintf("%d cores", value/1000)
 	}
 	return fmt.Sprintf("%dm", value)
 }
@@ -3999,9 +3999,9 @@ func buildNetworkSection(services []kubeService, ingresses []kubeIngress, endpoi
 			address = firstNonEmpty(ingress.Status.LoadBalancer.Ingress[0].IP, ingress.Status.LoadBalancer.Ingress[0].Hostname)
 		}
 
-		tls := "未启用"
+		tls := "Disabled"
 		if len(ingress.Spec.TLS) > 0 {
-			tls = "已启用"
+			tls = "Enabled"
 		}
 
 		ingressItems = append(ingressItems, model.K8sIngressItem{
@@ -4054,7 +4054,7 @@ func storageNamespaceScope(annotations map[string]string) string {
 			return scope
 		}
 	}
-	return "集群级"
+	return "Cluster-scoped"
 }
 
 func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret, pvcs []kubePersistentVolumeClaim, pvs []kubePersistentVolume) model.K8sConfigStorageSection {
@@ -4097,7 +4097,7 @@ func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret,
 			Kind:      "PVC",
 			Namespace: fallbackText(item.Metadata.Namespace),
 			Status:    fallbackText(item.Status.Phase),
-			// 申请容量优先于绑定 PV 的实际容量，避免把 PV 容量误展示为 PVC 容量。
+			// Prefer requested capacity over the bound PV capacity to avoid displaying PV capacity as the PVC request.
 			Capacity:     fallbackText(firstNonEmpty(item.Spec.Resources.Requests["storage"], item.Status.Capacity["storage"])),
 			StorageClass: fallbackText(item.Spec.StorageClassName),
 			AccessModes:  strings.Join(item.Spec.AccessModes, ", "),
@@ -4108,7 +4108,7 @@ func buildConfigStorageSection(configMaps []kubeConfigMap, secrets []kubeSecret,
 		storageItems = append(storageItems, model.K8sStorageItem{
 			Name:           item.Metadata.Name,
 			Kind:           "PV",
-			Namespace:      "集群级",
+			Namespace:      "Cluster-scoped",
 			NamespaceScope: storageNamespaceScope(item.Metadata.Annotations),
 			Status:         fallbackText(item.Status.Phase),
 			Capacity:       fallbackText(firstNonEmpty(item.Status.Capacity["storage"], item.Spec.Capacity["storage"])),
@@ -4187,13 +4187,13 @@ func toK8sClusterView(cluster model.K8sCluster) model.K8sClusterView {
 
 func validateK8sClusterPayload(cluster model.K8sCluster) error {
 	if cluster.Name == "" {
-		return errors.New("闆嗙兢鍚嶇О涓嶈兘涓虹┖")
+		return errors.New("cluster name is required")
 	}
 	if cluster.KubeConfig == "" {
-		return errors.New("kubeconfig 涓嶈兘涓虹┖")
+		return errors.New("kubeconfig is required")
 	}
 	if cluster.Env == "" {
-		return errors.New("请选择所属环境")
+		return errors.New("select an environment")
 	}
 	if err := validateGatewaySelection(cluster.ConnectionMode, cluster.GatewayID); err != nil {
 		return err
@@ -4204,14 +4204,14 @@ func validateK8sClusterPayload(cluster model.K8sCluster) error {
 func (s *Service) probeK8sCluster(cluster model.K8sCluster) (k8sClusterProbe, error) {
 	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
 	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("集群配置解析失败: %w", err)
+		return k8sClusterProbe{}, fmt.Errorf("failed to parse cluster configuration: %w", err)
 	}
 	defer cleanup()
 	config.Timeout = 8 * time.Second
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("Kubernetes 客户端初始化失败: %w", err)
+		return k8sClusterProbe{}, fmt.Errorf("failed to initialize Kubernetes client: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -4219,13 +4219,13 @@ func (s *Service) probeK8sCluster(cluster model.K8sCluster) (k8sClusterProbe, er
 	version, err := clientset.Discovery().ServerVersion()
 	if err != nil {
 		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
-			return k8sClusterProbe{}, fmt.Errorf("通过网关连接 API Server 失败（%s）: %w", config.Host, err)
+			return k8sClusterProbe{}, fmt.Errorf("failed to connect to API Server through gateway (%s): %w", config.Host, err)
 		}
-		return k8sClusterProbe{}, fmt.Errorf("连接 API Server 失败（%s）: %w", config.Host, err)
+		return k8sClusterProbe{}, fmt.Errorf("failed to connect to API Server (%s): %w", config.Host, err)
 	}
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("连接成功，但读取节点列表失败（请检查 nodes/list 权限）: %w", err)
+		return k8sClusterProbe{}, fmt.Errorf("connection succeeded but node listing failed; verify nodes/list permission: %w", err)
 	}
 
 	return k8sClusterProbe{
@@ -4799,22 +4799,22 @@ func friendlyK8sYAMLError(payload model.K8sResourceYAMLPayload, err error) error
 	if strings.Contains(lower, "field is immutable") || strings.Contains(lower, "immutable") {
 		switch strings.ToLower(Trimmed(payload.ResourceType)) {
 		case "pod":
-			return errors.New("Pod 瀛樺湪涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ユ洿鏂拌繖閮ㄥ垎鍐呭銆傚缓璁慨鏀瑰彲鍙樺瓧娈碉紝鎴栧垹闄ゅ悗閲嶆柊鍒涘缓 Pod")
+			return errors.New("the Pod contains immutable fields that Kubernetes cannot update directly; modify only mutable fields or recreate the Pod")
 		case "pv", "pvc":
-			return errors.New("褰撳墠瀛樺偍璧勬簮鍖呭惈涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ヨ鐩栦繚瀛樸€傝浠呬慨鏀瑰彲鍙樺瓧娈碉紝鎴栨寜瀛樺偍鍙樻洿娴佺▼澶勭悊")
+			return errors.New("the storage resource contains immutable fields and cannot be overwritten directly; modify only mutable fields or use the storage-change workflow")
 		default:
-			return errors.New("褰撳墠璧勬簮鍖呭惈涓嶅彲鍙樺瓧娈碉紝Kubernetes 涓嶅厑璁哥洿鎺ヨ鐩栦繚瀛樸€傝妫€鏌?metadata銆乻elector銆乿olume 绛夊瓧娈垫槸鍚﹁淇敼")
+			return errors.New("the resource contains immutable fields and cannot be overwritten directly; check whether metadata, selector, or volume fields were changed")
 		}
 	}
 
 	if strings.Contains(lower, "already exists") {
-		return errors.New("YAML 涓殑璧勬簮鏍囪瘑涓庡綋鍓嶉泦缇ょ幇鏈夎祫婧愬啿绐侊紝璇锋鏌ュ悕绉般€佸懡鍚嶇┖闂存垨鍏宠仈瀵硅薄")
+		return errors.New("the YAML resource identity conflicts with an existing cluster resource; verify the name, namespace, and related objects")
 	}
 	if strings.Contains(lower, "not found") {
-		return errors.New("目标资源不存在，可能已被删除或命名空间已变化，请刷新后重试")
+		return errors.New("target resource does not exist; it may have been deleted or moved to another namespace; refresh and retry")
 	}
 	if strings.Contains(lower, "invalid") || strings.Contains(lower, "unprocessable entity") {
-		return errors.New("YAML 鏍￠獙鏈€氳繃锛岃妫€鏌ュ瓧娈垫牸寮忋€乤piVersion銆乲ind 浠ュ強 spec 鍐呭鏄惁姝ｇ‘")
+		return errors.New("YAML validation failed; verify field formats, apiVersion, kind, and spec content")
 	}
 	return err
 }
@@ -4863,11 +4863,11 @@ func k8sGetText(client *http.Client, runtime kubeClusterRuntime, path string, qu
 func k8sStatusText(status string) string {
 	switch normalizedK8sStatus(status) {
 	case "warning":
-		return "部分告警"
+		return "Partial Alerts"
 	case "offline":
-		return "离线"
+		return "Offline"
 	default:
-		return "运行中"
+		return "Running"
 	}
 }
 
@@ -5000,7 +5000,7 @@ func humanizeAge(timestamp string) string {
 
 	duration := time.Since(createdAt)
 	if duration < time.Minute {
-		return "刚刚"
+		return "Just now"
 	}
 	if duration < time.Hour {
 		return fmt.Sprintf("%dm", int(duration.Minutes()))

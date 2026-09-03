@@ -190,7 +190,7 @@ func normalizeDatabaseAccessMode(value string) string {
 
 func ensureDatabaseWritable(item *model.AssetDatabase) error {
 	if item != nil && normalizeDatabaseAccessMode(item.AccessMode) == "readonly" {
-		return errors.New("当前数据库为只读模式，禁止新增、编辑、删除或导入数据")
+		return errors.New("the current database is read-only; creating, editing, deleting, or importing data is not allowed")
 	}
 	return nil
 }
@@ -365,16 +365,16 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 		Description:    Trimmed(payload.Description),
 	}
 	if item.Name == "" {
-		return errors.New("数据库名称不能为空")
+		return errors.New("database name is required")
 	}
 	if item.Host == "" {
-		return errors.New("数据库地址不能为空")
+		return errors.New("database address is required")
 	}
 	if databaseRequiresUsername(item.DBType) && item.Username == "" {
-		return errors.New("数据库用户名不能为空")
+		return errors.New("database username is required")
 	}
 	if item.Env == "" {
-		return errors.New("请选择所属环境")
+		return errors.New("select an environment")
 	}
 	if err := validateGatewaySelection(item.ConnectionMode, item.GatewayID); err != nil {
 		return err
@@ -394,7 +394,7 @@ func (s *Service) CreateAssetDatabase(payload AssetDatabasePayload) error {
 	if err := s.db.Create(&item).Error; err != nil {
 		return err
 	}
-	s.recordAssetChange("database", item.ID, item.Name, "create", "新增数据库资产", payload.Operator)
+	s.recordAssetChange("database", item.ID, item.Name, "create", "Create Database Asset", payload.Operator)
 	return nil
 }
 
@@ -426,16 +426,16 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 		"description":     Trimmed(payload.Description),
 	}
 	if Trimmed(payload.Name) == "" {
-		return errors.New("数据库名称不能为空")
+		return errors.New("database name is required")
 	}
 	if Trimmed(payload.Host) == "" {
-		return errors.New("数据库地址不能为空")
+		return errors.New("database address is required")
 	}
 	if databaseRequiresUsername(payload.DBType) && Trimmed(payload.Username) == "" {
-		return errors.New("数据库用户名不能为空")
+		return errors.New("database username is required")
 	}
 	if normalizeEnvCode(payload.Env) == "" {
-		return errors.New("请选择所属环境")
+		return errors.New("select an environment")
 	}
 	if err := validateGatewaySelection(normalizeConnectionMode(payload.ConnectionMode), optionalGatewayID(payload.ConnectionMode, payload.GatewayID)); err != nil {
 		return err
@@ -468,7 +468,7 @@ func (s *Service) UpdateAssetDatabase(payload AssetDatabasePayload) error {
 	if err := s.db.Model(&model.AssetDatabase{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
 		return err
 	}
-	s.recordAssetChange("database", payload.ID, payload.Name, "update", "更新数据库基础信息", payload.Operator)
+	s.recordAssetChange("database", payload.ID, payload.Name, "update", "Update Database Details", payload.Operator)
 	return nil
 }
 
@@ -478,7 +478,7 @@ func (s *Service) DeleteAssetDatabase(id uint) error {
 	if err := s.db.Delete(&model.AssetDatabase{}, id).Error; err != nil {
 		return err
 	}
-	s.recordAssetChange("database", id, item.Name, "delete", "删除数据库资产", "system")
+	s.recordAssetChange("database", id, item.Name, "delete", "Delete Database Asset", "system")
 	return nil
 }
 
@@ -609,10 +609,10 @@ func (s *Service) GetDatabaseSchemaTree(databaseID uint) (map[string]any, error)
 func (s *Service) CreateDatabaseSchema(payload DBMSCreateDatabasePayload) (map[string]any, error) {
 	name := strings.TrimSpace(payload.Name)
 	if payload.DatabaseID == 0 || name == "" {
-		return nil, errors.New("请输入数据库名称")
+		return nil, errors.New("enter a database name")
 	}
 	if !databaseObjectNamePattern.MatchString(name) {
-		return nil, errors.New("名称须以字母或下划线开头，仅可包含字母、数字和下划线，长度不超过 63 个字符")
+		return nil, errors.New("name must start with a letter or underscore, contain only letters, digits, and underscores, and be at most 63 characters")
 	}
 
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, "")
@@ -638,25 +638,25 @@ func (s *Service) CreateDatabaseSchema(payload DBMSCreateDatabasePayload) (map[s
 			collation = "utf8mb4_unicode_ci"
 		}
 		if !mysqlCharsetOptionPattern.MatchString(charset) || !mysqlCharsetOptionPattern.MatchString(collation) {
-			return nil, errors.New("字符集或排序规则格式不正确")
+			return nil, errors.New("invalid character set or collation format")
 		}
 		if !strings.HasPrefix(strings.ToLower(collation), strings.ToLower(charset)+"_") {
-			return nil, errors.New("排序规则必须与所选字符集匹配")
+			return nil, errors.New("collation must match the selected character set")
 		}
 		sqlText = "CREATE DATABASE " + quoteIdentifier(name) + " CHARACTER SET " + charset + " COLLATE " + collation
 	case "postgresql":
 		objectType = "schema"
 		sqlText = "CREATE SCHEMA " + postgresQuoteIdentifier(name)
 	default:
-		return nil, errors.New("当前数据库类型不支持新增数据库")
+		return nil, errors.New("the current database type does not support creating databases")
 	}
 	if _, err := db.Exec(sqlText); err != nil {
 		return nil, err
 	}
 
-	summary := "SQL 工作台新增数据库：" + name
+	summary := "SQL Workbench Create Database: " + name
 	if objectType == "schema" {
-		summary = "SQL 工作台新增 PostgreSQL Schema：" + name
+		summary = "SQL Workbench Create PostgreSQL Schema: " + name
 	}
 	s.recordAssetChange("database", item.ID, item.Name, "create_schema", summary, payload.Operator)
 	return map[string]any{"name": name, "objectType": objectType}, nil
@@ -670,7 +670,7 @@ func (s *Service) GetDatabaseCharsetOptions(databaseID uint, charset string) (ma
 	defer cleanup()
 	defer db.Close()
 	if normalizeDatabaseType(item.DBType) != "mysql" {
-		return nil, errors.New("当前数据库类型不支持字符集与排序规则设置")
+		return nil, errors.New("the current database type does not support character-set or collation settings")
 	}
 
 	charsetRows, err := db.Query(`
@@ -724,7 +724,7 @@ func (s *Service) GetDatabaseCharsetOptions(databaseID uint, charset string) (ma
 
 func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[string]any, error) {
 	if payload.DatabaseID == 0 || strings.TrimSpace(payload.Table) == "" {
-		return nil, errors.New("请先选择数据表")
+		return nil, errors.New("select a table first")
 	}
 	asset, err := s.getAssetDatabase(payload.DatabaseID)
 	if err != nil {
@@ -734,7 +734,7 @@ func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[s
 		return s.getPostgresTableData(asset, payload)
 	}
 	if payload.DatabaseID == 0 || payload.Table == "" {
-		return nil, errors.New("请先选择表")
+		return nil, errors.New("select a table first")
 	}
 	if payload.PageNum < 1 {
 		payload.PageNum = 1
@@ -823,17 +823,17 @@ func (s *Service) GetDatabaseTableData(payload DBMSTableDataQueryPayload) (map[s
 func (s *Service) ExecuteDatabaseSQL(payload DBMSSQLExecutePayload) (map[string]any, error) {
 	sqlText := strings.TrimSpace(payload.SQLText)
 	if payload.DatabaseID == 0 || sqlText == "" {
-		return nil, errors.New("请输入 SQL")
+		return nil, errors.New("enter SQL")
 	}
 	analysis, err := s.AnalyzeDatabaseSQL(payload)
 	if err != nil {
 		return nil, err
 	}
 	if analysis.WriteOperation && analysis.AccessMode == "readonly" {
-		return nil, errors.New("当前数据库为只读模式，禁止执行写入或结构变更 SQL")
+		return nil, errors.New("the current database is read-only; write or schema-changing SQL is not allowed")
 	}
 	if analysis.WriteOperation && !payload.Confirmed {
-		return nil, errors.New("写操作必须完成执行前确认")
+		return nil, errors.New("write operations require confirmation before execution")
 	}
 	start := time.Now()
 	item, db, cleanup, err := s.openDatabaseByID(payload.DatabaseID, payload.Schema)
@@ -919,7 +919,7 @@ func (s *Service) ExecuteDatabaseSQL(payload DBMSSQLExecutePayload) (map[string]
 
 func (s *Service) AnalyzeDatabaseSQL(payload DBMSSQLExecutePayload) (*DBMSSQLAnalysis, error) {
 	if payload.DatabaseID == 0 || strings.TrimSpace(payload.SQLText) == "" {
-		return nil, errors.New("请输入 SQL")
+		return nil, errors.New("enter SQL")
 	}
 	item, err := s.getAssetDatabase(payload.DatabaseID)
 	if err != nil {
@@ -927,7 +927,7 @@ func (s *Service) AnalyzeDatabaseSQL(payload DBMSSQLExecutePayload) (*DBMSSQLAna
 	}
 	statements := splitDBMSSQLStatements(payload.SQLText)
 	if len(statements) == 0 {
-		return nil, errors.New("请输入有效 SQL")
+		return nil, errors.New("enter valid SQL")
 	}
 	sqlType := detectSQLType(statements[0])
 	writeOperation := false
@@ -941,11 +941,11 @@ func (s *Service) AnalyzeDatabaseSQL(payload DBMSSQLExecutePayload) (*DBMSSQLAna
 		switch statementType {
 		case "DROP", "TRUNCATE", "ALTER", "GRANT", "REVOKE", "RENAME":
 			riskLevel = "high"
-			reasons = append(reasons, statementType+" 属于高风险结构或权限变更")
+			reasons = append(reasons, statementType+" is a high-risk schema or privilege change")
 		case "UPDATE", "DELETE":
 			if !regexp.MustCompile(`(?i)\bWHERE\b`).MatchString(stripDBMSSQLComments(statement)) {
 				riskLevel = "high"
-				reasons = append(reasons, statementType+" 未包含 WHERE 条件")
+				reasons = append(reasons, statementType+" does not contain a WHERE clause")
 			} else if riskLevel != "high" {
 				riskLevel = "medium"
 			}
@@ -956,22 +956,22 @@ func (s *Service) AnalyzeDatabaseSQL(payload DBMSSQLExecutePayload) (*DBMSSQLAna
 		default:
 			if !isReadOnlySQL(statement) {
 				riskLevel = "high"
-				reasons = append(reasons, "包含无法确认为只读的 SQL 语句")
+				reasons = append(reasons, "contains SQL that cannot be verified as read-only")
 			}
 		}
 	}
 	if len(statements) > 1 {
-		reasons = append(reasons, fmt.Sprintf("将连续执行 %d 条 SQL", len(statements)))
+		reasons = append(reasons, fmt.Sprintf("will execute %d SQL statements sequentially", len(statements)))
 		if writeOperation && riskLevel == "low" {
 			riskLevel = "medium"
 		}
 	}
 	if writeOperation && normalizeEnvCode(item.Env) == "prod" {
 		riskLevel = "high"
-		reasons = append(reasons, "目标数据库属于生产环境")
+		reasons = append(reasons, "target database belongs to the production environment")
 	}
 	if len(reasons) == 0 {
-		reasons = append(reasons, "未发现明显高风险特征")
+		reasons = append(reasons, "no obvious high-risk characteristics detected")
 	}
 	return &DBMSSQLAnalysis{
 		SQLType:        sqlType,
@@ -1049,7 +1049,7 @@ func (s *Service) InsertDatabaseTableRow(payload DBMSTableInsertPayload) (map[st
 		}
 	}
 	if len(insertColumns) == 0 {
-		return nil, errors.New("没有可插入的数据")
+		return nil, errors.New("no data is available to insert")
 	}
 
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(insertColumns)), ",")
@@ -1113,7 +1113,7 @@ func (s *Service) UpdateDatabaseTableRow(payload DBMSTableUpdatePayload) (map[st
 		return nil, err
 	}
 	if !databaseColumnsHavePrimaryKey(columns) {
-		return nil, errors.New("当前表没有主键，禁止直接编辑结果集")
+		return nil, errors.New("the current table has no primary key; direct result-set editing is not allowed")
 	}
 
 	setParts := make([]string, 0)
@@ -1183,7 +1183,7 @@ func (s *Service) DeleteDatabaseTableRow(payload DBMSTableDeletePayload) (map[st
 		return nil, err
 	}
 	if !databaseColumnsHavePrimaryKey(columns) {
-		return nil, errors.New("当前表没有主键，禁止删除结果集数据")
+		return nil, errors.New("the current table has no primary key; deleting result-set rows is not allowed")
 	}
 	whereSQL, args := buildRowWhereClause(columns, payload.Row)
 	deleteSQL := fmt.Sprintf(
@@ -1204,7 +1204,7 @@ func (s *Service) DeleteDatabaseTableRow(payload DBMSTableDeletePayload) (map[st
 
 func (s *Service) ExportDatabaseTable(databaseID uint, schema string, table string, includeData bool) ([]byte, string, error) {
 	if databaseID == 0 || strings.TrimSpace(table) == "" {
-		return nil, "", errors.New("请先选择表")
+		return nil, "", errors.New("select a table first")
 	}
 	item, db, cleanup, err := s.openDatabaseByID(databaseID, schema)
 	if err != nil {
@@ -1227,7 +1227,7 @@ func (s *Service) ExportDatabaseTable(databaseID uint, schema string, table stri
 	defer showRows.Close()
 	_, dataRows, err := scanRows(showRows)
 	if err != nil || len(dataRows) == 0 {
-		return nil, "", errors.New("获取建表语句失败")
+		return nil, "", errors.New("failed to retrieve the CREATE TABLE statement")
 	}
 	createSQL := fmt.Sprintf("%v", dataRows[0]["Create Table"])
 	builder := &strings.Builder{}
@@ -1266,10 +1266,10 @@ func (s *Service) ExportDatabaseTable(databaseID uint, schema string, table stri
 
 func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any, error) {
 	if payload.SourceDatabaseID == 0 || payload.TargetDatabaseID == 0 {
-		return nil, errors.New("请选择源数据库和目标数据库")
+		return nil, errors.New("select source and target databases")
 	}
 	if strings.TrimSpace(payload.SourceTable) == "" {
-		return nil, errors.New("请选择源表")
+		return nil, errors.New("select a source table")
 	}
 	sourceAsset, sourceDB, sourceCleanup, err := s.openDatabaseByID(payload.SourceDatabaseID, payload.SourceSchema)
 	if err != nil {
@@ -1309,7 +1309,7 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 		sourceType := normalizeDatabaseType(sourceAsset.DBType)
 		targetType := normalizeDatabaseType(targetAsset.DBType)
 		if sourceType != targetType {
-			return nil, errors.New("跨数据库类型导入暂不支持自动建表，请先创建目标表后再导入")
+			return nil, errors.New("automatic table creation is not supported for cross-database-type imports; create the target table first")
 		}
 		if sourceType == "postgresql" {
 			if err := s.createPostgresImportTable(sourceDB, targetDB, sourceSchema, payload.SourceTable, targetSchema, targetTable); err != nil {
@@ -1324,7 +1324,7 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 			_, list, err := scanRows(rows)
 			rows.Close()
 			if err != nil || len(list) == 0 {
-				return nil, errors.New("获取源表结构失败")
+				return nil, errors.New("failed to retrieve source-table schema")
 			}
 			createSQL := mysqlImportCreateTableSQL(fmt.Sprintf("%v", list[0]["Create Table"]), payload.SourceTable, targetTable)
 			if _, err := targetDB.Exec(createSQL); err != nil {
@@ -1353,7 +1353,7 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 		}
 	}
 	if len(commonColumns) == 0 {
-		return nil, errors.New("源表和目标表没有可匹配的字段")
+		return nil, errors.New("source and target tables have no matching columns")
 	}
 
 	if payload.TruncateTarget {
@@ -1416,7 +1416,7 @@ func (s *Service) ImportDatabaseTable(payload DBMSImportPayload) (map[string]any
 
 func (s *Service) CreateExportTask(payload DBMSExportPayload) (map[string]any, error) {
 	if payload.DatabaseID == 0 || strings.TrimSpace(payload.Table) == "" {
-		return nil, errors.New("请先选择要导出的表")
+		return nil, errors.New("select tables to export first")
 	}
 	asset, err := s.getAssetDatabase(payload.DatabaseID)
 	if err != nil {
@@ -1426,7 +1426,7 @@ func (s *Service) CreateExportTask(payload DBMSExportPayload) (map[string]any, e
 		TaskType:     "export",
 		Status:       "pending",
 		Progress:     0,
-		Message:      "等待执行",
+		Message:      "Pending execution",
 		DatabaseID:   asset.ID,
 		DatabaseName: asset.Name,
 		SchemaName:   defaultSchema(asset, payload.Schema),
@@ -1441,14 +1441,14 @@ func (s *Service) CreateExportTask(payload DBMSExportPayload) (map[string]any, e
 
 func (s *Service) CreateImportTask(payload DBMSImportPayload) (map[string]any, error) {
 	if payload.SourceDatabaseID == 0 || payload.TargetDatabaseID == 0 {
-		return nil, errors.New("请选择源数据库和目标数据库")
+		return nil, errors.New("select source and target databases")
 	}
 	precheck, err := s.PrecheckImportTask(payload)
 	if err != nil {
 		return nil, err
 	}
 	if !precheck.Ready {
-		return nil, errors.New("导入预检查未通过，请处理风险项后重试")
+		return nil, errors.New("import precheck failed; resolve the risk items and retry")
 	}
 	sourceAsset, err := s.getAssetDatabase(payload.SourceDatabaseID)
 	if err != nil {
@@ -1465,7 +1465,7 @@ func (s *Service) CreateImportTask(payload DBMSImportPayload) (map[string]any, e
 		TaskType:         "import",
 		Status:           "pending",
 		Progress:         0,
-		Message:          "等待执行",
+		Message:          "Pending execution",
 		SourceDatabaseID: sourceAsset.ID,
 		SourceDatabase:   sourceAsset.Name,
 		SourceSchema:     defaultSchema(sourceAsset, payload.SourceSchema),
@@ -1486,7 +1486,7 @@ func (s *Service) CreateImportTask(payload DBMSImportPayload) (map[string]any, e
 
 func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrecheck, error) {
 	if payload.SourceDatabaseID == 0 || payload.TargetDatabaseID == 0 || strings.TrimSpace(payload.SourceTable) == "" {
-		return nil, errors.New("请选择源数据库、源表和目标数据库")
+		return nil, errors.New("select a source database, source table, and target database")
 	}
 	sourceAsset, sourceDB, sourceCleanup, err := s.openDatabaseByID(payload.SourceDatabaseID, payload.SourceSchema)
 	if err != nil {
@@ -1522,7 +1522,7 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 		return nil, err
 	}
 	if len(sourceColumns) == 0 {
-		return nil, errors.New("源表不存在或没有可导入字段")
+		return nil, errors.New("source table does not exist or has no importable columns")
 	}
 	targetColumns, err := s.getImportTableColumns(targetAsset, targetDB, targetSchema, targetTable)
 	if err != nil {
@@ -1549,19 +1549,19 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 	}
 	warnings := make([]string, 0)
 	if normalizeDatabaseAccessMode(targetAsset.AccessMode) == "readonly" {
-		warnings = append(warnings, "目标数据库为只读模式")
+		warnings = append(warnings, "target database is read-only")
 	}
 	if len(targetColumns) == 0 && !payload.CreateIfMissing {
-		warnings = append(warnings, "目标表不存在，且未启用自动建表")
+		warnings = append(warnings, "target table does not exist and automatic table creation is disabled")
 	}
 	if normalizeDatabaseType(sourceAsset.DBType) != normalizeDatabaseType(targetAsset.DBType) && payload.CreateIfMissing {
-		warnings = append(warnings, "跨数据库类型导入不支持自动建表，请先创建目标表")
+		warnings = append(warnings, "cross-database-type imports do not support automatic table creation; create the target table first")
 	}
 	if payload.TruncateTarget {
-		warnings = append(warnings, "导入前将清空目标表全部数据")
+		warnings = append(warnings, "all target-table data will be cleared before import")
 	}
 	if len(missingColumns) > 0 {
-		warnings = append(warnings, fmt.Sprintf("有 %d 个源字段无法映射到目标表", len(missingColumns)))
+		warnings = append(warnings, fmt.Sprintf("%d source columns cannot be mapped to the target table", len(missingColumns)))
 	}
 	ready := normalizeDatabaseAccessMode(targetAsset.AccessMode) != "readonly" &&
 		(len(targetColumns) > 0 || (payload.CreateIfMissing && normalizeDatabaseType(sourceAsset.DBType) == normalizeDatabaseType(targetAsset.DBType))) &&
@@ -1584,7 +1584,7 @@ func (s *Service) PrecheckImportTask(payload DBMSImportPayload) (*DBMSImportPrec
 
 func (s *Service) CreateBatchSQLTask(payload DBMSBatchSQLPayload) (map[string]any, error) {
 	if payload.DatabaseID == 0 || strings.TrimSpace(payload.SQLText) == "" {
-		return nil, errors.New("请选择数据库并提供 SQL 内容")
+		return nil, errors.New("select a database and provide SQL content")
 	}
 	analysis, err := s.AnalyzeDatabaseSQL(DBMSSQLExecutePayload{
 		DatabaseID: payload.DatabaseID,
@@ -1595,10 +1595,10 @@ func (s *Service) CreateBatchSQLTask(payload DBMSBatchSQLPayload) (map[string]an
 		return nil, err
 	}
 	if analysis.WriteOperation && analysis.AccessMode == "readonly" {
-		return nil, errors.New("当前数据库为只读模式，禁止执行批量 SQL")
+		return nil, errors.New("the current database is read-only; batch SQL is not allowed")
 	}
 	if analysis.WriteOperation && !payload.Confirmed {
-		return nil, errors.New("批量 SQL 写操作必须完成执行前确认")
+		return nil, errors.New("batch SQL writes require confirmation before execution")
 	}
 	executionMode := strings.ToLower(strings.TrimSpace(payload.ExecutionMode))
 	if executionMode != "transaction" {
@@ -1608,7 +1608,7 @@ func (s *Service) CreateBatchSQLTask(payload DBMSBatchSQLPayload) (map[string]an
 		for _, statement := range splitDBMSSQLStatements(payload.SQLText) {
 			switch detectSQLType(statement) {
 			case "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME", "GRANT", "REVOKE":
-				return nil, errors.New("事务执行不支持 DDL 或权限语句，请改用顺序执行")
+				return nil, errors.New("transactional execution does not support DDL or privilege statements; use sequential execution")
 			}
 		}
 	}
@@ -1624,7 +1624,7 @@ func (s *Service) CreateBatchSQLTask(payload DBMSBatchSQLPayload) (map[string]an
 		TaskType:      "batch_sql",
 		Status:        "pending",
 		Progress:      0,
-		Message:       "等待执行",
+		Message:       "Pending execution",
 		DatabaseID:    asset.ID,
 		DatabaseName:  asset.Name,
 		SchemaName:    defaultSchema(asset, payload.Schema),
@@ -1646,7 +1646,7 @@ func (s *Service) runBatchSQLTask(taskID uint, clientIP string) {
 		return
 	}
 	startedAt := time.Now()
-	_ = s.db.Model(&task).Updates(map[string]any{"status": "running", "progress": 5, "message": "正在执行 SQL", "started_at": &startedAt}).Error
+	_ = s.db.Model(&task).Updates(map[string]any{"status": "running", "progress": 5, "message": "Executing SQL", "started_at": &startedAt}).Error
 	statements := splitDBMSSQLStatements(task.FileContent)
 	var rowsAffected int64
 	var runErr error
@@ -1664,14 +1664,14 @@ func (s *Service) runBatchSQLTask(taskID uint, clientIP string) {
 				for index, statement := range statements {
 					result, err := tx.Exec(statement)
 					if err != nil {
-						runErr = fmt.Errorf("第 %d 条 SQL 执行失败: %w", index+1, err)
+						runErr = fmt.Errorf("SQL statement %d failed: %w", index+1, err)
 						_ = tx.Rollback()
 						break
 					}
 					affected, _ := result.RowsAffected()
 					rowsAffected += affected
 					progress := 5 + int(float64(index+1)/float64(len(statements))*85)
-					_ = s.db.Model(&task).Updates(map[string]any{"progress": progress, "message": fmt.Sprintf("已执行 %d/%d 条", index+1, len(statements))}).Error
+					_ = s.db.Model(&task).Updates(map[string]any{"progress": progress, "message": fmt.Sprintf("executed %d/%d statements", index+1, len(statements))}).Error
 				}
 				if runErr == nil {
 					runErr = tx.Commit()
@@ -1696,7 +1696,7 @@ func (s *Service) runBatchSQLTask(taskID uint, clientIP string) {
 				ClientIP:   clientIP,
 			})
 			if err != nil {
-				runErr = fmt.Errorf("第 %d 条 SQL 执行失败: %w", index+1, err)
+				runErr = fmt.Errorf("SQL statement %d failed: %w", index+1, err)
 				break
 			}
 			switch value := result["rowsAffected"].(type) {
@@ -1706,7 +1706,7 @@ func (s *Service) runBatchSQLTask(taskID uint, clientIP string) {
 				rowsAffected += int64(value)
 			}
 			progress := 5 + int(float64(index+1)/float64(len(statements))*85)
-			_ = s.db.Model(&task).Updates(map[string]any{"progress": progress, "message": fmt.Sprintf("已执行 %d/%d 条", index+1, len(statements))}).Error
+			_ = s.db.Model(&task).Updates(map[string]any{"progress": progress, "message": fmt.Sprintf("executed %d/%d statements", index+1, len(statements))}).Error
 		}
 	}
 	finishedAt := time.Now()
@@ -1718,7 +1718,7 @@ func (s *Service) runBatchSQLTask(taskID uint, clientIP string) {
 	} else {
 		updates["status"] = "success"
 		updates["progress"] = 100
-		updates["message"] = fmt.Sprintf("执行完成，共 %d 条 SQL", len(statements))
+		updates["message"] = fmt.Sprintf("execution completed: %d SQL statements", len(statements))
 	}
 	_ = s.db.Model(&task).Updates(updates).Error
 }
@@ -1760,7 +1760,7 @@ func (s *Service) GetTransferTaskFile(taskID uint) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if strings.TrimSpace(task.FileContent) == "" {
-		return nil, "", errors.New("当前任务没有可下载文件")
+		return nil, "", errors.New("the current task has no downloadable file")
 	}
 	filename := strings.TrimSpace(task.FileName)
 	if filename == "" {
@@ -1790,7 +1790,7 @@ func (s *Service) openDatabaseByID(id uint, schema string) (*model.AssetDatabase
 	case "postgresql":
 		db, cleanup, err = s.openAssetPostgresDatabase(*item)
 	default:
-		return nil, nil, func() {}, errors.New("当前数据库类型不支持 SQL 工作台，可在左侧查看数据库结构与连接状态")
+		return nil, nil, func() {}, errors.New("the current database type does not support SQL Workbench; review schema and connection status in the sidebar")
 	}
 	if err != nil {
 		return nil, nil, cleanup, err
@@ -1966,7 +1966,7 @@ func buildTableFilterClause(columns []databaseTableColumn, filterKey, filterText
 				return fmt.Sprintf("%s LIKE ?", quoteIdentifier(key)), []any{"%" + text + "%"}, nil
 			}
 		}
-		return "", nil, errors.New("筛选字段不存在")
+		return "", nil, errors.New("filter column does not exist")
 	}
 	parts := make([]string, 0)
 	args := make([]any, 0)
@@ -2140,7 +2140,7 @@ func (s *Service) logDBSQLHistory(asset *model.AssetDatabase, schema, table, sql
 		SQLType:            sqlType,
 		SQLText:            sqlText,
 		ExecutionID:        newDBMSExecutionID(),
-		Operator:           "系统操作",
+		Operator:           "System Operation",
 		Environment:        asset.Env,
 		AccessMode:         normalizeDatabaseAccessMode(asset.AccessMode),
 		Status:             status,
@@ -2162,7 +2162,7 @@ func (s *Service) runExportTask(taskID uint, payload DBMSExportPayload) {
 	s.updateTransferTask(taskID, map[string]any{
 		"status":     "running",
 		"progress":   10,
-		"message":    "正在读取表结构",
+		"message":    "Reading table schema",
 		"started_at": &startedAt,
 	})
 
@@ -2180,7 +2180,7 @@ func (s *Service) runExportTask(taskID uint, payload DBMSExportPayload) {
 	s.updateTransferTask(taskID, map[string]any{
 		"status":       "success",
 		"progress":     100,
-		"message":      "导出完成",
+		"message":      "Export completed",
 		"file_name":    filename,
 		"file_content": string(data),
 		"finished_at":  &finishedAt,
@@ -2192,13 +2192,13 @@ func (s *Service) runImportTask(taskID uint, payload DBMSImportPayload) {
 	s.updateTransferTask(taskID, map[string]any{
 		"status":     "running",
 		"progress":   10,
-		"message":    "准备导入任务",
+		"message":    "Preparing import task",
 		"started_at": &startedAt,
 	})
 
 	s.updateTransferTask(taskID, map[string]any{
 		"progress": 35,
-		"message":  "正在比对源表和目标表结构",
+		"message":  "Comparing source and target table schemas",
 	})
 	result, err := s.ImportDatabaseTable(payload)
 	finishedAt := time.Now()
@@ -2223,7 +2223,7 @@ func (s *Service) runImportTask(taskID uint, payload DBMSImportPayload) {
 	s.updateTransferTask(taskID, map[string]any{
 		"status":        "success",
 		"progress":      100,
-		"message":       "导入完成",
+		"message":       "Import completed",
 		"rows_affected": rowsAffected,
 		"finished_at":   &finishedAt,
 	})
