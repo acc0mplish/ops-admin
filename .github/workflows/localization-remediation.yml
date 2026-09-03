@@ -14,6 +14,7 @@ on:
       - .github/scripts/localize_remediation_batch6_preface.py
       - .github/scripts/localize_remediation_batch6_preface2.py
       - .github/scripts/localize_remediation_batch6.py
+      - .github/scripts/localize_remediation_batch7.py
       - .github/workflows/localization-remediation.yml
 
 permissions:
@@ -28,17 +29,32 @@ jobs:
           ref: localize/ko-KR-adversarial
           fetch-depth: 0
 
-      - name: Apply exact localization remediations
+      - name: Apply localization remediations
+        shell: bash
         run: |
-          python3 .github/scripts/localize_remediation.py
-          python3 .github/scripts/localize_remediation_batch2.py
-          python3 .github/scripts/localize_remediation_batch3.py
-          python3 .github/scripts/localize_remediation_batch4.py
-          python3 .github/scripts/localize_remediation_batch5_preface.py
-          python3 .github/scripts/localize_remediation_batch5.py
-          python3 .github/scripts/localize_remediation_batch6_preface.py
-          python3 .github/scripts/localize_remediation_batch6_preface2.py
-          python3 .github/scripts/localize_remediation_batch6.py
+          set +e
+          remediation_status=0
+          for script in \
+            .github/scripts/localize_remediation.py \
+            .github/scripts/localize_remediation_batch2.py \
+            .github/scripts/localize_remediation_batch3.py \
+            .github/scripts/localize_remediation_batch4.py \
+            .github/scripts/localize_remediation_batch5_preface.py \
+            .github/scripts/localize_remediation_batch5.py \
+            .github/scripts/localize_remediation_batch6_preface.py \
+            .github/scripts/localize_remediation_batch6_preface2.py \
+            .github/scripts/localize_remediation_batch6.py \
+            .github/scripts/localize_remediation_batch7.py
+          do
+            python3 "$script"
+            code=$?
+            if [ "$code" -ne 0 ]; then
+              remediation_status=1
+              echo "::warning file=$script::Remediation left findings for the localization guard."
+            fi
+          done
+          echo "remediation_status=$remediation_status" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Commit remediated files
         shell: bash
@@ -50,5 +66,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend web/src
-          git commit -m "fix(i18n): remediate FinOps notification and backup remnants"
+          git commit -m "fix(i18n): apply cumulative localization remediation"
           git push origin HEAD:localize/ko-KR-adversarial
+
+      - name: Report remaining remediation work
+        if: env.remediation_status == '1'
+        run: echo "Partial remediation was committed; Korean localization guard remains the source of truth for outstanding findings."
