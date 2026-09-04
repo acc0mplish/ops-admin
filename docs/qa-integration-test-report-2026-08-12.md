@@ -1,120 +1,120 @@
-# Ops Admin 前后端联调测试报告
+# Ops Admin 프론트엔드·백엔드 Integration Test Report
 
-- **执行日期：** 2026-08-12
-- **验证环境：** Web `http://localhost:8080`；API `http://localhost:8082`
-- **测试方式：** Go 服务测试、Vite 生产构建、真实浏览器登录与路由遍历、HTTP API 冒烟与负向验证、前后端静态契约核对、受控性能冒烟。
-- **数据策略：** 未修改既有业务数据；环境模型 CRUD 仅创建并清理带 `qa-e2e-*` 标识的临时数据。
+- **실행일:** 2026-08-12
+- **검증 Environment:** Web `http://localhost:8080`; API `http://localhost:8082`
+- **Test 방식:** Go 서비스 Test, Vite Production Build, 실제 Browser Login과 Route 순회, HTTP API Smoke 및 Negative 검증, 프론트엔드·백엔드 정적 Contract 대조, 통제된 Performance Smoke.
+- **데이터 정책:** 기존 비즈니스 데이터는 수정하지 않았습니다; Environment Model CRUD는 `qa-e2e-*` 식별자가 붙은 임시 데이터만 생성·정리했습니다.
 
-## 结论
+## 결론
 
-**当前结论：No-Go（不建议直接作为生产发布候选）。**
+**현재 결론: No-Go (Production 릴리스 후보로 직접 사용은 비권장).**
 
-主要功能链路、91 个已验证页面路由、环境模型端到端 CRUD、后端测试和前端生产构建均通过。但鉴权与错误响应全部使用 HTTP 200 承载业务错误码，违反 HTTP API 语义，可能让网关、监控、SDK 重试与外部客户端将未授权和参数错误误判为成功。这是 P1 发布阻断项。
+주요 기능 경로, 검증된 91개 Page Route, Environment Model End-to-End CRUD, Backend Test, Frontend Production Build는 모두 통과했습니다. 하지만 인증과 오류 Response가 모두 HTTP 200으로 비즈니스 오류 코드를 전달해 HTTP API 시맨틱을 위반하며, Gateway, 모니터링, SDK Retry, 외부 클라이언트가 미인증·파라미터 오류를 성공으로 오판할 수 있습니다. 이는 P1 Release 차단 항목입니다.
 
-## 覆盖范围与结果
+## 커버리지와 결과
 
-| 类别 | 覆盖内容 | 结果 | 证据 |
+| 범주 | 커버리지 내용 | 결과 | 근거 |
 |---|---|---|---|
-| 后端回归 | `backend` 全量 Go 测试 | 通过 | `go test ./...` 退出码 0；`service` 包通过 |
-| 前端构建 | Vite 生产构建 | 通过但有性能告警 | 2,182 modules；产物 JS 3,114.54 kB，gzip 919.14 kB |
-| 服务健康 | Web 与 API 可达 | 通过 | Web `8080` 与 API `8082/ping` 均返回成功 |
-| 认证主流程 | 真实浏览器登录、会话建立、仪表盘加载 | 通过 | 登录后到达 `/dashboard`，未捕获控制台 error |
-| 页面联调 | 控制台、资产、容器、标准运维、应用、通知、监控、集成、个人中心 | 通过，存在 2 个异常详情页 | 91 个路由均未回退登录页；详见“问题清单” |
-| API 读取冒烟 | profile、资产、K8s、环境、应用、通知、监控、集成 9 组接口 | 通过 | 带有效会话 token 均返回业务码 200 且 data 存在 |
-| 环境模型 CRUD | 新增临时环境 → 关键词查询 → 删除 → 再次查询 | 通过 | 临时记录创建成功，删除后查询结果为 0；未自动重建 |
-| 删除参数保护 | 环境删除接口 `id=0` | 通过 | 返回业务码 400，未删除数据 |
-| 前后端接口映射 | 前端 `web/src/api` 静态路径与后端 router 路由 | 通过 | 前端 375 条静态 API 路径均能在后端 379 条路由字面量中找到映射 |
-| API 性能冒烟 | `/ping` 30 并发无副作用请求 | 通过 | 30/30 成功，错误率 0%，P50 52.69 ms，P95 57.39 ms，P99 58.24 ms |
-| 安全负向 | 无 token、伪 token、非法登录 JSON、TRACE 方法、响应头 | 失败，存在 P1/P2 | 详见“问题清单” |
-| 静态检查 | `go vet ./...` | 失败 | 2 个 IPv6 地址格式问题、1 段不可达代码 |
+| Backend Regression | `backend` 전체 Go Test | 통과 | `go test ./...` exit code 0; `service` Package 통과 |
+| Frontend Build | Vite Production Build | 통과하나 Performance 경고 있음 | 2,182 modules; 산출물 JS 3,114.54 kB, gzip 919.14 kB |
+| 서비스 Health | Web·API 도달 가능 | 통과 | Web `8080`과 API `8082/ping` 모두 성공 반환 |
+| 인증 주요 Flow | 실제 Browser Login, Session 수립, Dashboard 로딩 | 통과 | Login 후 `/dashboard` 도달, Console error 미검출 |
+| Page Integration | 콘솔, 자산, Container, 표준 운영, Application, Notification, 모니터링, Integration, 개인 화면 | 통과, 예외 Detail Page 2건 존재 | 91개 Route 모두 Login Page로 Fallback 없음; 자세한 내용은 "문제 목록" 참조 |
+| API Read Smoke | profile, 자산, K8s, Environment, Application, Notification, 모니터링, Integration 9개 API 그룹 | 통과 | 유효 Session Token으로 모두 비즈니스 코드 200 반환 및 data 존재 |
+| Environment Model CRUD | 임시 Environment 생성 → Keyword 조회 → 삭제 → 재조회 | 통과 | 임시 Record 생성 성공, 삭제 후 조회 결과 0; 자동 재생성 없음 |
+| 삭제 파라미터 보호 | Environment 삭제 API `id=0` | 통과 | 비즈니스 코드 400 반환, 데이터 미삭제 |
+| Frontend·Backend API 매핑 | Frontend `web/src/api` 정적 경로와 Backend router Route | 통과 | Frontend 375개 정적 API 경로 모두 Backend 379개 Route 리터럴에서 매핑 확인 |
+| API Performance Smoke | `/ping` 30 동시성 무부작용 Request | 통과 | 30/30 성공, 오류율 0%, P50 52.69 ms, P95 57.39 ms, P99 58.24 ms |
+| 보안 Negative | Token 없음, 가짜 Token, 잘못된 Login JSON, TRACE Method, Response Header | 실패, P1/P2 존재 | 자세한 내용은 "문제 목록" 참조 |
+| 정적 검사 | `go vet ./...` | 실패 | IPv6 주소 형식 문제 2건, 도달 불가 코드 1건 |
 
-## 浏览器联调详情
+## Browser Integration 상세
 
-已使用真实浏览器登录，并对 91 个具有页面组件的路由做只读加载验证，涵盖：
+실제 Browser로 Login하고 Page Component가 있는 91개 Route에 대해 읽기 전용 로딩 검증을 수행했습니다. 커버리지:
 
-- 控制台、业务拓扑、系统管理和审计日志。
-- 资产概览、主机、凭据、云账号、数据库、DBMS、网关与环境模型。
-- Kubernetes 集群、节点、命名空间、工作负载、Pod、Service、Ingress、网络与存储。
-- 服务管理、健康诊断、标准运维、作业、定时任务。
-- 应用项目、构建、流水线、镜像仓库、应用拓扑与应用中心。
-- 消息通知、监控查询/告警/大屏、AI 与 FinOps 集成页面。
+- 콘솔, 비즈니스 토폴로지, 시스템 관리, 감사 Log.
+- Asset Overview, Host, Credential, Cloud Account, Database, DBMS, Gateway, Environment Model.
+- Kubernetes Cluster, Node, Namespace, Workload, Pod, Service, Ingress, 네트워크와 Storage.
+- 서비스 관리, Health Diagnosis, 표준 운영, Job, Scheduled Task.
+- Application Project, Build, Pipeline, Image Registry, Application 토폴로지와 Application Center.
+- Notification, 모니터링 Query/Alert/Dashboard, AI 및 FinOps Integration Page.
 
-所有被测页面均保持已登录状态并生成可见页面内容。验证了环境模型“新增环境”对话框可打开和关闭，未产生业务数据。
+테스트한 모든 Page는 로그인 상태를 유지하고 화면에 보이는 Page 콘텐츠를 생성했습니다. Environment Model "Environment 추가" 대화상자의 열림·닫힘을 검증했으며 비즈니스 데이터를 생성하지 않았습니다.
 
-以下重定向与当前路由配置一致：`/assets/hosts`、`/assets/tags`、`/assets/server/databases`、`/applications/center` 等历史/别名路径会跳转到对应当前页面。
+다음 Redirect는 현재 Route 설정과 일치합니다: `/assets/hosts`, `/assets/tags`, `/assets/server/databases`, `/applications/center` 등 과거/Alias 경로는 해당하는 현재 Page로 이동합니다.
 
-## 问题清单
+## 문제 목록
 
-### P1：错误响应始终返回 HTTP 200
+### P1: 오류 Response가 항상 HTTP 200 반환
 
-- **现象：** 未携带 token 调用 `/api/v1/profile`、`/api/v1/ops/environment/list` 等受保护接口，HTTP 状态均为 200，body 内才带 `code: 401`。伪 token 同样返回 HTTP 200 + `code: 401`；非法登录 JSON 返回 HTTP 200 + `code: 400`。
-- **影响：** 反向代理、APM、告警、浏览器外客户端和通用 SDK 可能把失败计为成功；基于 HTTP 状态的重试、缓存与访问审计不可靠。
-- **根因：** [backend/httpx/response.go](D:\go\ops-admin\backend\httpx\response.go:11) 的 `Failed` 无条件调用 `c.JSON(200, ...)`。
-- **建议：** 改为 `c.JSON(code, ...)`，保留 body 中的业务 code 以兼容前端；回归验证 400/401/403/404/5xx 以及 Axios 拦截器行为。
+- **현상:** Token 없이 `/api/v1/profile`, `/api/v1/ops/environment/list` 등 보호 API를 호출하면 HTTP 상태가 모두 200이고 body에야 `code: 401`이 담깁니다. 가짜 Token도 HTTP 200 + `code: 401`을 반환; 잘못된 Login JSON은 HTTP 200 + `code: 400`을 반환.
+- **영향:** Reverse Proxy, APM, Alert, Browser 외부 클라이언트, 범용 SDK가 실패를 성공으로 집계할 수 있음; HTTP 상태 기반 Retry, Cache, 접근 감사가 신뢰할 수 없게 됨.
+- **원인:** [backend/httpx/response.go](D:\go\ops-admin\backend\httpx\response.go:11)의 `Failed`가 무조건 `c.JSON(200, ...)`을 호출.
+- **권고:** `c.JSON(code, ...)`으로 변경하고 body의 비즈니스 code는 Frontend 호환을 위해 유지; 400/401/403/404/5xx와 Axios interceptor 동작을 Regression 검증.
 
-### P1：初始化超级管理员凭据可预测且在登录页预填
+### P1: 초기화 Super Admin Credential이 예측 가능하고 Login Page에 사전 채워짐
 
-- **现象：** 浏览器登录页预填可用的初始化管理员凭据；初始化逻辑在 [backend/store/seed.go](D:\go\ops-admin\backend\store\seed.go:461) 固定创建管理员及固定密码。
-- **影响：** 若部署后未立即改密，攻击者可获得最高权限。
-- **建议：** 首次部署改为从环境变量/一次性随机密码初始化；强制首登改密；生产模式禁止预填密码并在 README 标注轮换流程。
+- **현상:** Browser Login Page에 사용 가능한 초기화 관리자 Credential이 사전 채워짐; 초기화 로직은 [backend/store/seed.go](D:\go\ops-admin\backend\store\seed.go:461)에 고정 관리자 및 고정 비밀번호 생성.
+- **영향:** Deploy 후 즉시 비밀번호를 변경하지 않으면 공격자가 최고 권한을 획득할 수 있음.
+- **권고:** 첫 Deploy에서 Environment Variable/일회용 무작위 비밀번호 초기화로 전환; 첫 Login 시 비밀번호 변경 강제; Production Mode에서 비밀번호 사전 채우기 금지 및 README에 Rotation 절차 명시.
 
-### P2：服务详情与日志直达路由在缺少查询参数时抛出未处理异常
+### P2: 서비스 Detail·Log 직접 Route가 Query Parameter 누락 시 처리되지 않은 Exception 발생
 
-- **现象：** 直接访问 `/containers/services/workload` 与 `/containers/services/logs` 时，浏览器控制台出现 mounted hook 未处理异常与 `record not found`。
-- **影响：** 用户通过书签、刷新或直接 URL 进入时得到不完整页面与控制台异常。
-- **相关位置：** [router/index.js](D:\go\ops-admin\web\src\router\index.js:222)、[ServiceWorkloadDetail.vue](D:\go\ops-admin\web\src\views\assets\ServiceWorkloadDetail.vue:27)、[ServiceWorkloadLogs.vue](D:\go\ops-admin\web\src\views\assets\ServiceWorkloadLogs.vue:23)。
-- **建议：** 参数缺失时展示“请选择服务/工作负载”的空态并阻止请求，或将直达路由重定向至服务管理页。
+- **현상:** `/containers/services/workload`와 `/containers/services/logs`에 직접 접근하면 Browser Console에 mounted hook 미처리 Exception과 `record not found` 발생.
+- **영향:** Bookmark, 새로고침, 직접 URL 진입 시 불완전한 Page와 Console Exception이 발생.
+- **관련 위치:** [router/index.js](D:\go\ops-admin\web\src\router\index.js:222), [ServiceWorkloadDetail.vue](D:\go\ops-admin\web\src\views\assets\ServiceWorkloadDetail.vue:27), [ServiceWorkloadLogs.vue](D:\go\ops-admin\web\src\views\assets\ServiceWorkloadLogs.vue:23).
+- **권고:** Parameter 누락 시 "서비스/Workload를 선택하십시오." 빈 상태를 표시하고 Request를 차단하거나, 직접 Route를 서비스 관리 Page로 Redirect.
 
-### P2：安全响应头缺失，CORS 范围过宽
+### P2: 보안 Response Header 미비, CORS 범위 과도하게 넓음
 
-- **现象：** `/ping` 响应只包含基础 CORS 与 Content-Type；未发现 `X-Content-Type-Options`、`X-Frame-Options`、`Content-Security-Policy`、HSTS 等安全头。`Access-Control-Allow-Origin: *` 对内部运维平台范围过宽。
-- **影响：** 防御纵深不足；未来若引入跨域 token 使用或嵌入页面，攻击面扩大。
-- **建议：** 按部署域名配置 CORS 白名单；在反向代理或 Gin 中添加安全响应头。HSTS 仅在 HTTPS 生产环境启用。
+- **현상:** `/ping` Response에는 기본 CORS와 Content-Type만 존재; `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, HSTS 등 보안 헤더 미발견. `Access-Control-Allow-Origin: *`은 내부 운영 플랫폼에 과도하게 넓음.
+- **영향:** 방어 깊이 부족; 향후 Cross-domain Token 사용 또는 Page 삽입이 도입되면 공격 표면 확대.
+- **권고:** Deploy Domain별 CORS 화이트리스트 구성; Reverse Proxy 또는 Gin에 보안 Response Header 추가. HSTS는 HTTPS Production Environment에서만 활성화.
 
-### P2：`go vet` 发现 IPv6 连接与不可达代码问题
+### P2: `go vet`이 IPv6 연결과 도달 불가 코드 문제 발견
 
-- **现象：** `go vet ./...` 失败：两处 `fmt.Sprintf("%s:%d", host, port)` 传给 `net.Dial` 时不兼容 IPv6；主机组删除逻辑存在 `return` 后不可达代码。
-- **相关位置：** [backend/service/service.go](D:\go\ops-admin\backend\service\service.go:1105)、[backend/service/service.go](D:\go\ops-admin\backend\service\service.go:1693)、[backend/service/service.go](D:\go\ops-admin\backend\service\service.go:2553)。
-- **建议：** 使用 `net.JoinHostPort(host, strconv.Itoa(port))`；删除不可达重复检查；将 `go vet ./...` 加入 CI 门禁。
+- **현상:** `go vet ./...` 실패: `fmt.Sprintf("%s:%d", host, port)`를 `net.Dial`에 전달하는 두 곳이 IPv6와 비호환; Host Group 삭제 로직에 `return` 이후 도달 불가 코드 존재.
+- **관련 위치:** [backend/service/service.go](D:\go\ops-admin\backend\service\service.go:1105), [backend/service/service.go](D:\go\ops-admin\backend\service\service.go:1693), [backend/service/service.go](D:\go\ops-admin\backend\service\service.go:2553).
+- **권고:** `net.JoinHostPort(host, strconv.Itoa(port))` 사용; 도달 불가 중복 검사 삭제; `go vet ./...`을 CI 게이트에 추가.
 
-### P3：Element Plus 兼容性告警
+### P3: Element Plus 호환성 경고
 
-- **现象：** 路由遍历中多次出现 `el-radio` 的 `label` 作为 value 即将废弃警告。
-- **影响：** 当前功能未阻断，但升级 Element Plus 3 时存在兼容风险。
-- **建议：** 将对应 `el-radio` 的 `label` value 用法迁移为 `value`。
+- **현상:** Route 순회에서 `el-radio`의 `label`을 value로 쓰는 방식의 Deprecation 경고가 여러 번 발생.
+- **영향:** 현재 기능은 차단되지 않지만 Element Plus 3 업그레이드 시 호환성 Risk 존재.
+- **권고:** 해당 `el-radio`의 `label` value 용법을 `value`로 이전.
 
-### P3：前端首包体积超过 Vite 默认预算
+### P3: Frontend 첫 Bundle 크기가 Vite 기본 Budget 초과
 
-- **现象：** 生产 JS 包 3.04 MB、gzip 919 KB，构建提示 chunk 超过 500 KB。
-- **影响：** 弱网和首次加载体验存在风险。
-- **建议：** 按应用路由动态导入，拆分 X6/DBMS/监控等重依赖；后续使用 Lighthouse CI 建立 LCP、CLS、TBT 门禁。
+- **현상:** Production JS Bundle 3.04 MB, gzip 919 KB, Build 시 chunk 500 KB 초과 경고.
+- **영향:** 저속 네트워크와 첫 로딩 경험에 Risk 존재.
+- **권고:** Application Route별 Dynamic Import로 X6/DBMS/모니터링 등 무거운 의존성 분할; 이후 Lighthouse CI로 LCP, CLS, TBT 게이트 구축.
 
-## 契约、自动化与发布准备度缺口
+## Contract, 자동화 및 Release 준비도 Gap
 
-- 未发现 OpenAPI/Swagger 定义、Pact 合约、Playwright/Cypress/Vitest 前端测试配置或 CI 工作流。
-- 当前前端静态 API 路径和后端路由的字符串映射完整，但这不能替代响应 schema、状态码、权限矩阵与版本兼容性测试。
-- 未发现 OSV/Semgrep/ZAP/Secret Scan 等持续安全门禁，也未建立 Lighthouse 或 k6 的 CI 性能预算。
-- 因存在 P1 问题，且缺少可重复的 E2E、合约与安全扫描证据，本次不能给出生产发布 Go 结论。
+- OpenAPI/Swagger 정의, Pact Contract, Playwright/Cypress/Vitest Frontend Test 설정 또는 CI Workflow 미발견.
+- 현재 Frontend 정적 API 경로와 Backend Route의 문자열 매핑은 완전하지만 Response Schema, 상태 코드, 권한 Matrix, Version 호환성 Test를 대체하지 못함.
+- OSV/Semgrep/ZAP/Secret Scan 등 지속 보안 게이트 미발견, Lighthouse 또는 k6의 CI Performance Budget 미구축.
+- P1 문제 존재와 반복 가능한 E2E, Contract, 보안 스캔 근거 부재로 이번에는 Production Release Go 결론을 낼 수 없음.
 
-## 建议的修复与复测顺序
+## 권장 수정·재검증 순서
 
-1. 修复 HTTP 状态码语义与初始化管理员策略，优先复测登录、401、403、400、删除/保存失败路径。
-2. 修复服务工作负载和日志直达页的参数缺失空态，复测书签、刷新和无查询参数访问。
-3. 修复 `go vet` 三项问题，并将 `go test ./...`、`go vet ./...`、`npm run build` 设为基础门禁。
-4. 新增 Playwright 冒烟：登录、仪表盘、环境 CRUD、资产读取、监控读取、应用流水线只读页面与关键空态。
-5. 建立 OpenAPI 或共享 JSON Schema，随后为前端消费者与 Go 提供方添加契约验证。
-6. 在预发环境添加 OSV、Semgrep、ZAP baseline、Lighthouse 与 k6 阈值；修复完成后重新执行本报告的全部用例。
+1. HTTP 상태 코드 시맨틱과 초기화 관리자 Policy를 수정하고 Login, 401, 403, 400, 삭제/저장 실패 경로를 우선 재검증.
+2. 서비스 Workload·Log 직접 Page의 Parameter 누락 빈 상태를 수정하고 Bookmark, 새로고침, Query Parameter 없는 접근을 재검증.
+3. `go vet` 3건 문제를 수정하고 `go test ./...`, `go vet ./...`, `npm run build`를 기본 게이트로 설정.
+4. Playwright Smoke 추가: Login, Dashboard, Environment CRUD, 자산 Read, 모니터링 Read, Application Pipeline 읽기 전용 Page와 주요 빈 상태.
+5. OpenAPI 또는 공유 JSON Schema를 구축한 뒤 Frontend Consumer와 Go Provider에 Contract 검증 추가.
+6. Staging Environment에 OSV, Semgrep, ZAP baseline, Lighthouse, k6 임계값 추가; 수정 완료 후 본 Report의 전체 Test Case 재실행.
 
-## 发布门禁结论
+## Release 게이트 결론
 
-| 门禁 | 状态 |
+| 게이트 | 상태 |
 |---|---|
-| 后端单元/服务测试 | 通过 |
-| 前端生产构建 | 通过，有 bundle 告警 |
-| 浏览器关键页面可达性 | 通过，详情直达页有异常 |
-| API 关键读取与环境 CRUD | 通过 |
-| HTTP 错误语义与鉴权边界 | **失败，P1** |
-| 安全基线 | **失败，P1/P2** |
-| 静态检查 | **失败** |
-| E2E、契约、性能、安全 CI 证据 | 未建立 |
-| **最终决定** | **No-Go，完成 P1 修复与复测前不建议发布** |
+| Backend Unit/서비스 Test | 통과 |
+| Frontend Production Build | 통과, bundle 경고 있음 |
+| Browser 주요 Page 도달성 | 통과, Detail 직접 Page에 예외 있음 |
+| API 주요 Read와 Environment CRUD | 통과 |
+| HTTP 오류 시맨틱과 인증 경계 | **실패, P1** |
+| 보안 Baseline | **실패, P1/P2** |
+| 정적 검사 | **실패** |
+| E2E, Contract, Performance, 보안 CI 근거 | 미구축 |
+| **최종 결정** | **No-Go, P1 수정·재검증 완료 전 Release 비권장** |

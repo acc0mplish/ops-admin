@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.10.0">
-  <title>Ops Admin DevOps 平台架构 Diagram</title>
+  <title>Ops Admin DevOps Platform 아키텍처 Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -525,14 +525,14 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>Ops Admin DevOps 平台架构</h1>
+        <h1>Ops Admin DevOps Platform 아키텍처</h1>
       </div>
-      <p class="subtitle">以 CMDB 为底座，统一承载运维、交付、可观测与消息通知能力</p>
+      <p class="subtitle">CMDB를 기반으로 운영, Delivery, Observability와 Notification 역량을 통합 제공합니다</p>
     </div>
 
     <!-- Main Diagram -->
     <div class="diagram-container">
-      <svg viewBox="0 0 1560 860" role="img" aria-label="Ops Admin DevOps 平台架构 — 以 CMDB 为底座，统一承载运维、交付、可观测与消息通知能力 (architecture diagram)" data-animation="trace">
+      <svg viewBox="0 0 1560 860" role="img" aria-label="Ops Admin DevOps Platform 아키텍처 — CMDB를 기반으로 운영, Delivery, Observability와 Notification 역량을 통합 제공합니다 (architecture diagram)" data-animation="trace">
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -557,10 +557,10 @@
 
         <!-- Boundaries (behind everything) -->
         <rect x="215" y="50" width="835" height="680" rx="12" class="c-region" stroke-width="1"/>
-        <text x="223" y="68" class="t-cloud" font-size="9" font-weight="600">Ops Admin 平台内部</text>
+        <text x="223" y="68" class="t-cloud" font-size="9" font-weight="600">Ops Admin Platform 내부</text>
 
         <rect x="1107" y="137" width="306" height="594" rx="8" class="c-security-group" stroke-width="1"/>
-        <text x="1115" y="155" class="t-security" font-size="9" font-weight="600">受管环境与外部系统</text>
+        <text x="1115" y="155" class="t-security" font-size="9" font-weight="600">관리 대상 Environment와 외부 시스템</text>
 
         <!-- Connection paths (before components for correct z-order) -->
         <path d="M 190 338 L 245 338" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
@@ -581,74 +581,74 @@
         <!-- Components -->
         <rect x="40" y="305" width="150" height="66" rx="6" class="c-mask"/>
         <rect x="40" y="305" width="150" height="66" rx="6" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
-        <text x="115" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">平台用户</text>
+        <text x="115" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Platform 사용자</text>
         <text x="115" y="352" class="t-muted" font-size="9" text-anchor="middle">DevOps / SRE / DBA</text>
 
         <rect x="245" y="295" width="190" height="86" rx="6" class="c-mask"/>
         <rect x="245" y="295" width="190" height="86" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-        <text x="340" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vue Web 控制台</text>
+        <text x="340" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vue Web Console</text>
         <text x="340" y="352" class="t-muted" font-size="9" text-anchor="middle">Vue 3 + Vite + Element Plus</text>
-        <text x="340" y="373" class="t-frontend" font-size="7" text-anchor="middle">浏览器单页应用</text>
+        <text x="340" y="373" class="t-frontend" font-size="7" text-anchor="middle">브라우저 기반 SPA</text>
 
         <rect x="500" y="285" width="210" height="106" rx="6" class="c-mask"/>
         <rect x="500" y="285" width="210" height="106" rx="6" class="c-security" data-animate="node" style="--step:2" stroke-width="1.5"/>
-        <text x="605" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gin API 与访问控制</text>
-        <text x="605" y="352" class="t-muted" font-size="9" text-anchor="middle">REST / WebSocket / JWT / RBAC / 审计</text>
+        <text x="605" y="336" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gin API와 Access Control</text>
+        <text x="605" y="352" class="t-muted" font-size="9" text-anchor="middle">REST / WebSocket / JWT / RBAC / Audit</text>
         <text x="605" y="383" class="t-security" font-size="7" text-anchor="middle">/api/v1</text>
 
         <rect x="790" y="80" width="230" height="90" rx="6" class="c-mask"/>
         <rect x="790" y="80" width="230" height="90" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-        <text x="905" y="123" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">资产管理与 CMDB</text>
-        <text x="905" y="139" class="t-muted" font-size="9" text-anchor="middle">主机 / 数据库 / K8s / 凭据 / 网关</text>
-        <text x="905" y="162" class="t-backend" font-size="7" text-anchor="middle">基础设施事实数据源</text>
+        <text x="905" y="123" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Asset 관리와 CMDB</text>
+        <text x="905" y="139" class="t-muted" font-size="9" text-anchor="middle">Host / Database / K8s / Credential / Gateway</text>
+        <text x="905" y="162" class="t-backend" font-size="7" text-anchor="middle">Infrastructure Source of Truth</text>
 
         <rect x="790" y="215" width="230" height="90" rx="6" class="c-mask"/>
         <rect x="790" y="215" width="230" height="90" rx="6" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-        <text x="905" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">标准运维与自动化</text>
-        <text x="905" y="274" class="t-muted" font-size="9" text-anchor="middle">快速执行 / 定时任务 / 作业编排</text>
-        <text x="905" y="297" class="t-backend" font-size="7" text-anchor="middle">SSH + Cron + 工作流</text>
+        <text x="905" y="258" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">표준 운영과 Automation</text>
+        <text x="905" y="274" class="t-muted" font-size="9" text-anchor="middle">빠른 실행 / 예약 Task / Job Orchestration</text>
+        <text x="905" y="297" class="t-backend" font-size="7" text-anchor="middle">SSH + Cron + Workflow</text>
 
         <rect x="790" y="350" width="230" height="90" rx="6" class="c-mask"/>
         <rect x="790" y="350" width="230" height="90" rx="6" class="c-backend" data-animate="node" style="--step:5" stroke-width="1.5"/>
-        <text x="905" y="393" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">应用中心与 CI/CD</text>
-        <text x="905" y="409" class="t-muted" font-size="9" text-anchor="middle">应用 / 构建 / 流水线 / 应用拓扑</text>
-        <text x="905" y="432" class="t-backend" font-size="7" text-anchor="middle">从 Git 或 SVN 到发布</text>
+        <text x="905" y="393" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Application Center와 CI/CD</text>
+        <text x="905" y="409" class="t-muted" font-size="9" text-anchor="middle">Application / Build / Pipeline / Application Topology</text>
+        <text x="905" y="432" class="t-backend" font-size="7" text-anchor="middle">Git 또는 SVN에서 Deploy까지</text>
 
         <rect x="790" y="485" width="230" height="90" rx="6" class="c-mask"/>
         <rect x="790" y="485" width="230" height="90" rx="6" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
-        <text x="905" y="528" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">监控中心与日志</text>
-        <text x="905" y="544" class="t-muted" font-size="9" text-anchor="middle">查询 / 告警 / 聚合收敛 / 大屏</text>
+        <text x="905" y="528" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">모니터링 Center와 Log</text>
+        <text x="905" y="544" class="t-muted" font-size="9" text-anchor="middle">Query / Alert / 집계 수렴 / Dashboard</text>
         <text x="905" y="567" class="t-backend" font-size="7" text-anchor="middle">PromQL + Lucene + LogsQL</text>
 
         <rect x="790" y="620" width="230" height="90" rx="6" class="c-mask"/>
         <rect x="790" y="620" width="230" height="90" rx="6" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-        <text x="905" y="663" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">平台公共服务</text>
-        <text x="905" y="679" class="t-muted" font-size="9" text-anchor="middle">消息通知 / LDAP / 集成导航</text>
-        <text x="905" y="702" class="t-backend" font-size="7" text-anchor="middle">模板 + 规则 + 公开链接</text>
+        <text x="905" y="663" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Platform 공통 Service</text>
+        <text x="905" y="679" class="t-muted" font-size="9" text-anchor="middle">Notification / LDAP / 통합 Navigation</text>
+        <text x="905" y="702" class="t-backend" font-size="7" text-anchor="middle">Template + Rule + 공개 Link</text>
 
         <rect x="500" y="555" width="210" height="88" rx="6" class="c-mask"/>
         <rect x="500" y="555" width="210" height="88" rx="6" class="c-database" data-animate="node" style="--step:8" stroke-width="1.5"/>
         <text x="605" y="597" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Ops Admin MySQL</text>
-        <text x="605" y="613" class="t-muted" font-size="9" text-anchor="middle">GORM 元数据与执行历史</text>
+        <text x="605" y="613" class="t-muted" font-size="9" text-anchor="middle">GORM Metadata와 Run History</text>
         <text x="605" y="635" class="t-database" font-size="7" text-anchor="middle">utf8mb4_general_ci</text>
 
         <rect x="1135" y="165" width="230" height="96" rx="6" class="c-mask"/>
         <rect x="1135" y="165" width="230" height="96" rx="6" class="c-cloud" data-animate="node" style="--step:9" stroke-width="1.5"/>
-        <text x="1250" y="211" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">受管基础设施</text>
-        <text x="1250" y="227" class="t-muted" font-size="9" text-anchor="middle">Linux 主机 / MySQL / Kubernetes</text>
-        <text x="1250" y="253" class="t-cloud" font-size="7" text-anchor="middle">直连或 SSH 网关访问</text>
+        <text x="1250" y="211" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">관리 대상 Infrastructure</text>
+        <text x="1250" y="227" class="t-muted" font-size="9" text-anchor="middle">Linux Host / MySQL / Kubernetes</text>
+        <text x="1250" y="253" class="t-cloud" font-size="7" text-anchor="middle">직접 연결 또는 SSH Gateway 접속</text>
 
         <rect x="1135" y="390" width="250" height="96" rx="6" class="c-mask"/>
         <rect x="1135" y="390" width="250" height="96" rx="6" class="c-external" data-animate="node" style="--step:12" stroke-width="1.5"/>
-        <text x="1260" y="436" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">可观测数据源</text>
+        <text x="1260" y="436" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Observability Datasource</text>
         <text x="1260" y="452" class="t-muted" font-size="9" text-anchor="middle">Prometheus / VictoriaMetrics / ES / VictoriaLogs</text>
-        <text x="1260" y="478" class="t-external" font-size="7" text-anchor="middle">指标与日志</text>
+        <text x="1260" y="478" class="t-external" font-size="7" text-anchor="middle">Metric과 Log</text>
 
         <rect x="1135" y="615" width="250" height="96" rx="6" class="c-mask"/>
         <rect x="1135" y="615" width="250" height="96" rx="6" class="c-external" data-animate="node" style="--step:13" stroke-width="1.5"/>
-        <text x="1260" y="661" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">外部系统集成</text>
-        <text x="1260" y="677" class="t-muted" font-size="9" text-anchor="middle">Git/SVN / LDAP/AD / 钉钉 / 企微 / 飞书</text>
-        <text x="1260" y="703" class="t-external" font-size="7" text-anchor="middle">代码仓库与 Webhook</text>
+        <text x="1260" y="661" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">외부 시스템 통합</text>
+        <text x="1260" y="677" class="t-muted" font-size="9" text-anchor="middle">Git/SVN / LDAP/AD / DingTalk / WeCom / Feishu</text>
+        <text x="1260" y="703" class="t-external" font-size="7" text-anchor="middle">Code Repository와 Webhook</text>
 
         <!-- Connection labels -->
         <rect x="200.5" y="318" width="34" height="14" rx="3" class="c-mask"/>
@@ -656,28 +656,28 @@
         <rect x="424.6" y="395" width="86.8" height="14" rx="3" class="c-mask"/>
         <text x="468" y="405" class="t-backend" font-size="8" text-anchor="middle">REST + WebSocket</text>
         <rect x="725.8" y="211.5" width="48.4" height="14" rx="3" class="c-mask"/>
-        <text x="750" y="221.5" class="t-muted" font-size="8" text-anchor="middle">资产接口</text>
+        <text x="750" y="221.5" class="t-muted" font-size="8" text-anchor="middle">Asset 인터페이스</text>
         <rect x="725.8" y="279" width="48.4" height="14" rx="3" class="c-mask"/>
-        <text x="750" y="289" class="t-muted" font-size="8" text-anchor="middle">执行任务</text>
+        <text x="750" y="289" class="t-muted" font-size="8" text-anchor="middle">Task 실행</text>
         <rect x="721" y="346.5" width="58" height="14" rx="3" class="c-mask"/>
-        <text x="750" y="356.5" class="t-muted" font-size="8" text-anchor="middle">构建与发布</text>
+        <text x="750" y="356.5" class="t-muted" font-size="8" text-anchor="middle">Build와 Deploy</text>
         <rect x="721" y="414" width="58" height="14" rx="3" class="c-mask"/>
-        <text x="750" y="424" class="t-muted" font-size="8" text-anchor="middle">查询与告警</text>
+        <text x="750" y="424" class="t-muted" font-size="8" text-anchor="middle">Query와 Alert</text>
 
         <rect x="571.2" y="395" width="67.6" height="14" rx="3" class="c-mask"/>
         <text x="605" y="405" class="t-muted" font-size="8" text-anchor="middle">GORM / MySQL</text>
         <rect x="1048.5" y="149" width="58" height="14" rx="3" class="c-mask"/>
-        <text x="1077.5" y="159" class="t-security" font-size="8" text-anchor="middle">发现与访问</text>
+        <text x="1077.5" y="159" class="t-security" font-size="8" text-anchor="middle">Discovery와 접속</text>
         <rect x="1031.7" y="216.5" width="91.6" height="14" rx="3" class="c-mask"/>
-        <text x="1077.5" y="226.5" class="t-backend" font-size="8" text-anchor="middle">SSH / 文件 / 命令</text>
+        <text x="1077.5" y="226.5" class="t-backend" font-size="8" text-anchor="middle">SSH / 파일 / Command</text>
         <rect x="1038.9" y="284" width="77.2" height="14" rx="3" class="c-mask"/>
-        <text x="1077.5" y="294" class="t-backend" font-size="8" text-anchor="middle">部署 / K8s API</text>
+        <text x="1077.5" y="294" class="t-backend" font-size="8" text-anchor="middle">Deploy / K8s API</text>
         <rect x="1015.4" y="579" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
         <text x="1078" y="589" class="t-backend" font-size="8" text-anchor="middle">PromQL / Lucene / LogsQL</text>
         <rect x="1038.9" y="509" width="77.2" height="14" rx="3" class="c-mask"/>
-        <text x="1077.5" y="519" class="t-messagebus" font-size="8" text-anchor="middle">Git / SVN 拉取</text>
+        <text x="1077.5" y="519" class="t-messagebus" font-size="8" text-anchor="middle">Git / SVN Checkout</text>
         <rect x="1026.9" y="644" width="101.2" height="14" rx="3" class="c-mask"/>
-        <text x="1077.5" y="654" class="t-messagebus" font-size="8" text-anchor="middle">LDAP 同步 / Webhook</text>
+        <text x="1077.5" y="654" class="t-messagebus" font-size="8" text-anchor="middle">LDAP 동기화 / Webhook</text>
 
         <!-- Legend -->
         <text x="40" y="831" class="t-primary" font-size="9" font-weight="600">Legend</text>
@@ -701,48 +701,48 @@
       <div class="card">
         <div class="card-header">
           <div class="card-dot cyan"></div>
-          <h3>前端与 API</h3>
+          <h3>Frontend와 API</h3>
         </div>
         <ul>
-          <li>&bull; Vue 3 单页控制台按资产、运维、应用、通知和监控领域组织</li>
-          <li>&bull; Gin 对外提供鉴权 REST API 与终端 WebSocket 通道</li>
-          <li>&bull; JWT、RBAC 与操作审计共同约束平台操作</li>
+          <li>&bull; Vue 3 단일 페이지 Console은 Asset, 운영, Application, Notification과 모니터링 Domain별로 구성됩니다</li>
+          <li>&bull; Gin은 외부에 인증 REST API와 Terminal WebSocket 채널을 제공합니다</li>
+          <li>&bull; JWT, RBAC과 작업 Audit가 Platform 작업을 함께 통제합니다</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>CMDB 与执行引擎</h3>
+          <h3>CMDB와 실행 Engine</h3>
         </div>
         <ul>
-          <li>&bull; CMDB 统一维护主机、数据库、K8s 集群、凭据和访问网关</li>
-          <li>&bull; SSH 网关为隔离网络中的基础设施提供受控访问入口</li>
-          <li>&bull; 调度器驱动快速执行、作业、监控评估和数据库备份</li>
+          <li>&bull; CMDB는 Host, Database, K8s Cluster, Credential과 접속 Gateway를 통합 관리합니다</li>
+          <li>&bull; SSH Gateway는 격리 네트워크의 Infrastructure에 통제된 접속 진입점을 제공합니다</li>
+          <li>&bull; Scheduler는 빠른 실행, Job, 모니터링 평가와 Database Backup을 구동합니다</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>交付与可观测</h3>
+          <h3>Delivery와 Observability</h3>
         </div>
         <ul>
-          <li>&bull; 应用构建在指定执行节点拉取 Git 或 SVN 代码</li>
-          <li>&bull; CI/CD 流水线将构建结果发布到主机或 Kubernetes 环境</li>
-          <li>&bull; 指标与日志支持 Prometheus、VictoriaMetrics、Elasticsearch 和 VictoriaLogs</li>
+          <li>&bull; Application Build는 지정된 실행 Node에서 Git 또는 SVN Source를 Checkout합니다</li>
+          <li>&bull; CI/CD Pipeline은 Build 결과를 Host 또는 Kubernetes Environment로 Deploy합니다</li>
+          <li>&bull; Metric과 Log는 Prometheus, VictoriaMetrics, Elasticsearch와 VictoriaLogs를 지원합니다</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>平台集成</h3>
+          <h3>Platform 통합</h3>
         </div>
         <ul>
-          <li>&bull; 消息模板通过钉钉、企业微信、飞书或自定义 Webhook 发送</li>
-          <li>&bull; LDAP/AD 为系统用户提供目录同步能力</li>
-          <li>&bull; 集成中心提供分组导航以及可选的免登录公开链接</li>
+          <li>&bull; Notification Template은 DingTalk, WeCom, Feishu 또는 사용자 정의 Webhook으로 전송됩니다</li>
+          <li>&bull; LDAP/AD는 시스템 사용자에게 Directory 동기화 역량을 제공합니다</li>
+          <li>&bull; 통합 Center는 그룹 Navigation과 선택적으로 로그인 없이 접근 가능한 공개 Link를 제공합니다</li>
         </ul>
       </div>
     </div>

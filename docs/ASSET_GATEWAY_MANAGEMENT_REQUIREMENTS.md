@@ -1,166 +1,166 @@
-# 资产网关管理需求文档
+# Asset Gateway 관리 요구사항 문서
 
-## 1. 背景
+## 1. 배경
 
-当前资产管理已覆盖服务器、数据库、K8s 集群等资源，但这些资源可能位于内网、专线网络、办公网隔离区或云上 VPC 中，Ops Admin 后端无法直接访问目标地址。
+현재 Asset Management는 Server, Database, K8s Cluster 등 리소스를 커버하지만, 이들 리소스는 내부망, 전용선 네트워크, 사무망 DMZ 또는 Cloud VPC에 위치할 수 있어 Ops Admin Backend가 대상 주소에 직접 접근할 수 없습니다.
 
-典型场景：
+대표 시나리오:
 
-- 服务器 B 只能从跳板机 A 通过 SSH 访问。
-- MySQL 数据库只开放给内网机器 A，平台需要通过 A 转发后访问数据库。
-- K8s API Server 使用内网地址，平台需要通过网关 A 才能访问集群 API。
+- Server B는 점프 Gateway A를 통해서만 SSH로 접근할 수 있습니다.
+- MySQL Database는 내부망 머신 A에만 개방되어 있으며, 플랫폼은 A를 통해 Forwarding한 뒤 Database에 접근해야 합니다.
+- K8s API Server는 내부망 주소를 사용하며, 플랫폼은 Gateway A를 경유해야 Cluster API에 접근할 수 있습니다.
 
-因此需要在资产管理中新增“网关管理”，让主机、数据库、K8s 集群可以选择直连或通过指定网关访问。
+따라서 Asset Management에 "Gateway 관리"를 추가해 Host, Database, K8s Cluster가 직접 연결 또는 지정한 Gateway 경유 접근을 선택할 수 있도록 합니다.
 
-## 2. 建设目标
+## 2. 구축 목표
 
-第一阶段目标：
+1단계 목표:
 
-- 新增网关资源的增删改查、启用禁用、连通性测试。
-- 支持一跳 SSH 网关，也就是平台后端先连网关 A，再通过网关 A 访问目标 B。
-- 主机管理、数据库管理、K8s 管理都能配置网关。
-- 平台所有实际连接行为必须复用网关配置，不能只在页面展示。
-- 删除网关前检查引用关系，避免主机、数据库、K8s 集群连接配置失效。
+- Gateway 리소스의 CRUD, 활성화/비활성화, 연결 테스트를 추가합니다.
+- 1-hop SSH Gateway를 지원합니다. 즉 플랫폼 Backend가 먼저 Gateway A에 연결한 뒤 Gateway A를 통해 대상 B에 접근합니다.
+- Host 관리, Database 관리, K8s 관리 모두에서 Gateway를 구성할 수 있습니다.
+- 플랫폼의 모든 실제 연결 동작은 Gateway 구성을 재사용해야 하며 화면 표시에만 그쳐서는 안 됩니다.
+- Gateway 삭제 전 참조 관계를 확인해 Host, Database, K8s Cluster의 연결 구성이 무효화되지 않도록 합니다.
 
-暂不纳入第一阶段：
+1단계에 포함하지 않는 항목:
 
-- 多级网关链路，例如 A -> B -> C。
-- SOCKS5、HTTP Proxy 网关。
-- 网关高可用自动切换。
-- 凭据加密存储体系重构。
+- 다단계 Gateway 체인(예: A -> B -> C).
+- SOCKS5, HTTP Proxy Gateway.
+- Gateway 고가용성(HA) 자동 전환.
+- Credential 암호화 저장 체계 재구축.
 
-## 3. 菜单与页面
+## 3. 메뉴와 페이지
 
-资产管理下新增二级菜单：
+Asset Management 아래에 하위 메뉴를 추가합니다:
 
-- 服务器管理
-- 数据库管理
-- K8s 管理
-- 网关管理
+- Server 관리
+- Database 관리
+- K8s 관리
+- Gateway 관리
 
-网关管理页面包含：
+Gateway 관리 페이지 구성:
 
-- 网关列表
-- 新增网关
-- 编辑网关
-- 查看详情
-- 连通性测试
-- 启用 / 禁用
-- 删除
+- Gateway 목록
+- Gateway 추가
+- Gateway 수정
+- 상세 보기
+- 연결 테스트
+- 활성화 / 비활성화
+- 삭제
 
-列表字段建议：
+목록 필드 제안:
 
-| 字段 | 说明 |
+| 필드 | 설명 |
 | --- | --- |
-| 网关名称 | 用户可识别名称 |
-| 网关地址 | SSH 地址，例如 192.168.1.10:22 |
-| 认证凭据 | 复用资产凭据或独立选择网关凭据 |
-| 网络区域 | 例如 prod-vpc、office、idc-a |
-| 状态 | 启用、禁用 |
-| 连通状态 | 未检测、正常、失败 |
-| 引用数量 | 被多少主机、数据库、K8s 集群使用 |
-| 最近检测时间 | 最后一次测试时间 |
-| 操作 | 测试、详情、编辑、禁用、删除 |
+| Gateway 이름 | 사용자가 식별할 수 있는 이름 |
+| Gateway 주소 | SSH 주소(예: 192.168.1.10:22) |
+| 인증 Credential | Asset Credential을 재사용하거나 Gateway Credential을 별도 선택 |
+| 네트워크 Zone | 예: prod-vpc, office, idc-a |
+| 상태 | 활성화, 비활성화 |
+| 연결 상태 | 미검사, 정상, 실패 |
+| 참조 수 | 사용하는 Host, Database, K8s Cluster 수 |
+| 최근 검사 시각 | 마지막 테스트 시각 |
+| 작업 | 테스트, 상세, 수정, 비활성화, 삭제 |
 
-## 4. 网关数据模型
+## 4. Gateway 데이터 모델
 
-新增 `asset_gateway` 表。
+`asset_gateway` 테이블을 추가합니다.
 
-建议字段：
+제안 필드:
 
-| 字段 | 类型 | 说明 |
+| 필드 | 타입 | 설명 |
 | --- | --- | --- |
-| id | uint | 主键 |
-| name | string | 网关名称，必填 |
-| code | string | 网关编码，可选，便于自动化引用 |
-| gateway_type | string | 第一阶段固定为 `ssh` |
-| host | string | 网关 IP / 域名，必填 |
-| port | int | SSH 端口，默认 22 |
-| credential_id | uint | 网关登录凭据，必填 |
-| network_zone | string | 网络区域 |
-| status | int | 1 启用，2 禁用 |
-| connect_status | int | 0 未检测，1 正常，2 失败 |
-| last_check_time | datetime | 最近检测时间 |
-| description | string | 备注 |
-| created_at | datetime | 创建时间 |
-| updated_at | datetime | 更新时间 |
+| id | uint | 기본 키 |
+| name | string | Gateway 이름, 필수 |
+| code | string | Gateway Code, 선택, 자동화 참조에 용이 |
+| gateway_type | string | 1단계는 `ssh`로 고정 |
+| host | string | Gateway IP/Domain, 필수 |
+| port | int | SSH Port, 기본값 22 |
+| credential_id | uint | Gateway 로그인 Credential, 필수 |
+| network_zone | string | 네트워크 Zone |
+| status | int | 1 활성화, 2 비활성화 |
+| connect_status | int | 0 미검사, 1 정상, 2 실패 |
+| last_check_time | datetime | 최근 검사 시각 |
+| description | string | 비고 |
+| created_at | datetime | 생성 시각 |
+| updated_at | datetime | 수정 시각 |
 
-第一阶段网关凭据建议复用现有 `asset_credential`，避免重复做密码、密钥管理。
+1단계 Gateway Credential은 기존 `asset_credential`을 재사용해 비밀번호와 Key 관리를 중복 구현하지 않는 것을 권장합니다.
 
-## 5. 连接模式
+## 5. 연결 모드
 
-主机、数据库、K8s 集群都新增连接模式：
+Host, Database, K8s Cluster에 연결 모드를 추가합니다:
 
-| 模式 | 说明 |
+| Mode | 설명 |
 | --- | --- |
-| direct | 直连，保持现有逻辑 |
-| gateway | 通过指定网关访问 |
+| direct | 직접 연결(기존 로직 유지) |
+| gateway | 지정한 Gateway로 접근 |
 
-对应字段建议：
+대응 필드 제안:
 
 - `connection_mode`
 - `gateway_id`
 
-为了兼容历史数据：
+기존 데이터 호환을 위해:
 
-- 旧数据默认 `connection_mode = direct`
+- 기존 데이터는 기본값 `connection_mode = direct`
 - `gateway_id = null`
-- 页面展示为“直连”
+- 화면에는 "직접 연결"로 표시합니다
 
-## 6. 主机管理接入网关
+## 6. Host 관리에 Gateway 접속
 
-### 6.1 现状检查
+### 6.1 현황 점검
 
-当前主机 SSH 连接入口集中在：
+현재 Host SSH 연결 진입점은 다음에 집중되어 있습니다:
 
-- `backend/service/service.go` 的 `newSSHClient(host model.AssetHost)`
-- `backend/service/ops.go` 的命令执行、脚本执行、文件分发都会间接调用 SSH 连接
-- 主机终端、主机探活、采集主机信息也依赖 SSH 连接
+- `backend/service/service.go`의 `newSSHClient(host model.AssetHost)`
+- `backend/service/ops.go`의 Command 실행, Script 실행, 파일 배포는 모두 간접적으로 SSH 연결을 호출합니다
+- Host Terminal, Host 생존 확인, Host 정보 수집도 SSH 연결에 의존합니다
 
-当前逻辑是：
-
-```text
-Ops Admin 后端 -> 目标主机 SSH
-```
-
-网关模式应改为：
+현재 로직:
 
 ```text
-Ops Admin 后端 -> 网关 SSH -> 目标主机 SSH
+Ops Admin Backend -> 대상 Host SSH
 ```
 
-### 6.2 主机表改造
+Gateway 모드는 다음으로 변경합니다:
 
-`asset_host` 新增：
+```text
+Ops Admin Backend -> Gateway SSH -> 대상 Host SSH
+```
+
+### 6.2 Host 테이블 변경
+
+`asset_host`에 추가:
 
 - `connection_mode`
 - `gateway_id`
 
-主机新增 / 编辑页面增加：
+Host 추가 / 수정 페이지에 추가:
 
-- 连接方式：直连 / 通过网关
-- 网关选择器：仅连接方式为“通过网关”时必填
+- 연결 방식: 직접 연결 / Gateway 경유
+- Gateway 선택기: 연결 방식이 "Gateway 경유"일 때만 필수
 
-主机列表增加：
+Host 목록에 추가:
 
-- 连接方式
-- 网关名称
+- 연결 방식
+- Gateway 이름
 
-### 6.3 SSH 连接逻辑
+### 6.3 SSH 연결 로직
 
-新增统一方法：
+통합 메서드를 추가합니다:
 
 ```go
 func (s *Service) newSSHClientForHost(host model.AssetHost) (*ssh.Client, error)
 ```
 
-直连：
+직접 연결:
 
 ```text
 ssh.Dial("tcp", host.SSHIP:host.SSHPort, targetConfig)
 ```
 
-网关：
+Gateway 경유:
 
 ```text
 1. ssh.Dial("tcp", gateway.host:gateway.port, gatewayConfig)
@@ -169,183 +169,183 @@ ssh.Dial("tcp", host.SSHIP:host.SSHPort, targetConfig)
 4. ssh.NewClient(...)
 ```
 
-所有主机 SSH 操作统一走这个方法：
+모든 Host SSH 작업은 이 메서드를 통해 수행합니다:
 
-- 主机连通性测试
-- 主机终端登录
-- 快速执行：命令执行
-- 快速执行：脚本执行
-- 快速执行：文件分发
-- 定时任务脚本执行
-- 作业编排中的脚本执行、文件分发
+- Host 연결 테스트
+- Host Terminal 로그인
+- Quick Execute: Command 실행
+- Quick Execute: Script 실행
+- Quick Execute: 파일 배포
+- Schedule Task Script 실행
+- Job 오케스트레이션의 Script 실행, 파일 배포
 
-## 7. 数据库管理接入网关
+## 7. Database 관리에 Gateway 접속
 
-### 7.1 现状检查
+### 7.1 현황 점검
 
-当前数据库连接入口主要在：
+현재 Database 연결 진입점은 주로 다음 위치입니다:
 
 - `backend/service/database.go`
 - `inspectMySQLDatabase(...)`
 - `openDatabaseByID(...)`
 
-当前逻辑是：
+현재 로직:
 
 ```text
 sql.Open("mysql", user:pass@tcp(dbHost:dbPort)/schema)
 ```
 
-这意味着数据库现在只能直连。
+즉 현재 Database는 직접 연결만 가능합니다.
 
-### 7.2 数据库表改造
+### 7.2 Database 테이블 변경
 
-`asset_database` 新增：
+`asset_database`에 추가:
 
 - `connection_mode`
 - `gateway_id`
 
-数据库新增 / 编辑页面增加：
+Database 추가 / 수정 페이지에 추가:
 
-- 连接方式：直连 / 通过网关
-- 网关选择器：通过网关时必填
+- 연결 방식: 직접 연결 / Gateway 경유
+- Gateway 선택기: Gateway 경유 시 필수
 
-数据库列表增加：
+Database 목록에 추가:
 
-- 连接方式
-- 网关名称
+- 연결 방식
+- Gateway 이름
 
-### 7.3 MySQL 连接逻辑
+### 7.3 MySQL 연결 로직
 
-第一阶段建议使用 MySQL Driver 自定义 Dialer。
+1단계는 MySQL Driver의 사용자 정의 Dialer 사용을 권장합니다.
 
-方案：
+방안:
 
 ```text
-1. 根据 database.gateway_id 获取网关
-2. 建立到网关的 SSH Client
-3. 通过 gatewayClient.DialContext 连接 dbHost:dbPort
-4. 使用 mysql.RegisterDialContext 注册带网关标识的 network
-5. DSN 使用该 network 访问 MySQL
+1. database.gateway_id로 Gateway를 조회합니다
+2. Gateway로의 SSH Client 연결을 수립합니다
+3. gatewayClient.DialContext로 dbHost:dbPort에 연결합니다
+4. mysql.RegisterDialContext로 Gateway 식별자가 포함된 network를 등록합니다
+5. DSN은 해당 network로 MySQL에 접근합니다
 ```
 
-注意点：
+유의 사항:
 
-- 自定义 network 名称需要包含 gatewayID 和 databaseID，避免不同数据库连接池串线。
-- `sql.DB` 关闭时要释放网关 SSH client。
-- DBMS 查询、表数据编辑、SQL 执行、导出任务、导入任务都必须复用同一个连接工厂。
+- 사용자 정의 network 이름에는 gatewayID와 databaseID를 포함해 서로 다른 Database 연결 풀이 섞이지 않도록 합니다.
+- `sql.DB`를 닫을 때 Gateway SSH Client를 해제합니다.
+- DBMS 조회, 테이블 데이터 편집, SQL 실행, Export Task, Import Task는 모두 동일한 연결 팩토리를 재사용해야 합니다.
 
-需要接入的能力：
+접속이 필요한 기능:
 
-- 数据库连接测试
-- SQL 编辑器执行
-- 表结构读取
-- 表数据分页查询
-- 单元格编辑
-- SQL 执行历史
-- 数据库导出
-- 跨数据库导入
+- Database 연결 테스트
+- SQL 편집기 실행
+- 테이블 구조 조회
+- 테이블 데이터 페이징 조회
+- 셀 편집
+- SQL 실행 이력
+- Database Export
+- 크로스 Database Import
 
-## 8. K8s 管理接入网关
+## 8. K8s 관리에 Gateway 접속
 
-### 8.1 现状检查
+### 8.1 현황 점검
 
-K8s 常规资源管理入口集中在：
+K8s 일반 리소스 관리 진입점은 다음에 집중되어 있습니다:
 
-- `backend/service/k8s.go` 的 `k8sClientForCluster(...)`
+- `backend/service/k8s.go`의 `k8sClientForCluster(...)`
 
-但 Pod 终端还有独立入口：
+단 Pod Terminal에는 별도 진입점이 있습니다:
 
 - `backend/service/k8s_terminal.go`
-- 目前直接使用 `clientcmd.RESTConfigFromKubeConfig`
+- 현재는 `clientcmd.RESTConfigFromKubeConfig`를 직접 사용합니다
 
-应用中心 CI/CD 的 K8s 发布使用：
+Application Center CI/CD의 K8s Deploy는 다음을 사용합니다:
 
 - `backend/service/ops_application.go`
-- 当前通过临时 kubeconfig 调用 `kubectl`
+- 현재는 임시 kubeconfig로 `kubectl`을 호출합니다
 
-### 8.2 K8s 集群表改造
+### 8.2 K8s Cluster 테이블 변경
 
-`k8s_cluster` 新增：
+`k8s_cluster`에 추가:
 
 - `connection_mode`
 - `gateway_id`
 
-K8s 集群录入 / 编辑页面增加：
+K8s Cluster 등록 / 수정 페이지에 추가:
 
-- 连接方式：直连 / 通过网关
-- 网关选择器：通过网关时必填
+- 연결 방식: 직접 연결 / Gateway 경유
+- Gateway 선택기: Gateway 경유 시 필수
 
-集群保存校验逻辑：
+Cluster 저장 검증 로직:
 
-- 直连：保持当前校验。
-- 网关：先测试网关，再通过网关访问 API Server。
-- 失败提示仍使用：`集群连接失败，请检查 kubeconfig`
-- 可以在详情里额外展示失败原因，便于排查。
+- 직접 연결: 현재 검증을 유지합니다.
+- Gateway 경유: 먼저 Gateway를 테스트한 뒤 Gateway를 통해 API Server에 접근합니다.
+- 실패 안내는 기존 문구를 유지합니다: `Cluster 연결에 실패했습니다. kubeconfig를 확인하십시오`
+- 상세에서 실패 원인을 추가로 표시해 원인 파악을 돕습니다.
 
-### 8.3 K8s API 访问逻辑
+### 8.3 K8s API 접근 로직
 
-常规资源管理应在 `k8sClientForCluster(...)` 中统一接入网关。
+일반 리소스 관리는 `k8sClientForCluster(...)`에서 Gateway 접속을 통합해야 합니다.
 
-建议：
+권장:
 
 ```text
-1. 解析 kubeconfig 得到 API Server host:port
-2. 如果 connection_mode = gateway：
-   - 建立 SSH 网关连接
-   - http.Transport.DialContext 使用 gatewayClient.DialContext
-   - TLS ServerName 保持 kubeconfig 中原始 server 的主机名
-3. 所有 k8sGetJSON / k8sDo / YAML / 删除 / 更新 都复用该 http.Client
+1. kubeconfig를 파싱해 API Server host:port를 얻습니다
+2. connection_mode = gateway인 경우:
+   - SSH Gateway 연결을 수립합니다
+   - http.Transport.DialContext에 gatewayClient.DialContext를 사용합니다
+   - TLS ServerName은 kubeconfig의 원본 server 호스트명을 유지합니다
+3. 모든 k8sGetJSON / k8sDo / YAML / 삭제 / 업데이트는 해당 http.Client를 재사용합니다
 ```
 
-需要覆盖：
+커버 범위:
 
-- 集群概览
-- 节点管理
-- 命名空间
-- Pod 管理
-- 工作负载
-- 服务
+- Cluster Overview
+- Node 관리
+- Namespace
+- Pod 관리
+- Workload
+- Service
 - Ingress
-- 高级网络
-- 配置与存储
-- YAML 查看 / 编辑
-- Pod 日志
-- Pod 终端
+- 고급 네트워크
+- Config·Storage
+- YAML 조회 / 편집
+- Pod Log
+- Pod Terminal
 
-### 8.4 Pod 终端改造
+### 8.4 Pod Terminal 변경
 
-`k8s_terminal.go` 当前没有复用 `k8sClientForCluster(...)`，需要单独处理。
+`k8s_terminal.go`는 현재 `k8sClientForCluster(...)`를 재사용하지 않으므로 별도 처리가 필요합니다.
 
-建议新增：
+추가 권장:
 
 ```go
 func (s *Service) restConfigForCluster(cluster model.K8sCluster) (*rest.Config, func(), error)
 ```
 
-直连返回原始 rest.Config。
+직접 연결은 원본 rest.Config를 반환합니다.
 
-网关模式：
+Gateway 모드:
 
-- 给 `rest.Config.Transport` 或 `rest.Config.Dial` 注入网关 Dialer。
-- 或创建带网关 DialContext 的 `http.Transport`。
-- cleanup 负责关闭网关 SSH client。
+- `rest.Config.Transport` 또는 `rest.Config.Dial`에 Gateway Dialer를 주입합니다.
+- 또는 Gateway DialContext가 포함된 `http.Transport`를 생성합니다.
+- cleanup은 Gateway SSH Client를 닫는 것을 담당합니다.
 
-### 8.5 CI/CD K8s 发布改造
+### 8.5 CI/CD K8s Deploy 변경
 
-当前应用中心 K8s 发布阶段使用 `kubectl --kubeconfig tempFile`，如果 API Server 只能通过网关访问，kubectl 本身不会自动走平台网关。
+현재 Application Center K8s Deploy Stage는 `kubectl --kubeconfig tempFile`을 사용하며, API Server가 Gateway로만 접근 가능한 경우 kubectl 자체는 플랫폼 Gateway를 자동으로 경유하지 않습니다.
 
-可选方案：
+선택 가능한 방안:
 
-1. 推荐：后端改为使用 Kubernetes API 执行镜像更新和 rollout status，不再依赖 kubectl。
-2. 兼容：执行前创建本地临时端口转发，将 kubeconfig server 改写为 `https://127.0.0.1:localPort`，kubectl 走本地隧道访问集群。
+1. 권장: Backend가 Kubernetes API로 Image Update와 rollout status를 실행하도록 변경해 kubectl 의존성을 제거합니다.
+2. 호환: 실행 전 로컬 임시 Port Forwarding을 생성해 kubeconfig server를 `https://127.0.0.1:localPort`로 재작성하고, kubectl은 로컬 터널로 Cluster에 접근합니다.
 
-第一阶段建议选择方案 1，和 K8s 管理模块共享同一套网关访问逻辑。
+1단계는 방안 1을 권장하며, K8s 관리 모듈과 동일한 Gateway 접근 로직을 공유합니다.
 
-## 9. 后端服务设计
+## 9. Backend Service 설계
 
-新增 `backend/service/gateway.go`。
+`backend/service/gateway.go`를 추가합니다.
 
-核心能力：
+핵심 기능:
 
 ```go
 type GatewayDialer struct {
@@ -365,34 +365,34 @@ func (s *Service) dialThroughGateway(ctx context.Context, gatewayID uint, networ
 func (s *Service) newGatewayHTTPTransport(gatewayID uint, base *http.Transport) (*http.Transport, func(), error)
 ```
 
-删除网关前必须检查：
+Gateway 삭제 전 반드시 확인합니다:
 
 - `asset_host.gateway_id`
 - `asset_database.gateway_id`
 - `k8s_cluster.gateway_id`
 
-如存在引用，禁止删除，并返回：
+참조가 존재하면 삭제를 금지하고 다음을 반환합니다:
 
 ```text
-该网关正在被资产使用，无法删除
+해당 Gateway는 Asset에서 사용 중이므로 삭제할 수 없습니다
 ```
 
-## 10. API 设计
+## 10. API 설계
 
-新增接口：
+신규 API:
 
-| 方法 | 路径 | 说明 |
+| 메서드 | 경로 | 설명 |
 | --- | --- | --- |
-| GET | `/asset/gateway/list` | 网关列表 |
-| GET | `/asset/gateway/options` | 网关下拉选项 |
-| GET | `/asset/gateway/info` | 网关详情 |
-| POST | `/asset/gateway/create` | 新增网关 |
-| POST | `/asset/gateway/update` | 更新网关 |
-| POST | `/asset/gateway/delete` | 删除网关 |
-| POST | `/asset/gateway/status` | 启用 / 禁用 |
-| POST | `/asset/gateway/test` | 连通性测试 |
+| GET | `/asset/gateway/list` | Gateway 목록 |
+| GET | `/asset/gateway/options` | Gateway Dropdown 옵션 |
+| GET | `/asset/gateway/info` | Gateway 상세 |
+| POST | `/asset/gateway/create` | Gateway 추가 |
+| POST | `/asset/gateway/update` | Gateway 업데이트 |
+| POST | `/asset/gateway/delete` | Gateway 삭제 |
+| POST | `/asset/gateway/status` | 활성화 / 비활성화 |
+| POST | `/asset/gateway/test` | 연결 테스트 |
 
-主机、数据库、K8s 集群现有创建 / 更新接口增加：
+Host, Database, K8s Cluster의 기존 생성 / 업데이트 API에 추가:
 
 ```json
 {
@@ -401,102 +401,102 @@ func (s *Service) newGatewayHTTPTransport(gatewayID uint, base *http.Transport) 
 }
 ```
 
-## 11. 前端接入点
+## 11. Frontend 연동 지점
 
-需要改造：
+변경 대상:
 
 - `web/src/utils/apps.js`
-  - 资产管理应用菜单新增“网关管理”。
+  - Asset Management 앱 메뉴에 "Gateway 관리"를 추가합니다.
 - `web/src/router/index.js`
-  - 新增 `/assets/gateways`。
-- 主机管理页面
-  - 新增连接方式和网关选择器。
-  - 列表展示网关。
-- 数据库管理页面
-  - 新增连接方式和网关选择器。
-  - 列表展示网关。
-- K8s 集群管理页面
-  - 新增连接方式和网关选择器。
-  - 保存前按连接方式校验。
+  - `/assets/gateways`를 추가합니다.
+- Host 관리 페이지
+  - 연결 방식과 Gateway 선택기를 추가합니다.
+  - 목록에 Gateway를 표시합니다.
+- Database 관리 페이지
+  - 연결 방식과 Gateway 선택기를 추가합니다.
+  - 목록에 Gateway를 표시합니다.
+- K8s Cluster 관리 페이지
+  - 연결 방식과 Gateway 선택기를 추가합니다.
+  - 저장 전 연결 방식에 따라 검증합니다.
 
-新增页面建议：
+신규 페이지 제안:
 
 - `web/src/views/assets/Gateway.vue`
 
-## 12. 权限与审计
+## 12. 권한과 감사
 
-建议增加操作审计：
+작업 감사 추가를 권장합니다:
 
-- 创建网关
-- 修改网关
-- 删除网关
-- 测试网关
-- 主机 / 数据库 / K8s 集群绑定网关
-- 主机 / 数据库 / K8s 集群解绑网关
+- Gateway 생성
+- Gateway 수정
+- Gateway 삭제
+- Gateway 테스트
+- Host / Database / K8s Cluster에 Gateway 바인딩
+- Host / Database / K8s Cluster의 Gateway 바인딩 해제
 
-安全要求：
+보안 요구:
 
-- 网关凭据不在接口响应中返回明文。
-- 网关测试失败信息前端展示简要原因，详细错误写入后端日志。
-- 禁用网关后，引用该网关的资产连接应直接失败，并提示网关已禁用。
+- Gateway Credential은 API 응답에 평문으로 반환하지 않습니다.
+- Gateway 테스트 실패 정보는 Frontend에 간략한 원인을 표시하고 상세 오류는 Backend Log에 기록합니다.
+- Gateway 비활성화 후 해당 Gateway를 참조하는 Asset 연결은 즉시 실패하며 Gateway가 비활성화되었다고 안내합니다.
 
-## 13. 验收标准
+## 13. 검수 기준
 
-### 网关管理
+### Gateway 관리
 
-- 可以新增 SSH 网关。
-- 可以编辑、禁用、启用、删除网关。
-- 可以测试网关 SSH 连接。
-- 被资产引用的网关不能删除。
+- SSH Gateway를 추가할 수 있습니다.
+- Gateway를 수정, 비활성화, 활성화, 삭제할 수 있습니다.
+- Gateway SSH 연결을 테스트할 수 있습니다.
+- Asset에서 참조하는 Gateway는 삭제할 수 없습니다.
 
-### 主机管理
+### Host 관리
 
-- 主机可以选择直连或网关连接。
-- 网关模式下，主机连通性测试成功。
-- 网关模式下，主机终端可以打开。
-- 网关模式下，快速命令、脚本执行、文件分发可用。
+- Host는 직접 연결 또는 Gateway 연결을 선택할 수 있습니다.
+- Gateway 모드에서 Host 연결 테스트가 성공합니다.
+- Gateway 모드에서 Host Terminal을 열 수 있습니다.
+- Gateway 모드에서 Quick Command, Script 실행, 파일 배포를 사용할 수 있습니다.
 
-### 数据库管理
+### Database 관리
 
-- 数据库可以选择直连或网关连接。
-- 网关模式下，连接测试成功。
-- 网关模式下，SQL 编辑器可执行查询。
-- 网关模式下，表数据编辑、导出、导入可用。
+- Database는 직접 연결 또는 Gateway 연결을 선택할 수 있습니다.
+- Gateway 모드에서 연결 테스트가 성공합니다.
+- Gateway 모드에서 SQL 편집기로 Query를 실행할 수 있습니다.
+- Gateway 모드에서 테이블 데이터 편집, Export, Import를 사용할 수 있습니다.
 
-### K8s 管理
+### K8s 관리
 
-- K8s 集群可以选择直连或网关连接。
-- 网关模式下，保存集群前必须校验 kubeconfig。
-- 网关模式下，集群概览、节点、命名空间、Pod、工作负载、服务、Ingress、配置存储可正常读取。
-- 网关模式下，Pod 终端、日志、YAML 查看与编辑可用。
-- 应用中心 K8s 发布阶段可以选择通过网关访问目标集群。
+- K8s Cluster는 직접 연결 또는 Gateway 연결을 선택할 수 있습니다.
+- Gateway 모드에서 Cluster 저장 전 kubeconfig를 반드시 검증합니다.
+- Gateway 모드에서 Cluster Overview, Node, Namespace, Pod, Workload, Service, Ingress, Config·Storage를 정상적으로 읽을 수 있습니다.
+- Gateway 모드에서 Pod Terminal, Log, YAML 조회와 편집을 사용할 수 있습니다.
+- Application Center K8s Deploy Stage에서 Gateway를 통한 대상 Cluster 접근을 선택할 수 있습니다.
 
-## 14. 开发优先级
+## 14. 개발 우선순위
 
-P0：
+P0:
 
-- 网关模型、迁移、CRUD、测试。
-- 主机 SSH 连接接入网关。
-- 数据库连接测试和 SQL 执行接入网关。
-- K8s `k8sClientForCluster` 接入网关。
+- Gateway Model, Migration, CRUD, 테스트.
+- Host SSH 연결에 Gateway 접속.
+- Database 연결 테스트와 SQL 실행에 Gateway 접속.
+- K8s `k8sClientForCluster`에 Gateway 접속.
 
-P1：
+P1:
 
-- Pod 终端接入网关。
-- DBMS 导出、导入任务接入网关。
-- 快速执行、定时任务、作业编排接入网关。
+- Pod Terminal에 Gateway 접속.
+- DBMS Export, Import Task에 Gateway 접속.
+- Quick Execute, Schedule Task, Job 오케스트레이션에 Gateway 접속.
 
-P2：
+P2:
 
-- 应用中心 K8s 发布阶段彻底去 kubectl 化，改为 Kubernetes API。
-- 网关连接池和复用优化。
-- 网关健康巡检和引用资产拓扑。
+- Application Center K8s Deploy Stage에서 kubectl을 완전히 제거하고 Kubernetes API로 전환.
+- Gateway 연결 풀과 재사용 최적화.
+- Gateway Health 점검과 참조 Asset 토폴로지.
 
-## 15. 风险与注意事项
+## 15. 위험과 유의 사항
 
-- MySQL 自定义 Dialer 必须避免全局 network 名称冲突。
-- SSH 网关连接不能长期泄漏，需要严格 cleanup。
-- K8s TLS 校验需要保留原始 API Server 的 ServerName，不能因为走本地隧道破坏证书校验。
-- `kubectl` 不支持自动走平台内部网关，需要改造 CI/CD K8s 发布链路。
-- 批量任务通过网关执行时，要控制并发，避免网关连接数过高。
-- 如果后续支持多级网关，当前 `gateway_id` 需要演进为 `gateway_chain_id` 或网关链路表。
+- MySQL 사용자 정의 Dialer는 전역 network 이름 충돌을 반드시 피해야 합니다.
+- SSH Gateway 연결은 장기간 누수되어서는 안 되며 엄격한 cleanup이 필요합니다.
+- K8s TLS 검증은 원본 API Server의 ServerName을 유지해야 하며, 로컬 터널 경유로 인증서 검증을 깨뜨려서는 안 됩니다.
+- `kubectl`은 플랫폼 내부 Gateway를 자동 경유하지 않으므로 CI/CD K8s Deploy 체인을 변경해야 합니다.
+- 일괄 Task를 Gateway로 실행할 때는 동시 실행을 제어해 Gateway 연결 수가 과도해지지 않도록 합니다.
+- 추후 다단계 Gateway를 지원하면 현재 `gateway_id`는 `gateway_chain_id` 또는 Gateway 체인 테이블로 발전해야 합니다.

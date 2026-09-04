@@ -1,564 +1,564 @@
-# Ops Admin 平台体验评审报告
+# Ops Admin 플랫폼 UX 리뷰 보고서
 
-评审时间：2026-07-06  
-评审角色：平台普通运维用户 / 应用发布用户 / 监控值班用户  
-评审范围：当前本地代码、前端路由、主要页面组件、后端接口注册与一次前端生产构建。
+리뷰 일시: 2026-07-06  
+리뷰 역할: 플랫폼 일반 운영 사용자 / Application 배포 사용자 / 모니터링 당직 사용자  
+리뷰 범위: 현재 로컬 코드, Frontend Route, 주요 Page Component, Backend API 등록과 Frontend 운영 Build 1회.
 
-> 说明：本次评审以“用户体验走查 + 代码级功能地图 + 构建验证”为主，未连接真实 MySQL、Kubernetes、Prometheus、SSH 资产、Git/SVN 仓库做完整端到端联调。因此涉及外部系统的建议会标注为“需要联调验证”。
+> 안내: 이번 리뷰는 “사용자 경험 점검 + 코드 수준 기능 맵 + Build 검증”을 중심으로 진행했으며, 실제 MySQL, Kubernetes, Prometheus, SSH Asset, Git/SVN Repository에 연결한 완전한 End-to-End 통합 검증은 수행하지 않았습니다. 따라서 외부 System이 관련된 권고는 “통합 검증 필요”로 표기합니다.
 
-## 一、总体结论
+## 1. 전체 결론
 
-平台已经从单一运维后台扩展成较完整的运维平台雏形，当前包含：
+플랫폼은 단일 운영 Backend에서 비교적 완전한 운영 Platform의 모습으로 확장되었으며, 현재 다음을 포함합니다:
 
-- 控制台：仪表盘、系统管理、日志审计。
-- 资产管理：主机、主机组、凭据、云账号、数据库、K8s、Web SSH、DBMS 工作台。
-- 标准运维：脚本库、快速执行、定时任务、作业编排、作业历史、人工确认。
-- 应用中心：项目列表、构建任务、构建历史。
-- 消息通知：模板、媒介、规则、发送日志。
-- 监控中心：数据源、即时查询、告警规则、告警事件、屏蔽、聚合收敛、监控大屏、巡检大屏。
+- Console: 대시보드, 시스템 관리, Log Audit.
+- 자산 관리: Host, Host Group, Credential, Cloud Account, Database, K8s, Web SSH, DBMS Workbench.
+- 표준 운영: Script Library, Quick Execution, Scheduled Task, Job Orchestration, Job History, Manual Approval.
+- 애플리케이션 센터: Project 목록, Build Task, Build History.
+- 메시지 통지: Template, Channel, Rule, Send Log.
+- 모니터링 센터: Datasource, Instant Query, Alert Rule, Alert Event, Alert Silence, Alert Aggregation, Monitoring Dashboard, Inspection Dashboard.
 
-整体方向是对的：平台已经覆盖“资产录入 -> 执行变更 -> 编排作业 -> 通知 -> 监控反馈 -> 应用构建发布”的主链路。  
-当前最大的体验问题不是功能数量，而是“信息架构、文案一致性、页面复杂度、错误提示质量、关键流程闭环”还需要继续打磨。
+전체 방향은 맞습니다. 플랫폼이 “Asset 등록 -> Change 실행 -> Job Orchestration -> Notification -> Monitoring 피드백 -> Application Build/배포”의 주요 Chain을 이미 커버하고 있습니다.  
+현재 가장 큰 경험 문제는 기능 수가 아니라 “Information Architecture, 문구 일관성, Page 복잡도, 오류 Message 품질, 핵심 Flow 완결성”을 계속 다듬어야 한다는 점입니다.
 
-## 二、验证结果
+## 2. 검증 결과
 
-已执行：
+실행한 Command:
 
 ```bash
 cd web
 cmd /c npm run build
 ```
 
-结果：构建通过。
+결과: Build 통과.
 
-构建提示：
+Build 안내:
 
-- Vite/Rollup 有依赖注释提示，不影响运行。
-- 前端包体积超过 500 KB，建议后续做按路由拆包。
+- Vite/Rollup의 Dependency 주석 안내는 동작에 영향을 주지 않습니다.
+- Frontend Bundle 크기가 500 KB를 초과하므로 이후 Route 단위 Code Splitting을 권장합니다.
 
-## 三、全局体验反馈
+## 3. 전체 경험 피드백
 
-### P0：中文编码与错误提示仍需统一清理
+### P0: 중국어 Encoding과 오류 Message는 여전히 통일된 정리가 필요
 
-用户体验影响：高。
+사용자 경험 영향: 높음.
 
-现象：
+현상:
 
-- `README.md` 当前在终端读取时仍显示大量乱码。
-- `backend/service/ops_schedule.go` 中仍存在乱码错误提示，例如请求头、脚本选择、目标选择等提示。
-- 这类错误一旦在前端 toast 或接口返回中出现，用户会认为系统“不稳定”或“不可信”。
+- `README.md`는 현재 Terminal에서 읽을 때 여전히 많은 깨진 문자를 표시합니다.
+- `backend/service/ops_schedule.go`에도 깨진 문자 오류 Message가 남아 있습니다. 예: Request Header, Script 선택, Target 선택 안내.
+- 이런 오류가 Frontend Toast나 API 응답에 한 번이라도 나타나면 사용자는 System이 “불안정”하거나 “신뢰할 수 없다”고 느낍니다.
 
-建议：
+권장:
 
-- 全项目统一 UTF-8 编码。
-- 对 `README.md`、后端错误提示、旧页面文案做一次集中扫描和修复。
-- 在 CI 中增加编码/乱码扫描，例如检测 `�`、`璇`、`鍙`、`鏋`、`鎵` 等高风险字符。
+- 프로젝트 전체를 UTF-8 Encoding으로 통일합니다.
+- `README.md`, Backend 오류 Message, 구버전 Page 문구를 한 번에 집중 스캔하고 수정합니다.
+- CI에 Encoding/깨진 문자 Scan을 추가합니다. 예: `�`, `U+7487`, `U+9D59`, `U+93CB`, `U+939B` 같은 고위험 문자 검출.
 
-优先级：P0。
+우선순위: P0.
 
-### P0：部分页面文件过大，长期维护风险高
+### P0: 일부 Page 파일이 지나치게 커서 장기 유지보수 위험이 높음
 
-用户体验影响：中高，研发维护影响：高。
+사용자 경험 영향: 중상. 개발 유지보수 영향: 높음.
 
-当前较大的页面：
+현재 규모가 큰 Page:
 
-- `web/src/views/assets/K8s.vue`：约 1772 行。
-- `web/src/views/monitor/MonitorDashboard.vue`：约 1578 行。
-- `web/src/views/assets/DatabaseWorkbench.vue`：约 1271 行。
-- `web/src/views/ops/OpsJobDesigner.vue`：约 873 行。
+- `web/src/views/assets/K8s.vue`: 약 1772줄.
+- `web/src/views/monitor/MonitorDashboard.vue`: 약 1578줄.
+- `web/src/views/assets/DatabaseWorkbench.vue`: 약 1271줄.
+- `web/src/views/ops/OpsJobDesigner.vue`: 약 873줄.
 
-建议：
+권장:
 
-- K8s：继续拆成页面状态 composable、资源表格组件、Yaml 编辑器组件、Istio/Gateway 组件。
-- 监控大屏：拆为大屏列表、面板渲染器、面板编辑器、报告导出器、数据查询 composable。
-- DBMS：拆为 SchemaTree、SqlEditor、ResultGrid、TransferTaskPanel、RowEditor。
-- 作业编排：拆为 Canvas、NodePalette、NodeConfigPanel、TemplateImporter。
+- K8s: Page 상태 Composable, Resource Table Component, Yaml Editor Component, Istio/Gateway Component로 계속 분리합니다.
+- Monitoring Dashboard: Dashboard 목록, Panel Renderer, Panel Editor, Report Exporter, Data Query Composable로 분리합니다.
+- DBMS: SchemaTree, SqlEditor, ResultGrid, TransferTaskPanel, RowEditor로 분리합니다.
+- Job Orchestration: Canvas, NodePalette, NodeConfigPanel, TemplateImporter로 분리합니다.
 
-优先级：P0/P1。
+우선순위: P0/P1.
 
-### P1：应用切换和模块菜单已经清晰，但一级应用越来越多
+### P1: Application 전환과 Module 메뉴는 명확해졌지만 최상위 Application이 계속 늘어남
 
-当前一级应用包括：控制台、资产管理、标准运维、应用中心、消息通知、监控中心。
+현재 최상위 Application은 Console, 자산 관리, 표준 운영, 애플리케이션 센터, 메시지 통지, 모니터링 센터입니다.
 
-体验优点：
+경험 장점:
 
-- “应用中心”已独立出来，不再混在标准运维里，符合用户心智。
-- K8s、数据库、监控这些专业模块都有相对明确的入口。
+- “애플리케이션 센터”가 독립적으로 분리되어 표준 운영에 섞이지 않게 되었고 사용자 Mental Model에 부합합니다.
+- K8s, Database, Monitoring 같은 전문 Module도 비교적 명확한 Entry를 갖습니다.
 
-问题：
+문제:
 
-- 后续如果继续增加 CMDB、审计、安全、成本、工单等，应用切换弹层会变长。
+- 이후 CMDB, Audit, 보안, 비용, Ticket 등을 계속 추가하면 Application 전환 Popup이 길어집니다.
 
-建议：
+권장:
 
-- 应用切换弹层支持搜索。
-- 支持常用应用置顶。
-- 在每个应用入口下展示 1 句职责说明和最近访问时间。
+- Application 전환 Popup에 검색을 지원합니다.
+- 자주 쓰는 Application 고정(Pin)을 지원합니다.
+- 각 Application Entry 아래에 한 줄 역할 설명과 최근 접속 시각을 표시합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### P1：高危操作需要更强的“后果提示”
+### P1: 고위험 작업에는 더 강력한 “결과 경고”가 필요
 
-已有确认框，但多为普通确认。
+이미 확인 대화상자가 있지만 대부분 일반 확인입니다.
 
-建议对以下操作增强提示：
+다음 작업에 대해 경고를 강화합니다:
 
-- DBMS 删除数据行、导入覆盖、执行 DDL/DML。
-- K8s 删除资源、编辑 YAML、批量修改镜像。
-- 快速执行命令/脚本、文件分发。
-- 作业编排执行、定时任务立即执行。
-- 应用中心立即构建、发布脚本执行。
+- DBMS 데이터 Row 삭제, Import 덮어쓰기, DDL/DML 실행.
+- K8s Resource 삭제, YAML 편집, 일괄 Image 수정.
+- Command/Script Quick Execution, File Distribution.
+- Job Orchestration 실행, Scheduled Task 즉시 실행.
+- 애플리케이션 센터 즉시 Build, 배포 Script 실행.
 
-建议形式：
+권장 형식:
 
-- 明确影响范围：目标主机、命名空间、数据库、表、构建任务。
-- 显示不可逆风险。
-- 高危操作要求二次输入资源名确认。
+- 영향 범위를 명확히 표시: Target Host, Namespace, Database, Table, Build Task.
+- 되돌릴 수 없는 위험을 표시합니다.
+- 고위험 작업은 Resource 이름 재입력 확인을 요구합니다.
 
-优先级：P1。
+우선순위: P1.
 
-## 四、资产管理体验反馈
+## 4. 자산 관리 경험 피드백
 
-### 资产概览
+### 자산 개요
 
-优点：
+장점:
 
-- 已经开始把主机、数据库、K8s 纳入同一概览视角。
-- 健康提醒、资源分布、K8s 信息能帮助用户快速判断平台接入状态。
+- Host, Database, K8s를 하나의 Overview 시각으로 통합하기 시작했습니다.
+- Health 알림, Resource 분포, K8s 정보가 사용자가 Platform 연동 상태를 빠르게 판단하는 데 도움이 됩니다.
 
-问题：
+문제:
 
-- “健康提醒”需要更多可操作入口，例如点击离线主机进入筛选后的主机列表。
-- 资源分布应清楚区分“主机来源、环境、云厂商、业务组”，当前一旦数据缺失容易误导。
+- “Health 알림”에는 더 많은 실행 가능한 Entry가 필요합니다. 예: 오프라인 Host 클릭 시 필터링된 Host 목록으로 이동.
+- Resource 분포는 “Host 출처, Environment, Cloud Provider, Business Group”을 명확히 구분해야 하며, 현재는 Data가 누락되면 오해를 일으키기 쉽습니다.
 
-建议：
+권장:
 
-- 每个统计卡片都做成可点击入口。
-- 空数据时显示“为什么为空”和“去配置”的按钮。
-- K8s 统计建议加入：集群数、节点数、异常 Pod、工作负载数。
+- 모든 통계 Card를 클릭 가능한 Entry로 만듭니다.
+- Data가 없을 때 “왜 비어 있는지”와 “Config로 이동” Button을 표시합니다.
+- K8s 통계에는 Cluster 수, Node 수, 오류 Pod, Workload 수 추가를 권장합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 主机管理 / 主机组管理
+### Host 관리 / Host Group 관리
 
-优点：
+장점:
 
-- 已支持主机组查看组内服务器。
-- 已区分“删除主机”和“移出主机组”，这是非常关键的语义修正。
+- Host Group에서 그룹 내 Server를 조회하는 기능을 지원합니다.
+- “Host 삭제”와 “Host Group에서 제외”를 구분했으며, 이는 매우 중요한 의미 수정입니다.
 
-问题：
+문제:
 
-- 批量操作较多，用户容易不清楚当前是在“全局主机列表”还是“某个主机组视图”。
+- 일괄 작업이 많아 사용자가 현재 “전체 Host 목록”인지 “특정 Host Group View”인지 혼동하기 쉽습니다.
 
-建议：
+권장:
 
-- 在主机组视图顶部固定显示当前主机组名称、主机数量、返回入口。
-- 批量按钮文案随上下文变化，例如“批量移出当前组”不要与“批量删除主机”混用。
-- 主机详情建议增加“所属主机组”标签列表。
+- Host Group View 상단에 현재 Host Group 이름, Host 수, 돌아가기 Entry를 고정 표시합니다.
+- 일괄 Button 문구는 Context에 따라 바꿉니다. 예: “현재 그룹에서 일괄 제외”를 “Host 일괄 삭제”와 섞어 쓰지 않습니다.
+- Host 상세에는 “소속 Host Group” Label 목록 추가를 권장합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 数据库管理 / DBMS 工作台
+### Database 관리 / DBMS Workbench
 
-优点：
+장점:
 
-- 已覆盖数据库资产录入、连接测试、SQL 编辑、执行记录、结果集编辑、导入导出任务。
-- 支持直连和 SSH 网关访问，能够覆盖数据库位于内网的常见运维场景。
-- SQL 编辑器已经具备语法高亮、基础补全和结果集展示能力。
-- 执行历史、回滚 SQL、数据导入导出已经形成轻量 DBMS 的基础闭环。
-- 整体功能目标接近轻量 Navicat，适合作为运维平台内部的统一数据库操作入口。
+- Database Asset 등록, Connection Test, SQL 편집, 실행 Record, Result Set 편집, Import/Export Task를 커버합니다.
+- 직접 연결과 SSH Gateway 접속을 지원해 Database가 내부망에 있는 일반적인 운영 시나리오를 커버합니다.
+- SQL Editor는 이미 Syntax Highlight, 기본 Autocomplete, Result Set 표시 기능을 갖추고 있습니다.
+- 실행 History, Rollback SQL, Data Import/Export로 경량 DBMS의 기본 Loop를 형성했습니다.
+- 전체 기능 목표는 경량 Navicat에 가깝고 운영 Platform 내부의 통합 Database 작업 Entry로 적합합니다.
 
-问题：
+문제:
 
-- DBMS 属于平台最高风险模块之一，当前权限粒度仍偏粗，缺少“连接、查询、修改、DDL、导入导出、管理任务”等操作级授权。
-- 数据库资产保存的账号可能同时具备查询和写入权限，平台尚未明确区分只读连接与读写连接。
-- SQL 编辑器虽然已有高亮和补全，但执行前没有充分展示目标环境、数据库、SQL 类型和预计影响范围。
-- 多条 SQL 同时执行时，用户不容易确认实际执行边界、执行顺序、事务状态以及失败后的处理方式。
-- SQL 历史需要进一步补齐执行人、来源 IP、目标环境、目标实例、Schema、影响行数和失败原因，才能满足问题追溯。
-- 自动生成的回滚 SQL 容易给用户造成“可以安全恢复”的错觉，但 UPDATE、DELETE、DDL 和批量导入并不一定能够可靠回滚。
-- 结果集直接编辑缺少主键、唯一键和并发修改检查，存在更新错行或覆盖他人修改的风险。
-- 导入任务缺少完整的执行前预检，字段不匹配、字符集、重复键和大数据量导入都可能在执行阶段才暴露问题。
-- 导出任务需要关注敏感字段、数据量、文件有效期和下载权限，避免形成新的数据泄露入口。
+- DBMS는 Platform에서 가장 위험도가 높은 Module 중 하나이지만 현재 Permission Granularity가 여전히 거칠어 “연결, Query, 수정, DDL, Import/Export, 관리 Task” 같은 작업 수준 Authorization이 없습니다.
+- Database Asset에 저장된 Account는 Query와 쓰기 Permission을 동시에 가질 수 있으며 Platform은 아직 읽기 전용 Connection과 읽기/쓰기 Connection을 명확히 구분하지 않습니다.
+- SQL Editor는 Highlight와 Autocomplete를 갖췄지만 실행 전 Target Environment, Database, SQL 유형, 예상 영향 범위를 충분히 표시하지 않습니다.
+- 여러 SQL을 동시에 실행할 때 사용자가 실제 실행 경계, 실행 순서, Transaction 상태, 실패 후 처리 방식을 확인하기 어렵습니다.
+- SQL History에는 실행자, 발신 IP, Target Environment, Target Instance, Schema, 영향 Row 수, 실패 원인을 더 보완해야 문제 추적 요구를 충족할 수 있습니다.
+- 자동 생성 Rollback SQL은 “안전하게 복구할 수 있다”는 착각을 주기 쉽지만 UPDATE, DELETE, DDL, 일괄 Import는 반드시 신뢰할 수 있게 Rollback되는 것은 아닙니다.
+- Result Set 직접 편집에는 Primary Key, Unique Key, 동시 수정 검사가 없어 잘못된 Row 업데이트나 다른 사용자 수정 덮어쓰기 위험이 있습니다.
+- Import Task에는 완전한 실행 전 Pre-check가 없어 Field 불일치, Charset, 중복 Key, 대용량 Data Import 문제가 실행 단계에서야 드러날 수 있습니다.
+- Export Task는 민감 Field, Data 양, File 유효 기간, Download Permission을 고려해 새로운 Data 유출 Entry가 되지 않도록 합니다.
 
-优化建议：
+최적화 권장:
 
-#### P0：权限与执行安全
+#### P0: Permission과 실행 보안
 
-- 增加数据库连接模式：`只读`、`读写`。只读连接在后端强制拦截 INSERT、UPDATE、DELETE、REPLACE、DDL、存储过程调用和多语句写操作，不能只依赖前端隐藏按钮。
-- 拆分 DBMS 权限点：查看资产、连接测试、查询数据、编辑结果集、执行 DML、执行 DDL、导入、导出、查看 SQL 历史、执行回滚。
-- 对生产环境增加更严格的策略：默认只读、写操作二次确认、DDL 强确认、限制大批量更新和删除。
-- 执行前由后端解析 SQL，识别 SELECT、DML、DDL、DCL、事务语句和未知语句；不能仅使用字符串前缀判断。
-- DML/DDL 确认框必须展示：环境、实例、Schema、SQL 类型、语句数量、是否启用事务、风险等级和完整 SQL 摘要。
-- UPDATE/DELETE 未包含 WHERE 条件时标记为高危；DROP、TRUNCATE、ALTER、GRANT、REVOKE 默认标记为高危。
-- 高危操作要求输入数据库名或表名确认，且后端再次校验权限和风险规则。
-- 设置查询超时、最大返回行数、最大影响行数和最大导出行数，防止误操作拖垮数据库或平台。
+- Database Connection Mode를 추가합니다: `읽기 전용`, `읽기/쓰기`. 읽기 전용 Connection은 Backend에서 INSERT, UPDATE, DELETE, REPLACE, DDL, Stored Procedure 호출, 다중 Statement 쓰기 작업을 강제 차단하며 Frontend Button 숨김에만 의존해서는 안 됩니다.
+- DBMS Permission Point를 분리합니다: Asset 조회, Connection Test, Data Query, Result Set 편집, DML 실행, DDL 실행, Import, Export, SQL History 조회, Rollback 실행.
+- 운영 Environment에는 더 엄격한 Policy를 적용합니다: 기본 읽기 전용, 쓰기 작업 2차 확인, DDL 강제 확인, 대량 Update/Delete 제한.
+- 실행 전 Backend가 SQL을 해석해 SELECT, DML, DDL, DCL, Transaction Statement, 알 수 없는 Statement를 식별합니다. 문자열 Prefix만으로 판단해서는 안 됩니다.
+- DML/DDL 확인 대화상자에는 Environment, Instance, Schema, SQL 유형, Statement 수, Transaction 사용 여부, 위험 등급, 전체 SQL 요약을 표시해야 합니다.
+- UPDATE/DELETE에 WHERE 조건이 없으면 고위험으로 표시하고 DROP, TRUNCATE, ALTER, GRANT, REVOKE는 기본적으로 고위험으로 표시합니다.
+- 고위험 작업은 Database 이름 또는 Table 이름 입력 확인을 요구하며 Backend가 Permission과 위험 Rule을 다시 검증합니다.
+- Query Timeout, 최대 반환 Row 수, 최대 영향 Row 수, 최대 Export Row 수를 설정해 실수로 Database나 Platform이 무너지지 않게 합니다.
 
-#### P1：审计与结果追溯
+#### P1: Audit과 결과 추적
 
-- SQL 历史至少记录：执行时间、执行人、客户端 IP、环境、数据库资产、连接方式、Schema、SQL 类型、SQL 内容摘要、影响行数、返回行数、耗时、执行状态和错误信息。
-- 为每次执行生成唯一执行编号，SQL 编辑器、结果集、导入导出任务和审计记录之间可以互相跳转。
-- 多语句执行按语句拆分展示结果，明确第几条成功、第几条失败、是否回滚以及事务最终状态。
-- SQL 内容中的密码、Token、身份证号等敏感信息需要按规则脱敏后再写入日志。
-- 操作日志和 SQL 历史需要区分：操作日志记录“谁调用了什么功能”，SQL 历史记录“数据库实际执行了什么”。
-- 支持按执行人、环境、实例、Schema、SQL 类型、状态和时间范围筛选 SQL 历史。
+- SQL History는 최소한 실행 시각, 실행자, Client IP, Environment, Database Asset, 연결 방식, Schema, SQL 유형, SQL 내용 요약, 영향 Row 수, 반환 Row 수, 소요 시간, 실행 상태, 오류 Message를 기록합니다.
+- 실행마다 고유 실행 번호를 생성해 SQL Editor, Result Set, Import/Export Task, Audit Record 사이를 상호 이동할 수 있게 합니다.
+- 다중 Statement 실행은 Statement별로 결과를 분리 표시해 몇 번째가 성공/실패했는지, Rollback 여부, Transaction 최종 상태를 명확히 합니다.
+- SQL 내용의 Password, Token, 주민등록번호 같은 민감 정보는 Rule에 따라 Masking한 뒤 Log에 기록합니다.
+- Operation Log와 SQL History는 구분합니다. Operation Log는 “누가 어떤 기능을 호출했는지”를, SQL History는 “Database가 실제로 무엇을 실행했는지”를 기록합니다.
+- 실행자, Environment, Instance, Schema, SQL 유형, 상태, 시간 범위로 SQL History를 필터링합니다.
 
-#### P1：回滚 SQL 可信度
+#### P1: Rollback SQL 신뢰도
 
-- 回滚 SQL 增加可信等级：
-  - `高`：基于执行前完整旧值和明确主键生成，可定位唯一记录。
-  - `中`：具备主键条件，但部分字段或上下文可能发生变化。
-  - `低`：根据原 SQL 推导，无法保证数据完整恢复。
-  - `不可回滚`：DDL、TRUNCATE、无旧值 DELETE、外部副作用操作。
-- 回滚入口默认只提供“查看和复制”，不能将自动生成的 SQL 描述为一键安全恢复。
-- 执行回滚前重新校验目标环境、Schema、主键条件和当前数据版本，并再次进行风险确认。
-- 对结果集编辑使用主键或唯一键生成 WHERE 条件；没有唯一定位字段时禁止直接编辑。
-- 可选增加乐观锁校验，将原始字段值加入更新条件，避免覆盖已被其他会话修改的数据。
+- Rollback SQL에 신뢰 등급을 추가합니다:
+  - `높음`: 실행 전 완전한 이전 값과 명확한 Primary Key를 기반으로 생성해 유일한 Record를 특정할 수 있습니다.
+  - `중간`: Primary Key 조건은 있지만 일부 Field나 Context가 변경되었을 수 있습니다.
+  - `낮음`: 원본 SQL에서 유추한 것이며 Data 완전 복구를 보장할 수 없습니다.
+  - `Rollback 불가`: DDL, TRUNCATE, 이전 값 없는 DELETE, 외부 Side Effect 작업.
+- Rollback Entry는 기본적으로 “조회와 복사”만 제공하며 자동 생성 SQL을 원클릭 안전 복구로 표현해서는 안 됩니다.
+- Rollback 실행 전 Target Environment, Schema, Primary Key 조건, 현재 Data Version을 다시 검증하고 위험 확인을 한 번 더 수행합니다.
+- Result Set 편집은 Primary Key 또는 Unique Key로 WHERE 조건을 생성합니다. 유일하게 특정할 Field가 없으면 직접 편집을 금지합니다.
+- 선택 사항으로 Optimistic Lock 검사를 추가해 원본 Field 값을 Update 조건에 넣어 다른 Session이 수정한 Data를 덮어쓰지 않게 합니다.
 
-#### P1：导入与导出
+#### P1: Import와 Export
 
-- 导入任务增加预检查阶段，展示目标表、文件编码、分隔符、字段映射、字段类型、空值规则、重复键策略和预计影响行数。
-- 重复键策略明确支持：终止、忽略、覆盖更新，并在执行前展示对应风险。
-- 提供少量数据预览和错误样本下载，预检查不通过时禁止正式执行。
-- 大数据量导入采用后台任务，支持进度、成功数、失败数、跳过数、取消任务和失败明细。
-- 跨数据库导入需要明确源库、目标库、字段映射和类型转换规则，禁止隐式截断数据。
-- 导出任务支持字段选择、查询条件、数据脱敏、文件格式和最大行数设置。
-- 导出文件设置有效期和访问权限，下载行为写入操作日志，过期文件自动清理。
+- Import Task에 Pre-check Stage를 추가해 Target Table, File Encoding, 구분자, Field Mapping, Field 유형, Null Rule, 중복 Key Strategy, 예상 영향 Row 수를 표시합니다.
+- 중복 Key Strategy는 중지, 무시, 덮어쓰기 Update를 명확히 지원하고 실행 전 해당 위험을 표시합니다.
+- 소량 Data Preview와 오류 샘플 Download를 제공하며 Pre-check 미통과 시 정식 실행을 금지합니다.
+- 대용량 Data Import는 Background Task로 처리해 진행률, 성공 수, 실패 수, Skip 수, Task 취소, 실패 상세를 지원합니다.
+- Database 간 Import는 Source DB, Target DB, Field Mapping, Type Conversion Rule을 명확히 하고 묵시적 Data Truncation을 금지합니다.
+- Export Task는 Field 선택, Query 조건, Data Masking, File Format, 최대 Row 수 설정을 지원합니다.
+- Export File에 유효 기간과 접근 Permission을 설정하고 Download 행위를 Operation Log에 기록하며 만료 File은 자동 정리합니다.
 
-#### P2：编辑器与交互体验
+#### P2: Editor와 상호작용 경험
 
-- SQL 编辑器补全上下文应包含当前 Schema、表、字段、函数和 SQL 关键字。
-- 执行按钮区分“执行选中 SQL”和“执行全部 SQL”，未选中文本时明确提示实际执行范围。
-- 增加 SQL 格式化、注释、查找替换、执行计划和快捷键提示。
-- 结果集支持字段筛选、排序、列固定、NULL 显示、长文本预览和导出当前结果。
-- 结果集编辑增加未保存状态提示，离开页面前确认是否放弃修改。
-- 错误提示同时展示数据库原始错误和用户可理解的处理建议，但不得泄露数据库密码等敏感连接信息。
+- SQL Editor Autocomplete Context에는 현재 Schema, Table, Field, Function, SQL Keyword가 포함되어야 합니다.
+- 실행 Button은 “선택 SQL 실행”과 “전체 SQL 실행”을 구분하고 텍스트를 선택하지 않으면 실제 실행 범위를 명확히 안내합니다.
+- SQL Format, 주석, 찾기/바꾸기, Execution Plan, 단축키 안내를 추가합니다.
+- Result Set은 Field 필터, 정렬, Column 고정, NULL 표시, 긴 텍스트 Preview, 현재 결과 Export를 지원합니다.
+- Result Set 편집에 미저장 상태 안내를 추가해 Page를 떠나기 전 수정을 버릴지 확인합니다.
+- 오류 Message는 Database 원본 오류와 사용자가 이해할 수 있는 처리 권고를 함께 표시하되 Database Password 같은 민감한 연결 정보를 노출해서는 안 됩니다.
 
-验收标准：
+검수 기준:
 
-1. 只读连接通过前端按钮、手工 API 请求和多语句 SQL 均无法执行写操作。
-2. DML/DDL 执行前能够准确展示目标环境、数据库、Schema、SQL 类型和风险等级。
-3. 无 WHERE 的 UPDATE/DELETE 与高危 DDL 必须经过强化确认。
-4. SQL 历史可以根据执行编号完整追溯执行人、客户端 IP、目标库、影响行数、耗时和失败原因。
-5. 无法可靠恢复的 SQL 不展示为“可安全回滚”，并明确标注可信等级或不可回滚。
-6. 结果集编辑必须使用主键或唯一键定位；无法唯一定位的结果集保持只读。
-7. 导入任务必须先完成预检查，正式执行后可以查看进度和逐行错误明细。
-8. 导出任务具备权限校验、敏感字段处理、文件有效期和下载审计。
+1. 읽기 전용 Connection은 Frontend Button, 수동 API 요청, 다중 Statement SQL로도 쓰기 작업을 실행할 수 없습니다.
+2. DML/DDL 실행 전 Target Environment, Database, Schema, SQL 유형, 위험 등급을 정확히 표시합니다.
+3. WHERE 없는 UPDATE/DELETE와 고위험 DDL은 강화된 확인을 거쳐야 합니다.
+4. SQL History로 실행 번호 기준 실행자, Client IP, Target DB, 영향 Row 수, 소요 시간, 실패 원인을 완전히 추적할 수 있습니다.
+5. 신뢰할 수 있게 복구할 수 없는 SQL은 “안전하게 Rollback 가능”으로 표시하지 않고 신뢰 등급 또는 Rollback 불가를 명확히 표기합니다.
+6. Result Set 편집은 Primary Key 또는 Unique Key로 특정해야 하며 유일하게 특정할 수 없는 Result Set은 읽기 전용을 유지합니다.
+7. Import Task는 Pre-check를 먼저 완료해야 하며 정식 실행 후 진행률과 Row별 오류 상세를 확인할 수 있습니다.
+8. Export Task는 Permission 검증, 민감 Field 처리, File 유효 기간, Download Audit를 갖춥니다.
 
-综合优先级：**P0/P1**。建议先完成只读模式、SQL 风险识别、后端权限校验和审计字段，再继续扩展高级编辑能力。
+종합 우선순위: **P0/P1**. 읽기 전용 Mode, SQL 위험 식별, Backend Permission 검증, Audit Field를 먼저 완성한 뒤 고급 편집 기능 확장을 계속할 것을 권장합니다.
 
-### K8s 管理
+### K8s 관리
 
-优点：
+장점:
 
-- 已形成 Kuboard 风格控制台。
-- 支持集群管理、集群切换、概览、节点、命名空间、工作负载、Pod、服务、Ingress、高级网络、配置存储。
-- YAML 编辑器做到了左右编辑/预览、搜索、行号、当前行高亮。
-- 支持工作负载批量修改镜像，这对发布运维非常实用。
+- Kuboard 스타일 Console을 형성했습니다.
+- Cluster 관리, Cluster 전환, Overview, Node, Namespace, Workload, Pod, Service, Ingress, 고급 Network, Config Storage를 지원합니다.
+- YAML Editor는 좌우 편집/Preview, 검색, Line 번호, 현재 Line Highlight를 구현했습니다.
+- Workload 일괄 Image 수정을 지원하며 배포 운영에 매우 실용적입니다.
 
-问题：
+문제:
 
-- `K8s.vue` 仍然过大，后续迭代容易互相影响。
-- K8s 资源操作很多，权限边界需要更明确。
-- 镜像修改会被 Argo 回滚，这说明平台需要识别 GitOps 场景。
+- `K8s.vue`는 여전히 지나치게 커서 이후 Iteration에서 서로 영향을 주기 쉽습니다.
+- K8s Resource 작업이 많아 Permission 경계를 더 명확히 해야 합니다.
+- Image 수정이 Argo에 의해 Rollback될 수 있으므로 Platform이 GitOps 시나리오를 식별해야 합니다.
 
-建议：
+권장:
 
-- 增加 GitOps 提示：当检测到 Argo CD/Flux 管理标签或 owner 时，提示“建议修改 Git 仓库而不是直接改集群”。
-- 工作负载批量改镜像支持“生成 GitOps Patch/YAML”。
-- Pod 终端入口增加审计提示和会话记录。
-- YAML 编辑增加“差异仅显示变更行/全部显示”切换。
+- GitOps 안내 추가: Argo CD/Flux 관리 Label 또는 owner가 감지되면 “Cluster를 직접 수정하기보다 Git Repository 수정을 권장”한다고 안내합니다.
+- Workload 일괄 Image 수정은 “GitOps Patch/YAML 생성”을 지원합니다.
+- Pod Terminal Entry에 Audit 안내와 Session 기록을 추가합니다.
+- YAML 편집에 “변경 Line만 표시/전체 표시” 전환을 추가합니다.
 
-优先级：P1。
+우선순위: P1.
 
-## 五、标准运维体验反馈
+## 5. 표준 운영 경험 피드백
 
-### 脚本库
+### Script Library
 
-优点：
+장점:
 
-- 已支持脚本增删改查、启用禁用、脚本类型、默认参数、超时时间。
-- 编辑器已经朝代码高亮方向优化。
+- Script 추가/삭제/수정/조회, 활성화/비활성화, Script 유형, 기본 Parameter, Timeout을 지원합니다.
+- Editor는 Code Highlight 방향으로 최적화되고 있습니다.
 
-问题：
+문제:
 
-- 脚本库应该是平台高复用资产，需要版本管理。
+- Script Library는 Platform에서 재사용성이 높은 Asset이므로 Version 관리가 필요합니다.
 
-建议：
+권장:
 
-- 增加脚本版本历史。
-- 增加脚本发布状态：草稿、已发布、已废弃。
-- 增加脚本参数 schema，例如参数名、类型、默认值、是否必填。
-- 增加脚本试运行入口。
+- Script Version History를 추가합니다.
+- Script 배포 상태를 추가합니다: Draft, 배포됨, 폐기됨.
+- Script Parameter Schema를 추가합니다. 예: Parameter 이름, 유형, 기본값, 필수 여부.
+- Script 시험 실행 Entry를 추가합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 快速执行
+### Quick Execution
 
-优点：
+장점:
 
-- 已拆分为命令执行、脚本执行、文件分发、快速执行历史。
-- 目标主机与主机组互斥选择是正确设计。
-- 执行时弹窗展示任务结果，关闭后引导去历史查看，符合用户期待。
+- Command Execution, Script Execution, File Distribution, Quick Execution History로 분리되어 있습니다.
+- Target Host와 Host Group의 상호 배타적 선택은 올바른 설계입니다.
+- 실행 시 Popup으로 Task 결과를 표시하고 닫은 뒤 History 확인으로 안내하는 것은 사용자 기대에 부합합니다.
 
-问题：
+문제:
 
-- 快速执行属于高危能力，需要更强的目标可见性。
+- Quick Execution은 고위험 기능이므로 더 강한 Target 가시성이 필요합니다.
 
-建议：
+권장:
 
-- 执行前展示最终目标主机数、并发数、超时时间、预计风险。
-- 支持执行前保存为临时模板。
-- 支持失败重试，只重试失败主机。
-- 文件分发建议增加 checksum 校验。
+- 실행 전 최종 Target Host 수, 동시 실행 수, Timeout, 예상 위험을 표시합니다.
+- 실행 전 임시 Template 저장을 지원합니다.
+- 실패 재시도를 지원하며 실패한 Host만 재시도합니다.
+- File Distribution에는 Checksum 검증 추가를 권장합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 定时任务
+### Scheduled Task
 
-优点：
+장점:
 
-- 已有任务列表、任务日志、任务模板。
-- 支持脚本任务和 HTTP 探针任务。
-- 支持批量启用、禁用、删除。
-- 支持消息通知规则。
+- Task 목록, Task Log, Task Template이 있습니다.
+- Script Task와 HTTP Probe Task를 지원합니다.
+- 일괄 활성화, 비활성화, 삭제를 지원합니다.
+- Notification Rule을 지원합니다.
 
-问题：
+문제:
 
-- Cron 表达式对普通运维用户不够友好。
+- Cron Expression은 일반 운영 사용자에게 충분히 친화적이지 않습니다.
 
-建议：
+권장:
 
-- 增加 Cron 可视化生成器。
-- 展示“下次执行时间”。
-- 任务日志中增加“由定时触发 / 手动触发”的来源字段。
-- HTTP 探针支持响应内容断言、Header 断言、延迟阈值。
+- Cron 시각화 Generator를 추가합니다.
+- “다음 실행 시각”을 표시합니다.
+- Task Log에 “예약 Trigger / 수동 Trigger” 출처 Field를 추가합니다.
+- HTTP Probe는 응답 내용 Assertion, Header Assertion, 지연 Threshold를 지원합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 作业编排
+### Job Orchestration
 
-优点：
+장점:
 
-- 已有作业编排、作业列表、人工确认、作业历史、作业模板五个页面。
-- 支持脚本执行、文件分发、人工确认、消息通知节点。
-- 删除节点、选中配置等关键画布交互已逐步修复。
+- Job Orchestration, Job 목록, Manual Approval, Job History, Job Template 다섯 Page가 있습니다.
+- Script Execution, File Distribution, Manual Approval, Message Notification Node를 지원합니다.
+- Node 삭제, 선택 Config 같은 핵심 Canvas 상호작용이 점진적으로 수정되고 있습니다.
 
-问题：
+문제:
 
-- 作业编排是复杂交互，当前还需要更强的流程校验和预览。
+- Job Orchestration은 복잡한 상호작용이라 현재 더 강한 Flow 검증과 Preview가 필요합니다.
 
-建议：
+권장:
 
-- 保存前校验：是否有孤立节点、是否存在环、是否存在未配置节点。
-- 增加“试运行/干跑”模式。
-- 节点支持复制、粘贴、撤销、重做。
-- 作业历史中展示 DAG 执行状态，而不只是列表。
-- 人工确认页面增加超时策略：超时失败、超时跳过、超时自动拒绝。
+- 저장 전 검증: 고립 Node 존재 여부, Cycle 존재 여부, 미구성 Node 존재 여부.
+- “시험 실행/Dry Run” Mode를 추가합니다.
+- Node는 복사, 붙여넣기, 실행 취소, 다시 실행을 지원합니다.
+- Job History에 목록만이 아니라 DAG 실행 상태를 표시합니다.
+- Manual Approval Page에 Timeout Policy를 추가합니다: Timeout 실패, Timeout Skip, Timeout 자동 거부.
 
-优先级：P1/P2。
+우선순위: P1/P2.
 
-## 六、应用中心体验反馈
+## 6. 애플리케이션 센터 경험 피드백
 
-### 项目列表
+### Project 목록
 
-优点：
+장점:
 
-- 应用中心已作为一级应用独立存在，入口正确。
-- 项目列表负责仓库元信息，构建任务负责脚本，职责拆分正确。
+- 애플리케이션 센터가 최상위 Application으로 독립 존재하며 Entry가 올바릅니다.
+- Project 목록은 Repository Meta 정보를, Build Task는 Script를 담당하는 역할 분리가 올바릅니다.
 
-问题：
+문제:
 
-- 项目实体当前更像“代码仓库”，未来可能需要区分“应用、服务、模块、仓库”。
+- Project Entity는 현재 “Source Repository”에 가깝고 앞으로 “Application, Service, Module, Repository”를 구분해야 할 수 있습니다.
 
-建议：
+권장:
 
-- 增加应用负责人、业务线、环境列表、默认部署方式。
-- 仓库地址支持连接测试。
-- 支持 Git 凭据配置，不要只依赖运行环境已有权限。
+- Application 담당자, Business Line, Environment 목록, 기본 배포 방식을 추가합니다.
+- Repository 주소에 Connection Test를 지원합니다.
+- Git Credential 구성을 지원하고 실행 Environment의 기존 Permission에만 의존하지 않습니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 构建任务
+### Build Task
 
-优点：
+장점:
 
-- 构建任务依赖项目仓库地址，符合 CI/CD 模型。
-- 新建构建任务弹窗已改成宽屏工作台，脚本编辑体验更好。
-- 支持立即构建、启用禁用、复制、查看日志。
+- Build Task는 Project Repository 주소에 의존하며 CI/CD Model에 부합합니다.
+- 새 Build Task Popup은 Wide Workbench로 바뀌어 Script 편집 경험이 더 좋습니다.
+- 즉시 Build, 활성화/비활성화, 복제, Log 조회를 지원합니다.
 
-问题：
+문제:
 
-- 构建脚本和发布脚本仍是自由文本，缺少标准阶段模型。
+- Build Script와 배포 Script는 여전히 자유 텍스트라 표준 Stage Model이 없습니다.
 
-建议：
+권장:
 
-- 引入 Pipeline 阶段：拉取代码、依赖安装、测试、构建、镜像构建、部署、健康检查。
-- 支持构建参数，例如分支、tag、镜像版本、环境变量。
-- 构建任务支持手动触发时覆盖分支和版本。
-- 增加构建队列和取消构建。
-- 构建执行机/工作目录隔离，避免多个任务共用目录互相污染。
+- Pipeline Stage를 도입합니다: Source Checkout, Dependency 설치, Test, Build, Image Build, 배포, Health Check.
+- Build Parameter를 지원합니다. 예: Branch, tag, Image Version, Environment Variable.
+- Build Task는 수동 Trigger 시 Branch와 Version Override를 지원합니다.
+- Build Queue와 Build 취소를 추가합니다.
+- Build Runner/작업 Directory를 격리해 여러 Task가 Directory를 공유하며 서로 오염되지 않게 합니다.
 
-优先级：P1。
+우선순위: P1.
 
-### 构建历史
+### Build History
 
-优点：
+장점:
 
-- 构建历史按卡片展示阶段，日志可查看和下载。
-- 支持从构建任务跳转并带筛选条件。
+- Build History는 Stage를 Card로 표시하며 Log를 조회하고 Download할 수 있습니다.
+- Build Task에서 필터 조건을 포함해 이동하는 것을 지원합니다.
 
-问题：
+문제:
 
-- 当前阶段展示还是从日志字段推断，后端最好存结构化阶段明细。
+- 현재 Stage 표시는 여전히 Log Field에서 유추하므로 Backend가 구조화된 Stage 상세를 저장하는 것이 좋습니다.
 
-建议：
+권장:
 
-- 新增 `build_stage` 表或 JSON 字段，记录阶段状态、开始时间、结束时间、耗时、日志。
-- 构建日志支持实时流式查看。
-- 构建失败时显示失败阶段、最后 50 行日志、重试按钮。
-- 回滚按钮当前禁用，后续应明确回滚策略：重新发布旧版本、执行回滚脚本、回滚 GitOps。
+- `build_stage` Table 또는 JSON Field를 추가해 Stage 상태, 시작 시각, 종료 시각, 소요 시간, Log를 기록합니다.
+- Build Log는 실시간 Streaming 조회를 지원합니다.
+- Build 실패 시 실패 Stage, 마지막 50줄 Log, 재시도 Button을 표시합니다.
+- Rollback Button은 현재 비활성화되어 있으며 이후 Rollback Strategy를 명확히 합니다: 이전 Version 재배포, Rollback Script 실행, GitOps Rollback.
 
-优先级：P1。
+우선순위: P1.
 
-## 七、消息通知体验反馈
+## 7. 메시지 통지 경험 피드백
 
-优点：
+장점:
 
-- 已抽象消息模板、通知媒介、通知规则、发送日志。
-- 支持钉钉、企微、飞书、自定义 HTTP Webhook。
-- 作业编排中消息通知作为步骤节点，而不是全局开关，这符合编排心智。
+- Message Template, Notification Channel, Notification Rule, Send Log를 추상화했습니다.
+- DingTalk, WeCom, Feishu, 사용자 정의 HTTP Webhook을 지원합니다.
+- Job Orchestration에서 Message Notification이 전역 Switch가 아니라 Step Node로 동작하는 것은 Orchestration 모델에 부합합니다.
 
-问题：
+문제:
 
-- 用户在配置模板时可能不知道可用变量。
+- 사용자는 Template 구성 시 사용 가능한 Variable을 모를 수 있습니다.
 
-建议：
+권장:
 
-- 模板编辑器右侧展示变量面板，例如 `{{title}}`、`{{status}}`、`{{detail}}`。
-- 通知规则支持“测试发送”。
-- 发送日志支持按状态、媒介、规则、时间筛选。
-- Webhook 失败时展示响应状态码、响应体、重试次数。
+- Template Editor 오른쪽에 Variable Panel을 표시합니다. 예: `{{title}}`, `{{status}}`, `{{detail}}`.
+- Notification Rule은 “Test 발송”을 지원합니다.
+- Send Log는 상태, Channel, Rule, 시간으로 필터링을 지원합니다.
+- Webhook 실패 시 응답 Status Code, 응답 Body, 재시도 횟수를 표시합니다.
 
-优先级：P1。
+우선순위: P1.
 
-## 八、监控中心体验反馈
+## 8. 모니터링 센터 경험 피드백
 
-### 数据源与即时查询
+### Datasource와 Instant Query
 
-优点：
+장점:
 
-- 已支持多数据源切换。
-- 即时查询能作为 PromQL 调试入口。
+- 다중 Datasource 전환을 지원합니다.
+- Instant Query는 PromQL Debug Entry로 쓸 수 있습니다.
 
-建议：
+권장:
 
-- 数据源列表显示健康状态、最近探测时间、版本。
-- PromQL 编辑器支持常用指标模板。
-- 即时查询结果支持表格/图形切换。
+- Datasource 목록에 Health 상태, 최근 Probe 시각, Version을 표시합니다.
+- PromQL Editor는 자주 쓰는 Metric Template을 지원합니다.
+- Instant Query 결과는 Table/Chart 전환을 지원합니다.
 
-优先级：P2。
+우선순위: P2.
 
-### 告警规则 / 屏蔽 / 聚合收敛
+### Alert Rule / Alert Silence / Alert Aggregation
 
-优点：
+장점:
 
-- 告警规则已经和通知规则打通。
-- 屏蔽和聚合支持规则名正则、规则下拉多选，方向正确。
+- Alert Rule이 Notification Rule과 연동되어 있습니다.
+- Alert Silence와 Alert Aggregation은 Rule 이름 Regex, Rule Dropdown 다중 선택을 지원하며 방향이 올바릅니다.
 
-问题：
+문제:
 
-- 告警规则的生命周期还可以更完整。
+- Alert Rule의 Life Cycle은 더 완전해질 수 있습니다.
 
-建议：
+권장:
 
-- 告警规则增加预览：用当前 PromQL 查一次，展示命中的 series。
-- 告警事件增加时间线：触发、通知、认领、恢复、关闭。
-- 屏蔽规则增加“当前命中哪些告警规则”的预览。
-- 聚合规则增加“收敛效果预估”，例如预计从 N 条通知收敛为 M 条。
+- Alert Rule에 Preview를 추가합니다: 현재 PromQL로 한 번 조회해 Hit한 Series를 표시합니다.
+- Alert Event에 Timeline을 추가합니다: 발생, Notification, 인계, 복구, 종료.
+- Alert Silence Rule에 “현재 어떤 Alert Rule에 Hit하는지” Preview를 추가합니다.
+- Alert Aggregation Rule에 “수렴 효과 예측”을 추가합니다. 예: N개 Notification이 M개로 수렴할 것으로 예상.
 
-优先级：P1/P2。
+우선순위: P1/P2.
 
-### 监控大屏 / 巡检大屏
+### Monitoring Dashboard / Inspection Dashboard
 
-优点：
+장점:
 
-- 已拆成监控大屏和巡检大屏，解决了“一个页面切换模式”的心智负担。
-- 已支持数据源切换。
-- K8s 大屏正在向 Grafana 风格演进。
+- Monitoring Dashboard와 Inspection Dashboard로 분리되어 “하나의 Page에서 Mode를 전환”하던 인지 부담을 해소했습니다.
+- Datasource 전환을 지원합니다.
+- K8s Dashboard는 Grafana 스타일로 진화하고 있습니다.
 
-问题：
+문제:
 
-- 当前大屏功能和 Grafana/Nightingale 相比，还缺少布局编辑自由度。
+- 현재 Dashboard 기능은 Grafana/Nightingale에 비해 Layout 편집 자유도가 부족합니다.
 
-建议：
+권장:
 
-- 面板支持拖拽调整大小与顺序。
-- 大屏支持变量：集群、节点、命名空间、Pod、时间范围。
-- 巡检大屏支持 PDF 报告模板配置。
-- 面板支持阈值颜色、单位格式化、TopN、表格、趋势图、Stat、Gauge。
+- Panel은 Drag로 크기와 순서 조정을 지원합니다.
+- Dashboard는 Variable을 지원합니다: Cluster, Node, Namespace, Pod, Time Range.
+- Inspection Dashboard는 PDF Report Template 구성을 지원합니다.
+- Panel은 Threshold 색상, 단위 Format, TopN, Table, Trend Chart, Stat, Gauge를 지원합니다.
 
-优先级：P1。
+우선순위: P1.
 
-## 九、系统管理体验反馈
+## 9. 시스템 관리 경험 피드백
 
-优点：
+장점:
 
-- 基础用户、角色、菜单、部门、岗位、登录日志、操作日志完整。
+- 기본 User, Role, Menu, 부서, 직무, Login Log, Operation Log가 완비되어 있습니다.
 
-建议：
+권장:
 
-- 角色权限应覆盖新增模块的细粒度动作：查看、创建、编辑、删除、执行、审批、终端、导出。
-- 操作日志建议对高危操作保存请求摘要和资源名称。
-- 登录日志加入失败原因和来源 IP 风险标记。
+- Role Permission은 신규 Module의 세분화된 Action을 커버해야 합니다: 조회, 생성, 편집, 삭제, 실행, Approval, Terminal, Export.
+- Operation Log는 고위험 작업의 Request 요약과 Resource 이름 저장을 권장합니다.
+- Login Log에 실패 원인과 발신 IP 위험 표식을 추가합니다.
 
-优先级：P2。
+우선순위: P2.
 
-## 十、最建议优先推进的 10 件事
+## 10. 가장 우선 추진을 권장하는 10가지
 
-1. 修复全项目乱码文案，尤其是后端错误提示和 README。
-2. 清理未使用旧页面，例如旧的 `OpsApplicationCenter.vue`，避免后续误引用。
-3. 为 K8s、监控大屏、DBMS 做进一步组件拆分。
-4. 高危操作统一二次确认和审计记录。
-5. DBMS 增加只读模式、SQL 风险识别、执行前确认。
-6. K8s 增加 GitOps 场景识别，避免直接改集群后被 Argo 回滚。
-7. 快速执行增加失败重试、目标确认、checksum。
-8. 构建中心增加结构化阶段、实时日志、构建参数和取消构建。
-9. 定时任务增加 Cron 可视化和下次执行时间。
-10. 监控大屏支持变量、拖拽布局和 PDF/巡检报告模板。
+1. 프로젝트 전체의 깨진 문자 문구를 수정합니다. 특히 Backend 오류 Message와 README.
+2. 사용하지 않는 구버전 Page를 정리합니다. 예: 이전 `OpsApplicationCenter.vue`, 이후 오참조 방지.
+3. K8s, Monitoring Dashboard, DBMS를 추가 Component로 분리합니다.
+4. 고위험 작업의 2차 확인과 Audit Record를 통일합니다.
+5. DBMS에 읽기 전용 Mode, SQL 위험 식별, 실행 전 확인을 추가합니다.
+6. K8s에 GitOps 시나리오 식별을 추가해 Cluster를 직접 수정한 뒤 Argo에 Rollback되는 것을 방지합니다.
+7. Quick Execution에 실패 재시도, Target 확인, Checksum을 추가합니다.
+8. Build Center에 구조화 Stage, 실시간 Log, Build Parameter, Build 취소를 추가합니다.
+9. Scheduled Task에 Cron 시각화와 다음 실행 시각을 추가합니다.
+10. Monitoring Dashboard는 Variable, Drag Layout, PDF/Inspection Report Template을 지원합니다.
 
-## 十一、建议的迭代节奏
+## 11. 권장 Iteration 리듬
 
-### 第一阶段：稳定可用
+### 1단계: 안정적 사용
 
-- 修复乱码。
-- 删除旧废弃页面。
-- 高危操作确认统一。
-- 关键接口错误提示统一。
-- 前端路由懒加载，降低首屏包体积。
+- 깨진 문자를 수정합니다.
+- 폐기된 구버전 Page를 삭제합니다.
+- 고위험 작업 확인을 통일합니다.
+- 핵심 API 오류 Message를 통일합니다.
+- Frontend Route Lazy Loading으로 첫 화면 Bundle 크기를 줄입니다.
 
-### 第二阶段：核心闭环
+### 2단계: 핵심 Loop
 
-- K8s GitOps 提示与镜像变更闭环。
-- 构建任务实时日志与构建阶段结构化。
-- 快速执行失败重试。
-- DBMS SQL 风险识别。
-- 监控告警预览与通知测试。
+- K8s GitOps 안내와 Image 변경 Loop.
+- Build Task 실시간 Log와 Build Stage 구조화.
+- Quick Execution 실패 재시도.
+- DBMS SQL 위험 식별.
+- 모니터링 알림 Preview와 Notification Test.
 
-### 第三阶段：平台化能力
+### 3단계: Platform화 역량
 
-- 权限细粒度化。
-- 审计中心统一。
-- 作业编排 DAG 历史视图。
-- 大屏拖拽编辑器。
-- 应用中心支持完整 CI/CD Pipeline。
+- Permission 세분화.
+- Audit Center 통합.
+- Job Orchestration DAG History View.
+- Dashboard Drag Editor.
+- 애플리케이션 센터의 완전한 CI/CD Pipeline 지원.
 
-## 十二、我的用户感受
+## 12. 사용자로서의 소감
 
-作为用户，我会觉得这个平台已经具备“内部一体化运维平台”的基本气质，尤其是 K8s、DBMS、标准运维、监控、应用中心这些模块拼起来后，使用场景很完整。
+사용자 입장에서 이 Platform은 이미 “내부 통합 운영 Platform”의 기본기를 갖추었다고 느낍니다. 특히 K8s, DBMS, 표준 운영, Monitoring, 애플리케이션 센터 Module을 조합하면 사용 시나리오가 매우 완전합니다.
 
-但我也会比较担心两个点：
+하지만 두 가지가 걱정됩니다:
 
-- 第一是稳定性信任：一旦看到乱码错误提示或旧页面残留，会削弱我对平台的信心。
-- 第二是高危操作保护：这个平台能操作主机、数据库、K8s、发布流水线，所以确认、审计、权限、回滚必须继续加强。
+- 첫째는 안정성 신뢰입니다. 깨진 문자 오류 Message나 구버전 Page 잔재를 보면 Platform에 대한 신뢰가 약해집니다.
+- 둘째는 고위험 작업 보호입니다. 이 Platform은 Host, Database, K8s, 배포 Pipeline을 다룰 수 있으므로 확인, Audit, Permission, Rollback을 계속 강화해야 합니다.
 
-如果优先把“乱码清理、危险操作保护、核心流程闭环、页面拆分维护性”做好，这个平台就会从“功能很多”升级成“真的敢给运维团队日常使用”。
+“깨진 문자 정리, 위험 작업 보호, 핵심 Flow 완결, Page 분리 유지보수성”을 먼저 잘 해내면 이 Platform은 “기능이 많은” 단계에서 “운영 Team이 매일 사용해도 정말 괜찮은” 단계로 올라설 것입니다.

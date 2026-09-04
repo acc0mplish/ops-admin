@@ -1,53 +1,53 @@
-# Ops Admin Docker Compose 部署手册
+# Ops Admin Docker Compose Deploy 매뉴얼
 
-本文档面向 Ubuntu 服务器上的单机部署。Compose 会启动独立的 MySQL、Ops Admin API 和 Web 容器，适合个人运维平台、中小团队和功能验证环境。
+본 문서는 Ubuntu 서버의 단일 장비 Deploy를 대상으로 합니다. Compose는 독립적인 MySQL, Ops Admin API, Web Container를 시작하며 개인 운영 플랫폼, 중소 팀, 기능 검증 Environment에 적합합니다.
 
-## 1. 部署拓扑
+## 1. Deploy 토폴로지
 
 ```text
-浏览器
+브라우저
   │ HTTP/HTTPS
   ▼
-宿主机 8080
+Host 8080
   │
   ▼
 ops-admin-web (Nginx)
-  ├── /             → Vue 前端
+  ├── /             → Vue 프론트엔드
   ├── /api/v1/      → ops-admin-api:8082
   └── /uploads/     → ops-admin-api:8082
                          │
                          ▼
                    ops-admin-mysql:3306
 
-内网 DNS 客户端（仅加载 docker-compose.dns.yml 时）
+내부망 DNS 클라이언트 (docker-compose.dns.yml 로드 시에만)
   │ UDP/TCP 53
   ▼
-宿主机内网地址:53 → ops-admin-api:53
+Host 내부망 주소:53 → ops-admin-api:53
 ```
 
-| 服务 | 容器名 | 对外端口 | 数据持久化 |
+| 서비스 | Container 이름 | 외부 포트 | 데이터 영속화 |
 | --- | --- | --- | --- |
-| Web 控制台 | `ops-admin-web` | `8080` | 无 |
-| API | `ops-admin-api` | HTTP 仅 Compose 内网 `8082`；加载 DNS 覆盖文件后发布 `53/UDP`、`53/TCP` | `ops-admin-uploads` |
-| MySQL 8 | `ops-admin-mysql` | 仅 Compose 内网 `3306` | `ops-admin-mysql-data` |
+| Web 콘솔 | `ops-admin-web` | `8080` | 없음 |
+| API | `ops-admin-api` | HTTP는 Compose 내부망 `8082`에 한함; DNS 오버라이드 파일 로드 시 `53/UDP`, `53/TCP` 노출 | `ops-admin-uploads` |
+| MySQL 8 | `ops-admin-mysql` | Compose 내부망에 한해 `3306` | `ops-admin-mysql-data` |
 
-MySQL 不映射宿主机端口，不会占用宿主机已有的 `3306`。API 也不直接暴露，浏览器统一通过 Web 容器访问。
+MySQL은 Host 포트를 매핑하지 않으므로 Host의 기존 `3306`을 점유하지 않습니다. API도 직접 노출하지 않고 브라우저는 Web Container를 경유해 접근합니다.
 
-## 2. 前置条件
+## 2. 전제 조건
 
-### 2.1 服务器建议
+### 2.1 서버 권장 사양
 
-- Ubuntu 22.04 或 24.04
-- 最低 2 vCPU、4 GB 内存、20 GB 可用磁盘
-- 生产环境建议 4 vCPU、8 GB 内存，并为 Docker 数据目录预留独立磁盘空间
-- 能访问代码仓库及 Docker 镜像仓库
-- 能访问需要管理的 SSH 主机、Kubernetes API、数据库和监控数据源
-- 防火墙或云安全组允许访问 TCP `8080`
-- 使用内网 DNS 时，允许可信内网客户端访问宿主机 `53/UDP` 和 `53/TCP`，并允许 API 容器访问上游 DNS 的 `53/UDP` 和 `53/TCP`
+- Ubuntu 22.04 또는 24.04
+- 최소 2 vCPU, 4 GB 메모리, 20 GB 가용 디스크
+- Production Environment에서는 4 vCPU, 8 GB 메모리를 권장하며 Docker 데이터 디렉터리용 독립 디스크 공간을 확보하십시오
+- 코드 Repository 및 Docker Image Registry 접근 가능
+- 관리 대상 SSH Host, Kubernetes API, Database 및 모니터링 Datasource 접근 가능
+- 방화벽 또는 Cloud 보안 그룹에서 TCP `8080` 접근 허용
+- 내부망 DNS 사용 시 신뢰할 수 있는 내부망 클라이언트의 Host `53/UDP`, `53/TCP` 접근을 허용하고, API Container가 업스트림 DNS의 `53/UDP`, `53/TCP`에 접근하도록 허용
 
-### 2.2 软件检查
+### 2.2 소프트웨어 확인
 
-服务器需要安装 Git、Docker Engine 和 Docker Compose V2：
+서버에 Git, Docker Engine, Docker Compose V2를 설치해야 합니다:
 
 ```bash
 git --version
@@ -56,32 +56,32 @@ docker compose version
 docker info
 ```
 
-确认 `8080` 未被占用：
+`8080`이 점유되지 않았는지 확인:
 
 ```bash
 ss -lntp | grep ':8080' || true
 ```
 
-如果准备启用内网 DNS，还要确认宿主机 TCP、UDP `53` 均未被占用：
+내부망 DNS 활성화를 준비하는 경우 Host의 TCP, UDP `53`도 점유되지 않았는지 확인:
 
 ```bash
 sudo ss -lntup '( sport = :53 )'
 ```
 
-存在 `systemd-resolved`、dnsmasq、BIND 或其他 DNS 监听时，必须先调整其监听地址或停用冲突服务；不要在端口仍被占用时启动 Compose。
+`systemd-resolved`, dnsmasq, BIND 또는 다른 DNS 리스너가 존재하면 Listen 주소를 조정하거나 충돌 서비스를 먼저 중지해야 합니다; 포트가 점유된 상태로는 Compose를 시작하지 마십시오.
 
-## 3. 获取项目
+## 3. 프로젝트 가져오기
 
 ```bash
 git clone https://github.com/qishu321/ops-admin.git
 cd ops-admin
 ```
 
-生产环境建议部署固定 tag 或 commit，不要长期跟随不确定的开发分支。
+Production Environment에서는 고정 tag 또는 commit을 Deploy하고 불확실한 개발 Branch를 장기간 따라가지 않기를 권장합니다.
 
-## 4. 准备配置
+## 4. Config 준비
 
-复制模板：
+템플릿을 복사합니다:
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -89,41 +89,41 @@ cp deploy/config.yaml.example deploy/config.yaml
 chmod 600 deploy/.env deploy/config.yaml
 ```
 
-使用以下命令分别生成随机值，每次生成结果用于一个配置项，不要复用：
+다음 명령으로 무작위 값을 각각 생성하고, 생성 결과는 설정 항목마다 하나씩 사용하며 재사용하지 마십시오:
 
 ```bash
 openssl rand -base64 36
 ```
 
-### 4.1 配置 `deploy/.env`
+### 4.1 `deploy/.env` 설정
 
-至少替换以下内容：
+최소한 다음 항목을 교체하십시오:
 
 ```dotenv
 TZ=Asia/Shanghai
 MYSQL_DATABASE=ops_admin
 MYSQL_USER=ops_admin
-MYSQL_PASSWORD=<数据库业务账号密码>
-MYSQL_ROOT_PASSWORD=<不同于业务账号的 root 密码>
-OPS_ADMIN_JWT_SECRET=<至少 32 字节的稳定随机值>
+MYSQL_PASSWORD=<Database 비즈니스 계정 비밀번호>
+MYSQL_ROOT_PASSWORD=<비즈니스 계정과 다른 root 비밀번호>
+OPS_ADMIN_JWT_SECRET=<32바이트 이상의 안정적인 무작위 값>
 OPS_ADMIN_INITIAL_USERNAME=admin
-OPS_ADMIN_INITIAL_PASSWORD=<首次管理员强密码>
+OPS_ADMIN_INITIAL_PASSWORD=<최초 관리자 강력 비밀번호>
 OPS_ADMIN_CORS_ORIGINS=
-OPS_ADMIN_DNS_BIND_ADDRESS=<宿主机内网 IP>
+OPS_ADMIN_DNS_BIND_ADDRESS=<Host 내부망 IP>
 ```
 
-配置说明：
+Config 설명:
 
-- `MYSQL_PASSWORD`：Ops Admin 访问 MySQL 使用的密码。
-- `MYSQL_ROOT_PASSWORD`：MySQL root 密码，必须与业务账号密码不同。
-- `OPS_ADMIN_JWT_SECRET`：登录令牌签名密钥。生产环境必须设置并稳定保存；修改后所有现有登录会话都会失效。
-- `OPS_ADMIN_INITIAL_PASSWORD`：仅在数据库中还没有管理员时用于初始化，后续修改该环境变量不会重置已有账号密码。
-- `OPS_ADMIN_CORS_ORIGINS`：同源部署保持为空；只有 API 被其他浏览器源直接访问时才填写逗号分隔的完整 Origin。
-- `OPS_ADMIN_DNS_BIND_ADDRESS`：内网 DNS 发布到宿主机的地址，生产环境建议填写宿主机内网 IP，不建议直接使用公网 IP。
+- `MYSQL_PASSWORD`: Ops Admin이 MySQL 접속에 사용하는 비밀번호.
+- `MYSQL_ROOT_PASSWORD`: MySQL root 비밀번호로, 비즈니스 계정 비밀번호와 달라야 합니다.
+- `OPS_ADMIN_JWT_SECRET`: Login Token 서명 Key. Production Environment에서는 반드시 설정하고 안정적으로 보관해야 합니다; 변경 시 기존의 모든 Login Session이 무효화됩니다.
+- `OPS_ADMIN_INITIAL_PASSWORD`: Database에 아직 관리자가 없을 때 초기화에만 사용되며, 이후 이 Environment Variable을 변경해도 기존 계정 비밀번호는 재설정되지 않습니다.
+- `OPS_ADMIN_CORS_ORIGINS`: 동일 Origin Deploy에서는 비워 둡니다; API가 다른 Browser Origin에서 직접 접근될 때만 쉼표로 구분된 전체 Origin을 입력합니다.
+- `OPS_ADMIN_DNS_BIND_ADDRESS`: 내부망 DNS가 Host에 노출하는 주소. Production Environment에서는 Host 내부망 IP를 입력하고 공인 IP 직접 사용은 권장하지 않습니다.
 
-### 4.2 配置 `deploy/config.yaml`
+### 4.2 `deploy/config.yaml` 설정
 
-将数据库密码改成与 `MYSQL_PASSWORD` 完全相同，并替换凭据加密密钥：
+Database 비밀번호를 `MYSQL_PASSWORD`와 완전히 동일하게 변경하고 Credential 암호화 Key를 교체합니다:
 
 ```yaml
 app:
@@ -135,19 +135,19 @@ db:
   host: mysql
   port: "3306"
   user: ops_admin
-  password: "<与 MYSQL_PASSWORD 完全相同>"
+  password: "<MYSQL_PASSWORD와 완전히 동일>"
   name: ops_admin
   log-mode: false
 
 security:
-  credential-key: "<至少 32 字节的稳定独立随机值>"
+  credential-key: "<32바이트 이상의 안정적이고 독립적인 무작위 값>"
 ```
 
-`security.credential-key` 用于加密平台保存的云凭据、证书私钥等敏感信息。投入使用后不得随意更换，否则既有密文将无法解密。请把 `deploy/.env` 和 `deploy/config.yaml` 纳入受控备份，但不要提交到 Git。
+`security.credential-key`는 플랫폼에 저장된 Cloud Credential, Certificate 개인 Key 등 민감 정보를 암호화하는 데 사용합니다. 사용을 시작한 뒤에는 임의로 교체할 수 없으며 교체하면 기존 암호문을 복호화할 수 없습니다. `deploy/.env`와 `deploy/config.yaml`를 통제된 백업에 포함하되 Git에 커밋하지 마십시오.
 
-## 5. 启动服务
+## 5. 서비스 시작
 
-先检查 Compose 配置，再构建并启动：
+Compose Config를 먼저 확인한 뒤 Build하고 시작합니다:
 
 ```bash
 docker compose --env-file deploy/.env config --quiet
@@ -155,9 +155,9 @@ docker compose --env-file deploy/.env up -d --build
 docker compose ps
 ```
 
-首次构建会下载 Go、Node.js、Nginx、MySQL 等基础镜像和依赖，耗时取决于网络环境。API 启动时会自动执行数据库迁移和基础数据初始化。
+첫 Build 시 Go, Node.js, Nginx, MySQL 등 Base Image와 의존성을 내려받으며 소요 시간은 네트워크 환경에 따라 달라집니다. API 시작 시 Database Migration과 기본 데이터 초기화가 자동 실행됩니다.
 
-查看启动日志：
+시작 Log 확인:
 
 ```bash
 docker compose logs -f mysql
@@ -165,109 +165,109 @@ docker compose logs -f api
 docker compose logs -f web
 ```
 
-使用 `Ctrl+C` 退出日志不会停止容器。
+`Ctrl+C`로 Log 확인을 종료해도 Container는 중지되지 않습니다.
 
-## 6. 部署验收
+## 6. Deploy 검증
 
-### 6.1 服务状态
+### 6.1 서비스 상태
 
 ```bash
 docker compose ps
 curl -fsS http://127.0.0.1:8080/api/v1/systemConfig/public
 ```
 
-三个容器应为 `running` 或 `healthy`。浏览器访问：
+세 Container가 `running` 또는 `healthy`여야 합니다. Browser 접근:
 
 ```text
-http://<服务器 IP>:8080
+http://<서버 IP>:8080
 ```
 
-使用 `deploy/.env` 中配置的 `OPS_ADMIN_INITIAL_USERNAME` 和 `OPS_ADMIN_INITIAL_PASSWORD` 登录，首次登录后立即修改管理员密码。
+`deploy/.env`에 설정한 `OPS_ADMIN_INITIAL_USERNAME`과 `OPS_ADMIN_INITIAL_PASSWORD`로 Login하고 첫 Login 직후 관리자 비밀번호를 변경하십시오.
 
-### 6.2 页面验收
+### 6.2 Page 검증
 
-登录后应能打开应用平台导航，并切换资产管理、容器管理、标准运维、应用中心、消息通知、集成中心、监控中心和域名管理等工作台。
+Login 후 Application Platform Navigation이 열리고 자산 관리, Container 관리, 표준 운영, Application Center, Notification, Integration Center, Monitor Center, Domain 관리 등 각 화면으로 전환할 수 있어야 합니다.
 
-![Ops Admin 应用平台导航](./screenshots/01-platform-navigation.png)
+![Ops Admin Application Platform Navigation](./screenshots/01-platform-navigation.png)
 
-进入“资产管理 → 资产概览”，确认页面、菜单与接口请求均能正常加载：
+"자산 관리 → Asset Overview"로 이동해 Page, 메뉴, API Request가 모두 정상 로딩되는지 확인합니다:
 
-![Ops Admin 资产概览](./screenshots/02-asset-overview.png)
+![Ops Admin Asset Overview](./screenshots/02-asset-overview.png)
 
-进入“容器管理 → K8s 管理 → 集群概览”，选择一个已录入的集群，确认集群基础信息、资源使用率、网络配置和证书信息能够加载：
+"Container 관리 → K8s 관리 → Cluster Overview"로 이동해 등록된 Cluster를 하나 선택하고 Cluster 기본 정보, 리소스 사용률, 네트워크 설정, Certificate 정보가 로딩되는지 확인합니다:
 
-![Ops Admin Kubernetes 集群概览](./screenshots/03-kubernetes-cluster-overview.png)
+![Ops Admin Kubernetes Cluster Overview](./screenshots/03-kubernetes-cluster-overview.png)
 
-进入“标准运维 → 作业中心 → 作业编排”，确认步骤库、编排画布和步骤配置区域能够正常显示：
+"표준 운영 → Job Center → Job Orchestration"으로 이동해 Step Library, Orchestration Canvas, Step 설정 영역이 정상 표시되는지 확인합니다:
 
-![Ops Admin 作业编排](./screenshots/04-job-orchestration.png)
+![Ops Admin Job Orchestration](./screenshots/04-job-orchestration.png)
 
-进入“应用中心 → 构建与部署 → 构建历史”，确认筛选区、构建状态、当前阶段、耗时和详情入口能够加载：
+"Application Center → Build & Deploy → Build History"로 이동해 Filter 영역, Build 상태, 현재 Stage, 소요 시간, Detail 진입점이 로딩되는지 확인합니다:
 
-![Ops Admin 构建历史](./screenshots/05-build-history.png)
+![Ops Admin Build History](./screenshots/05-build-history.png)
 
-进入“消息通知 → 消息模板”，确认模板列表、媒介类型、适用场景和状态筛选能够加载：
+"Notification → Message Template"으로 이동해 Template 목록, Channel 유형, 적용 시나리오, 상태 Filter가 로딩되는지 확인합니다:
 
-![Ops Admin 消息模板](./screenshots/06-message-templates.png)
+![Ops Admin Message Template](./screenshots/06-message-templates.png)
 
-进入“集成中心 → 导航管理”，确认导航分组、公开访问状态和系统入口卡片能够加载：
+"Integration Center → Navigation 관리"로 이동해 Navigation 그룹, 공개 접근 상태, 시스템 진입 카드가 로딩되는지 확인합니다:
 
-![Ops Admin 集成导航](./screenshots/07-integration-navigation.png)
+![Ops Admin Integration Navigation](./screenshots/07-integration-navigation.png)
 
-进入“监控中心 → 告警管理 → 告警模板”，确认模板分组、数据源、等级和规则创建入口能够加载：
+"Monitor Center → Alert 관리 → Alert Template"으로 이동해 Template 그룹, Datasource, Severity, Rule 생성 진입점이 로딩되는지 확인합니다:
 
-![Ops Admin 告警模板](./screenshots/08-alert-templates.png)
+![Ops Admin Alert Template](./screenshots/08-alert-templates.png)
 
-进入“域名管理 → 内网域名 → Zone 管理”，确认 DNS 服务状态、监听地址、Zone 列表和解析记录入口能够加载：
+"Domain 관리 → 내부망 Domain → Zone 관리"로 이동해 DNS 서비스 상태, Listen 주소, Zone 목록, Record 진입점이 로딩되는지 확인합니다:
 
-![Ops Admin 内网 DNS Zone](./screenshots/09-private-dns-zones.png)
+![Ops Admin 내부망 DNS Zone](./screenshots/09-private-dns-zones.png)
 
-建议继续完成以下最小验收：
+다음 최소 검증 항목을 이어서 완료하시기를 권장합니다:
 
-- 新建一个测试主机并执行连接检查。
-- 配置一个测试 Kubernetes 集群并验证 kubeconfig 连接。
-- 打开命令执行、作业编排、消息模板和监控模板页面。
-- 上传一个小文件，确认 `ops-admin-uploads` 卷可以正常写入。
-- 检查浏览器控制台和 `docker compose logs api` 中没有持续错误。
+- 테스트 Host를 새로 만들고 연결 검사를 실행합니다.
+- 테스트 Kubernetes Cluster를 구성하고 kubeconfig 연결을 검증합니다.
+- Command 실행, Job Orchestration, Message Template, 모니터링 Template Page를 엽니다.
+- 작은 파일을 Upload하여 `ops-admin-uploads` Volume에 정상 기록되는지 확인합니다.
+- Browser 콘솔과 `docker compose logs api`에 지속 오류가 없는지 확인합니다.
 
-## 7. 网络与可选能力
+## 7. 네트워크 및 선택 기능
 
-### 7.1 目标资源连通性
+### 7.1 대상 리소스 연결성
 
-平台发起 SSH、Kubernetes、数据库和监控查询的源端是 `ops-admin-api` 容器。目标网络、防火墙和白名单需要允许该容器经宿主机网络访问相应地址。
+플랫폼이 SSH, Kubernetes, Database, 모니터링 Query를 시작하는 소스는 `ops-admin-api` Container입니다. 대상 네트워크, 방화벽, 화이트리스트는 해당 Container가 Host 네트워크를 통해 대상 주소에 접근하도록 허용해야 합니다.
 
-如果目标位于隔离网络，可在平台的“资产管理 → 网关管理”配置 SSH 跳板网关，并在对应主机、数据库或 Kubernetes 集群上选择网关访问。
+대상이 격리 네트워크에 있다면 플랫폼의 "자산 관리 → Gateway 관리"에서 SSH Jump Gateway를 구성하고 해당 Host, Database, Kubernetes Cluster에서 Gateway 접근을 선택하십시오.
 
 ### 7.2 HTTPS
 
-标准 Compose 仅监听宿主机 `8080`。生产环境建议在其前方配置已有的 Nginx、HAProxy、Traefik 或云负载均衡，并完成：
+표준 Compose는 Host `8080`만 Listen합니다. Production Environment에서는 앞단에 기존 Nginx, HAProxy, Traefik 또는 Cloud Load Balancer를 구성하고 다음을 완료하시기를 권장합니다:
 
-- TLS 证书终止
-- HTTP 跳转 HTTPS
-- WebSocket 转发
-- `/api/v1/` 和 `/uploads/` 的请求体及超时时间配置
-- 仅允许可信网段访问管理后台
+- TLS Certificate Termination
+- HTTP → HTTPS Redirect
+- WebSocket Forwarding
+- `/api/v1/` 및 `/uploads/`의 Request Body 및 Timeout 설정
+- 관리 콘솔은 신뢰할 수 있는 네트워크 대역에서만 접근 허용
 
-如果反向代理与 Ops Admin 位于同一台服务器，可将 `docker-compose.yml` 中 Web 端口改为仅监听回环地址：
+Reverse Proxy와 Ops Admin이 같은 서버에 있다면 `docker-compose.yml`의 Web 포트를 루프백 주소만 Listen하도록 변경할 수 있습니다:
 
 ```yaml
 ports:
   - "127.0.0.1:8080:80"
 ```
 
-### 7.3 开启内网 DNS
+### 7.3 내부망 DNS 활성화
 
-默认的 `docker-compose.yml` 不占用宿主机 `53` 端口；未开启内网 DNS 时按前文命令部署即可。需要开启时，再叠加 `docker-compose.dns.yml`，它会将 API 容器的 `53/UDP` 和 `53/TCP` 映射到宿主机，并仅向非 root API 进程增加 `NET_BIND_SERVICE` 能力。DNS 通常先使用 UDP，但较大响应或 UDP 截断后的重试会使用 TCP，因此两个协议必须同时放通。
+기본 `docker-compose.yml`은 Host `53` 포트를 점유하지 않습니다; 내부망 DNS를 활성화하지 않는다면 앞선 명령으로 Deploy하면 됩니다. 활성화할 때는 `docker-compose.dns.yml`을 추가로 겹쳐 사용합니다. 이 파일은 API Container의 `53/UDP`, `53/TCP`를 Host에 매핑하고 비 root API 프로세스에 `NET_BIND_SERVICE` Capability만 추가합니다. DNS는 보통 UDP를 먼저 사용하지만 큰 Response 또는 UDP 절단 후 재시도에서는 TCP를 사용하므로 두 프로토콜을 모두 허용해야 합니다.
 
-1. 在 `deploy/.env` 中把 DNS 发布地址设为宿主机的内网 IP，避免直接监听所有公网网卡：
+1. `deploy/.env`에서 DNS 노출 주소를 Host의 내부망 IP로 설정해 모든 공인 NIC의 직접 Listen을 피합니다:
 
    ```dotenv
    OPS_ADMIN_DNS_BIND_ADDRESS=192.168.10.20
    ```
 
-   没有单独内网地址时可使用 `0.0.0.0`，但必须通过云安全组、边界防火墙或宿主机规则将来源限制到可信网段。Docker 发布端口会修改 iptables/nftables 转发规则，不应只依赖 UFW 作为唯一访问边界。
+   별도 내부망 주소가 없을 때는 `0.0.0.0`을 사용할 수 있지만 Cloud 보안 그룹, 경계 방화벽 또는 Host 규칙으로 소스를 신뢰할 수 있는 네트워크 대역으로 제한해야 합니다. Docker 포트 노출은 iptables/nftables 포워딩 규칙을 수정하므로 UFW를 유일한 접근 경계로 삼아서는 안 됩니다.
 
-2. 使用 DNS 覆盖文件重新创建 API 容器，使端口映射和能力生效。后续对这套启用 DNS 的部署执行 `up`、`ps`、`logs`、`down` 等命令时，也应携带相同的两个 `-f` 参数：
+2. DNS 오버라이드 파일로 API Container를 다시 생성해 포트 매핑과 Capability를 적용합니다. 이후 이 DNS 활성화 Deploy에 대해 `up`, `ps`, `logs`, `down` 등의 명령을 실행할 때도 동일한 두 `-f` 파라미터를 함께 사용해야 합니다:
 
    ```bash
    docker compose \
@@ -283,30 +283,30 @@ ports:
      ps
    ```
 
-3. 放通客户端到服务器的入站 DNS 流量。以可信网段 `192.168.10.0/24` 为例：
+3. 클라이언트에서 서버로의 인바운드 DNS 트래픽을 허용합니다. 신뢰할 수 있는 네트워크 대역 `192.168.10.0/24` 예시:
 
    ```bash
    sudo ufw allow from 192.168.10.0/24 to any port 53 proto udp
    sudo ufw allow from 192.168.10.0/24 to any port 53 proto tcp
    ```
 
-   云服务器还需要在安全组中添加同样的两条入站规则。不要向 `0.0.0.0/0` 开放递归 DNS，否则可能成为 DNS 放大攻击入口。
+   Cloud 서버는 보안 그룹에 동일한 인바운드 규칙 두 개도 추가해야 합니다. `0.0.0.0/0`에 Recursive DNS를 개방하면 DNS Amplification 공격 진입로가 될 수 있으므로 개방하지 마십시오.
 
-4. 确保服务器及 Docker 网络允许 API 容器访问配置的上游 DNS，例如 `223.5.5.5:53`。网络有出站 ACL 时，显式允许到上游 DNS 地址的 `UDP/53` 和 `TCP/53`。
+4. 서버와 Docker 네트워크가 API Container가 설정한 업스트림 DNS(예: `223.5.5.5:53`)에 접근하도록 보장합니다. 네트워크에 Outbound ACL이 있다면 업스트림 DNS 주소의 `UDP/53`과 `TCP/53`을 명시적으로 허용합니다.
 
-5. 登录 Ops Admin，进入“域名管理 → 内网域名 → DNS 设置”，填写：
+5. Ops Admin에 Login하여 "Domain 관리 → 내부망 Domain → DNS 설정"으로 이동해 다음을 입력합니다:
 
-   - 状态：启用
-   - 监听地址：`0.0.0.0`（这是容器内监听地址，不要填写宿主机 IP）
-   - 监听端口：`53`
-   - 上游 DNS：填写企业 DNS 或允许访问的公共 DNS
+   - 상태: 활성화
+   - Listen 주소: `0.0.0.0` (Container 내부 Listen 주소이며 Host IP를 입력하지 마십시오)
+   - Listen 포트: `53`
+   - 업스트림 DNS: 사내 DNS 또는 접근을 허용할 공용 DNS를 입력
 
-   保存后应显示 UDP、TCP 均运行。然后创建并启用 Zone 与解析记录。
+   저장 후 UDP, TCP 모두 Running으로 표시되어야 합니다. 그런 다음 Zone과 Record를 생성하고 활성화합니다.
 
-6. 分别从宿主机和另一台内网客户端验证 UDP、TCP：
+6. Host와 다른 내부망 클라이언트에서 각각 UDP, TCP를 검증합니다:
 
    ```bash
-   # 将 192.168.10.20 和 ops.com 替换为实际地址与 Zone
+   # 192.168.10.20과 ops.com을 실제 주소와 Zone으로 교체
    dig @192.168.10.20 ops.com A
    dig @192.168.10.20 ops.com A +tcp
 
@@ -314,43 +314,43 @@ ports:
    docker compose -f docker-compose.yml -f docker-compose.dns.yml port api 53/tcp
    ```
 
-如果保存后页面显示启动失败，优先检查 `docker compose logs api`、宿主机 `53` 端口冲突、容器的 `NET_BIND_SERVICE` 能力，以及到上游 DNS 的出站策略。
+저장 후 Page에 시작 실패가 표시되면 `docker compose logs api`, Host `53` 포트 충돌, Container의 `NET_BIND_SERVICE` Capability, 업스트림 DNS Outbound 정책을 우선 확인하십시오.
 
-### 7.4 从应用中心执行构建
+### 7.4 Application Center에서 Build 실행
 
-构建主机不需要安装 Go 或 Node.js。`backend/Dockerfile` 会在 Go 构建阶段生成 Linux 二进制，`web/Dockerfile` 会在 Node.js 构建阶段生成前端产物；构建主机只需要 Git、Docker Engine 和 Docker Compose V2。
+Build Host에는 Go나 Node.js를 설치할 필요가 없습니다. `backend/Dockerfile`은 Go Build 단계에서 Linux 바이너리를 생성하고 `web/Dockerfile`은 Node.js Build 단계에서 프론트엔드 산출물을 생성합니다; Build Host에는 Git, Docker Engine, Docker Compose V2만 있으면 됩니다.
 
-在“应用中心 → 构建任务”选择资产主机后，执行路径填写 SSH 用户可写的绝对路径，例如 `/home/ops/ops-admin`。使用 Docker Compose 构建模板时，首次执行会在代码工作目录创建被 Git 忽略的 `deploy/.env` 和 `deploy/config.yaml`；后续构建会复用配置与已有数据卷。不要删除这两个文件，也不要把其中的密钥写入构建日志。
+"Application Center → Build Task"에서 자산 Host를 선택한 뒤 실행 경로에 SSH 사용자가 쓸 수 있는 절대 경로(예: `/home/ops/ops-admin`)를 입력합니다. Docker Compose Build Template 사용 시 첫 실행에서 코드 작업 디렉터리에 Git 무시 대상인 `deploy/.env`와 `deploy/config.yaml`이 생성되며 이후 Build는 Config와 기존 데이터 Volume을 재사용합니다. 이 두 파일을 삭제하지 말고 포함된 Key를 Build Log에 기록하지 마십시오.
 
-## 8. 常用运维命令
+## 8. 자주 쓰는 운영 Command
 
 ```bash
-# 查看状态
+# 상태 확인
 docker compose ps
 
-# 查看最近 200 行日志
+# 최근 200행 Log 확인
 docker compose logs --tail=200 api
 docker compose logs --tail=200 web
 docker compose logs --tail=200 mysql
 
-# 跟踪所有服务日志
+# 전체 서비스 Log 추적
 docker compose logs -f
 
-# 重启单个服务
+# 개별 서비스 재시작
 docker compose restart api
 
-# 停止服务但保留数据
+# 데이터를 유지한 채 서비스 중지
 docker compose down
 
-# 再次启动
+# 다시 시작
 docker compose --env-file deploy/.env up -d
 ```
 
-不要执行 `docker compose down -v`，该命令会删除数据库和上传文件卷。
+`docker compose down -v`를 실행하지 마십시오. 이 명령은 Database와 Upload 파일 Volume을 삭제합니다.
 
-## 9. 备份与恢复
+## 9. 백업과 복구
 
-### 9.1 数据库备份
+### 9.1 Database 백업
 
 ```bash
 mkdir -p backup
@@ -359,13 +359,13 @@ docker compose exec -T mysql sh -c \
   > "backup/ops-admin-$(date +%F-%H%M%S).sql"
 ```
 
-确认备份不是空文件：
+백업이 빈 파일이 아닌지 확인:
 
 ```bash
 ls -lh backup/*.sql
 ```
 
-### 9.2 上传文件备份
+### 9.2 Upload 파일 백업
 
 ```bash
 docker run --rm \
@@ -375,25 +375,25 @@ docker run --rm \
   tar czf "/backup/ops-admin-uploads-$(date +%F-%H%M%S).tar.gz" -C /data .
 ```
 
-同时安全备份以下文件：
+동시에 다음 파일을 안전하게 백업합니다:
 
 - `deploy/.env`
 - `deploy/config.yaml`
-- 数据库 SQL 备份
-- 上传文件压缩包
-- 当前部署使用的 Git tag 或 commit ID
+- Database SQL 백업
+- Upload 파일 압축 파일
+- 현재 Deploy에서 사용하는 Git tag 또는 commit ID
 
-恢复数据库前应进入维护窗口并确认目标数据库正确：
+Database 복구 전 유지보수 시간대에 진입하고 대상 Database가 올바른지 확인해야 합니다:
 
 ```bash
 docker compose exec -T mysql sh -c \
   'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
-  < backup/<备份文件>.sql
+  < backup/<백업 파일>.sql
 ```
 
-## 10. 升级
+## 10. 업그레이드
 
-升级前先完成数据库、上传文件和配置备份，然后执行：
+업그레이드 전 Database, Upload 파일, Config 백업을 먼저 완료한 뒤 다음을 실행합니다:
 
 ```bash
 git pull --ff-only
@@ -403,32 +403,32 @@ docker compose ps
 docker compose logs --tail=200 api
 ```
 
-升级后重复“部署验收”。后端会自动执行数据库迁移，但数据库结构变更不一定支持仅靠旧镜像逆向回滚；需要回滚时，应同时使用升级前的代码版本和数据库备份。
+업그레이드 후 "Deploy 검증"을 반복합니다. Backend는 Database Migration을 자동 실행하지만 Database 구조 변경이 반드시 이전 Image로의 역방향 Rollback을 지원하는 것은 아닙니다; Rollback이 필요하면 업그레이드 전 코드 Version과 Database 백업을 함께 사용해야 합니다.
 
-## 11. 故障排查
+## 11. 문제 해결
 
-### MySQL 一直不健康
+### MySQL이 계속 Healthy하지 않은 경우
 
 ```bash
 docker compose logs --tail=200 mysql
 ```
 
-检查磁盘空间、数据卷权限以及 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD` 是否已替换。已有数据卷不会因为修改 `.env` 自动更改数据库内部密码。
+디스크 공간, 데이터 Volume 권한과 `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` 교체 여부를 확인합니다. 기존 데이터 Volume은 `.env` 수정만으로 Database 내부 비밀번호가 자동 변경되지 않습니다.
 
-### API 启动失败
+### API 시작 실패
 
 ```bash
 docker compose logs --tail=200 api
 ```
 
-重点检查：
+핵심 확인 항목:
 
-- `deploy/config.yaml` 中数据库密码是否与 `MYSQL_PASSWORD` 一致。
-- `security.credential-key` 是否至少 32 字节。
-- `OPS_ADMIN_JWT_SECRET` 是否存在且长度足够。
-- MySQL 是否已经健康。
+- `deploy/config.yaml`의 Database 비밀번호가 `MYSQL_PASSWORD`와 일치하는지.
+- `security.credential-key`가 32바이트 이상인지.
+- `OPS_ADMIN_JWT_SECRET`이 존재하고 길이가 충분한지.
+- MySQL이 이미 Healthy한지.
 
-### 页面能打开但接口失败
+### Page는 열리지만 API가 실패하는 경우
 
 ```bash
 curl -v http://127.0.0.1:8080/api/v1/systemConfig/public
@@ -436,44 +436,44 @@ docker compose logs --tail=200 web
 docker compose logs --tail=200 api
 ```
 
-检查反向代理是否保留 `/api/v1/` 路径，以及浏览器访问域名是否与 CORS 配置匹配。
+Reverse Proxy가 `/api/v1/` 경로를 유지하는지, Browser 접근 Domain이 CORS Config와 일치하는지 확인합니다.
 
-### SSH、Kubernetes 或监控连接失败
+### SSH, Kubernetes 또는 모니터링 연결 실패
 
-在 API 容器内检查 DNS 和目标端口：
+API Container 내에서 DNS와 대상 포트를 확인합니다:
 
 ```bash
 docker compose exec api sh
 ```
 
-确认目标地址可从部署服务器访问，并检查资产凭据、网关路径、Kubernetes API Server 地址及监控数据源认证信息。
+대상 주소가 Deploy 서버에서 접근 가능한지 확인하고 자산 Credential, Gateway 경로, Kubernetes API Server 주소, 모니터링 Datasource 인증 정보를 점검합니다.
 
-### `8080` 端口被占用
+### `8080` 포트 점유
 
-修改 `docker-compose.yml` 中 Web 服务的宿主机端口，例如：
+`docker-compose.yml`에서 Web 서비스의 Host 포트를 변경합니다. 예시:
 
 ```yaml
 ports:
   - "18080:80"
 ```
 
-随后访问 `http://<服务器 IP>:18080`。
+이후 `http://<서버 IP>:18080`에 접근합니다.
 
-## 12. 安全检查清单
+## 12. 보안 점검 체크리스트
 
-- 已替换 MySQL、管理员、JWT 和凭据加密密钥。
-- `deploy/.env`、`deploy/config.yaml` 权限为 `600`，且未提交 Git。
-- 首次登录后已修改管理员密码。
-- 管理端口仅对可信网段开放。
-- 生产环境通过 HTTPS 访问。
-- 已验证数据库和上传文件备份可用。
-- 已记录部署版本、配置变更和升级时间。
-- 未暴露 MySQL `3306` 和 API `8082` 到公网。
-- 启用内网 DNS 时，`53/UDP`、`53/TCP` 仅允许可信网段访问，且已验证到上游 DNS 的双协议出站连通性。
+- MySQL, 관리자, JWT, Credential 암호화 Key를 교체했습니다.
+- `deploy/.env`, `deploy/config.yaml` 권한이 `600`이고 Git에 커밋하지 않았습니다.
+- 첫 Login 후 관리자 비밀번호를 변경했습니다.
+- 관리 포트는 신뢰할 수 있는 네트워크 대역에만 개방했습니다.
+- Production Environment는 HTTPS로 접근합니다.
+- Database와 Upload 파일 백업이 사용 가능한지 검증했습니다.
+- Deploy Version, Config 변경, 업그레이드 시각을 기록했습니다.
+- MySQL `3306`과 API `8082`를 공인망에 노출하지 않았습니다.
+- 내부망 DNS 활성화 시 `53/UDP`, `53/TCP`는 신뢰할 수 있는 네트워크 대역에만 개방하고 업스트림 DNS로의 듀얼 프로토콜 Outbound 연결성을 검증했습니다.
 
-## 13. 当前限制
+## 13. 현재 제한 사항
 
-- 本 Compose 是单机部署，不提供 MySQL 或 Web/API 的高可用。
-- 当前没有开箱即用的离线安装包；完全离线环境需要提前准备构建镜像和依赖缓存。
-- 默认 Compose 不发布 DNS 端口；加载 `docker-compose.dns.yml` 后才发布 `53/UDP` 和 `53/TCP`。启用前必须处理宿主机端口冲突，并限制允许访问的来源网段。
-- 生产环境的外部 HTTPS、备份调度和日志采集需要接入现有基础设施。
+- 본 Compose는 단일 장비 Deploy이며 MySQL 또는 Web/API의 고가용성을 제공하지 않습니다.
+- 현재 개봉 즉시 사용 가능한 오프라인 설치 패키지가 없습니다; 완전 오프라인 환경은 Build Image와 의존성 캐시를 사전에 준비해야 합니다.
+- 기본 Compose는 DNS 포트를 노출하지 않습니다; `docker-compose.dns.yml` 로드 시에만 `53/UDP`와 `53/TCP`를 노출합니다. 활성화 전에 Host 포트 충돌을 반드시 처리하고 접근을 허용할 소스 네트워크 대역을 제한해야 합니다.
+- Production Environment의 외부 HTTPS, 백업 스케줄, Log 수집은 기존 인프라에 연동해야 합니다.

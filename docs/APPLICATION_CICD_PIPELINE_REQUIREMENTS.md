@@ -1,351 +1,351 @@
-# 应用中心 CI/CD 流水线需求拆解
+# Application Center CI/CD Pipeline 요구사항 분해
 
-## 1. 背景与目标
+## 1. 배경과 목표
 
-应用中心当前已有项目管理、构建任务、构建历史能力，但构建发布仍偏“单任务脚本执行”。本次新增 `CI/CD 流水线`，目标是提供类似 Jenkins、蓝鲸流水线、云原生交付平台的可视化流水线管理能力。
+Application Center에는 현재 Project 관리, Build Task, Build History 기능이 있지만 Build와 Deploy는 아직 “단일 Task Script 실행”에 가깝습니다. 이번에 `CI/CD Pipeline`을 신규 추가하며, Jenkins, BlueKing Pipeline, Cloud Native Delivery Platform과 유사한 시각화 Pipeline 관리 기능을 제공하는 것이 목표입니다.
 
-核心目标：
+핵심 목표:
 
-- 在应用中心新增独立二级页面：`CI/CD 流水线`。
-- 支持从模板创建流水线，也支持创建空白流水线。
-- 支持按应用、语言/技术栈、环境、状态筛选流水线。
-- 支持流水线阶段编排、参数配置、立即执行、执行历史、日志查看。
-- 后续可逐步扩展到人工审批、消息通知、镜像制品、K8s 发布、回滚等能力。
+- Application Center에 독립된 2차 페이지 `CI/CD Pipeline`을 추가합니다.
+- Template에서 Pipeline을 생성하는 것과 빈 Pipeline 생성을 모두 지원합니다.
+- Application, 언어/Tech Stack, Environment, 상태로 Pipeline을 필터링합니다.
+- Pipeline Stage Orchestration, Parameter 구성, 즉시 실행, 실행 History, Log 확인을 지원합니다.
+- 이후 Manual Approval, Notification, Image Artifact, K8s Deploy, Rollback 등의 기능으로 단계적으로 확장할 수 있습니다.
 
-## 2. 页面结构
+## 2. 페이지 구조
 
-应用中心建议拆成以下页面：
+Application Center는 다음 페이지로 분리할 것을 권장합니다:
 
-- `项目列表`：维护应用基础信息，包含 Git/SVN 仓库地址。
-- `构建任务`：保留当前单任务构建能力。
-- `构建历史`：保留当前构建历史和日志能力。
-- `CI/CD 流水线`：新增，作为流水线入口。
-- `流水线执行历史`：新增，可从流水线列表进入，也可独立查看所有流水线运行记录。
+- `Project 목록`: Application 기본 정보를 유지 관리하며 Git/SVN Repository Address를 포함합니다.
+- `Build Task`: 현재의 단일 Task Build 기능을 유지합니다.
+- `Build History`: 현재의 Build History와 Log 기능을 유지합니다.
+- `CI/CD Pipeline`: 신규 추가되며 Pipeline 진입점입니다.
+- `Pipeline 실행 History`: 신규 추가되며 Pipeline 목록에서 진입하거나, 모든 Pipeline Run 기록을 독립적으로도 확인할 수 있습니다.
 
-## 3. CI/CD 流水线首页
+## 3. CI/CD Pipeline 홈
 
-### 3.1 顶部概览
+### 3.1 상단 Overview
 
-展示标题和平台描述：
+제목과 플랫폼 설명을 표시합니다:
 
-- 标题：`CI/CD 流水线`
-- 描述：`从代码拉取、构建、测试、制品、发布到通知，统一编排应用交付流程。`
+- 제목: `CI/CD Pipeline`
+- 설명: `Source Checkout부터 Build, Test, Artifact, Deploy, Notification까지 Application Delivery Flow를 통합 Orchestration합니다.`
 
-右侧统计卡片：
+우측 통계 Card:
 
-- 流水线总数
-- 启用数量
-- 最近失败数量
+- 전체 Pipeline
+- 활성 건수
+- 최근 실패 건수
 
-### 3.2 顶部 Tab
+### 3.2 상단 Tab
 
-建议 Tab：
+권장 Tab:
 
-- `代码仓库`
-- `流水线列表`
-- `流水线模板`
-- `执行记录`
-- `凭证管理`
-- `全局变量`
+- `Code Repository`
+- `Pipeline 목록`
+- `Pipeline Template`
+- `실행 기록`
+- `Credential 관리`
+- `Global Variable`
 
-本期优先实现：
+이번 단계에서 우선 구현:
 
-- `流水线列表`
-- `流水线模板`
-- `执行记录`
+- `Pipeline 목록`
+- `Pipeline Template`
+- `실행 기록`
 
-### 3.3 查询区
+### 3.3 Query 영역
 
-字段：
+필드:
 
-- 关键字：流水线名称、应用名称、仓库地址
-- 应用：下拉选择，复用应用中心项目列表
-- 环境：全部、dev、test、staging、prod
-- 技术栈：全部、Java、Node.js、Go、Python、Vue、空模板
-- 状态：全部、启用、禁用
+- Keyword: Pipeline 이름, Application 이름, Repository Address
+- Application: Dropdown 선택, Application Center Project 목록 재사용
+- Environment: 전체, dev, test, staging, prod
+- Tech Stack: 전체, Java, Node.js, Go, Python, Vue, 빈 Template
+- 상태: 전체, 활성화, 비활성화
 
-操作：
+작업:
 
-- 查询
-- 重置
-- 新建流水线
+- Query
+- 초기화
+- 새 Pipeline
 
-### 3.4 流水线列表
+### 3.4 Pipeline 목록
 
-表格字段：
+Table 필드:
 
-- 流水线名称
-- 所属应用
-- 仓库地址
-- 默认分支
-- 技术栈
-- 默认环境
-- 阶段数
-- 状态
-- 最近执行
-- 创建时间
-- 操作
+- Pipeline 이름
+- 소속 Application
+- Repository Address
+- Default Branch
+- Tech Stack
+- Default Environment
+- Stage 수
+- 상태
+- 최근 실행
+- 생성 시각
+- 작업
 
-操作：
+작업:
 
-- 立即执行
-- 编辑
-- 复制
-- 执行历史
-- 启用/禁用
-- 删除
+- 즉시 실행
+- 수정
+- 복제
+- 실행 History
+- 활성화/비활성화
+- 삭제
 
-## 4. 选择流水线模板弹窗
+## 4. Pipeline Template 선택 대화상자
 
-参考截图实现一个居中大弹窗。
+Screenshot을 참고해 중앙 정렬의 큰 대화상자로 구현합니다.
 
-### 4.1 弹窗布局
+### 4.1 대화상자 Layout
 
-标题：`选择流水线模板`
+제목: `Pipeline Template 선택`
 
-左侧分类：
+좌측 Category:
 
-- 全部模板
+- 전체 Template
 - Java
 - Node.js
 - Go
 - Python
 - Vue
-- 空模板
+- 빈 Template
 
-右侧模板卡片：
+우측 Template Card:
 
-- 模板名称
-- 模板描述
-- 技术栈标识
-- 阶段数量
-- 推荐场景
+- Template 이름
+- Template 설명
+- Tech Stack 식별자
+- Stage 수
+- 권장 시나리오
 
-底部按钮：
+하단 Button:
 
-- 取消
-- 空白流水线
-- 使用选中模板
+- 취소
+- 빈 Pipeline
+- 선택한 Template 사용
 
-### 4.2 内置模板
+### 4.2 내장 Template
 
-#### Go 后端通用模板
+#### Go 백엔드 공통 Template
 
-描述：`Go 编译、镜像推送、工作负载更新`
+설명: `Go Compile, Image Push, Workload Update`
 
-默认阶段：
+Default Stage:
 
-1. 代码拉取
-2. Go 依赖安装
-3. 单元测试
-4. Go 编译
-5. Docker 镜像构建
-6. 镜像推送
-7. K8s 工作负载更新
+1. Source Checkout
+2. Go Dependency 설치
+3. Unit Test
+4. Go Compile
+5. Docker Image Build
+6. Image Push
+7. K8s Workload Update
 
-#### Maven Java 通用模板
+#### Maven Java 공통 Template
 
-描述：`Maven 打包、Jar 镜像、K8s 发布`
+설명: `Maven Package, Jar Image, K8s Deploy`
 
-默认阶段：
+Default Stage:
 
-1. 代码拉取
-2. Maven 依赖安装
-3. 单元测试
-4. Maven 打包
-5. Docker 镜像构建
-6. 镜像推送
-7. K8s 发布
+1. Source Checkout
+2. Maven Dependency 설치
+3. Unit Test
+4. Maven Package
+5. Docker Image Build
+6. Image Push
+7. K8s Deploy
 
-#### Vue 前端通用模板
+#### Vue 프론트엔드 공통 Template
 
-描述：`npm 构建、镜像打包、K8s 滚动发布`
+설명: `npm Build, Image Package, K8s Rolling Deploy`
 
-默认阶段：
+Default Stage:
 
-1. 代码拉取
+1. Source Checkout
 2. npm install
 3. npm run build
-4. Docker 镜像构建
-5. 镜像推送
-6. K8s 滚动发布
-7. 发布通知
+4. Docker Image Build
+5. Image Push
+6. K8s Rolling Deploy
+7. Deploy Notification
 
-#### 空白流水线
+#### 빈 Pipeline
 
-描述：`从空白画布开始，自定义所有阶段`
+설명: `빈 Canvas에서 시작해 모든 Stage를 사용자 정의`
 
-默认阶段：无
+Default Stage: 없음
 
-## 5. 流水线编辑器
+## 5. Pipeline Editor
 
-### 5.1 基础信息
+### 5.1 기본 정보
 
-字段：
+필드:
 
-- 流水线名称，必填
-- 所属应用，必填，选择后自动带出仓库地址、仓库类型、默认分支
-- 默认环境，必填
-- 默认分支，默认使用应用配置
-- 技术栈
-- 状态：启用、禁用
-- 描述
+- Pipeline 이름, 필수
+- 소속 Application, 필수. 선택하면 Repository Address, Repository Type, Default Branch가 자동으로 채워집니다
+- Default Environment, 필수
+- Default Branch, 기본값은 Application 구성
+- Tech Stack
+- 상태: 활성화, 비활성화
+- 설명
 
-### 5.2 阶段编排
+### 5.2 Stage Orchestration
 
-采用横向阶段卡片或者流程图布局。
+가로형 Stage Card 또는 Flowchart Layout을 채택합니다.
 
-阶段类型：
+Stage Type:
 
-- 代码拉取
-- Shell 脚本
-- 构建命令
-- 单元测试
-- Docker 构建
-- 镜像推送
-- K8s 发布
-- 文件分发
-- 人工确认
-- 消息通知
+- Source Checkout
+- Shell Script
+- Build Command
+- Unit Test
+- Docker Build
+- Image Push
+- K8s Deploy
+- File Distribution
+- Manual Approval
+- Notification
 
-阶段配置通用字段：
+Stage 구성 공통 필드:
 
-- 阶段名称
-- 是否启用
-- 超时时间，默认 1800 秒
-- 失败策略：终止流水线、忽略继续、人工确认
-- 执行目录
-- 环境变量
+- Stage 이름
+- 활성화 여부
+- Timeout, 기본값 1800초
+- 실패 Policy: Pipeline 중지, 무시하고 계속, Manual Approval
+- 실행 Directory
+- 환경 변수
 
-### 5.3 关键阶段配置
+### 5.3 주요 Stage 구성
 
-#### 代码拉取
+#### Source Checkout
 
-- 仓库类型：Git、SVN
-- 仓库地址：从应用带出
-- 分支/Tag
-- 凭证
+- Repository Type: Git, SVN
+- Repository Address: Application에서 자동으로 가져옴
+- Branch/Tag
+- Credential
 
-#### 构建命令
+#### Build Command
 
-- 构建脚本，代码高亮
-- 工作目录
-- 构建参数
-- 缓存策略
+- Build Script, Code 하이라이트
+- Workspace
+- Build Parameter
+- Cache Policy
 
-#### Docker 构建
+#### Docker Build
 
-- Dockerfile 路径
-- 构建上下文
-- 镜像仓库
-- 镜像名称
-- 镜像 Tag 规则
+- Dockerfile 경로
+- Build Context
+- Image Registry
+- Image 이름
+- Image Tag Rule
 
-#### 镜像推送
+#### Image Push
 
-- 镜像仓库凭证
-- 推送地址
-- 推送后是否记录制品
+- Image Registry Credential
+- Push Address
+- Push 후 Artifact 기록 여부
 
-#### K8s 发布
+#### K8s Deploy
 
-- 集群
-- 命名空间
-- 工作负载类型
-- 工作负载名称
-- 容器名称
-- 镜像版本
-- 发布策略：滚动发布、重建发布
-- 是否等待 rollout 完成
+- Cluster
+- Namespace
+- Workload Type
+- Workload 이름
+- Container 이름
+- Image Version
+- Deploy Policy: Rolling Deploy, Recreate Deploy
+- rollout 완료 대기 여부
 
-#### 人工确认
+#### Manual Approval
 
-- 确认标题
-- 确认说明
-- 审批人
-- 超时策略
+- 확인 제목
+- 확인 설명
+- Approver
+- Timeout Policy
 
-#### 消息通知
+#### Notification
 
-- 通知规则
-- 通知时机：阶段开始、阶段成功、阶段失败、流水线结束
-- 模板变量预览
+- Notification Rule
+- Notification 시점: Stage 시작, Stage 성공, Stage 실패, Pipeline 종료
+- Template Variable Preview
 
-## 6. 流水线执行
+## 6. Pipeline 실행
 
-### 6.1 立即执行弹窗
+### 6.1 즉시 실행 대화상자
 
-点击 `立即执行` 后弹出执行参数弹窗：
+`즉시 실행`을 클릭하면 실행 Parameter 대화상자가 표시됩니다:
 
-- 流水线名称
-- 所属应用
-- 执行环境
-- 分支/Tag
-- 镜像 Tag
-- 自定义参数
-- 是否开启消息通知
-- 通知规则
+- Pipeline 이름
+- 소속 Application
+- 실행 Environment
+- Branch/Tag
+- Image Tag
+- Custom Parameter
+- Notification 활성화 여부
+- Notification Rule
 
-确认后创建一次流水线运行记录。
+확인하면 Pipeline Run 기록이 한 건 생성됩니다.
 
-### 6.2 执行中详情
+### 6.2 실행 중 상세
 
-执行后立即打开执行详情弹窗或跳转详情页。
+실행 후 즉시 실행 상세 대화상자를 열거나 상세 Page로 이동합니다.
 
-展示：
+표시 항목:
 
-- 当前运行状态
-- 阶段进度条
-- 每个阶段状态：等待中、执行中、成功、失败、已跳过、待确认
-- 当前阶段实时日志
-- 总耗时
+- 현재 Run 상태
+- Stage Progress Bar
+- Stage별 상태: 대기 중, 실행 중, 성공, 실패, 건너뜀, 확인 대기
+- 현재 Stage 실시간 Log
+- 총 소요 시간
 
-操作：
+작업:
 
-- 终止执行
-- 重试失败阶段
-- 查看完整日志
-- 下载日志
+- 실행 중지
+- 실패 Stage 재시도
+- 전체 Log 보기
+- Log Download
 
-## 7. 流水线执行历史
+## 7. Pipeline 실행 History
 
-列表字段：
+목록 필드:
 
-- 执行编号
-- 流水线名称
-- 所属应用
-- 环境
-- 分支/Tag
-- 触发人
-- 触发方式：手动、Webhook、定时、API
-- 状态
-- 开始时间
-- 耗时
-- 操作
+- 실행 번호
+- Pipeline 이름
+- 소속 Application
+- Environment
+- Branch/Tag
+- Trigger User
+- Trigger Type: 수동, Webhook, 스케줄, API
+- 상태
+- 시작 시각
+- 소요 시간
+- 작업
 
-操作：
+작업:
 
-- 查看详情
-- 查看日志
-- 重新执行
-- 回滚到此版本，后续增强
+- 상세 보기
+- Log 보기
+- 재실행
+- 이 Version으로 Rollback, 이후 확장
 
-详情字段：
+상세 필드:
 
-- 基础信息
-- 阶段时间线
-- 阶段日志
-- 产物信息
-- 发布对象
-- 通知记录
+- 기본 정보
+- Stage Timeline
+- Stage Log
+- Artifact 정보
+- Deploy 대상
+- Notification 기록
 
-## 8. 后端模型建议
+## 8. Backend Model 권장
 
-### 8.1 流水线定义表
+### 8.1 Pipeline 정의 Table
 
-表名：`ops_app_pipeline`
+Table 이름: `ops_app_pipeline`
 
-字段：
+필드:
 
 - `id`
 - `name`
@@ -363,11 +363,11 @@
 - `created_at`
 - `updated_at`
 
-### 8.2 流水线模板表
+### 8.2 Pipeline Template Table
 
-表名：`ops_app_pipeline_template`
+Table 이름: `ops_app_pipeline_template`
 
-字段：
+필드:
 
 - `id`
 - `name`
@@ -381,11 +381,11 @@
 - `created_at`
 - `updated_at`
 
-### 8.3 流水线执行历史表
+### 8.3 Pipeline 실행 History Table
 
-表名：`ops_app_pipeline_run`
+Table 이름: `ops_app_pipeline_run`
 
-字段：
+필드:
 
 - `id`
 - `pipeline_id`
@@ -406,11 +406,11 @@
 - `duration_ms`
 - `created_at`
 
-### 8.4 流水线阶段执行表
+### 8.4 Pipeline Stage 실행 Table
 
-表名：`ops_app_pipeline_run_stage`
+Table 이름: `ops_app_pipeline_run_stage`
 
-字段：
+필드:
 
 - `id`
 - `run_id`
@@ -425,9 +425,9 @@
 - `duration_ms`
 - `created_at`
 
-## 9. API 建议
+## 9. API 권장
 
-流水线：
+Pipeline:
 
 - `GET /api/ops/app/pipeline/list`
 - `GET /api/ops/app/pipeline/info`
@@ -436,14 +436,14 @@
 - `POST /api/ops/app/pipeline/status`
 - `POST /api/ops/app/pipeline/copy`
 
-模板：
+Template:
 
 - `GET /api/ops/app/pipeline/template/list`
 - `GET /api/ops/app/pipeline/template/info`
 - `POST /api/ops/app/pipeline/template/save`
 - `POST /api/ops/app/pipeline/template/delete`
 
-执行：
+실행:
 
 - `POST /api/ops/app/pipeline/run`
 - `POST /api/ops/app/pipeline/run/cancel`
@@ -452,68 +452,68 @@
 - `GET /api/ops/app/pipeline/run/info`
 - `GET /api/ops/app/pipeline/run/stage-log`
 
-## 10. 与现有模块复用关系
+## 10. 기존 Module과의 재사용 관계
 
-复用：
+재사용:
 
-- 应用项目：应用名称、仓库类型、仓库地址、默认分支。
-- 构建历史日志样式：用于流水线阶段日志弹窗。
-- K8s 管理：集群、命名空间、工作负载、镜像更新能力。
-- 消息通知：通知规则、通知媒介、消息模板。
-- 标准运维脚本库：可作为 Shell 阶段的脚本来源。
+- Application Project: Application 이름, Repository Type, Repository Address, Default Branch.
+- Build History Log 스타일: Pipeline Stage Log 대화상자에 사용.
+- K8s 관리: Cluster, Namespace, Workload, Image Update 기능.
+- Notification: Notification Rule, Notification Channel, Message Template.
+- 표준 Ops Script Library: Shell Stage의 Script 출처로 사용 가능.
 
-避免重复：
+중복 방지:
 
-- `构建任务` 继续保留为简单构建入口。
-- `CI/CD 流水线` 面向多阶段编排和发布闭环。
+- `Build Task`는 간단한 Build 진입점으로 계속 유지합니다.
+- `CI/CD Pipeline`은 다중 Stage Orchestration과 Deploy Closed Loop을 지향합니다.
 
-## 11. 权限与安全
+## 11. 권한과 보안
 
-权限点：
+권한 Point:
 
-- 流水线查看
-- 流水线创建
-- 流水线编辑
-- 流水线删除
-- 流水线执行
-- 流水线终止
-- 流水线模板管理
-- 凭证使用
+- Pipeline 조회
+- Pipeline 생성
+- Pipeline 수정
+- Pipeline 삭제
+- Pipeline 실행
+- Pipeline 중지
+- Pipeline Template 관리
+- Credential 사용
 
-安全要求：
+보안 요구사항:
 
-- 仓库凭证、镜像仓库凭证、K8s 凭证不能明文返回前端。
-- 日志中需要脱敏 token、password、secret、access key。
-- 生产环境执行需要二次确认，后续可接入人工审批。
+- Repository Credential, Image Registry Credential, K8s Credential은 평문으로 Frontend에 반환할 수 없습니다.
+- Log에서 token, password, secret, access key는 Masking해야 합니다.
+- Production Environment 실행은 재확인이 필요하며 이후 Manual Approval을 연계할 수 있습니다.
 
-## 12. 第一阶段交付范围
+## 12. 1차 단계 인도 범위
 
-第一阶段建议优先完成：
+1차 단계에서는 다음을 우선 완료할 것을 권장합니다:
 
-1. 新增应用中心 `CI/CD 流水线` 菜单。
-2. 流水线列表页面。
-3. 选择流水线模板弹窗，按截图样式实现。
-4. 内置 Go、Java、Vue、空白流水线模板。
-5. 流水线新增/编辑页面，支持基础信息和阶段 JSON 配置。
-6. 流水线立即执行，生成执行记录。
-7. 执行历史列表和日志查看。
+1. Application Center에 `CI/CD Pipeline` Menu를 추가합니다.
+2. Pipeline 목록 Page.
+3. Pipeline Template 선택 대화상자, Screenshot 스타일대로 구현.
+4. 내장 Go, Java, Vue, 빈 Pipeline Template.
+5. Pipeline 추가/수정 Page, 기본 정보와 Stage JSON 구성 지원.
+6. Pipeline 즉시 실행, 실행 기록 생성.
+7. 실행 History 목록과 Log 확인.
 
-暂缓：
+보류:
 
-- Webhook 自动触发。
-- 真实 Docker build/push。
-- 复杂 DAG 并行阶段。
-- 蓝绿/金丝雀发布。
-- 自动回滚。
+- Webhook 자동 Trigger.
+- 실제 Docker build/push.
+- 복잡한 DAG 병렬 Stage.
+- Blue/Green, Canary Deploy.
+- 자동 Rollback.
 
-## 13. 验收标准
+## 13. 검수 기준
 
-- 应用中心可以看到 `CI/CD 流水线` 页面。
-- 点击 `新建流水线` 会出现与截图一致的信息架构：左侧分类，右侧模板卡片，底部取消/空白流水线/使用模板按钮。
-- 选择模板后能生成对应阶段。
-- 空白流水线可以创建无阶段流水线。
-- 流水线列表支持查询、启用、禁用、复制、删除、立即执行。
-- 执行后能在执行历史中看到记录。
-- 执行详情可以查看每个阶段状态和日志。
-- 页面文案全部中文，无乱码。
-- 前端 `npm run build` 通过，后端 `go test ./...` 通过。
+- Application Center에서 `CI/CD Pipeline` Page를 볼 수 있습니다.
+- `새 Pipeline`을 클릭하면 Screenshot과 동일한 Information Architecture가 표시됩니다: 좌측 Category, 우측 Template Card, 하단 취소/빈 Pipeline/Template 사용 Button.
+- Template을 선택하면 대응하는 Stage가 생성됩니다.
+- 빈 Pipeline은 Stage 없는 Pipeline을 생성할 수 있습니다.
+- Pipeline 목록은 Query, 활성화, 비활성화, 복제, 삭제, 즉시 실행을 지원합니다.
+- 실행 후 실행 History에서 기록을 확인할 수 있습니다.
+- 실행 상세에서 Stage별 상태와 Log를 확인할 수 있습니다.
+- Page 문구는 전부 한국어이며 깨진 글자가 없습니다.
+- Frontend `npm run build` 통과, Backend `go test ./...` 통과.
