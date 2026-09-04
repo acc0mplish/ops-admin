@@ -58,7 +58,7 @@ const elasticsearchFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 
 const victoriaLogsFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'level']
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
 const isVictoriaLogs = computed(() => activeDatasource.value?.type === 'victorialogs')
-const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '常用' })))
+const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '자주 사용' })))
 const opLogIgnoredFields = new Set(['@timestamp', 'kafka_topic', 'source_type', 'timestamp', 'ts'])
 const hasSelectedOpLogStream = computed(() => isVictoriaLogs.value && selectedTopics.value.some((topic) => String(topic).toLowerCase().includes('op.log')))
 const isContextlessLogSelection = computed(() => isVictoriaLogs.value && selectedTopics.value.length > 0 && selectedTopics.value.every((topic) => /(?:op|err)\.log/i.test(String(topic))))
@@ -73,7 +73,7 @@ const opLogFields = computed(() => {
     }
   }
   return [...counts.entries()]
-    .map(([name, hits]) => ({ name: `op.${name}`, queryName: name, type: 'OP 日志', hits }))
+    .map(([name, hits]) => ({ name: `op.${name}`, queryName: name, type: 'OP 로그', hits }))
     .sort((left, right) => right.hits - left.hits || left.name.localeCompare(right.name))
 })
 const fields = computed(() => {
@@ -129,7 +129,7 @@ function histogramAxisTime(bucket) {
 
 function selectHistogramBucket(bucket) {
   selectedHistogramBucket.value = bucket
-  ElMessage.info(`${formatTime(bucket.key_as_string || bucket.key)}：${Number(bucket.doc_count || 0).toLocaleString()} 条日志`)
+  ElMessage.info(`${formatTime(bucket.key_as_string || bucket.key)}: 로그 ${Number(bucket.doc_count || 0).toLocaleString()}건`)
 }
 
 function levelClass(level) {
@@ -209,18 +209,18 @@ async function loadStreams() {
 }
 
 async function handleTopicChange() {
-  // Topic 是独立的日志范围。切换后不复用上一 Topic 的 LogsQL 条件，避免误筛选。
+  // Topic은 독립적인 로그 범위입니다. 전환 시 이전 Topic의 LogsQL 조건을 재사용하지 않아 잘못된 필터링을 방지합니다.
   keyword.value = ''
   selectedHistogramBucket.value = null
   if (!hasSelectedOpLogStream.value) opLogFieldDrilldownEnabled.value = false
-  // Stream 列表只依赖数据源、时间范围和手动输入的 LogsQL；切换当前项
-  // 不应重复触发一次全时间范围的 field_values 聚合。
+  // Stream 목록은 Datasource, 시간 범위, 수동 입력한 LogsQL에만 의존합니다. 현재 항목 전환 시
+  // 전체 시간 범위의 field_values 집계를 중복 실행하지 않아야 합니다.
   await search(1)
 }
 
 async function refreshAll() {
-  // 手动刷新代表当前工作台的完整数据刷新：Stream 统计与日志明细并行更新。
-  // 选择 Stream 时仍仅刷新明细，避免每次筛选都触发一次全范围聚合。
+  // 수동 새로고침은 현재 워크스페이스의 전체 데이터를 새로 고칩니다. Stream 통계와 로그 상세를 병렬로 갱신합니다.
+  // Stream 선택 시에는 상세만 새로 고쳐 필터링 때마다 전체 범위 집계가 실행되지 않도록 합니다.
   await Promise.all([
     isVictoriaLogs.value ? loadStreams() : Promise.resolve(),
     search(pageNum.value)
@@ -228,8 +228,8 @@ async function refreshAll() {
 }
 
 async function search(targetPage = 1) {
-  if (!datasourceId.value) return ElMessage.warning('请先配置并选择日志数据源')
-  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('请选择完整的开始和结束日期时间')
+  if (!datasourceId.value) return ElMessage.warning('먼저 로그 Datasource를 구성하고 선택하십시오.')
+  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('시작 및 종료 일시를 모두 선택하십시오.')
   loading.value = true
   try {
     const parsedPage = Number(targetPage)
@@ -257,15 +257,15 @@ async function search(targetPage = 1) {
 function drillDownOpLogFields() {
   if (!hasSelectedOpLogStream.value) return
   if (!items.value.length) {
-    ElMessage.warning('请先查询包含 op.log 的日志，再进行字段下钻')
+    ElMessage.warning('먼저 op.log가 포함된 로그를 조회한 뒤 Field 드릴다운을 수행하십시오.')
     return
   }
   opLogFieldDrilldownEnabled.value = true
   if (!opLogFields.value.length) {
-    ElMessage.info('当前结果中未发现可用于筛选的 OP 日志字段')
+    ElMessage.info('현재 결과에서 필터링에 사용할 수 있는 OP 로그 Field를 찾지 못했습니다.')
     return
   }
-  ElMessage.success(`已下钻 ${opLogFields.value.length} 个 OP 日志字段`)
+  ElMessage.success(`OP 로그 Field ${opLogFields.value.length}개를 드릴다운했습니다.`)
 }
 
 function showDetail(row) {
@@ -278,7 +278,7 @@ function insertField(field) {
 }
 
 async function openFieldValues(field) {
-  if (!datasourceId.value) return ElMessage.warning('请先选择日志数据源')
+  if (!datasourceId.value) return ElMessage.warning('먼저 로그 Datasource를 선택하십시오.')
   selectedField.value = field.name || field
   selectedFieldQuery.value = field.queryName || field.name || field
   fieldValueKeyword.value = ''
@@ -322,12 +322,12 @@ function openShortcutDialog(item) {
 }
 
 async function submitShortcut() {
-  if (!shortcutForm.name.trim()) return ElMessage.warning('请填写快捷语句名称')
+  if (!shortcutForm.name.trim()) return ElMessage.warning('Shortcut Query 이름을 입력하십시오.')
   shortcutSaving.value = true
   try {
     await saveMonitorLogShortcut({ ...shortcutForm, datasourceType: isVictoriaLogs.value ? 'victorialogs' : 'elasticsearch' })
     shortcutDialogVisible.value = false
-    ElMessage.success('快捷语句已保存')
+    ElMessage.success('Shortcut Query를 저장했습니다.')
     await loadShortcuts()
   } finally {
     shortcutSaving.value = false
@@ -335,9 +335,9 @@ async function submitShortcut() {
 }
 
 async function removeShortcut(item) {
-  await ElMessageBox.confirm(`确认删除快捷语句“${item.name}”吗？`, '删除确认', { type: 'warning' })
+  await ElMessageBox.confirm(`Shortcut Query “${item.name}”을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' })
   await deleteMonitorLogShortcut(item.id)
-  ElMessage.success('快捷语句已删除')
+  ElMessage.success('Shortcut Query를 삭제했습니다.')
   await loadShortcuts()
 }
 
@@ -385,44 +385,44 @@ onBeforeUnmount(() => {
   <div class="log-page">
     <section class="log-search-panel">
       <div class="source-line">
-        <label>数据源</label>
-        <el-select v-model="datasourceId" filterable placeholder="选择日志数据源" style="width: 290px">
+        <label>Datasource</label>
+        <el-select v-model="datasourceId" filterable placeholder="로그 Datasource 선택" style="width: 290px">
           <el-option v-for="item in datasources" :key="item.id" :label="`${item.name} (${item.type} / ${item.env || '-'})`" :value="item.id" />
         </el-select>
         <template v-if="isVictoriaLogs">
           <label>Stream</label>
-          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" placeholder="选择 Topic" style="width: 340px" @change="handleTopicChange">
+          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" placeholder="Topic 선택" style="width: 340px" @change="handleTopicChange">
             <el-option v-for="stream in streamOptions" :key="stream.value" :label="stream.value" :value="stream.value">
-              <div class="stream-option"><span>{{ stream.value }}</span><small>{{ Number(stream.hits || 0).toLocaleString() }} 条</small></div>
+              <div class="stream-option"><span>{{ stream.value }}</span><small>{{ Number(stream.hits || 0).toLocaleString() }}건</small></div>
             </el-option>
           </el-select>
         </template>
         <template v-if="!isVictoriaLogs">
-          <label>索引</label>
-          <el-select v-model="index" :loading="indexLoading" filterable allow-create default-first-option placeholder="选择或输入索引 / 通配符" style="width: 310px" @change="search">
-            <el-option label="全部索引 (_all)" value="_all" />
+          <label>Index</label>
+          <el-select v-model="index" :loading="indexLoading" filterable allow-create default-first-option placeholder="Index 선택 또는 와일드카드 입력" style="width: 310px" @change="search">
+            <el-option label="전체 Index (_all)" value="_all" />
             <el-option v-for="item in indexOptions" :key="item.name" :label="item.name" :value="item.name">
               <div class="index-option"><span>{{ item.name }}</span><small>{{ item.docsCount || 0 }} docs / {{ item.storeSize || '-' }}</small></div>
             </el-option>
           </el-select>
         </template>
         <el-tag v-else effect="plain" type="success">LogsQL</el-tag>
-        <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">OP 日志下钻</el-button>
-        <span class="source-status">{{ activeDatasource?.url || '未选择数据源' }}</span>
-        <div class="search-actions"><el-switch v-model="autoRefresh" active-text="自动刷新" /><el-button :loading="loading || streamLoading" @click="refreshAll">刷新</el-button></div>
+        <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">OP 로그 드릴다운</el-button>
+        <span class="source-status">{{ activeDatasource?.url || 'Datasource 미선택' }}</span>
+        <div class="search-actions"><el-switch v-model="autoRefresh" active-text="자동 새로고침" /><el-button :loading="loading || streamLoading" @click="refreshAll">새로고침</el-button></div>
       </div>
       <div class="query-line">
-        <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? '支持 LogsQL，例如 kubernetes.pod_namespace:default AND _msg:error' : '支持 Lucene query_string，例如 kubernetes.pod_namespace:default AND (ERROR OR WARN)'" @keyup.enter="search" />
-        <el-select v-model="timeRange" style="width: 140px"><el-option label="最近 30 分钟" value="30m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /><el-option label="指定日期" value="custom" /></el-select>
-        <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始日期时间" end-placeholder="结束日期时间" style="width: 360px" @change="search" />
-        <el-button type="primary" :loading="loading" @click="search">搜索</el-button>
+        <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? 'LogsQL 지원, 예: kubernetes.pod_namespace:default AND _msg:error' : 'Lucene query_string 지원, 예: kubernetes.pod_namespace:default AND (ERROR OR WARN)'" @keyup.enter="search" />
+        <el-select v-model="timeRange" style="width: 140px"><el-option label="최근 30분" value="30m" /><el-option label="최근 1시간" value="1h" /><el-option label="최근 6시간" value="6h" /><el-option label="최근 24시간" value="24h" /><el-option label="최근 3일" value="3d" /><el-option label="최근 7일" value="7d" /><el-option label="날짜 지정" value="custom" /></el-select>
+        <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="시작 일시" end-placeholder="종료 일시" style="width: 360px" @change="search" />
+        <el-button type="primary" :loading="loading" @click="search">검색</el-button>
       </div>
       <div class="shortcut-line">
-        <span>快捷语句</span>
-        <el-button size="small" type="primary" plain @click="openShortcutDialog()">新增快捷语句</el-button>
+        <span>Shortcut Query</span>
+        <el-button size="small" type="primary" plain @click="openShortcutDialog()">Shortcut Query 추가</el-button>
         <el-dropdown v-for="item in shortcuts" :key="item.id" trigger="click">
           <el-button size="small" class="shortcut-button" @click="applyShortcut(item)">{{ item.name }}</el-button>
-          <template #dropdown><el-dropdown-menu><el-dropdown-item @click="openShortcutDialog(item)">编辑</el-dropdown-item><el-dropdown-item divided @click="removeShortcut(item)">删除</el-dropdown-item></el-dropdown-menu></template>
+          <template #dropdown><el-dropdown-menu><el-dropdown-item @click="openShortcutDialog(item)">수정</el-dropdown-item><el-dropdown-item divided @click="removeShortcut(item)">삭제</el-dropdown-item></el-dropdown-menu></template>
         </el-dropdown>
       </div>
     </section>
@@ -430,28 +430,28 @@ onBeforeUnmount(() => {
     <section class="log-workspace" :class="{ 'fields-collapsed': fieldsCollapsed }">
       <aside class="field-panel">
         <div class="panel-title">
-          <strong v-if="!fieldsCollapsed">字段列表</strong><span v-if="!fieldsCollapsed">{{ fields.length }}</span>
-          <el-button link class="collapse-button" :title="fieldsCollapsed ? '展开字段列表' : '收起字段列表'" @click="fieldsCollapsed = !fieldsCollapsed">{{ fieldsCollapsed ? '»' : '«' }}</el-button>
+          <strong v-if="!fieldsCollapsed">Field 목록</strong><span v-if="!fieldsCollapsed">{{ fields.length }}</span>
+          <el-button link class="collapse-button" :title="fieldsCollapsed ? 'Field 목록 펼치기' : 'Field 목록 접기'" @click="fieldsCollapsed = !fieldsCollapsed">{{ fieldsCollapsed ? '»' : '«' }}</el-button>
         </div>
         <template v-if="!fieldsCollapsed">
-          <el-input v-model="fieldKeyword" size="small" clearable placeholder="搜索字段" />
+          <el-input v-model="fieldKeyword" size="small" clearable placeholder="Field 검색" />
           <div class="field-list">
-            <button v-for="field in visibleFields" :key="field.name" class="field-item" :title="`查看 ${field.name} 的可选值`" @click="openFieldValues(field)">
+            <button v-for="field in visibleFields" :key="field.name" class="field-item" :title="`${field.name}의 선택 가능한 값 조회`" @click="openFieldValues(field)">
               <span>{{ field.name }}</span><b>›</b>
             </button>
-            <p v-if="hiddenFieldCount" class="field-limit-tip">已展示前 {{ maxVisibleFields }} 个字段；搜索可继续筛选其余 {{ hiddenFieldCount }} 个字段</p>
+            <p v-if="hiddenFieldCount" class="field-limit-tip">처음 {{ maxVisibleFields }}개 Field를 표시했습니다. 검색으로 나머지 {{ hiddenFieldCount }}개 Field를 계속 필터링할 수 있습니다</p>
           </div>
         </template>
       </aside>
       <main class="log-main">
-        <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">表格日志</el-radio-button><el-radio-button value="raw">原始日志</el-radio-button></el-radio-group><span>命中 {{ total }} 条</span><span>耗时 {{ took }} ms</span></div>
+        <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">테이블 로그</el-radio-button><el-radio-button value="raw">원시 로그</el-radio-button></el-radio-group><span>{{ total }}건 매칭</span><span>소요 {{ took }} ms</span></div>
         <div v-if="histogram.length" class="histogram-panel">
-          <div class="histogram-head"><span>日志分布</span><small>悬浮或点击柱子查看条数</small><strong v-if="selectedHistogramBucket">{{ formatTime(selectedHistogramBucket.key_as_string || selectedHistogramBucket.key) }} · {{ Number(selectedHistogramBucket.doc_count || 0).toLocaleString() }} 条</strong></div>
+          <div class="histogram-head"><span>로그 분포</span><small>막대에 커서를 올리거나 클릭하면 건수를 확인할 수 있습니다</small><strong v-if="selectedHistogramBucket">{{ formatTime(selectedHistogramBucket.key_as_string || selectedHistogramBucket.key) }} · {{ Number(selectedHistogramBucket.doc_count || 0).toLocaleString() }}건</strong></div>
           <div class="histogram">
             <div class="histogram-bars">
               <el-tooltip v-for="bucket in histogram" :key="bucket.key" placement="top" :show-after="100">
-                <template #content><div class="histogram-tooltip"><b>{{ formatTime(bucket.key_as_string || bucket.key) }}</b><span>{{ Number(bucket.doc_count || 0).toLocaleString() }} 条日志</span></div></template>
-                <button type="button" :class="['histogram-bar-wrap', { selected: selectedHistogramBucket?.key === bucket.key }]" :aria-label="`${formatTime(bucket.key_as_string || bucket.key)}：${bucket.doc_count || 0} 条日志`" @click="selectHistogramBucket(bucket)"><span class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></button>
+                <template #content><div class="histogram-tooltip"><b>{{ formatTime(bucket.key_as_string || bucket.key) }}</b><span>로그 {{ Number(bucket.doc_count || 0).toLocaleString() }}건</span></div></template>
+                <button type="button" :class="['histogram-bar-wrap', { selected: selectedHistogramBucket?.key === bucket.key }]" :aria-label="`${formatTime(bucket.key_as_string || bucket.key)}: 로그 ${bucket.doc_count || 0}건`" @click="selectHistogramBucket(bucket)"><span class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></button>
               </el-tooltip>
             </div>
             <div class="histogram-axis"><span v-for="tick in histogramTicks" :key="tick.bucket.key" :style="{ left: `${tick.position}%` }">{{ histogramAxisTime(tick.bucket) }}</span></div>
@@ -459,61 +459,61 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="logView === 'table'" class="log-table-wrap">
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
-            <el-table-column label="时间" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
-            <el-table-column label="级别" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
-            <el-table-column v-if="!isContextlessLogSelection" prop="namespace" label="命名空间" width="126" show-overflow-tooltip />
-            <el-table-column v-if="!isContextlessLogSelection" prop="container" label="容器" width="108" show-overflow-tooltip />
-            <el-table-column prop="message" label="日志内容" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
-            <el-table-column label="操作" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">详情</el-button></template></el-table-column>
+            <el-table-column label="시각" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
+            <el-table-column label="레벨" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
+            <el-table-column v-if="!isContextlessLogSelection" prop="namespace" label="Namespace" width="126" show-overflow-tooltip />
+            <el-table-column v-if="!isContextlessLogSelection" prop="container" label="Container" width="108" show-overflow-tooltip />
+            <el-table-column prop="message" label="로그 내용" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
+            <el-table-column label="작업" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">상세</el-button></template></el-table-column>
           </el-table>
-          <div class="log-pagination"><span>每页 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
+          <div class="log-pagination"><span>페이지당 {{ pageSize }}건</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </div>
         <template v-else>
           <div v-loading="loading" :class="['raw-log-view', { 'op-log-selection': isContextlessLogSelection }]">
-            <div v-if="!items.length" class="raw-log-empty">当前查询条件下没有日志</div>
+            <div v-if="!items.length" class="raw-log-empty">현재 Query 조건에는 로그가 없습니다</div>
             <button v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" type="button" :class="['raw-log-item', levelClass(row.level)]" @click="showDetail(row)">
               <time>{{ formatRawLogTime(row.logTime || row.timestamp) }}</time>
               <span class="raw-log-level">{{ String(row.level || 'INFO').toUpperCase() }}</span>
               <span v-if="!isContextlessLogSelection" class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
               <code>{{ displayLogContent(row) }}</code>
-              <span class="raw-log-open">详情</span>
+              <span class="raw-log-open">상세</span>
             </button>
           </div>
-          <div class="log-pagination"><span>每页 {{ pageSize }} 条</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
+          <div class="log-pagination"><span>페이지당 {{ pageSize }}건</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </template>
       </main>
     </section>
 
-    <el-drawer v-model="detailVisible" title="日志详情" size="min(760px, 90vw)">
+    <el-drawer v-model="detailVisible" title="로그 상세" size="min(760px, 90vw)">
       <template v-if="activeLog">
         <div class="detail-meta"><span>{{ formatTime(activeLog.timestamp) }}</span><span>{{ activeLog.namespace || '-' }}</span><span>{{ activeLog.pod || '-' }}</span><span>{{ activeLog.container || '-' }}</span></div>
-        <div class="message-fields"><div><small>日志时间</small><strong>{{ activeLog.logTime || formatTime(activeLog.timestamp) }}</strong></div><div><small>级别</small><strong :class="levelClass(activeLog.level)">{{ activeLog.level || '-' }}</strong></div><div><small>进程 ID</small><strong>{{ activeLog.processId || '-' }}</strong></div></div>
-        <h4>日志正文</h4><pre class="detail-message">{{ displayLogContent(activeLog) }}</pre>
-        <details v-if="activeLog.messageRaw && activeLog.messageRaw !== activeLog.message" class="raw-log-line"><summary>查看原始日志行</summary><pre>{{ activeLog.messageRaw }}</pre></details>
-        <h4>原始文档</h4><pre class="detail-json">{{ JSON.stringify(activeLog.source || {}, null, 2) }}</pre>
+        <div class="message-fields"><div><small>로그 시각</small><strong>{{ activeLog.logTime || formatTime(activeLog.timestamp) }}</strong></div><div><small>레벨</small><strong :class="levelClass(activeLog.level)">{{ activeLog.level || '-' }}</strong></div><div><small>Process ID</small><strong>{{ activeLog.processId || '-' }}</strong></div></div>
+        <h4>로그 본문</h4><pre class="detail-message">{{ displayLogContent(activeLog) }}</pre>
+        <details v-if="activeLog.messageRaw && activeLog.messageRaw !== activeLog.message" class="raw-log-line"><summary>원시 로그 줄 보기</summary><pre>{{ activeLog.messageRaw }}</pre></details>
+        <h4>원본 Document</h4><pre class="detail-json">{{ JSON.stringify(activeLog.source || {}, null, 2) }}</pre>
       </template>
     </el-drawer>
 
-    <el-dialog v-model="fieldValueVisible" :title="`筛选字段：${selectedField}`" width="min(640px, 92vw)" destroy-on-close>
-      <p class="field-value-tip">展示当前时间范围、数据源和查询条件下命中最多的前 {{ fieldValueLimit }} 个字段值。点击任意值即可追加筛选条件。</p>
-      <el-input v-model="fieldValueKeyword" clearable placeholder="搜索字段值" />
+    <el-dialog v-model="fieldValueVisible" :title="`Field 필터: ${selectedField}`" width="min(640px, 92vw)" destroy-on-close>
+      <p class="field-value-tip">현재 시간 범위, Datasource, Query 조건에서 가장 많이 매칭된 상위 {{ fieldValueLimit }}개 Field 값을 표시합니다. 값을 클릭하면 필터 조건을 추가할 수 있습니다.</p>
+      <el-input v-model="fieldValueKeyword" clearable placeholder="Field 값 검색" />
       <div v-loading="fieldValueLoading" class="field-value-list">
-        <el-empty v-if="!fieldValueLoading && !fieldValues.length" description="当前条件下没有可选值" :image-size="72" />
+        <el-empty v-if="!fieldValueLoading && !fieldValues.length" description="현재 조건에는 선택 가능한 값이 없습니다" :image-size="72" />
         <button v-for="item in fieldValues.filter((value) => !fieldValueKeyword || String(value.value).toLowerCase().includes(fieldValueKeyword.toLowerCase()))" :key="item.value" class="field-value-item" @click="applyFieldValue(item.value)">
           <span :title="item.value">{{ item.value }}</span>
-          <small>{{ item.hits }} 条</small>
+          <small>{{ item.hits }}건</small>
         </button>
       </div>
     </el-dialog>
 
-    <el-dialog v-model="shortcutDialogVisible" :title="shortcutForm.id ? '编辑快捷语句' : '新增快捷语句'" width="min(620px, 92vw)">
+    <el-dialog v-model="shortcutDialogVisible" :title="shortcutForm.id ? 'Shortcut Query 수정' : 'Shortcut Query 추가'" width="min(620px, 92vw)">
       <el-form label-width="105px">
-        <el-form-item label="名称" required><el-input v-model="shortcutForm.name" placeholder="例如：错误日志" /></el-form-item>
-        <el-form-item label="查询语句"><el-input v-model="shortcutForm.query" type="textarea" :rows="3" :placeholder="isVictoriaLogs ? 'LogsQL，留空表示全部日志' : 'Lucene query_string，留空表示全部日志'" /></el-form-item>
-        <el-form-item v-if="!isVictoriaLogs" label="索引"><el-input v-model="shortcutForm.indexName" placeholder="_all 或 logs-*" /></el-form-item>
-        <el-form-item label="时间范围"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option label="最近 30 分钟" value="30m" /><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 3 天" value="3d" /><el-option label="最近 7 天" value="7d" /></el-select></el-form-item>
+        <el-form-item label="이름" required><el-input v-model="shortcutForm.name" placeholder="예: 오류 로그" /></el-form-item>
+        <el-form-item label="Query 문"><el-input v-model="shortcutForm.query" type="textarea" :rows="3" :placeholder="isVictoriaLogs ? 'LogsQL, 비워두면 전체 로그' : 'Lucene query_string, 비워두면 전체 로그'" /></el-form-item>
+        <el-form-item v-if="!isVictoriaLogs" label="Index"><el-input v-model="shortcutForm.indexName" placeholder="_all 또는 logs-*" /></el-form-item>
+        <el-form-item label="시간 범위"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option label="최근 30분" value="30m" /><el-option label="최근 1시간" value="1h" /><el-option label="최근 6시간" value="6h" /><el-option label="최근 24시간" value="24h" /><el-option label="최근 3일" value="3d" /><el-option label="최근 7일" value="7d" /></el-select></el-form-item>
       </el-form>
-      <template #footer><el-button @click="shortcutDialogVisible = false">取消</el-button><el-button type="primary" :loading="shortcutSaving" @click="submitShortcut">保存</el-button></template>
+      <template #footer><el-button @click="shortcutDialogVisible = false">취소</el-button><el-button type="primary" :loading="shortcutSaving" @click="submitShortcut">저장</el-button></template>
     </el-dialog>
   </div>
 </template>

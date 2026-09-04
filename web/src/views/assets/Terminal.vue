@@ -122,7 +122,7 @@ function connectSocket(id) {
   currentSocket.onopen = () => {
     if (runtime.socket !== currentSocket) return
     updateSession(id, { status: 'connected' })
-    runtime.term.writeln(`\x1b[32m欢迎使用 SSH 终端，正在连接 ${session.host.sshIp || session.host.hostName} ...\x1b[0m`)
+    runtime.term.writeln(`\x1b[32mSSH 터미널에 오신 것을 환영합니다. ${session.host.sshIp || session.host.hostName} 에 연결 중 ...\x1b[0m`)
     if (activeSessionId.value === id) {
       scheduleTerminalSizeSync()
       runtime.term.focus()
@@ -134,13 +134,13 @@ function connectSocket(id) {
   currentSocket.onerror = () => {
     if (runtime.socket !== currentSocket) return
     updateSession(id, { status: 'error' })
-    runtime.term.writeln('\r\n\x1b[31mSSH 连接异常，请检查主机、端口和认证凭据。\x1b[0m')
+    runtime.term.writeln('\r\n\x1b[31mSSH 연결에 문제가 발생했습니다. Host, Port와 인증 Credential을 확인하십시오.\x1b[0m')
   }
   currentSocket.onclose = () => {
     if (runtime.socket !== currentSocket) return
     runtime.socket = undefined
     updateSession(id, { status: 'disconnected' })
-    runtime.term.writeln('\r\n\x1b[33m连接已断开。\x1b[0m')
+    runtime.term.writeln('\r\n\x1b[33m연결이 끊겼습니다.\x1b[0m')
   }
 }
 
@@ -155,7 +155,7 @@ function disconnectSession(id, showMessage = true) {
   currentSocket.onclose = null
   currentSocket.close()
   updateSession(id, { status: 'disconnected' })
-  if (showMessage) runtime.term.writeln('\r\n\x1b[33m连接已断开。\x1b[0m')
+  if (showMessage) runtime.term.writeln('\r\n\x1b[33m연결이 끊겼습니다.\x1b[0m')
 }
 
 function activateSession(id) {
@@ -167,7 +167,7 @@ function activateSession(id) {
 }
 
 function reconnect() {
-  if (!activeSession.value) return ElMessage.warning('请先选择一台主机')
+  if (!activeSession.value) return ElMessage.warning('먼저 Host를 선택하십시오.')
   connectSocket(activeSession.value.id)
 }
 function disconnect() { if (activeSession.value) disconnectSession(activeSession.value.id) }
@@ -191,7 +191,7 @@ function closeOtherSessions() {
   if (!activeSessionId.value) return
   sessions.value.filter((item) => item.id !== activeSessionId.value).forEach((item) => disposeRuntime(item.id))
   sessions.value = sessions.value.filter((item) => item.id === activeSessionId.value)
-  ElMessage.success('已关闭其他终端会话')
+  ElMessage.success('다른 터미널 세션을 닫았습니다.')
 }
 
 function disposeRuntime(id) {
@@ -257,8 +257,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="terminal-page">
     <aside class="asset-tree-card">
-      <h3>资产分组</h3>
-      <el-input v-model="query.keyword" clearable placeholder="搜索分组 / 主机" class="tree-search" @keyup.enter="loadTree" @clear="loadTree" />
+      <h3>자산 Group</h3>
+      <el-input v-model="query.keyword" clearable placeholder="Group / Host 검색" class="tree-search" @keyup.enter="loadTree" @clear="loadTree" />
       <el-tree ref="treeRef" v-loading="loading" :data="groupTree" node-key="id" default-expand-all :expand-on-click-node="false" class="asset-tree" @node-click="handleNodeClick">
         <template #default="{ data }">
           <span :class="['tree-node', data.type, { active: data.type === 'host' && activeSession?.host.id === data.host?.id }]">
@@ -272,26 +272,26 @@ onBeforeUnmount(() => {
 
     <section v-if="sessions.length" ref="terminalBoxRef" class="terminal-window">
       <header class="terminal-titlebar">
-        <div><strong>SSH 终端</strong><span class="session-count">已打开 {{ sessions.length }} 个会话</span></div>
+        <div><strong>SSH 터미널</strong><span class="session-count">열린 세션 {{ sessions.length }}개</span></div>
         <el-dropdown trigger="click" @command="(command) => command === 'closeOthers' && closeOtherSessions()">
-          <button class="terminal-menu" aria-label="终端会话操作">•••</button>
-          <template #dropdown><el-dropdown-menu><el-dropdown-item command="closeOthers" :disabled="sessions.length < 2">关闭其他会话</el-dropdown-item></el-dropdown-menu></template>
+          <button class="terminal-menu" aria-label="터미널 세션 작업">•••</button>
+          <template #dropdown><el-dropdown-menu><el-dropdown-item command="closeOthers" :disabled="sessions.length < 2">다른 세션 닫기</el-dropdown-item></el-dropdown-menu></template>
         </el-dropdown>
       </header>
-      <div class="terminal-tabs" role="tablist" aria-label="终端会话">
+      <div class="terminal-tabs" role="tablist" aria-label="터미널 세션">
         <button v-for="session in sessions" :key="session.id" :class="['terminal-tab', { active: session.id === activeSessionId }]" role="tab" :aria-selected="session.id === activeSessionId" @click="activateSession(session.id)">
           <span :class="['connection-dot', session.status]" />
           <span class="terminal-tab-label">{{ session.host.sshIp || session.host.hostName }}</span>
-          <span class="terminal-tab-close" title="关闭终端" @click.stop="closeSession(session.id)">×</span>
+          <span class="terminal-tab-close" title="터미널 닫기" @click.stop="closeSession(session.id)">×</span>
         </button>
       </div>
       <div class="terminal-toolbar">
         <span class="active-host">{{ activeSession?.host.hostName || activeSession?.host.sshIp }}</span>
         <div class="terminal-actions">
-          <el-button size="small" color="#00d084" plain @click="reconnect">重新连接</el-button>
-          <el-button size="small" color="#00d084" plain @click="disconnect">断开</el-button>
-          <el-button size="small" color="#00d084" plain @click="clearTerminal">清屏</el-button>
-          <el-button size="small" type="danger" plain @click="closeSession()">关闭</el-button>
+          <el-button size="small" color="#00d084" plain @click="reconnect">다시 연결</el-button>
+          <el-button size="small" color="#00d084" plain @click="disconnect">연결 끊기</el-button>
+          <el-button size="small" color="#00d084" plain @click="clearTerminal">화면 지우기</el-button>
+          <el-button size="small" type="danger" plain @click="closeSession()">닫기</el-button>
         </div>
       </div>
       <div v-for="session in sessions" :key="`screen-${session.id}`" v-show="session.id === activeSessionId" class="terminal-stage">
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section v-else class="terminal-empty"><div><h2>终端登录</h2><p>在左侧资产分组中选择主机即可新开终端会话；已打开的会话会保留在上方标签中，方便同时查看多台服务器。</p></div></section>
+    <section v-else class="terminal-empty"><div><h2>터미널 로그인</h2><p>왼쪽 자산 Group에서 Host를 선택하면 새 터미널 세션이 열립니다. 열린 세션은 상단 탭에 유지되어 여러 서버를 동시에 확인할 수 있습니다.</p></div></section>
   </div>
 </template>
 

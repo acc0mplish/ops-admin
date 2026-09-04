@@ -13,7 +13,7 @@ const rows = ref([])
 const clusters = ref([])
 const catalog = ref({ namespaces: [], workloads: [] })
 const query = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
-const form = reactive({ id: undefined, name: '', k8sClusterId: undefined, namespace: '', serviceType: '游戏服务', description: '', status: 1, workloads: [] })
+const form = reactive({ id: undefined, name: '', k8sClusterId: undefined, namespace: '', serviceType: '게임 서비스', description: '', status: 1, workloads: [] })
 
 const selectedWorkloadKeys = computed({
   get: () => form.workloads.map((item) => `${item.workloadType}:${item.workloadName}`),
@@ -23,11 +23,11 @@ const selectedWorkloadKeys = computed({
 })
 
 function resetForm() {
-  Object.assign(form, { id: undefined, name: '', k8sClusterId: undefined, namespace: '', serviceType: '游戏服务', description: '', status: 1, workloads: [] })
+  Object.assign(form, { id: undefined, name: '', k8sClusterId: undefined, namespace: '', serviceType: '게임 서비스', description: '', status: 1, workloads: [] })
   catalog.value = { namespaces: [], workloads: [] }
 }
 
-function clusterName(id) { return clusters.value.find((item) => Number(item.id) === Number(id))?.name || `集群 #${id}` }
+function clusterName(id) { return clusters.value.find((item) => Number(item.id) === Number(id))?.name || `Cluster #${id}` }
 function workloadKey(item) { return `${String(item.type).toLowerCase()}:${item.name}` }
 
 async function loadData() {
@@ -69,23 +69,23 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name || !form.k8sClusterId || !form.namespace) {
-    ElMessage.warning('请填写服务名称，并选择 Kubernetes 集群和命名空间')
+    ElMessage.warning('Service 이름을 입력하고 Kubernetes Cluster와 Namespace를 선택하십시오.')
     return
   }
-  if (!form.workloads.length) { ElMessage.warning('请至少选择一个工作负载'); return }
+  if (!form.workloads.length) { ElMessage.warning('Workload를 하나 이상 선택하십시오.'); return }
   saving.value = true
   try {
     await saveAssetService(form)
-    ElMessage.success('服务已保存')
+    ElMessage.success('Service를 저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally { saving.value = false }
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`确认删除服务“${row.name}”？已关联的工作负载关系也会删除。`, '删除服务', { type: 'warning' })
+  await ElMessageBox.confirm(`Service “${row.name}”을(를) 삭제하시겠습니까? 연관된 Workload 관계도 함께 삭제됩니다.`, 'Service 삭제', { type: 'warning' })
   await deleteAssetService(row.id)
-  ElMessage.success('服务已删除')
+  ElMessage.success('Service를 삭제했습니다.')
   await loadData()
 }
 
@@ -100,35 +100,35 @@ onMounted(async () => {
 <template>
   <div class="asset-app-page" v-loading="loading">
     <section class="app-hero">
-      <div><p class="eyebrow">SERVICE ASSET</p><h1>服务管理</h1><p>从 Kubernetes 命名空间发现工作负载，并将多个工作负载归集为一个可追踪的业务服务。</p></div>
-      <el-button type="primary" @click="openCreate">新增服务</el-button>
+      <div><p class="eyebrow">SERVICE ASSET</p><h1>Service 관리</h1><p>Kubernetes Namespace에서 Workload를 발견하고, 여러 Workload를 추적 가능한 하나의 비즈니스 Service로 묶습니다.</p></div>
+      <el-button type="primary" @click="openCreate">Service 추가</el-button>
     </section>
 
     <section class="filter-card">
-      <el-input v-model="query.keyword" clearable placeholder="搜索服务名称、唯一 ID 或命名空间" @keyup.enter="loadData" />
-      <el-button type="primary" @click="loadData">查询</el-button><el-button @click="query.keyword = ''; loadData()">重置</el-button>
+      <el-input v-model="query.keyword" clearable placeholder="Service 이름, 고유 ID 또는 Namespace 검색" @keyup.enter="loadData" />
+      <el-button type="primary" @click="loadData">검색</el-button><el-button @click="query.keyword = ''; loadData()">초기화</el-button>
     </section>
 
     <section class="table-card">
-      <el-table :data="rows" row-key="id" empty-text="暂无服务，请从 Kubernetes 命名空间创建">
-        <el-table-column label="服务" min-width="170"><template #default="{ row }"><b>{{ row.name }}</b><small>{{ row.serviceType || '业务服务' }}</small></template></el-table-column>
-        <el-table-column prop="serviceUid" label="唯一 ID" min-width="280"><template #default="{ row }"><code>{{ row.serviceUid }}</code></template></el-table-column>
-        <el-table-column label="Kubernetes 范围" min-width="220"><template #default="{ row }"><span>{{ clusterName(row.k8sClusterId) }}</span><small>{{ row.namespace || '-' }}</small></template></el-table-column>
-        <el-table-column prop="description" label="说明" min-width="180" show-overflow-tooltip />
-        <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="Number(row.status) === 1 ? 'success' : 'info'">{{ Number(row.status) === 1 ? '启用' : '禁用' }}</el-tag></template></el-table-column>
-        <el-table-column label="操作" width="210" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openTopology(row)">查看拓扑</el-button><el-button link type="primary" @click="openEdit(row)">编辑</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></template></el-table-column>
+      <el-table :data="rows" row-key="id" empty-text="Service가 없습니다. Kubernetes Namespace에서 생성하십시오">
+        <el-table-column label="Service" min-width="170"><template #default="{ row }"><b>{{ row.name }}</b><small>{{ row.serviceType || '비즈니스 서비스' }}</small></template></el-table-column>
+        <el-table-column prop="serviceUid" label="고유 ID" min-width="280"><template #default="{ row }"><code>{{ row.serviceUid }}</code></template></el-table-column>
+        <el-table-column label="Kubernetes 범위" min-width="220"><template #default="{ row }"><span>{{ clusterName(row.k8sClusterId) }}</span><small>{{ row.namespace || '-' }}</small></template></el-table-column>
+        <el-table-column prop="description" label="설명" min-width="180" show-overflow-tooltip />
+        <el-table-column label="상태" width="90"><template #default="{ row }"><el-tag :type="Number(row.status) === 1 ? 'success' : 'info'">{{ Number(row.status) === 1 ? '활성화' : '비활성화' }}</el-tag></template></el-table-column>
+        <el-table-column label="작업" width="210" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openTopology(row)">Topology 보기</el-button><el-button link type="primary" @click="openEdit(row)">수정</el-button><el-button link type="danger" @click="remove(row)">삭제</el-button></template></el-table-column>
       </el-table>
     </section>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑服务' : '新增服务'" width="min(960px, 94vw)" destroy-on-close>
-      <el-alert type="info" :closable="false" show-icon title="唯一 ID 自动生成：集群地址 - 命名空间 - 服务名称。例如：192.168.171.51-demo-order-service。" />
+    <el-dialog v-model="dialogVisible" :title="form.id ? 'Service 수정' : 'Service 추가'" width="min(960px, 94vw)" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon title="고유 ID는 자동 생성됩니다: Cluster 주소 - Namespace - Service 이름. 예: 192.168.171.51-demo-order-service." />
       <el-form label-width="110px" class="app-form">
-        <el-row :gutter="18"><el-col :span="12"><el-form-item label="服务名称" required><el-input v-model="form.name" placeholder="例如：51服务" /></el-form-item></el-col><el-col :span="12"><el-form-item label="服务类型"><el-input v-model="form.serviceType" placeholder="例如：游戏服务" /></el-form-item></el-col></el-row>
-        <el-row :gutter="18"><el-col :span="12"><el-form-item label="K8s 集群" required><el-select v-model="form.k8sClusterId" filterable style="width:100%" placeholder="选择集群" @change="onClusterChange"><el-option v-for="item in clusters" :key="item.id" :label="`${item.name} · ${item.apiServer}`" :value="item.id" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="命名空间" required><el-select v-model="form.namespace" filterable style="width:100%" :disabled="!form.k8sClusterId" placeholder="选择命名空间" @change="onNamespaceChange"><el-option v-for="item in catalog.namespaces || []" :key="item.name" :label="item.name" :value="item.name" /></el-select></el-form-item></el-col></el-row>
-        <el-form-item label="工作负载" required><div class="workload-picker"><div class="workload-toolbar"><span>命名空间内 {{ catalog.workloads?.length || 0 }} 个工作负载</span><el-button link type="primary" :disabled="!catalog.workloads?.length" @click="selectedWorkloadKeys = catalog.workloads.map(workloadKey)">全选</el-button></div><el-checkbox-group v-model="selectedWorkloadKeys"><el-checkbox v-for="item in catalog.workloads || []" :key="workloadKey(item)" :label="workloadKey(item)" border><b>{{ item.name }}</b><span>{{ item.type }} · Ready {{ item.ready || '0/0' }}</span></el-checkbox></el-checkbox-group><el-empty v-if="form.namespace && !catalog.workloads?.length" description="该命名空间没有可发现的工作负载" :image-size="56" /></div></el-form-item>
-        <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选：记录服务职责、入口协议或负责人" /></el-form-item>
+        <el-row :gutter="18"><el-col :span="12"><el-form-item label="Service 이름" required><el-input v-model="form.name" placeholder="예: 51 Service" /></el-form-item></el-col><el-col :span="12"><el-form-item label="Service 유형"><el-input v-model="form.serviceType" placeholder="예: 게임 서비스" /></el-form-item></el-col></el-row>
+        <el-row :gutter="18"><el-col :span="12"><el-form-item label="K8s Cluster" required><el-select v-model="form.k8sClusterId" filterable style="width:100%" placeholder="Cluster 선택" @change="onClusterChange"><el-option v-for="item in clusters" :key="item.id" :label="`${item.name} · ${item.apiServer}`" :value="item.id" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="Namespace" required><el-select v-model="form.namespace" filterable style="width:100%" :disabled="!form.k8sClusterId" placeholder="Namespace 선택" @change="onNamespaceChange"><el-option v-for="item in catalog.namespaces || []" :key="item.name" :label="item.name" :value="item.name" /></el-select></el-form-item></el-col></el-row>
+        <el-form-item label="Workload" required><div class="workload-picker"><div class="workload-toolbar"><span>Namespace 내 {{ catalog.workloads?.length || 0 }}개 Workload</span><el-button link type="primary" :disabled="!catalog.workloads?.length" @click="selectedWorkloadKeys = catalog.workloads.map(workloadKey)">전체 선택</el-button></div><el-checkbox-group v-model="selectedWorkloadKeys"><el-checkbox v-for="item in catalog.workloads || []" :key="workloadKey(item)" :label="workloadKey(item)" border><b>{{ item.name }}</b><span>{{ item.type }} · Ready {{ item.ready || '0/0' }}</span></el-checkbox></el-checkbox-group><el-empty v-if="form.namespace && !catalog.workloads?.length" description="이 Namespace에서 발견된 Workload가 없습니다" :image-size="56" /></div></el-form-item>
+        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="선택: Service 역할, 입구 Protocol 또는 담당자를 기록합니다" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submit">保存服务</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="submit">Service 저장</el-button></template>
     </el-dialog>
   </div>
 </template>

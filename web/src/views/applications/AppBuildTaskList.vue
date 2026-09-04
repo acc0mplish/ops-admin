@@ -26,10 +26,10 @@ const appOptions = ref([])
 const hostOptions = ref([])
 const { environmentOptions } = useEnvironmentOptions()
 const systemVariables = [
-  ['BUILD_NUMBER', '当前构建编号'], ['VERSION', '当前构建版本号'], ['COMMIT_ID', 'Git/SVN 提交版本'],
-  ['BRANCH', '构建分支'], ['PROJECT_NAME', '应用名称'], ['PROJECT_ID', '应用 ID'],
-  ['PROJECT_REPO', '代码仓库地址'], ['TASK_NAME', '构建任务名称'], ['TASK_ID', '构建任务 ID'],
-  ['ENVIRONMENT', '构建环境'], ['ENVIRONMENT_TYPE', '环境类型'], ['BUILD_PATH', '当前构建工作目录']
+  ['BUILD_NUMBER', '현재 Build 번호'], ['VERSION', '현재 Build Version'], ['COMMIT_ID', 'Git/SVN Commit Version'],
+  ['BRANCH', 'Build Branch'], ['PROJECT_NAME', 'Application 이름'], ['PROJECT_ID', 'Application ID'],
+  ['PROJECT_REPO', 'Repository 주소'], ['TASK_NAME', 'Build Task 이름'], ['TASK_ID', 'Build Task ID'],
+  ['ENVIRONMENT', 'Build Environment'], ['ENVIRONMENT_TYPE', 'Environment 유형'], ['BUILD_PATH', '현재 Build Workspace']
 ]
 
 const query = reactive({
@@ -122,7 +122,7 @@ function applyDockerComposePreset() {
   form.buildScript = dockerComposeBuildScript
   form.deployScript = dockerComposeDeployScript
   form.timeoutSeconds = Math.max(Number(form.timeoutSeconds) || 0, 1800)
-  ElMessage.success('已套用 Docker Compose 模板：构建主机仅需 Docker 和 Compose')
+  ElMessage.success('Docker Compose Template을 적용했습니다. Build Host에는 Docker와 Compose만 필요합니다')
 }
 
 function formatDateTime(value) {
@@ -178,7 +178,7 @@ function openCreate() {
 function assignForm(row, copy = false) {
   Object.assign(form, {
     id: copy ? undefined : row.id,
-    name: copy ? `${row.name || '构建任务'}-copy` : row.name || '',
+    name: copy ? `${row.name || 'Build Task'}-copy` : row.name || '',
     appId: row.appId,
     env: row.env || 'test',
     branch: row.branch || '',
@@ -204,15 +204,15 @@ function fillFromApp() {
 
 async function submit() {
   if (!form.name || !form.appId || !form.buildScript) {
-    ElMessage.warning('请填写任务名称、所属应用和构建脚本')
+    ElMessage.warning('Task 이름, Application과 Build Script를 입력하십시오.')
     return
   }
   if (form.runnerType === 'host' && !form.runnerHostId) {
-    ElMessage.warning('请选择构建主机')
+    ElMessage.warning('Build Host를 선택하십시오.')
     return
   }
   if (!form.executionPath) {
-    ElMessage.warning('请填写执行路径')
+    ElMessage.warning('실행 Path를 입력하십시오.')
     return
   }
   saving.value = true
@@ -223,7 +223,7 @@ async function submit() {
       options: String(optionsText || '').split(/[\n,]/).map((value) => value.trim()).filter(Boolean)
     }))
     await saveOpsAppBuildTask({ ...form, buildParams })
-    ElMessage.success('保存成功')
+    ElMessage.success('저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -268,11 +268,11 @@ async function submitRun() {
   if (!task) return
   const missing = task.buildParams.find((item) => item.required && (runForm.params[item.name] === '' || runForm.params[item.name] === undefined || runForm.params[item.name] === null || (Array.isArray(runForm.params[item.name]) && !runForm.params[item.name].length)))
   if (missing) {
-    ElMessage.warning(`请填写构建参数：${missing.label || missing.name}`)
+    ElMessage.warning(`Build Parameter를 입력하십시오: ${missing.label || missing.name}`)
     return
   }
   const data = await runOpsAppBuildTask({ taskId: task.id, version: runForm.version, branch: runForm.branch, params: runForm.params })
-  ElMessage.success(`构建任务已提交：#${data.releaseId}`)
+  ElMessage.success(`Build Task를 제출했습니다: #${data.releaseId}`)
   runVisible.value = false
   await loadData()
 }
@@ -280,14 +280,14 @@ async function submitRun() {
 async function toggleStatus(row) {
   const next = Number(row.status) === 1 ? 2 : 1
   await updateOpsAppBuildTaskStatus({ id: row.id, status: next })
-  ElMessage.success(next === 1 ? '已启用' : '已禁用')
+  ElMessage.success(next === 1 ? '활성화됨' : '비활성화됨')
   await loadData()
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`确认删除构建任务「${row.name}」？`, '删除构建任务', { type: 'warning' })
+  await ElMessageBox.confirm(`Build Task "${row.name}"을(를) 삭제하시겠습니까?`, 'Build Task 삭제', { type: 'warning' })
   await deleteOpsAppBuildTask(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -296,7 +296,7 @@ function goHistory(row) {
 }
 
 function statusText(status) {
-  return Number(status) === 1 ? '正常' : '已禁用'
+  return Number(status) === 1 ? '정상' : '비활성화됨'
 }
 
 function statusType(status) {
@@ -305,14 +305,14 @@ function statusType(status) {
 
 function buildStats(row) {
   const totalCount = (row.successCount || 0) + (row.failedCount || 0)
-  return `${totalCount} 次 / 成功 ${row.successCount || 0} / 失败 ${row.failedCount || 0}`
+  return `${totalCount}회 / 성공 ${row.successCount || 0} / 실패 ${row.failedCount || 0}`
 }
 
 function runnerName(row) {
-  if (row.runnerType !== 'host') return 'Ops Admin 本机'
+  if (row.runnerType !== 'host') return 'Ops Admin 로컬'
   const host = hostOptions.value.find((item) => Number(item.id) === Number(row.runnerHostId))
-  if (!host) return row.runnerHostId ? `资产主机 #${row.runnerHostId}` : '未选择构建主机'
-  const name = host.hostName || `资产主机 #${host.id}`
+  if (!host) return row.runnerHostId ? `Asset Host #${row.runnerHostId}` : 'Build Host 미선택'
+  const name = host.hostName || `Asset Host #${host.id}`
   const address = host.sshIp || host.privateIp || host.publicIp || '-'
   return `${name} (${address})`
 }
@@ -329,65 +329,65 @@ onMounted(async () => {
   <div class="app-page">
     <div class="app-header">
       <div>
-        <h1>构建任务</h1>
-        <p>从 Git/SVN 拉取代码，在指定节点和执行路径中完成构建与构建后操作。</p>
+        <h1>Build Task</h1>
+        <p>Git/SVN에서 Source를 Checkout해 지정한 Node와 실행 Path에서 Build와 Build 후 작업을 수행합니다.</p>
       </div>
-      <el-button type="primary" @click="openCreate">+ 新建构建任务</el-button>
+      <el-button type="primary" @click="openCreate">+ 새 Build Task</el-button>
     </div>
 
     <div class="filter-panel">
       <el-form inline>
-        <el-form-item label="应用">
-          <el-select v-model="query.appId" clearable filterable placeholder="全部应用">
+        <el-form-item label="Application">
+          <el-select v-model="query.appId" clearable filterable placeholder="전체 Application">
             <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="环境">
-          <el-select v-model="query.env" clearable placeholder="全部环境">
+        <el-form-item label="Environment">
+          <el-select v-model="query.env" clearable placeholder="전체 Environment">
             <el-option label="dev" value="dev" />
             <el-option label="test" value="test" />
             <el-option label="prod" value="prod" />
           </el-select>
         </el-form-item>
-        <el-form-item label="任务名称">
-          <el-input v-model="query.keyword" clearable placeholder="请输入任务名称" @keyup.enter="loadData" />
+        <el-form-item label="Task 이름">
+          <el-input v-model="query.keyword" clearable placeholder="Task 이름을 입력하십시오" @keyup.enter="loadData" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">搜索</el-button>
-          <el-button @click="Object.assign(query, { appId: undefined, env: '', keyword: '', pageNum: 1 }); loadData()">重置</el-button>
+          <el-button type="primary" @click="loadData">검색</el-button>
+          <el-button @click="Object.assign(query, { appId: undefined, env: '', keyword: '', pageNum: 1 }); loadData()">초기화</el-button>
         </el-form-item>
       </el-form>
     </div>
 
     <el-card shadow="never" class="table-card">
       <el-table v-loading="loading" :data="rows" row-key="id">
-        <el-table-column prop="name" label="任务名称" min-width="150">
+        <el-table-column prop="name" label="Task 이름" min-width="150">
           <template #default="{ row }">
             <div class="name-cell">
               <strong>{{ row.name }}</strong>
-              <span>{{ row.description || '暂无描述' }}</span>
+              <span>{{ row.description || '설명 없음' }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="appName" label="所属应用" min-width="150" />
-        <el-table-column prop="env" label="构建环境" width="110">
+        <el-table-column prop="appName" label="소속 Application" min-width="150" />
+        <el-table-column prop="env" label="Build Environment" width="110">
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ row.env || '-' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="branch" label="默认分支" width="130" />
-        <el-table-column label="执行节点" min-width="150">
+        <el-table-column prop="branch" label="기본 Branch" width="130" />
+        <el-table-column label="실행 Node" min-width="150">
           <template #default="{ row }">{{ runnerName(row) }}</template>
         </el-table-column>
-        <el-table-column label="执行路径" min-width="190" show-overflow-tooltip>
+        <el-table-column label="실행 Path" min-width="190" show-overflow-tooltip>
           <template #default="{ row }"><code class="path-code">{{ row.executionPath || '-' }}</code></template>
         </el-table-column>
-        <el-table-column label="任务状态" width="110">
+        <el-table-column label="Task 상태" width="110">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最近构建" min-width="150">
+        <el-table-column label="최근 Build" min-width="150">
           <template #default="{ row }">
             <div class="history-cell">
               <el-link v-if="row.lastReleaseId" type="primary" @click="goHistory(row)">#{{ row.lastReleaseId }}</el-link>
@@ -398,26 +398,26 @@ onMounted(async () => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="构建统计" min-width="160">
+        <el-table-column label="Build 통계" min-width="160">
           <template #default="{ row }">{{ buildStats(row) }}</template>
         </el-table-column>
-        <el-table-column label="创建者" width="96" fixed="right">管理员</el-table-column>
-        <el-table-column label="创建时间" width="150" fixed="right">
+        <el-table-column label="생성자" width="96" fixed="right">관리자</el-table-column>
+        <el-table-column label="생성 시각" width="150" fixed="right">
           <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="152" fixed="right">
+        <el-table-column label="작업" width="152" fixed="right">
           <template #default="{ row }">
             <div class="action-tools">
-              <el-button link type="primary" :disabled="Number(row.status) !== 1" @click="openRun(row)">立即构建</el-button>
+              <el-button link type="primary" :disabled="Number(row.status) !== 1" @click="openRun(row)">즉시 Build</el-button>
               <el-dropdown trigger="click">
-                <el-button link class="more-action">更多</el-button>
+                <el-button link class="more-action">더보기</el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item @click="goHistory(row)">日志</el-dropdown-item>
-                    <el-dropdown-item @click="assignForm(row)">编辑</el-dropdown-item>
-                    <el-dropdown-item @click="assignForm(row, true)">复制</el-dropdown-item>
-                    <el-dropdown-item @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '禁用' : '启用' }}</el-dropdown-item>
-                    <el-dropdown-item divided class="danger-item" @click="remove(row)">删除</el-dropdown-item>
+                    <el-dropdown-item @click="goHistory(row)">Log</el-dropdown-item>
+                    <el-dropdown-item @click="assignForm(row)">수정</el-dropdown-item>
+                    <el-dropdown-item @click="assignForm(row, true)">복제</el-dropdown-item>
+                    <el-dropdown-item @click="toggleStatus(row)">{{ Number(row.status) === 1 ? '비활성화' : '활성화' }}</el-dropdown-item>
+                    <el-dropdown-item divided class="danger-item" @click="remove(row)">삭제</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -432,7 +432,7 @@ onMounted(async () => {
 
     <el-dialog
       v-model="dialogVisible"
-      :title="form.id ? '编辑构建任务' : '新建构建任务'"
+      :title="form.id ? 'Build Task 수정' : '새 Build Task'"
       width="min(1180px, 94vw)"
       top="3vh"
       class="build-task-dialog"
@@ -440,73 +440,73 @@ onMounted(async () => {
       <div class="dialog-layout">
         <section class="dialog-section">
           <div class="section-title">
-            <strong>基础信息</strong>
-            <span>选择代码仓库、执行节点和工作目录，代码会拉取到执行路径中。</span>
+            <strong>기본 정보</strong>
+            <span>Repository, 실행 Node, Workspace를 선택합니다. Source는 실행 Path로 Checkout됩니다.</span>
           </div>
           <el-form :model="form" label-width="88px">
             <el-row :gutter="18">
               <el-col :span="7">
-                <el-form-item label="任务名称" required>
-                  <el-input v-model="form.name" placeholder="例如：test-web-prod" />
+                <el-form-item label="Task 이름" required>
+                  <el-input v-model="form.name" placeholder="예: test-web-prod" />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="所属应用" required>
-                  <el-select v-model="form.appId" filterable placeholder="请选择应用" @change="fillFromApp">
+                <el-form-item label="소속 Application" required>
+                  <el-select v-model="form.appId" filterable placeholder="Application을 선택하십시오" @change="fillFromApp">
                     <el-option v-for="item in appOptions" :key="item.id" :label="`${item.name} (${item.repoType})`" :value="item.id" />
                   </el-select>
                 </el-form-item>
               </el-col>
               <el-col :span="5">
-                <el-form-item label="环境">
+                <el-form-item label="Environment">
                   <el-select v-model="form.env"><el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" /></el-select>
                 </el-form-item>
               </el-col>
               <el-col :span="4">
-                <el-form-item label="状态">
+                <el-form-item label="상태">
                   <div class="status-control">
                     <el-switch v-model="form.status" :active-value="1" :inactive-value="2" />
-                    <span>{{ Number(form.status) === 1 ? '已启用' : '已禁用' }}</span>
+                    <span>{{ Number(form.status) === 1 ? '활성화됨' : '비활성화됨' }}</span>
                   </div>
                 </el-form-item>
               </el-col>
               <el-col :span="7">
-                <el-form-item label="构建分支">
-                  <el-input v-model="form.branch" placeholder="默认使用应用分支" />
+                <el-form-item label="Build Branch">
+                  <el-input v-model="form.branch" placeholder="기본값은 Application Branch" />
                 </el-form-item>
               </el-col>
               <el-col :span="5">
-                <el-form-item label="超时时间">
+                <el-form-item label="Timeout">
                   <el-input-number v-model="form.timeoutSeconds" :min="60" :max="7200" :step="60" controls-position="right" />
-                  <span class="unit">秒</span>
+                  <span class="unit">초</span>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
-                <el-form-item label="任务描述">
-                  <el-input v-model="form.description" placeholder="描述构建用途或发布范围" />
+                <el-form-item label="Task 설명">
+                  <el-input v-model="form.description" placeholder="Build 용도 또는 Deploy 범위를 설명하십시오" />
                 </el-form-item>
               </el-col>
               <el-col :span="6">
-                <el-form-item label="执行节点">
-                  <el-select v-model="form.runnerType"><el-option label="Ops Admin 本机" value="local" /><el-option label="资产主机" value="host" /></el-select>
+                <el-form-item label="실행 Node">
+                  <el-select v-model="form.runnerType"><el-option label="Ops Admin 로컬" value="local" /><el-option label="Asset Host" value="host" /></el-select>
                 </el-form-item>
               </el-col>
               <el-col v-if="form.runnerType === 'host'" :span="8">
-                <el-form-item label="构建主机" required>
-                  <el-select v-model="form.runnerHostId" filterable placeholder="选择构建主机"><el-option v-for="item in hostOptions" :key="item.id" :label="`${item.hostName} (${item.sshIp || item.privateIp || '-'})`" :value="item.id" /></el-select>
+                <el-form-item label="Build Host" required>
+                  <el-select v-model="form.runnerHostId" filterable placeholder="Build Host를 선택하십시오"><el-option v-for="item in hostOptions" :key="item.id" :label="`${item.hostName} (${item.sshIp || item.privateIp || '-'})`" :value="item.id" /></el-select>
                 </el-form-item>
               </el-col>
               <el-col :span="form.runnerType === 'host' ? 10 : 18">
-                <el-form-item label="执行路径" required class="execution-path-item">
-                  <el-input v-model="form.executionPath" placeholder="例如 /opt/builds/ops-admin 或 D:\builds\ops-admin" />
-                  <div class="field-help">代码将在此目录拉取或更新，两个脚本也以此目录作为工作目录。</div>
+                <el-form-item label="실행 Path" required class="execution-path-item">
+                  <el-input v-model="form.executionPath" placeholder="예: /opt/builds/ops-admin 또는 D:\builds\ops-admin" />
+                  <div class="field-help">Source는 이 Directory에서 Checkout 또는 Update되며 두 Script의 Workspace로도 사용됩니다.</div>
                 </el-form-item>
               </el-col>
             </el-row>
           </el-form>
           <div v-if="currentApp" class="repo-preview">
             <div>
-              <span>仓库地址</span>
+              <span>Repository 주소</span>
               <strong>{{ currentApp.repoUrl }}</strong>
             </div>
             <el-tag size="small" effect="plain">{{ currentApp.repoType || 'git' }}</el-tag>
@@ -515,46 +515,46 @@ onMounted(async () => {
 
         <section class="dialog-section params-section">
           <div class="section-title params-title">
-            <div><strong>构建参数</strong><span>参数会以环境变量注入两个脚本，可使用 $VARIABLE_NAME 或 ${VARIABLE_NAME}。</span></div>
+            <div><strong>Build Parameter</strong><span>Parameter는 Environment Variable로 두 Script에 주입되며 $VARIABLE_NAME 또는 ${VARIABLE_NAME}으로 사용할 수 있습니다.</span></div>
             <div class="section-actions">
-              <el-button @click="systemVariablesVisible = true">系统变量</el-button>
-              <el-button type="primary" @click="addBuildParam">新增参数</el-button>
+              <el-button @click="systemVariablesVisible = true">시스템 변수</el-button>
+              <el-button type="primary" @click="addBuildParam">신규 Parameter</el-button>
             </div>
           </div>
-          <div v-if="!form.buildParams.length" class="empty-params">暂无自定义参数，可按需新增构建变量。</div>
+          <div v-if="!form.buildParams.length" class="empty-params">사용자 정의 Parameter가 없습니다. 필요에 따라 Build Variable을 추가할 수 있습니다.</div>
           <div v-if="form.buildParams.length" class="param-header" aria-hidden="true">
-            <span>变量名</span><span>显示名称</span><span>类型</span><span>默认值</span><span>可选项 / 说明</span><span>必填</span><span>操作</span>
+            <span>변수명</span><span>표시 이름</span><span>유형</span><span>기본값</span><span>선택 옵션 / 설명</span><span>필수</span><span>작업</span>
           </div>
           <div v-for="(item, index) in form.buildParams" :key="index" class="param-row">
-            <el-input v-model="item.name" placeholder="变量名，如 SERVER_NAME" @input="item.name = item.name.toUpperCase()" />
-            <el-input v-model="item.label" placeholder="显示名称" />
-            <el-select v-model="item.type" placeholder="参数类型">
-              <el-option label="文本" value="text" /><el-option label="单选" value="select" />
-              <el-option label="多选" value="multiSelect" /><el-option label="布尔开关" value="boolean" />
+            <el-input v-model="item.name" placeholder="변수명, 예: SERVER_NAME" @input="item.name = item.name.toUpperCase()" />
+            <el-input v-model="item.label" placeholder="표시 이름" />
+            <el-select v-model="item.type" placeholder="Parameter 유형">
+              <el-option label="텍스트" value="text" /><el-option label="단일 선택" value="select" />
+              <el-option label="다중 선택" value="multiSelect" /><el-option label="Boolean 스위치" value="boolean" />
             </el-select>
-            <el-input v-if="item.type !== 'boolean' && item.type !== 'multiSelect'" v-model="item.default" placeholder="默认值" />
+            <el-input v-if="item.type !== 'boolean' && item.type !== 'multiSelect'" v-model="item.default" placeholder="기본값" />
             <el-switch v-else-if="item.type === 'boolean'" v-model="item.default" />
-            <el-input v-else v-model="item.default" placeholder="默认值，逗号分隔" />
-            <el-input v-if="['select', 'multiSelect'].includes(item.type)" v-model="item.optionsText" type="textarea" :rows="2" placeholder="可选项，每行一个" />
-            <el-input v-else v-model="item.description" placeholder="参数说明" />
-            <el-checkbox v-model="item.required">必填</el-checkbox>
-            <el-button link type="danger" @click="removeBuildParam(index)">删除</el-button>
+            <el-input v-else v-model="item.default" placeholder="기본값, 쉼표로 구분" />
+            <el-input v-if="['select', 'multiSelect'].includes(item.type)" v-model="item.optionsText" type="textarea" :rows="2" placeholder="선택 옵션, 한 줄에 하나씩" />
+            <el-input v-else v-model="item.description" placeholder="Parameter 설명" />
+            <el-checkbox v-model="item.required">필수</el-checkbox>
+            <el-button link type="danger" @click="removeBuildParam(index)">삭제</el-button>
           </div>
         </section>
 
         <section class="script-grid">
           <div class="docker-compose-tip">
             <div>
-              <strong>Docker Compose 部署模板</strong>
-              <span>Go 和 Node 会在 Docker 多阶段构建中完成；首次执行会自动生成运行配置和随机数据库密码。</span>
+              <strong>Docker Compose Deploy Template</strong>
+              <span>Go와 Node는 Docker Multi-stage Build에서 처리됩니다. 첫 실행 시 실행 Config와 랜덤 Database Password가 자동 생성됩니다.</span>
             </div>
-            <el-button type="primary" plain @click="applyDockerComposePreset">套用模板</el-button>
+            <el-button type="primary" plain @click="applyDockerComposePreset">Template 적용</el-button>
           </div>
           <div class="script-card">
             <div class="script-head">
               <div>
-                <strong>构建脚本</strong>
-                <span>用于依赖安装、编译和测试，在执行路径内运行。</span>
+                <strong>Build Script</strong>
+                <span>Dependency 설치, Compile, Test에 사용되며 실행 Path 내에서 실행됩니다.</span>
               </div>
               <el-tag size="small" type="primary" effect="dark">Build</el-tag>
             </div>
@@ -562,40 +562,40 @@ onMounted(async () => {
           </div>
           <div class="script-card">
             <div class="script-head">
-              <div><strong>构建后操作</strong><span>构建成功后执行，可用于部署文件、重启服务或发布应用。</span></div>
+              <div><strong>Build 후 작업</strong><span>Build 성공 후 실행되며 파일 Deploy, Service 재시작 또는 Application Release에 사용할 수 있습니다.</span></div>
               <el-tag size="small" type="success" effect="dark">Post Build</el-tag>
             </div>
-            <el-input v-model="form.deployScript" class="script-editor" type="textarea" :rows="18" spellcheck="false" placeholder="# 可选，例如：\nrsync -av dist/ /srv/app/\nsystemctl restart app" />
+            <el-input v-model="form.deployScript" class="script-editor" type="textarea" :rows="18" spellcheck="false" placeholder="# 선택 사항, 예: \nrsync -av dist/ /srv/app/\nsystemctl restart app" />
           </div>
         </section>
       </div>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="runVisible" :title="`执行构建：${currentRunTask?.name || ''}`" width="720px">
-      <el-alert type="info" :closable="false" show-icon title="构建参数会同时注入构建脚本和构建后操作；系统变量无需重复配置。" />
+    <el-dialog v-model="runVisible" :title="`Build 실행: ${currentRunTask?.name || ''}`" width="720px">
+      <el-alert type="info" :closable="false" show-icon title="Build Parameter는 Build Script와 Build 후 작업에 동시에 주입됩니다. 시스템 변수는 중복 구성이 필요 없습니다." />
       <el-form class="run-form" label-width="120px">
-        <el-form-item label="构建分支"><el-input v-model="runForm.branch" placeholder="使用任务默认分支" /></el-form-item>
-        <el-form-item label="构建版本"><el-input v-model="runForm.version" placeholder="留空自动生成时间版本号" /></el-form-item>
+        <el-form-item label="Build Branch"><el-input v-model="runForm.branch" placeholder="Task 기본 Branch 사용" /></el-form-item>
+        <el-form-item label="Build Version"><el-input v-model="runForm.version" placeholder="비워두면 시간 Version이 자동 생성됩니다" /></el-form-item>
         <el-form-item v-for="item in currentRunTask?.buildParams || []" :key="item.name" :label="item.label || item.name" :required="item.required">
           <el-select v-if="item.type === 'select'" v-model="runForm.params[item.name]" clearable style="width: 100%"><el-option v-for="option in item.options" :key="option" :label="option" :value="option" /></el-select>
           <el-select v-else-if="item.type === 'multiSelect'" v-model="runForm.params[item.name]" multiple clearable collapse-tags style="width: 100%"><el-option v-for="option in item.options" :key="option" :label="option" :value="option" /></el-select>
           <el-switch v-else-if="item.type === 'boolean'" v-model="runForm.params[item.name]" />
-          <el-input v-else v-model="runForm.params[item.name]" :placeholder="item.description || `请输入 ${item.label || item.name}`" />
-          <div v-if="item.description" class="param-help">{{ item.description }} · 环境变量：${{ item.name }}</div>
+          <el-input v-else v-model="runForm.params[item.name]" :placeholder="item.description || `${item.label || item.name}을(를) 입력하십시오`" />
+          <div v-if="item.description" class="param-help">{{ item.description }} · Environment Variable: ${{ item.name }}</div>
         </el-form-item>
       </el-form>
-      <template #footer><el-button @click="runVisible = false">取消</el-button><el-button type="primary" @click="submitRun">开始构建</el-button></template>
+      <template #footer><el-button @click="runVisible = false">취소</el-button><el-button type="primary" @click="submitRun">Build 시작</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="systemVariablesVisible" title="系统环境变量" width="760px">
-      <el-alert type="info" :closable="false" show-icon title="这些变量由系统在运行时生成，可以直接在构建脚本和构建后操作中使用。" />
+    <el-dialog v-model="systemVariablesVisible" title="시스템 Environment Variable" width="760px">
+      <el-alert type="info" :closable="false" show-icon title="이 변수들은 시스템이 실행 시점에 생성하며 Build Script와 Build 후 작업에서 바로 사용할 수 있습니다." />
       <el-table :data="systemVariables.map(([name, description]) => ({ name, description }))" class="variable-table">
-        <el-table-column prop="name" label="变量名" width="220"><template #default="{ row }"><code>{{ row.name }}</code></template></el-table-column>
-        <el-table-column prop="description" label="说明" />
+        <el-table-column prop="name" label="변수명" width="220"><template #default="{ row }"><code>{{ row.name }}</code></template></el-table-column>
+        <el-table-column prop="description" label="설명" />
       </el-table>
     </el-dialog>
   </div>

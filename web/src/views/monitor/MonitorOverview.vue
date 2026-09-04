@@ -27,23 +27,23 @@ function resolveRange() {
   return { startDate: formatDate(start), endDate: formatDate(end) }
 }
 
-const rangeLabel = computed(() => ({ today: '今天', '3d': '最近 3 天', '7d': '最近 7 天', custom: '自定义时间' }[rangeType.value] || '今天'))
+const rangeLabel = computed(() => ({ today: '오늘', '3d': '최근 3일', '7d': '최근 7일', custom: '사용자 정의 기간' }[rangeType.value] || '오늘'))
 const monitorAbnormalCount = computed(() => Number(overview.value.unhealthyDatasourceCount || 0) + Number(overview.value.evalFailedRuleCount || 0))
 const trendMax = computed(() => Math.max(1, ...(overview.value.trend || []).flatMap(item => [Number(item.triggered || 0), Number(item.recovered || 0)])))
 const totalSeverity = computed(() => (overview.value.severity || []).reduce((sum, item) => sum + Number(item.count || 0), 0))
 
 const riskCards = computed(() => [
-  { label: '活动告警', value: overview.value.firingCount || 0, hint: '当前仍需关注的告警', tone: 'danger', query: {} },
-  { label: '未认领', value: overview.value.unclaimedCount || 0, hint: '等待负责人接手处理', tone: 'warning', query: { status: 'unclaimed' } },
-  { label: 'P0 / P1', value: overview.value.criticalCount || 0, hint: '高优先级风险事件', tone: 'danger', query: { severity: 'critical' } },
-  { label: '监控异常', value: monitorAbnormalCount.value, hint: `${overview.value.unhealthyDatasourceCount || 0} 数据源 · ${overview.value.evalFailedRuleCount || 0} 规则`, tone: 'neutral', path: '/monitor/datasources' }
+  { label: '활성 Alert', value: overview.value.firingCount || 0, hint: '현재 주의가 필요한 Alert', tone: 'danger', query: {} },
+  { label: '미인계', value: overview.value.unclaimedCount || 0, hint: '담당자 인계를 기다리는 중', tone: 'warning', query: { status: 'unclaimed' } },
+  { label: 'P0 / P1', value: overview.value.criticalCount || 0, hint: '높은 우선순위 리스크 Event', tone: 'danger', query: { severity: 'critical' } },
+  { label: '모니터링 오류', value: monitorAbnormalCount.value, hint: `${overview.value.unhealthyDatasourceCount || 0} Datasource · ${overview.value.evalFailedRuleCount || 0} Rule`, tone: 'neutral', path: '/monitor/datasources' }
 ])
 
 const qualityCards = computed(() => [
-  { label: '数据源健康度', value: ratio(overview.value.healthyDatasourceCount, overview.value.datasourceCount), detail: `${overview.value.healthyDatasourceCount || 0} / ${overview.value.datasourceCount || 0} 健康` },
-  { label: '规则执行成功率', value: ratio(overview.value.successfulRuleCount, overview.value.activeRuleCount), detail: `${overview.value.successfulRuleCount || 0} / ${overview.value.activeRuleCount || 0} 正常` },
-  { label: '通知成功率', value: ratio(overview.value.notificationSuccessCount, overview.value.notificationTotalCount), detail: `${overview.value.notificationSuccessCount || 0} / ${overview.value.notificationTotalCount || 0} 成功` },
-  { label: '平均恢复时间', value: formatDuration(overview.value.mttrSeconds), detail: `平均认领 ${formatDuration(overview.value.mttaSeconds)}` }
+  { label: 'Datasource Health', value: ratio(overview.value.healthyDatasourceCount, overview.value.datasourceCount), detail: `${overview.value.healthyDatasourceCount || 0} / ${overview.value.datasourceCount || 0} 정상` },
+  { label: 'Rule 실행 성공률', value: ratio(overview.value.successfulRuleCount, overview.value.activeRuleCount), detail: `${overview.value.successfulRuleCount || 0} / ${overview.value.activeRuleCount || 0} 정상` },
+  { label: 'Notification 성공률', value: ratio(overview.value.notificationSuccessCount, overview.value.notificationTotalCount), detail: `${overview.value.notificationSuccessCount || 0} / ${overview.value.notificationTotalCount || 0} 성공` },
+  { label: '평균 복구 시간', value: formatDuration(overview.value.mttrSeconds), detail: `평균 인계 ${formatDuration(overview.value.mttaSeconds)}` }
 ])
 
 function ratio(value, total) {
@@ -58,11 +58,11 @@ function statusType(status) {
 }
 
 function statusText(status) {
-  return ({ pending: '待处理', firing: '触发中', claimed: '已认领', silenced: '已屏蔽', recovered: '已恢复', resolved: '已关闭' }[status] || status || '-')
+  return ({ pending: '대기 중', firing: '발생', claimed: '인계됨', silenced: '차단', recovered: '복구', resolved: '해결됨' }[status] || status || '-')
 }
 
 function activityText(type) {
-  return ({ recovered: '告警恢复', datasource: '数据源异常', notification: '通知失败', rule: '规则执行失败' }[type] || '监控事件')
+  return ({ recovered: 'Alert 복구', datasource: 'Datasource 오류', notification: 'Notification 실패', rule: 'Rule 실행 실패' }[type] || '모니터링 Event')
 }
 
 function activityType(type) {
@@ -72,10 +72,10 @@ function activityType(type) {
 function formatDuration(seconds) {
   const value = Number(seconds || 0)
   if (!value) return '-'
-  if (value < 60) return `${value} 秒`
-  if (value < 3600) return `${Math.round(value / 60)} 分钟`
-  if (value < 86400) return `${(value / 3600).toFixed(1)} 小时`
-  return `${(value / 86400).toFixed(1)} 天`
+  if (value < 60) return `${value}초`
+  if (value < 3600) return `${Math.round(value / 60)}분`
+  if (value < 86400) return `${(value / 3600).toFixed(1)}시간`
+  return `${(value / 86400).toFixed(1)}일`
 }
 
 function formatLiveDuration(value) {
@@ -130,34 +130,34 @@ onMounted(loadData)
     <section class="overview-header">
       <div>
         <p class="eyebrow">MONITORING OVERVIEW</p>
-        <h1>监控概览</h1>
-        <p class="header-subtitle">当前系统健康状态、风险与事件一览</p>
+        <h1>모니터링 개요</h1>
+        <p class="header-subtitle">현재 시스템 상태, 리스크와 Event 한눈에 보기</p>
       </div>
       <div class="header-actions">
-        <span class="refreshed">最近刷新：{{ formatTime(refreshedAt) }}</span>
+        <span class="refreshed">마지막 새로고침: {{ formatTime(refreshedAt) }}</span>
         <el-button-group>
-          <el-button :type="rangeType === 'today' ? 'primary' : 'default'" @click="changeRange('today')">今天</el-button>
-          <el-button :type="rangeType === '3d' ? 'primary' : 'default'" @click="changeRange('3d')">3 天</el-button>
-          <el-button :type="rangeType === '7d' ? 'primary' : 'default'" @click="changeRange('7d')">7 天</el-button>
-          <el-button :type="rangeType === 'custom' ? 'primary' : 'default'" @click="changeRange('custom')">自定义</el-button>
+          <el-button :type="rangeType === 'today' ? 'primary' : 'default'" @click="changeRange('today')">오늘</el-button>
+          <el-button :type="rangeType === '3d' ? 'primary' : 'default'" @click="changeRange('3d')">3일</el-button>
+          <el-button :type="rangeType === '7d' ? 'primary' : 'default'" @click="changeRange('7d')">7일</el-button>
+          <el-button :type="rangeType === 'custom' ? 'primary' : 'default'" @click="changeRange('custom')">사용자 정의</el-button>
         </el-button-group>
         <el-date-picker
           v-if="rangeType === 'custom'"
           v-model="customRange"
           type="daterange"
           value-format="YYYY-MM-DD"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
+          range-separator="~"
+          start-placeholder="시작일"
+          end-placeholder="종료일"
           :clearable="false"
           @change="applyCustomRange"
         />
-        <el-button :loading="loading" @click="loadData">刷新</el-button>
+        <el-button :loading="loading" @click="loadData">새로고침</el-button>
       </div>
     </section>
 
     <section>
-      <div class="section-title"><h2>当前风险</h2><span>实时风险不受统计时间范围影响</span></div>
+      <div class="section-title"><h2>현재 리스크</h2><span>실시간 리스크는 통계 기간의 영향을 받지 않습니다</span></div>
       <div class="risk-grid">
         <button v-for="card in riskCards" :key="card.label" type="button" :class="['risk-card', card.tone]" @click="openRisk(card)">
           <span>{{ card.label }}</span><strong>{{ card.value }}</strong><small>{{ card.hint }}</small>
@@ -166,39 +166,39 @@ onMounted(loadData)
     </section>
 
     <section class="top-grid">
-      <article class="panel quality-panel"><div class="panel-head"><div><h2>监控质量</h2><p>数据链路、规则与通知的执行质量</p></div></div><div class="quality-grid"><div v-for="item in qualityCards" :key="item.label" class="quality-card"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.detail }}</small></div></div></article>
+      <article class="panel quality-panel"><div class="panel-head"><div><h2>모니터링 품질</h2><p>데이터 파이프라인, Rule과 Notification의 실행 품질</p></div></div><div class="quality-grid"><div v-for="item in qualityCards" :key="item.label" class="quality-card"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.detail }}</small></div></div></article>
       <article class="panel trend-panel">
-        <div class="panel-head"><div><h2>告警趋势</h2><p>{{ rangeLabel }}新增 / 恢复趋势</p></div><div class="legend"><i class="new" />新增 <i class="recovered" />恢复</div></div>
+        <div class="panel-head"><div><h2>Alert 추세</h2><p>{{ rangeLabel }} 신규 / 복구 추세</p></div><div class="legend"><i class="new" />신규 <i class="recovered" />복구</div></div>
         <div class="trend-chart">
           <div v-for="item in overview.trend || []" :key="item.date" class="trend-item">
             <el-tooltip placement="top" :show-after="120" popper-class="trend-tooltip">
               <template #content>
-                <div class="trend-tooltip-content"><b>{{ item.date }}</b><span>新增 {{ item.triggered || 0 }} 条</span><span>恢复 {{ item.recovered || 0 }} 条</span></div>
+                <div class="trend-tooltip-content"><b>{{ item.date }}</b><span>신규 {{ item.triggered || 0 }}건</span><span>복구 {{ item.recovered || 0 }}건</span></div>
               </template>
-              <div class="bars" tabindex="0" :aria-label="`${item.date}：新增 ${item.triggered || 0} 条，恢复 ${item.recovered || 0} 条`"><span class="trend-bar new" :style="{ height: `${Math.max(3, Number(item.triggered || 0) / trendMax * 100)}%` }" /><span class="trend-bar recovered" :style="{ height: `${Math.max(3, Number(item.recovered || 0) / trendMax * 100)}%` }" /></div>
+              <div class="bars" tabindex="0" :aria-label="`${item.date}: 신규 ${item.triggered || 0}건, 복구 ${item.recovered || 0}건`"><span class="trend-bar new" :style="{ height: `${Math.max(3, Number(item.triggered || 0) / trendMax * 100)}%` }" /><span class="trend-bar recovered" :style="{ height: `${Math.max(3, Number(item.recovered || 0) / trendMax * 100)}%` }" /></div>
             </el-tooltip>
             <small>{{ item.date }}</small>
           </div>
         </div>
       </article>
-      <article class="panel activities-panel"><div class="panel-head"><div><h2>最近事件</h2><p>恢复告警、数据源异常、通知失败与规则执行失败</p></div></div><el-empty v-if="!(overview.recentActivities || []).length" description="暂无需要关注的监控事件" :image-size="48" /><div v-else class="activity-list"><div v-for="(item, index) in overview.recentActivities || []" :key="`${item.type}-${index}`" class="activity"><el-tag :type="activityType(item.type)" effect="light">{{ activityText(item.type) }}</el-tag><div><b>{{ item.title || '-' }}</b><p>{{ item.detail || '-' }}</p></div><time>{{ formatTime(item.time) }}</time></div></div></article>
+      <article class="panel activities-panel"><div class="panel-head"><div><h2>최근 Event</h2><p>Alert 복구, Datasource 오류, Notification 실패와 Rule 실행 실패</p></div></div><el-empty v-if="!(overview.recentActivities || []).length" description="주의가 필요한 모니터링 Event가 없습니다" :image-size="48" /><div v-else class="activity-list"><div v-for="(item, index) in overview.recentActivities || []" :key="`${item.type}-${index}`" class="activity"><el-tag :type="activityType(item.type)" effect="light">{{ activityText(item.type) }}</el-tag><div><b>{{ item.title || '-' }}</b><p>{{ item.detail || '-' }}</p></div><time>{{ formatTime(item.time) }}</time></div></div></article>
     </section>
 
     <section class="work-grid">
       <article class="panel pending-panel">
-        <div class="panel-head"><div><h2>当前待处理告警</h2><p>按优先级、状态、负责人和持续时间快速定位</p></div><el-button link type="primary" @click="router.push('/monitor/alert-events')">查看全部</el-button></div>
-        <el-empty v-if="!(overview.recentEvents || []).length" class="pending-empty" description="当前没有待处理告警，系统运行正常" :image-size="48" />
+        <div class="panel-head"><div><h2>현재 처리 대기 Alert</h2><p>우선순위, 상태, 담당자와 지속 시간으로 빠르게 찾기</p></div><el-button link type="primary" @click="router.push('/monitor/alert-events')">전체 보기</el-button></div>
+        <el-empty v-if="!(overview.recentEvents || []).length" class="pending-empty" description="현재 처리 대기 Alert가 없으며 시스템이 정상 운영 중입니다" :image-size="48" />
         <el-table v-else :data="overview.recentEvents || []" @row-click="openEvent">
-          <el-table-column prop="severity" label="优先级" width="84"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : row.severity === 'P2' ? 'warning' : 'info'" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
-          <el-table-column prop="ruleName" label="告警规则" min-width="190" />
-          <el-table-column label="状态" width="105"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-          <el-table-column prop="claimedBy" label="负责人" width="130"><template #default="{ row }">{{ row.claimedBy || '未认领' }}</template></el-table-column>
-          <el-table-column label="持续时间" width="120"><template #default="{ row }">{{ formatLiveDuration(row.firstTriggerAt) }}</template></el-table-column>
-          <el-table-column prop="summary" label="摘要" min-width="280" show-overflow-tooltip />
+          <el-table-column prop="severity" label="우선순위" width="84"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : row.severity === 'P2' ? 'warning' : 'info'" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
+          <el-table-column prop="ruleName" label="Alert Rule" min-width="190" />
+          <el-table-column label="상태" width="105"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column prop="claimedBy" label="담당자" width="130"><template #default="{ row }">{{ row.claimedBy || '미인계' }}</template></el-table-column>
+          <el-table-column label="지속 시간" width="120"><template #default="{ row }">{{ formatLiveDuration(row.firstTriggerAt) }}</template></el-table-column>
+          <el-table-column prop="summary" label="요약" min-width="280" show-overflow-tooltip />
         </el-table>
       </article>
       <article class="panel severity-panel">
-        <div class="panel-head"><div><h2>告警等级分布</h2><p>当前待处理告警按 P0 / P1 / P2 / P3 分布</p></div></div>
+        <div class="panel-head"><div><h2>Alert Severity 분포</h2><p>현재 처리 대기 Alert를 P0 / P1 / P2 / P3로 표시</p></div></div>
         <div class="severity-list">
           <button v-for="item in overview.severity || []" :key="item.severity" class="severity-row" type="button" @click="router.push({ path: '/monitor/alert-events', query: { severity: item.severity } })">
             <b>{{ item.severity }}</b><div class="severity-track"><span :class="item.severity.toLowerCase()" :style="{ width: `${severityPercent(item.count)}%` }" /></div><strong>{{ item.count || 0 }}</strong>

@@ -22,49 +22,49 @@ const summaryCards = computed(() => {
   return [
     {
       key: 'hosts',
-      title: '主机资产',
+      title: 'Host 자산',
       value: summary.hostTotal || 0,
-      note: `在线 ${summary.hostOnline || 0} / 离线 ${summary.hostOffline || 0}`,
+      note: `온라인 ${summary.hostOnline || 0} / 오프라인 ${summary.hostOffline || 0}`,
       icon: Monitor,
       action: () => router.push('/assets/server/hosts')
     },
     {
       key: 'groups',
-      title: '主机组',
+      title: 'Host Group',
       value: summary.groupTotal || 0,
-      note: '维护资产归属与批量操作边界',
+      note: '자산 소속과 일괄 작업 경계를 관리합니다',
       icon: FolderOpened,
       action: () => router.push('/assets/server/groups')
     },
     {
       key: 'credentials',
-      title: '凭据',
+      title: 'Credential',
       value: summary.credentialTotal || 0,
-      note: `启用 ${summary.credentialEnabled || 0}`,
+      note: `활성화 ${summary.credentialEnabled || 0}`,
       icon: Key,
       action: () => router.push('/assets/server/credentials')
     },
     {
       key: 'cloudAccounts',
-      title: '云账号',
+      title: 'Cloud Account',
       value: summary.cloudAccountTotal || 0,
-      note: `可用 ${summary.cloudAccountEnabled || 0}`,
+      note: `사용 가능 ${summary.cloudAccountEnabled || 0}`,
       icon: Connection,
       action: () => router.push('/assets/server/cloud-accounts')
     },
     {
       key: 'databases',
-      title: '数据库',
+      title: 'Database',
       value: summary.databaseTotal || 0,
-      note: `连接正常 ${summary.databaseHealthy || 0}`,
+      note: `연결 정상 ${summary.databaseHealthy || 0}`,
       icon: Coin,
       action: () => router.push('/assets/databases')
     },
     {
       key: 'k8s',
-      title: 'K8s 集群',
+      title: 'K8s Cluster',
       value: summary.k8sClusterTotal || 0,
-      note: `运行中 ${summary.k8sClusterOnline || 0} / 节点 ${summary.k8sNodeTotal || 0}`,
+      note: `실행 중 ${summary.k8sClusterOnline || 0} / Node ${summary.k8sNodeTotal || 0}`,
       icon: Grid,
       action: () => router.push('/containers/k8s/clusters')
     }
@@ -75,28 +75,28 @@ const healthCards = computed(() => {
   const health = overview.value.health || {}
   return [
     {
-      title: '离线主机',
+      title: '오프라인 Host',
       value: health.offlineHosts || 0,
       tone: health.offlineHosts ? 'danger' : 'normal',
-      desc: '需要检查连通性与最近心跳'
+      desc: '연결 상태와 최근 Heartbeat을 확인하십시오'
     },
     {
-      title: '认证失败',
+      title: '인증 실패',
       value: health.authFailedHosts || 0,
       tone: health.authFailedHosts ? 'warning' : 'normal',
-      desc: '建议核查凭据状态与 SSH 配置'
+      desc: 'Credential 상태와 SSH Config를 점검하십시오'
     },
     {
-      title: '异常数据库',
+      title: '이상 Database',
       value: health.abnormalDatabases || 0,
       tone: health.abnormalDatabases ? 'danger' : 'normal',
-      desc: '优先处理连接失败或不可用实例'
+      desc: '연결 실패 또는 사용 불가 Instance를 우선 처리하십시오'
     },
     {
-      title: '异常集群',
+      title: '이상 Cluster',
       value: health.abnormalClusters || 0,
       tone: health.abnormalClusters ? 'warning' : 'normal',
-      desc: '建议检查 kubeconfig 与集群状态'
+      desc: 'kubeconfig와 Cluster 상태를 점검하십시오'
     }
   ]
 })
@@ -118,15 +118,15 @@ function hostStatusType(value) {
 }
 
 function hostStatusText(value) {
-  if (value === 1) return '在线'
-  if (value === 2) return '离线'
-  return '未知'
+  if (value === 1) return '온라인'
+  if (value === 2) return '오프라인'
+  return '알 수 없음'
 }
 
 function authStatusText(value) {
-  if (value === 1) return '认证成功'
-  if (value === 2) return '认证失败'
-  return '待验证'
+  if (value === 1) return '인증 성공'
+  if (value === 2) return '인증 실패'
+  return '검증 대기'
 }
 
 function databaseStatusType(value) {
@@ -136,9 +136,9 @@ function databaseStatusType(value) {
 }
 
 function databaseStatusText(value) {
-  if (value === 1) return '连接正常'
-  if (value === 2) return '连接失败'
-  return '待检测'
+  if (value === 1) return '연결 정상'
+  if (value === 2) return '연결 실패'
+  return '미검사'
 }
 
 function clusterStatusType(value) {
@@ -149,10 +149,10 @@ function clusterStatusType(value) {
 }
 
 function clusterStatusText(value) {
-  if (value === 'running') return '运行中'
-  if (value === 'warning') return '异常'
-  if (value === 'error') return '不可用'
-  return '未知'
+  if (value === 'running') return '실행 중'
+  if (value === 'warning') return '주의'
+  if (value === 'error') return '사용 불가'
+  return '알 수 없음'
 }
 
 function formatTime(value) {
@@ -201,26 +201,26 @@ onMounted(loadOverview)
     <section class="hero-card">
       <div class="hero-copy">
         <p class="hero-kicker">{{ uiT('assetControl') }}</p>
-        <h1>资产概览</h1>
+        <h1>Asset Overview</h1>
         <p class="hero-text">
-          统一查看主机、主机组、凭据、云账号、数据库和 K8s 集群状态，优先处理离线主机、认证失败和连接异常资源。
+          Host, Host Group, Credential, Cloud Account, Database와 K8s Cluster 상태를 한곳에서 확인하고, 오프라인 Host, 인증 실패, 연결 이상 자산을 우선 처리하십시오.
         </p>
       </div>
       <div class="hero-side">
         <article class="hero-side-card">
-          <span>在线主机</span>
+          <span>온라인 Host</span>
           <strong>{{ overview.summary?.hostOnline || 0 }}</strong>
         </article>
         <article class="hero-side-card">
-          <span>数据库可用</span>
+          <span>Database 사용 가능</span>
           <strong>{{ overview.summary?.databaseHealthy || 0 }}</strong>
         </article>
         <article class="hero-side-card">
-          <span>K8s 节点</span>
+          <span>K8s Node</span>
           <strong>{{ overview.summary?.k8sNodeTotal || 0 }}</strong>
         </article>
         <article class="hero-side-card" :class="{ attention: overview.health?.incompleteAssets }">
-          <span>资料待完善</span>
+          <span>정보 보완 대기</span>
           <strong>{{ overview.health?.incompleteAssets || 0 }}</strong>
         </article>
       </div>
@@ -237,7 +237,7 @@ onMounted(loadOverview)
           <div class="summary-icon">
             <component :is="item.icon" />
           </div>
-          <el-button link type="primary">进入</el-button>
+          <el-button link type="primary">이동</el-button>
         </div>
         <span>{{ item.title }}</span>
         <strong>{{ item.value }}</strong>
@@ -250,12 +250,12 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>健康提醒</h3>
-              <p>优先处理会影响日常运维的异常项。</p>
+              <h3>Health 알림</h3>
+              <p>일상 운영에 영향을 주는 이상 항목을 우선 처리하십시오.</p>
             </div>
             <div class="panel-status-chip">
               <Warning />
-              <span>资产健康</span>
+              <span>자산 Health</span>
             </div>
           </div>
           <div class="health-grid">
@@ -270,10 +270,10 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>主机组分布</h3>
-              <p>点击组名可以直接进入该组下的服务器列表。</p>
+              <h3>Host Group 분포</h3>
+              <p>Group 이름을 클릭하면 해당 Group의 서버 목록으로 바로 이동합니다.</p>
             </div>
-            <el-button link type="primary" @click="router.push('/assets/server/groups')">查看全部</el-button>
+            <el-button link type="primary" @click="router.push('/assets/server/groups')">전체 보기</el-button>
           </div>
           <div v-if="overview.topGroups?.length" class="group-list">
             <button
@@ -284,17 +284,17 @@ onMounted(loadOverview)
             >
               <div>
                 <strong>{{ item.name }}</strong>
-                <small>{{ item.code || '未配置编码' }}</small>
+                <small>{{ item.code || '코드 미구성' }}</small>
               </div>
               <div class="group-meta">
-                <span>{{ item.hostCount }} 台主机</span>
+                <span>{{ item.hostCount }}대 Host</span>
                 <el-tag :type="item.status === 1 ? 'success' : 'info'" effect="light">
-                  {{ item.status === 1 ? '正常' : '停用' }}
+                  {{ item.status === 1 ? '정상' : '비활성화' }}
                 </el-tag>
               </div>
             </button>
           </div>
-          <el-empty v-else description="暂无主机组数据" />
+          <el-empty v-else description="Host Group 데이터가 없습니다" />
         </article>
       </div>
 
@@ -302,14 +302,14 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>资源分布</h3>
-              <p>按主机来源和环境维度查看当前资产构成。</p>
+              <h3>Resource 분포</h3>
+              <p>Host 출처와 Environment 차원으로 현재 자산 구성을 확인합니다.</p>
             </div>
           </div>
           <div class="distribution-grid">
             <section class="distribution-card">
               <header>
-                <strong>主机来源</strong>
+                <strong>Host 출처</strong>
               </header>
               <div v-if="providerDistribution.length" class="distribution-list">
                 <div v-for="item in providerDistribution" :key="item.name" class="distribution-row">
@@ -322,12 +322,12 @@ onMounted(loadOverview)
                   </div>
                 </div>
               </div>
-              <el-empty v-else description="暂无主机来源数据" :image-size="72" />
+              <el-empty v-else description="Host 출처 데이터가 없습니다" :image-size="72" />
             </section>
 
             <section class="distribution-card">
               <header>
-                <strong>环境分布</strong>
+                <strong>Environment 분포</strong>
               </header>
               <div v-if="hasEnvironmentDistribution" class="distribution-list">
                 <div v-for="item in environmentDistribution" :key="item.name" class="distribution-row">
@@ -341,7 +341,7 @@ onMounted(loadOverview)
                 </div>
               </div>
               <div v-else class="distribution-placeholder">
-                当前主机还没有区分环境，可以在主机管理里补充环境字段后再看这里的分布。
+                현재 Host에는 Environment 구분이 없습니다. Host 관리에서 Environment 필드를 보완한 뒤 다시 확인하십시오.
               </div>
             </section>
           </div>
@@ -350,26 +350,26 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>K8s 集群状态</h3>
-              <p>聚合展示当前纳管集群、节点数和基础连接状态。</p>
+              <h3>K8s Cluster 상태</h3>
+              <p>현재 관리 중인 Cluster, Node 수와 기본 연결 상태를 모아 보여 줍니다.</p>
             </div>
-            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">集群管理</el-button>
+            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">Cluster 관리</el-button>
           </div>
 
           <el-table :data="overview.recentClusters || []" size="small" class="compact-table">
-            <el-table-column label="集群" min-width="180">
+            <el-table-column label="Cluster" min-width="180">
               <template #default="{ row }">
                 <button class="link-button" @click="openCluster(row)">{{ row.name }}</button>
                 <small class="sub-line">{{ row.apiServer || '-' }}</small>
               </template>
             </el-table-column>
-            <el-table-column label="版本" width="110">
+            <el-table-column label="버전" width="110">
               <template #default="{ row }">{{ row.version || '-' }}</template>
             </el-table-column>
-            <el-table-column label="节点数" width="90">
+            <el-table-column label="Node 수" width="90">
               <template #default="{ row }">{{ row.nodeCount || 0 }}</template>
             </el-table-column>
-            <el-table-column label="状态" width="110">
+            <el-table-column label="상태" width="110">
               <template #default="{ row }">
                 <el-tag :type="clusterStatusType(row.status)" effect="light">
                   {{ clusterStatusText(row.status) }}
@@ -385,14 +385,14 @@ onMounted(loadOverview)
       <article class="page-card detail-card">
         <div class="panel-header">
           <div>
-            <h3>最近更新的主机</h3>
-            <p>聚焦最近被修改、同步或状态变化的主机资产。</p>
+            <h3>최근 업데이트된 Host</h3>
+            <p>최근에 수정, 동기화 또는 상태가 변경된 Host 자산에 집중합니다.</p>
           </div>
-          <el-button link type="primary" @click="router.push('/assets/server/hosts')">主机管理</el-button>
+          <el-button link type="primary" @click="router.push('/assets/server/hosts')">Host 관리</el-button>
         </div>
 
         <el-table :data="overview.recentHosts || []" size="small" class="compact-table">
-          <el-table-column label="主机" min-width="180">
+          <el-table-column label="Host" min-width="180">
             <template #default="{ row }">
               <div class="entity-cell">
                 <button class="link-button" @click="openHost(row)">{{ row.hostName }}</button>
@@ -400,24 +400,24 @@ onMounted(loadOverview)
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="主机组" min-width="160">
+          <el-table-column label="Host Group" min-width="160">
             <template #default="{ row }">
               {{ row.groupNames?.length ? row.groupNames.join(' / ') : '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="110">
+          <el-table-column label="상태" width="110">
             <template #default="{ row }">
               <el-tag :type="hostStatusType(row.aliveStatus)" effect="light">
                 {{ hostStatusText(row.aliveStatus) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="认证" width="110">
+          <el-table-column label="인증" width="110">
             <template #default="{ row }">
               {{ authStatusText(row.authStatus) }}
             </template>
           </el-table-column>
-          <el-table-column label="更新时间" min-width="140">
+          <el-table-column label="수정 시간" min-width="140">
             <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
           </el-table-column>
         </el-table>
@@ -426,33 +426,33 @@ onMounted(loadOverview)
       <article class="page-card detail-card">
         <div class="panel-header">
           <div>
-            <h3>最近更新的数据库</h3>
-            <p>点击数据库名称可直接进入 SQL 工作台。</p>
+            <h3>최근 업데이트된 Database</h3>
+            <p>Database 이름을 클릭하면 SQL Workbench로 바로 이동합니다.</p>
           </div>
-          <el-button link type="primary" @click="router.push('/assets/databases')">数据库管理</el-button>
+          <el-button link type="primary" @click="router.push('/assets/databases')">Database 관리</el-button>
         </div>
 
         <el-table :data="overview.recentDatabases || []" size="small" class="compact-table">
-          <el-table-column label="数据库" min-width="180">
+          <el-table-column label="Database" min-width="180">
             <template #default="{ row }">
               <button class="link-button" @click="openDatabase(row)">{{ row.name }}</button>
               <small class="sub-line">{{ row.dbName || '-' }}</small>
             </template>
           </el-table-column>
-          <el-table-column label="地址" min-width="180">
+          <el-table-column label="주소" min-width="180">
             <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
           </el-table-column>
-          <el-table-column label="类型" width="90">
+          <el-table-column label="유형" width="90">
             <template #default="{ row }">{{ (row.dbType || '').toUpperCase() || '-' }}</template>
           </el-table-column>
-          <el-table-column label="连接状态" width="120">
+          <el-table-column label="연결 상태" width="120">
             <template #default="{ row }">
               <el-tag :type="databaseStatusType(row.connectStatus)" effect="light">
                 {{ databaseStatusText(row.connectStatus) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="更新时间" min-width="140">
+          <el-table-column label="수정 시간" min-width="140">
             <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
           </el-table-column>
         </el-table>

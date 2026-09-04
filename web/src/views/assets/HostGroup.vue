@@ -36,7 +36,7 @@ const treeProps = {
 const parentTreeOptions = computed(() => [
   {
     id: 0,
-    name: '根分组',
+    name: '루트 Group',
     children: form.id ? filterTree(cloneTree(treeData.value), form.id) : cloneTree(treeData.value)
   }
 ])
@@ -110,24 +110,24 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning('请输入主机组名称')
+    ElMessage.warning('Host Group 이름을 입력하십시오.')
     return
   }
   if (isEdit.value) {
     await updateAssetHostGroup(form)
-    ElMessage.success('主机组已更新')
+    ElMessage.success('Host Group을 수정했습니다.')
   } else {
     await addAssetHostGroup(form)
-    ElMessage.success('主机组已创建')
+    ElMessage.success('Host Group을 생성했습니다.')
   }
   dialogVisible.value = false
   await loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除主机组“${row.name}”吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Host Group “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
   await deleteAssetHostGroup(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -149,10 +149,10 @@ onMounted(loadData)
   <div class="page-card host-group-page asset-card-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">主机组管理</h2>
-        <p class="page-desc">按树形结构维护主机组，点击组名可直接进入该组内服务器列表。</p>
+        <h2 class="page-title">Host Group 관리</h2>
+        <p class="page-desc">트리 구조로 Host Group을 관리합니다. Group 이름을 클릭하면 해당 Group의 서버 목록으로 바로 이동합니다.</p>
       </div>
-      <el-button type="primary" @click="openCreate()">新增主机组</el-button>
+      <el-button type="primary" @click="openCreate()">Host Group 추가</el-button>
     </div>
 
     <div class="toolbar">
@@ -160,12 +160,12 @@ onMounted(loadData)
         <el-input
           v-model="query.keyword"
           clearable
-          placeholder="搜索主机组名称 / 编码"
+          placeholder="Host Group 이름 / Code 검색"
           style="width: 280px"
           @keyup.enter="loadData"
         />
-        <el-button type="primary" @click="loadData">搜索</el-button>
-        <el-button @click="resetQuery">重置</el-button>
+        <el-button type="primary" @click="loadData">검색</el-button>
+        <el-button @click="resetQuery">초기화</el-button>
       </div>
     </div>
 
@@ -178,7 +178,7 @@ onMounted(loadData)
       :tree-props="{ children: 'children' }"
       class="group-table"
     >
-      <el-table-column prop="name" label="主机组名称" min-width="240">
+      <el-table-column prop="name" label="Host Group 이름" min-width="240">
         <template #default="{ row }">
           <div class="group-name-cell">
             <span class="group-dot" />
@@ -186,37 +186,37 @@ onMounted(loadData)
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="code" label="编码" min-width="140" />
-      <el-table-column label="关联主机数" width="120" align="center">
+      <el-table-column prop="code" label="Code" min-width="140" />
+      <el-table-column label="연관 Host 수" width="120" align="center">
         <template #default="{ row }">
-          <el-tag type="info" >{{ row.hostCount || 0 }} 台</el-tag>
+          <el-tag type="info" >{{ row.hostCount || 0 }}대</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="sort" label="排序" width="90" align="center" />
-      <el-table-column label="状态" width="100" align="center">
+      <el-table-column prop="sort" label="정렬" width="90" align="center" />
+      <el-table-column label="상태" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="Number(row.status) === 1 ? 'success' : 'danger'" effect="light">
-            {{ Number(row.status) === 1 ? '正常' : '停用' }}
+            {{ Number(row.status) === 1 ? '정상' : '사용 중지' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="备注" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="updateTime" label="更新时间" min-width="170" />
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column prop="description" label="비고" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="updateTime" label="수정 시간" min-width="170" />
+      <el-table-column label="작업" width="260" fixed="right">
         <template #default="{ row }">
           <div class="action-row">
-            <el-button link type="primary" @click="openGroupHosts(row)">查看主机</el-button>
-            <el-button link type="primary" @click="openCreate(row.id)">新增子组</el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="primary" @click="openGroupHosts(row)">Host 조회</el-button>
+            <el-button link type="primary" @click="openCreate(row.id)">하위 Group 추가</el-button>
+            <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
           </div>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑主机组' : '新增主机组'" width="620px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Host Group 수정' : 'Host Group 추가'" width="620px">
       <el-form label-width="108px">
-        <el-form-item label="上级主机组">
+        <el-form-item label="상위 Host Group">
           <el-tree-select
             v-model="form.parentId"
             :data="parentTreeOptions"
@@ -227,31 +227,31 @@ onMounted(loadData)
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item v-if="isEdit" label="关联主机数">
-          <el-tag type="info">{{ form.hostCount || 0 }} 台主机</el-tag>
+        <el-form-item v-if="isEdit" label="연관 Host 수">
+          <el-tag type="info">Host {{ form.hostCount || 0 }}대</el-tag>
         </el-form-item>
-        <el-form-item label="主机组名称" required>
-          <el-input v-model="form.name" placeholder="请输入主机组名称" />
+        <el-form-item label="Host Group 이름" required>
+          <el-input v-model="form.name" placeholder="Host Group 이름을 입력하십시오." />
         </el-form-item>
-        <el-form-item label="编码">
-          <el-input v-model="form.code" placeholder="请输入主机组编码" />
+        <el-form-item label="Code">
+          <el-input v-model="form.code" placeholder="Host Group Code를 입력하십시오." />
         </el-form-item>
-        <el-form-item label="排序">
+        <el-form-item label="정렬">
           <el-input-number v-model="form.sort" :min="0" style="width: 180px" />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="상태">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">正常</el-radio>
-            <el-radio :value="2">停用</el-radio>
+            <el-radio :value="1">정상</el-radio>
+            <el-radio :value="2">사용 중지</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.description" type="textarea" :rows="4" placeholder="请输入备注信息" />
+        <el-form-item label="비고">
+          <el-input v-model="form.description" type="textarea" :rows="4" placeholder="비고를 입력하십시오." />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">취소</el-button>
+        <el-button type="primary" @click="submit">저장</el-button>
       </template>
     </el-dialog>
   </div>

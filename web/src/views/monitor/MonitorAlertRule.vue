@@ -99,7 +99,7 @@ const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertTyp
 const enabledOnPage = computed(() => rows.value.filter((item) => item.status === 1).length)
 const failedOnPage = computed(() => rows.value.filter((item) => item.lastEvalStatus === 'failed').length)
 const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? 'Duration 일괄 변경' : 'Evaluation Interval 일괄 변경')
-const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? '持续时间' : uiT('evaluationInterval'))
+const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? 'Duration' : uiT('evaluationInterval'))
 const batchTimingTip = computed(() => batchTimingAction.value === 'update_for_seconds'
   ? `Duration은 Metric Alert에만 적용됩니다. 선택한 ${selectedRuleIds.value.length}개 Rule 중 Log Alert는 변경되지 않습니다.`
   : `선택한 ${selectedRuleIds.value.length}개 Alert Rule의 Evaluation Frequency를 변경하고 새 Interval로 즉시 재예약합니다.`)
@@ -531,7 +531,7 @@ async function submit() {
       query: form.queryText,
       notifyRepeatIntervalSeconds: form.notifyRepeatIntervalMinutes * 60
     })
-    ElMessage.success('保存성공')
+    ElMessage.success('저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -593,9 +593,9 @@ async function handleRun(row) {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Alert Rule “${row.name}”을(를) 삭제하시겠습니까?`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Alert Rule “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
   await deleteMonitorAlertRule(row.id)
-  ElMessage.success('삭제성공')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -607,7 +607,7 @@ async function handleBatchStatus(status) {
   if (!selectedRuleIds.value.length) return
   const action = status === 1 ? 'enable' : 'disable'
   const label = status === 1 ? '활성화' : '비활성화'
-  await ElMessageBox.confirm(`선택한 Alert Rule ${selectedRuleIds.value.length}개를 일괄 ${label}하시겠습니까?`, '批量작업确认', { type: 'warning' })
+  await ElMessageBox.confirm(`선택한 Alert Rule ${selectedRuleIds.value.length}개를 일괄 ${label}하시겠습니까?`, '일괄 작업 확인', { type: 'warning' })
   batchLoading.value = true
   try {
     await batchUpdateMonitorAlertRules({ ids: selectedRuleIds.value, action })
@@ -721,7 +721,7 @@ onMounted(async () => {
     <section class="page-header">
       <div class="header-icon"><el-icon><Bell /></el-icon></div>
       <div class="header-copy">
-        <h2>告警Rule</h2>
+        <h2>Alert Rule</h2>
         <p>Datasource Scope, Trigger Condition, Notification Policy를 구성해 Metric과 Log Alert Lifecycle을 통합 관리합니다.</p>
       </div>
       <div class="header-metrics"><span>현재 Page 활성 <b>{{ enabledOnPage }}</b></span><span>Evaluation 실패 <b :class="{ danger: failedOnPage }">{{ failedOnPage }}</b></span></div>
@@ -755,8 +755,8 @@ onMounted(async () => {
 
     <div v-if="selectedRuleIds.length" v-loading="batchLoading" class="batch-toolbar">
       <span>선택됨 <b>{{ selectedRuleIds.length }}</b> 개 Rule</span>
-      <el-button size="small" type="success" @click="handleBatchStatus(1)">批量활성화</el-button>
-      <el-button size="small" type="warning" @click="handleBatchStatus(2)">批量비활성화</el-button>
+      <el-button size="small" type="success" @click="handleBatchStatus(1)">일괄 활성화</el-button>
+      <el-button size="small" type="warning" @click="handleBatchStatus(2)">일괄 비활성화</el-button>
       <el-button size="small" type="primary" plain @click="openBatchNotify">Notification 일괄 활성화</el-button>
       <el-button size="small" type="primary" @click="openBatchTiming('update_for_seconds')">Duration 일괄 변경</el-button>
       <el-button size="small" type="info" plain @click="openBatchTiming('update_eval_interval')">Evaluation Interval 일괄 변경</el-button>
@@ -772,7 +772,7 @@ onMounted(async () => {
       <el-table-column label="Trigger Condition" min-width="320" show-overflow-tooltip><template #default="{ row }"><div class="condition-cell"><code>{{ row.promql }}</code><span>{{ row.comparator }} {{ row.threshold }} · {{ row.alertType === 'metric' ? `Duration ${row.forSeconds || 0}초` : `Window ${row.logTimeRangeSeconds || 300}초` }}</span></div></template></el-table-column>
       <el-table-column :label="uiT('severity')" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" size="small">{{ row.severity }}</el-tag></template></el-table-column>
       <el-table-column label="Evaluation 상태" min-width="155"><template #default="{ row }"><div class="eval-cell"><span><el-tag :type="evalStatusType(row.lastEvalStatus)" size="small" effect="light">{{ evalStatusText(row.lastEvalStatus) }}</el-tag><em>{{ row.evalIntervalSeconds }}초마다</em></span><el-tooltip v-if="row.lastEvalMessage" :content="row.lastEvalMessage" placement="top"><small>{{ formatEvalTime(row.lastEvalAt) }}</small></el-tooltip><small v-else>{{ formatEvalTime(row.lastEvalAt) }}</small></div></template></el-table-column>
-      <el-table-column label="상태" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '활성화' : '停用' }}</el-tag></template></el-table-column>
+      <el-table-column label="상태" width="90" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small" effect="light">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag></template></el-table-column>
       <el-table-column label="Notification" width="108"><template #default="{ row }"><div class="notify-cell"><el-tag class="notification-state" :class="row.notifyEnabled ? 'is-notify-enabled' : 'is-notify-disabled'" size="small" effect="plain">{{ row.notifyEnabled ? '활성' : '비활성' }}</el-tag><span v-if="row.notifyEnabled">{{ formatNotifyInterval(row.notifyRepeatIntervalSeconds) }}</span></div></template></el-table-column>
       <el-table-column label="작업" width="168" fixed="right">
         <template #default="{ row }">
@@ -787,7 +787,7 @@ onMounted(async () => {
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(1040px, 94vw)" top="4vh" class="rule-editor-dialog" destroy-on-close>
-      <div class="editor-intro"><div><el-icon><Operation /></el-icon></div><span><strong>Execution Rule 구성</strong><small>新建和Rule 복제默认保存为停用상태，建议先测试再활성화。</small></span><el-button plain @click="openTemplateDialog">Alert Template 선택</el-button></div>
+      <div class="editor-intro"><div><el-icon><Operation /></el-icon></div><span><strong>Execution Rule 구성</strong><small>신규 생성과 Rule 복제는 기본적으로 비활성 상태로 저장되며, 활성화 전 테스트를 권장합니다.</small></span><el-button plain @click="openTemplateDialog">Alert Template 선택</el-button></div>
       <el-form label-position="top" class="rule-editor-form">
         <section class="form-section"><div class="section-heading"><span>01</span><div><strong>기본 정보</strong><small>Rule 이름, Type 및 활성 상태를 정의합니다.</small></div></div>
         <div class="form-grid"><el-form-item label="Rule 이름" required><el-input v-model="form.name" placeholder="예: Production Cluster Pod 이상" /></el-form-item><el-form-item label="Rule 상태"><el-radio-group v-model="form.status"><el-radio-button :label="2">비활성 / Draft</el-radio-button><el-radio-button :label="1">활성화</el-radio-button></el-radio-group></el-form-item></div>
@@ -806,7 +806,7 @@ onMounted(async () => {
               <el-radio-button label="all">모든 {{ alertTypeLabel }} Datasource Match</el-radio-button>
               <el-radio-button label="specific">지정 Datasource</el-radio-button>
             </el-radio-group>
-            <el-select v-if="form.datasourceScope === 'specific'" v-model="form.datasourceId" filterable style="width: 360px" placeholder="选择Datasource">
+            <el-select v-if="form.datasourceScope === 'specific'" v-model="form.datasourceId" filterable style="width: 360px" placeholder="Datasource 선택">
               <el-option v-for="item in availableDatasourceOptions" :key="item.id" :label="`${item.name} (${item.type})`" :value="item.id" />
             </el-select>
             <span v-else class="form-tip">활성화된 모든 {{ form.alertType === 'log' ? 'Elasticsearch' : 'Prometheus / VictoriaMetrics' }} Datasource에서 Rule을 각각 실행합니다.</span>
@@ -831,7 +831,7 @@ onMounted(async () => {
             <small>{{ isLogAlert ? 'Window 내 Match Log 수' : '개별 Time Series 현재 값' }}</small>
           </div>
           <div class="parameter-card">
-            <span>{{ isLogAlert ? 'Query Window' : '持续时间' }}</span>
+            <span>{{ isLogAlert ? 'Query Window' : 'Duration' }}</span>
             <div class="parameter-number"><el-input-number v-if="isLogAlert" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>초</b></div>
             <small>{{ isLogAlert ? '최근 Log 범위 집계' : '연속 Match 후 Trigger' }}</small>
           </div>
@@ -841,7 +841,7 @@ onMounted(async () => {
             <small>System Rule 실행 주기</small>
           </div>
         </section>
-        <el-form-item label="告警Severity"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" /></el-radio-group></el-form-item></section>
+        <el-form-item label="Alert Severity"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" /></el-radio-group></el-form-item></section>
 
         <section class="form-section"><div class="section-heading"><span>04</span><div><strong>Notification 및 Context</strong><small>Event Label, 대응 설명 및 Message Delivery Policy를 구성합니다.</small></div></div>
         <div class="json-grid"><el-form-item label="Label JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" placeholder='예: {"team":"game"}' /></el-form-item><el-form-item label="Annotation JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" placeholder='예: {"summary":"즉시 확인 필요"}' /></el-form-item></div>
@@ -852,7 +852,7 @@ onMounted(async () => {
         <div v-if="form.notifyEnabled" class="notify-settings"><el-form-item label="NotificationRule" required><el-select v-model="form.notifyRuleId" filterable style="width: 100%"><el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><div class="form-grid"><el-form-item label="Repeat Notification Interval"><div class="parameter-number"><el-input-number v-model="form.notifyRepeatIntervalMinutes" :min="1" :max="10080" controls-position="right" /><b>분</b></div></el-form-item><el-form-item label="Maximum Send Count"><el-input-number v-model="form.maxNotifyCount" :min="0" :max="1000" controls-position="right" /><div class="form-tip">0은 횟수 제한 없음을 의미합니다.</div></el-form-item></div><el-form-item label="Recovery Notification"><el-switch v-model="form.notifyRecoveryEnabled" /></el-form-item></div>
         <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="영향 범위, 대응 권고 또는 On-call 설명" /></el-form-item></section>
       </el-form>
-      <template #footer><div class="rule-editor-footer"><span>建议先执行测试，确认조회和Threshold符合预期。</span><div><el-button @click="dialogVisible = false">취소</el-button><el-button :loading="previewLoading" @click="handlePreview">Rule Test</el-button><el-button type="primary" :loading="saving" @click="submit">Rule 저장</el-button></div></div></template>
+      <template #footer><div class="rule-editor-footer"><span>테스트를 먼저 실행해 조회와 Threshold가 예상대로인지 확인하십시오.</span><div><el-button @click="dialogVisible = false">취소</el-button><el-button :loading="previewLoading" @click="handlePreview">Rule Test</el-button><el-button type="primary" :loading="saving" @click="submit">Rule 저장</el-button></div></div></template>
     </el-dialog>
 
     <el-dialog v-model="previewVisible" title="Rule Execution Preview" width="920px" append-to-body>
@@ -871,7 +871,7 @@ onMounted(async () => {
             <el-tag :type="item.status === 'success' ? 'success' : 'danger'">{{ item.status === 'success' ? 'Query 성공' : 'Query 실패' }}</el-tag>
           </div>
           <el-alert v-if="item.error" :title="item.error" type="error" :closable="false" />
-          <el-table v-else :data="item.samples || []" border max-height="300" empty-text="Query 성공，但没有返回时间序列">
+          <el-table v-else :data="item.samples || []" border max-height="300" empty-text="Query는 성공했지만 Time Series가 반환되지 않았습니다">
             <el-table-column label="Trigger 여부" width="100"><template #default="{ row }"><el-tag :type="row.matched ? 'danger' : 'success'">{{ row.matched ? '조건 충족' : '미발생' }}</el-tag></template></el-table-column>
             <el-table-column label="현재 값" width="140"><template #default="{ row }">{{ Number(row.value || 0).toFixed(4) }}</template></el-table-column>
             <el-table-column label="Label" min-width="480" show-overflow-tooltip><template #default="{ row }">{{ sampleLabel(row.labels) }}</template></el-table-column>
@@ -909,7 +909,7 @@ onMounted(async () => {
     </el-dialog>
 
     <el-dialog v-model="batchNotifyVisible" title="Notification 일괄 활성화" width="640px" append-to-body>
-      <p class="batch-dialog-tip">将为已选中的 {{ selectedRuleIds.length }} 개告警Rule활성Notification，并统一应用以下Notification策略。</p>
+      <p class="batch-dialog-tip">선택한 {{ selectedRuleIds.length }}개 Alert Rule에 Notification을 활성화하고 다음 Notification 정책을 일괄 적용합니다.</p>
       <el-form label-position="top" class="batch-notify-form">
         <el-form-item label="NotificationRule" required>
           <el-select v-model="batchNotifyRuleId" filterable style="width: 100%" placeholder="Notification Rule을 선택하십시오.">
@@ -949,7 +949,7 @@ onMounted(async () => {
             <span>초</span>
           </div>
         </el-form-item>
-        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? '0초는 조건 Match 즉시 Trigger를 의미하며 최대 24시간입니다.' : 'Evaluation Interval最短 15초，最长 1시간。' }}</div>
+        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? '0초는 조건 Match 즉시 Trigger를 의미하며 최대 24시간입니다.' : 'Evaluation Interval은 최소 15초, 최대 1시간입니다.' }}</div>
       </el-form>
       <template #footer><el-button @click="batchTimingVisible = false">취소</el-button><el-button type="primary" :loading="batchTimingSaving" @click="submitBatchTiming">변경 저장</el-button></template>
     </el-dialog>

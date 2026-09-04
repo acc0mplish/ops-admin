@@ -751,7 +751,7 @@ function selectedSQLText() {
 
 function isProductionEnvironment(value) {
   const environment = String(value || '').toLowerCase()
-  return environment.includes('prod') || environment.includes('\u751f\u4ea7')
+  return environment.includes('prod') || environment.includes('운영')
 }
 
 function sqlConfirmationText() {

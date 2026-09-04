@@ -33,12 +33,12 @@ function search() { query.pageNum = 1; loadData() }
 function reset() { Object.assign(query, { pageNum: 1, appId: undefined, env: '', status: '', keyword: '' }); dateRange.value = []; loadData() }
 function toggleStatus(status) { query.status = query.status === status ? '' : status; search() }
 function statusType(status) { return ({ success: 'success', running: 'warning', failed: 'danger', waiting: 'info' })[status] || 'info' }
-function statusText(status) { return ({ success: '成功', running: '执行中', failed: '失败', waiting: '等待' })[status] || status || '-' }
-function stageText(stage) { return ({ checkout: '拉取代码', build: '应用构建', post_build: '构建后操作', prepare: '准备执行', done: '已完成' })[stage] || stage || '-' }
-function sourceText(row) { return row.repoType === 'svn' ? 'SVN 更新' : 'Git 拉取' }
+function statusText(status) { return ({ success: '성공', running: '실행 중', failed: '실패', waiting: '대기' })[status] || status || '-' }
+function stageText(stage) { return ({ checkout: 'Source Checkout', build: 'Build', post_build: 'Build 후 작업', prepare: '실행 준비', done: '완료' })[stage] || stage || '-' }
+function sourceText(row) { return row.repoType === 'svn' ? 'SVN Update' : 'Git Checkout' }
 function versionText(row) { return row.repoType === 'svn' ? (row.branch || 'HEAD') : (row.branch || '-') }
-function durationText(ms) { if (!ms) return '-'; const seconds = Math.max(0, Math.round(ms / 1000)); return seconds < 60 ? `${seconds}秒` : `${Math.floor(seconds / 60)}分${seconds % 60}秒` }
-function releaseTitle(row) { return `${row.buildTaskName || row.appName || '构建任务'} #${row.id || ''}` }
+function durationText(ms) { if (!ms) return '-'; const seconds = Math.max(0, Math.round(ms / 1000)); return seconds < 60 ? `${seconds}초` : `${Math.floor(seconds / 60)}분${seconds % 60}초` }
+function releaseTitle(row) { return `${row.buildTaskName || row.appName || 'Build Task'} #${row.id || ''}` }
 function stages(row) {
   const stateFor = (name) => {
     if (row.status === 'failed' && row.stage === name) return 'failed'
@@ -46,8 +46,8 @@ function stages(row) {
     if ((name === 'build' && row.stage === 'checkout') || (name === 'post_build' && ['checkout', 'build'].includes(row.stage))) return 'waiting'
     return row.status === 'waiting' ? 'waiting' : 'success'
   }
-  const list = [{ key: 'checkout', name: sourceText(row) }, { key: 'build', name: '应用构建' }]
-  if (row.deployLog || row.stage === 'post_build') list.push({ key: 'post_build', name: '构建后操作' })
+  const list = [{ key: 'checkout', name: sourceText(row) }, { key: 'build', name: 'Build' }]
+  if (row.deployLog || row.stage === 'post_build') list.push({ key: 'post_build', name: 'Build 후 작업' })
   return list.map((item) => ({ ...item, status: stateFor(item.key) }))
 }
 const detailLogs = computed(() => {
@@ -92,12 +92,12 @@ async function openDetail(row) {
   } finally { detailLoading.value = false }
 }
 async function retry(row) {
-  await ElMessageBox.confirm(`将按「${releaseTitle(row)}」的任务、分支和原始参数重新执行构建。`, '确认重试构建', { type: 'warning', confirmButtonText: '立即重试' })
+  await ElMessageBox.confirm(`"${releaseTitle(row)}"의 Task, Branch와 원본 Parameter로 Build를 다시 실행합니다.`, 'Build 재시도 확인', { type: 'warning', confirmButtonText: '즉시 재시도' })
   await retryOpsAppRelease(row.id)
-  ElMessage.success('已创建新的构建任务')
+  ElMessage.success('새 Build Task를 생성했습니다')
   await loadData()
 }
-async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('日志已复制') }
+async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('Log를 복제했습니다') }
 function downloadLog() { const blob = new Blob([detailLogs.value || ''], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = logFileName.value; link.click(); URL.revokeObjectURL(url) }
 watch(detailVisible, (visible) => { if (!visible) stopDetailPolling() })
 onBeforeUnmount(stopDetailPolling)
@@ -106,36 +106,36 @@ onMounted(async () => { if (route.query.appId) query.appId = Number(route.query.
 
 <template>
   <div class="history-page">
-    <div class="app-header"><div><h1>构建历史</h1><p>集中查看构建状态、失败原因与完整日志。</p></div><el-button @click="loadData">刷新</el-button></div>
+    <div class="app-header"><div><h1>Build History</h1><p>Build 상태, 실패 원인과 전체 Log를 한 곳에서 확인합니다.</p></div><el-button @click="loadData">새로고침</el-button></div>
     <section class="filter-panel">
       <div class="filter-main">
-        <el-select v-model="query.appId" clearable filterable placeholder="全部应用"><el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select>
-        <el-select v-model="query.env" clearable placeholder="全部环境"><el-option label="dev" value="dev" /><el-option label="test" value="test" /><el-option label="prod" value="prod" /></el-select>
-        <el-date-picker v-model="dateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间" />
-        <el-input v-model="query.keyword" clearable placeholder="搜索任务、版本、摘要" @keyup.enter="search" />
-        <el-button type="primary" @click="search">搜索</el-button><el-button @click="reset">重置</el-button>
+        <el-select v-model="query.appId" clearable filterable placeholder="전체 Application"><el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select>
+        <el-select v-model="query.env" clearable placeholder="전체 Environment"><el-option label="dev" value="dev" /><el-option label="test" value="test" /><el-option label="prod" value="prod" /></el-select>
+        <el-date-picker v-model="dateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" start-placeholder="시작 시각" end-placeholder="종료 시각" />
+        <el-input v-model="query.keyword" clearable placeholder="Task, Version, Summary 검색" @keyup.enter="search" />
+        <el-button type="primary" @click="search">검색</el-button><el-button @click="reset">초기화</el-button>
       </div>
-      <div class="quick-filters"><span>快速筛选</span><el-button :type="query.status === 'running' ? 'warning' : 'default'" plain @click="toggleStatus('running')">执行中</el-button><el-button :type="query.status === 'failed' ? 'danger' : 'default'" plain @click="toggleStatus('failed')">仅看失败</el-button><el-button :type="query.status === 'success' ? 'success' : 'default'" plain @click="toggleStatus('success')">仅看成功</el-button></div>
+      <div class="quick-filters"><span>빠른 필터</span><el-button :type="query.status === 'running' ? 'warning' : 'default'" plain @click="toggleStatus('running')">실행 중</el-button><el-button :type="query.status === 'failed' ? 'danger' : 'default'" plain @click="toggleStatus('failed')">실패만 보기</el-button><el-button :type="query.status === 'success' ? 'success' : 'default'" plain @click="toggleStatus('success')">성공만 보기</el-button></div>
     </section>
     <section v-loading="loading" class="history-list">
-      <el-empty v-if="!rows.length" description="暂无符合条件的构建记录" />
+      <el-empty v-if="!rows.length" description="조건에 맞는 Build 기록이 없습니다" />
       <el-table v-else :data="rows" class="history-table">
-        <el-table-column label="状态" width="104"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-        <el-table-column label="任务 / 应用" min-width="220"><template #default="{ row }"><div class="task-cell"><strong>{{ releaseTitle(row) }}</strong><span>{{ row.appName || '-' }} · {{ row.env || '-' }}</span></div></template></el-table-column>
-        <el-table-column label="代码版本" min-width="170"><template #default="{ row }"><div class="code-cell"><span>{{ row.repoType === 'svn' ? 'SVN' : 'Git' }} · {{ versionText(row) }}</span><code>{{ row.commitId || '尚未获取提交版本' }}</code></div></template></el-table-column>
-        <el-table-column label="当前阶段" min-width="220"><template #default="{ row }"><div class="stage-cell"><strong>{{ stageText(row.stage) }}</strong><span>{{ row.summary || '-' }}</span></div></template></el-table-column>
-        <el-table-column label="开始时间" prop="createTime" width="190" /><el-table-column label="耗时" width="100"><template #default="{ row }">{{ durationText(row.durationMs) }}</template></el-table-column>
-        <el-table-column label="操作" width="156" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">查看详情</el-button><el-button v-if="row.status === 'failed' && row.buildTaskId" link type="danger" @click="retry(row)">重试</el-button></template></el-table-column>
+        <el-table-column label="상태" width="104"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+        <el-table-column label="Task / Application" min-width="220"><template #default="{ row }"><div class="task-cell"><strong>{{ releaseTitle(row) }}</strong><span>{{ row.appName || '-' }} · {{ row.env || '-' }}</span></div></template></el-table-column>
+        <el-table-column label="Code Version" min-width="170"><template #default="{ row }"><div class="code-cell"><span>{{ row.repoType === 'svn' ? 'SVN' : 'Git' }} · {{ versionText(row) }}</span><code>{{ row.commitId || 'Commit Version 미확인' }}</code></div></template></el-table-column>
+        <el-table-column label="현재 Stage" min-width="220"><template #default="{ row }"><div class="stage-cell"><strong>{{ stageText(row.stage) }}</strong><span>{{ row.summary || '-' }}</span></div></template></el-table-column>
+        <el-table-column label="시작 시각" prop="createTime" width="190" /><el-table-column label="소요 시간" width="100"><template #default="{ row }">{{ durationText(row.durationMs) }}</template></el-table-column>
+        <el-table-column label="작업" width="156" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">상세 조회</el-button><el-button v-if="row.status === 'failed' && row.buildTaskId" link type="danger" @click="retry(row)">재시도</el-button></template></el-table-column>
       </el-table>
       <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" :total="total" @current-change="loadData" @size-change="search" /></div>
     </section>
     <el-drawer v-model="detailVisible" :title="releaseTitle(currentDetail)" size="min(760px, 100vw)" class="build-detail-drawer">
       <div v-loading="detailLoading" class="detail-content"><template v-if="currentDetail.id">
-        <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>耗时 {{ durationText(currentDetail.durationMs) }}</strong></div>
-        <div class="detail-meta"><span>应用<b>{{ currentDetail.appName || '-' }}</b></span><span>环境<b>{{ currentDetail.env || '-' }}</b></span><span>代码版本<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>提交版本<b>{{ currentDetail.commitId || '-' }}</b></span><span>执行路径<b>{{ currentDetail.workspace || '-' }}</b></span><span>开始时间<b>{{ currentDetail.createTime || '-' }}</b></span></div>
-        <section class="detail-section"><div class="section-head"><strong>构建阶段</strong><span>当前：{{ stageText(currentDetail.stage) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
-        <section class="detail-section"><div class="section-head"><strong>完整日志</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="搜索日志" /><el-button link type="primary" @click="copyLog">复制</el-button><el-button link type="primary" @click="downloadLog">下载</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || '暂无日志输出' }}</pre></section>
-        <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">按原配置重试</el-button></div>
+        <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>소요 시간 {{ durationText(currentDetail.durationMs) }}</strong></div>
+        <div class="detail-meta"><span>Application<b>{{ currentDetail.appName || '-' }}</b></span><span>Environment<b>{{ currentDetail.env || '-' }}</b></span><span>Code Version<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>Commit Version<b>{{ currentDetail.commitId || '-' }}</b></span><span>실행 Path<b>{{ currentDetail.workspace || '-' }}</b></span><span>시작 시각<b>{{ currentDetail.createTime || '-' }}</b></span></div>
+        <section class="detail-section"><div class="section-head"><strong>Build Stage</strong><span>현재: {{ stageText(currentDetail.stage) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
+        <section class="detail-section"><div class="section-head"><strong>전체 Log</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="Log 검색" /><el-button link type="primary" @click="copyLog">복제</el-button><el-button link type="primary" @click="downloadLog">Download</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || 'Log 출력 없음' }}</pre></section>
+        <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">원본 구성으로 재시도</el-button></div>
       </template></div>
     </el-drawer>
   </div>

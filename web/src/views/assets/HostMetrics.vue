@@ -8,12 +8,12 @@ const customRange = ref([])
 const loading = ref(false)
 const data = ref({ metrics: {}, status: 'unavailable' })
 const ranges = [
-  ['1h', '\u0031\u5c0f\u65f6'], ['3h', '\u0033\u5c0f\u65f6'], ['6h', '\u0036\u5c0f\u65f6'], ['12h', '\u0031\u0032\u5c0f\u65f6'],
-  ['1d', '\u0031\u5929'], ['3d', '\u0033\u5929'], ['7d', '\u0037\u5929'], ['14d', '\u0031\u0034\u5929'], ['custom', '\u81ea\u5b9a\u4e49']
+  ['1h', '1시간'], ['3h', '3시간'], ['6h', '6시간'], ['12h', '12시간'],
+  ['1d', '1일'], ['3d', '3일'], ['7d', '7일'], ['14d', '14일'], ['custom', '직접 지정']
 ]
 const metricCards = [
-  ['cpu', 'CPU\u4f7f\u7528\u7387', '#4f7cff'], ['memory', '\u5185\u5b58\u4f7f\u7528\u7387', '#28b889'],
-  ['disk', '\u78c1\u76d8\u4f7f\u7528\u7387', '#f0a04a'], ['io', 'IO\u8d1f\u8f7d', '#8c67e8']
+  ['cpu', 'CPU 사용률', '#4f7cff'], ['memory', '메모리 사용률', '#28b889'],
+  ['disk', '디스크 사용률', '#f0a04a'], ['io', 'IO 부하', '#8c67e8']
 ]
 const hasMetrics = computed(() => metricCards.some(([key]) => (data.value.metrics?.[key]?.points || []).length))
 const queryError = computed(() => Object.values(data.value.errors || {})[0] || '')

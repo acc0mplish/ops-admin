@@ -95,7 +95,7 @@ function openDatasourceCreate() {
 
 async function saveDatasource() {
   if (!datasourceForm.name.trim() || !datasourceForm.url.trim()) {
-    ElMessage.warning('请填写数据源名称和地址')
+    ElMessage.warning('Datasource 이름과 주소를 입력하십시오.')
     return
   }
   datasourceSaving.value = true
@@ -105,7 +105,7 @@ async function saveDatasource() {
     const created = datasourceOptions.value.find((item) => item.name === datasourceForm.name.trim() && item.url === datasourceForm.url.trim().replace(/\/$/, ''))
     form.monitorDatasourceId = created?.id
     datasourceDialogVisible.value = false
-    ElMessage.success('数据源已创建并绑定到当前集群')
+    ElMessage.success('Datasource를 생성하고 현재 Cluster에 바인딩했습니다.')
   } finally {
     datasourceSaving.value = false
   }
@@ -143,7 +143,7 @@ async function submit() {
     return
   }
   if (form.connectionMode === 'gateway' && !form.gatewayId) {
-    ElMessage.warning('请选择访问网关')
+    ElMessage.warning('접속 Gateway를 선택하십시오.')
     return
   }
 
@@ -202,7 +202,7 @@ onMounted(async () => {
         <p>{{ t('k8sManageDesc') }}</p>
       </div>
       <div class="header-actions">
-        <el-select v-model="selectedEnv" clearable placeholder="全部环境" style="width: 160px">
+        <el-select v-model="selectedEnv" clearable placeholder="전체 Environment" style="width: 160px">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
         <el-button :icon="Refresh" @click="loadClusters">{{ t('k8sRefresh') }}</el-button>
@@ -213,7 +213,7 @@ onMounted(async () => {
     <section v-loading="loading" class="table-panel">
       <el-table :data="filteredClusters" class="cluster-table">
         <el-table-column :label="t('k8sClusterName')" min-width="180"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button></template></el-table-column>
-        <el-table-column label="环境" width="120">
+        <el-table-column label="Environment" width="120">
           <template #default="{ row }">
             <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
           </template>
@@ -226,13 +226,13 @@ onMounted(async () => {
         <el-table-column prop="apiServer" :label="t('k8sApiServer')" min-width="260" />
         <el-table-column prop="version" :label="t('k8sVersion')" width="140" />
         <el-table-column prop="nodeCount" :label="t('k8sNodeCount')" width="100" />
-        <el-table-column label="监控数据源" min-width="160">
-          <template #default="{ row }">{{ row.monitorDatasourceName || '未绑定' }}</template>
+        <el-table-column label="Monitoring Datasource" min-width="160">
+          <template #default="{ row }">{{ row.monitorDatasourceName || '미바인딩' }}</template>
         </el-table-column>
-        <el-table-column label="访问方式" min-width="150">
+        <el-table-column label="접속 방식" min-width="150">
           <template #default="{ row }">
-            <span v-if="row.connectionMode === 'gateway'">网关：{{ row.gatewayName || row.gatewayId || '-' }}</span>
-            <span v-else>直连</span>
+            <span v-if="row.connectionMode === 'gateway'">Gateway: {{ row.gatewayName || row.gatewayId || '-' }}</span>
+            <span v-else>직접 연결</span>
           </template>
         </el-table-column>
         <el-table-column prop="description" :label="t('k8sDescription')" min-width="180" show-overflow-tooltip />
@@ -254,8 +254,8 @@ onMounted(async () => {
         <el-form-item :label="t('k8sClusterName')" required>
           <el-input v-model="form.name" :placeholder="t('k8sClusterNamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="所属环境" required>
-          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+        <el-form-item label="소속 Environment" required>
+          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
           </el-select>
         </el-form-item>
@@ -269,29 +269,29 @@ onMounted(async () => {
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="连接方式">
+            <el-form-item label="연결 방식">
               <el-radio-group v-model="form.connectionMode">
-                <el-radio-button label="direct">直连</el-radio-button>
-                <el-radio-button label="gateway">通过网关</el-radio-button>
+                <el-radio-button label="direct">직접 연결</el-radio-button>
+                <el-radio-button label="gateway">Gateway 사용</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col v-if="form.connectionMode === 'gateway'" :span="12">
-            <el-form-item label="访问网关" required>
-              <el-select v-model="form.gatewayId" filterable placeholder="请选择网关" style="width: 100%">
+            <el-form-item label="접속 Gateway" required>
+              <el-select v-model="form.gatewayId" filterable placeholder="Gateway를 선택하십시오" style="width: 100%">
                 <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="监控数据源">
+        <el-form-item label="Monitoring Datasource">
           <div class="datasource-binding-control">
-            <el-select v-model="form.monitorDatasourceId" clearable filterable placeholder="选择 Prometheus / VictoriaMetrics" style="flex: 1">
+            <el-select v-model="form.monitorDatasourceId" clearable filterable placeholder="Prometheus / VictoriaMetrics 선택" style="flex: 1">
               <el-option v-for="item in datasourceOptions" :key="item.id" :label="`${item.name} · ${item.type}`" :value="item.id" />
             </el-select>
-            <el-button plain @click="openDatasourceCreate">新建自定义数据源</el-button>
+            <el-button plain @click="openDatasourceCreate">새 사용자 정의 Datasource</el-button>
           </div>
-          <div class="form-hint">Pod CPU、内存监控只使用此集群绑定的数据源；不绑定时不会查询全局默认数据源。</div>
+          <div class="form-hint">Pod CPU, Memory 모니터링은 이 Cluster에 바인딩된 Datasource만 사용합니다. 바인딩하지 않으면 전역 기본 Datasource를 조회하지 않습니다.</div>
         </el-form-item>
         <el-form-item :label="t('k8sKubeConfig')" required>
           <el-input
@@ -308,17 +308,17 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="datasourceDialogVisible" title="新增自定义监控数据源" width="620px" append-to-body>
+    <el-dialog v-model="datasourceDialogVisible" title="새 사용자 정의 Monitoring Datasource" width="620px" append-to-body>
       <el-form label-width="110px">
-        <el-form-item label="名称" required><el-input v-model="datasourceForm.name" placeholder="例如：测试集群 Prometheus" /></el-form-item>
-        <el-form-item label="类型"><el-radio-group v-model="datasourceForm.type"><el-radio-button label="prometheus">Prometheus</el-radio-button><el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button></el-radio-group></el-form-item>
-        <el-form-item label="地址" required><el-input v-model="datasourceForm.url" placeholder="http://prometheus:9090" /></el-form-item>
-        <el-form-item label="认证方式"><el-select v-model="datasourceForm.authType" style="width: 100%"><el-option label="无认证" value="none" /><el-option label="Basic Auth" value="basic" /><el-option label="Bearer Token" value="bearer" /></el-select></el-form-item>
-        <el-form-item v-if="datasourceForm.authType === 'basic'" label="用户名"><el-input v-model="datasourceForm.username" /></el-form-item>
-        <el-form-item v-if="datasourceForm.authType === 'basic'" label="密码"><el-input v-model="datasourceForm.password" type="password" show-password /></el-form-item>
+        <el-form-item label="이름" required><el-input v-model="datasourceForm.name" placeholder="예: 테스트 Cluster Prometheus" /></el-form-item>
+        <el-form-item label="Type"><el-radio-group v-model="datasourceForm.type"><el-radio-button label="prometheus">Prometheus</el-radio-button><el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button></el-radio-group></el-form-item>
+        <el-form-item label="주소" required><el-input v-model="datasourceForm.url" placeholder="http://prometheus:9090" /></el-form-item>
+        <el-form-item label="인증 방식"><el-select v-model="datasourceForm.authType" style="width: 100%"><el-option label="인증 없음" value="none" /><el-option label="Basic Auth" value="basic" /><el-option label="Bearer Token" value="bearer" /></el-select></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" label="사용자 이름"><el-input v-model="datasourceForm.username" /></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" label="비밀번호"><el-input v-model="datasourceForm.password" type="password" show-password /></el-form-item>
         <el-form-item v-if="datasourceForm.authType === 'bearer'" label="Token"><el-input v-model="datasourceForm.token" type="password" show-password /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="datasourceDialogVisible = false">取消</el-button><el-button type="primary" :loading="datasourceSaving" @click="saveDatasource">创建并绑定</el-button></template>
+      <template #footer><el-button @click="datasourceDialogVisible = false">취소</el-button><el-button type="primary" :loading="datasourceSaving" @click="saveDatasource">생성 후 바인딩</el-button></template>
     </el-dialog>
   </div>
 </template>

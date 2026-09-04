@@ -335,17 +335,17 @@ const podWorkloadOptions = computed(() => {
     const value = podWorkloadFilterValue(pod)
     const item = grouped.get(value) || {
       value,
-      label: pod.workloadName || '独立 Pod',
+      label: pod.workloadName || '독립 Pod',
       count: 0
     }
     item.count += 1
     grouped.set(value, item)
   }
   return [
-    { value: '__all__', label: '全部工作负载' },
+    { value: '__all__', label: '전체 Workload' },
     ...Array.from(grouped.values())
       .sort((left, right) => left.label.localeCompare(right.label))
-      .map((item) => ({ ...item, label: `${item.label}（${item.count}）` }))
+      .map((item) => ({ ...item, label: `${item.label}(${item.count})` }))
   ]
 })
 
@@ -639,7 +639,7 @@ function openImageVersionDialog() {
 
 function handleWorkloadBatchCommand(command) {
   if (!selectedWorkloads.value.length) {
-    ElMessage.warning('请先选择工作负载')
+    ElMessage.warning('먼저 Workload를 선택하십시오.')
     return
   }
   if (command === 'images') return openImageVersionDialog()
@@ -658,18 +658,18 @@ async function submitBatchScale() {
   if (!cluster.value?.id) return
   const targets = selectedWorkloads.value.filter((item) => supportsScale(item))
   if (!targets.length) {
-    ElMessage.warning('所选工作负载均不支持伸缩')
+    ElMessage.warning('선택한 Workload 중 Scale을 지원하는 항목이 없습니다')
     return
   }
   try {
-    await ElMessageBox.confirm(`确认将选中的 ${targets.length} 个工作负载统一伸缩至 ${batchScaleForm.replicas} 个副本？`, '确认批量伸缩', { type: 'warning', confirmButtonText: '确认伸缩', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`선택한 ${targets.length}개 Workload를 ${batchScaleForm.replicas}개 Replica로 일괄 Scale하시겠습니까?`, '일괄 Scale 확인', { type: 'warning', confirmButtonText: 'Scale 실행', cancelButtonText: '취소' })
   } catch {
     return
   }
   batchScaleSaving.value = true
   try {
     await Promise.all(targets.map((item) => scaleK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name, replicas: Number(batchScaleForm.replicas) })))
-    ElMessage.success(`已提交 ${targets.length} 个工作负载的伸缩操作`)
+    ElMessage.success(`${targets.length}개 Workload의 Scale 작업을 제출했습니다`)
     batchScaleDialogVisible.value = false
     selectedWorkloads.value = []
     await refreshCurrentClusterData()
@@ -682,16 +682,16 @@ async function submitBatchWorkloadRestart() {
   if (!cluster.value?.id) return
   const targets = selectedWorkloads.value.filter((item) => supportsRestart(item))
   if (!targets.length) {
-    ElMessage.warning('所选工作负载均不支持重启')
+    ElMessage.warning('선택한 Workload 중 Restart를 지원하는 항목이 없습니다')
     return
   }
   try {
-    await ElMessageBox.confirm(`确认重启选中的 ${targets.length} 个工作负载？这会触发滚动更新。`, '确认批量重启', { type: 'warning', confirmButtonText: '确认重启', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`선택한 ${targets.length}개 Workload를 Restart하시겠습니까? 이 작업은 Rolling Update를 트리거합니다.`, '일괄 Restart 확인', { type: 'warning', confirmButtonText: 'Restart 실행', cancelButtonText: '취소' })
   } catch {
     return
   }
   await Promise.all(targets.map((item) => restartK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name })))
-  ElMessage.success(`已提交 ${targets.length} 个工作负载的重启操作`)
+  ElMessage.success(`${targets.length}개 Workload의 Restart 작업을 제출했습니다`)
   selectedWorkloads.value = []
   await refreshCurrentClusterData()
 }
@@ -699,12 +699,12 @@ async function submitBatchWorkloadRestart() {
 async function handleDeleteWorkload(row) {
   if (!cluster.value?.id || !row?.namespace || !row?.name) return
   try {
-    await ElMessageBox.confirm(`确认删除工作负载 ${row.namespace}/${row.name}？此操作不可恢复。`, '确认删除工作负载', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`Workload ${row.namespace}/${row.name}을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`, 'Workload 삭제 확인', { type: 'warning', confirmButtonText: '삭제', cancelButtonText: '취소' })
   } catch {
     return
   }
   await deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: row.namespace, name: row.name, workloadType: row.type })
-  ElMessage.success(`工作负载 ${row.name} 已删除`)
+  ElMessage.success(`Workload ${row.name}을(를) 삭제했습니다.`)
   await refreshCurrentClusterData()
 }
 
@@ -712,12 +712,12 @@ async function submitBatchWorkloadDelete() {
   if (!cluster.value?.id) return
   const targets = [...selectedWorkloads.value]
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${targets.length} 个工作负载？删除后不可恢复。`, '确认批量删除', { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`선택한 ${targets.length}개 Workload를 삭제하시겠습니까? 삭제 후 되돌릴 수 없습니다.`, '일괄 삭제 확인', { type: 'error', confirmButtonText: '삭제', cancelButtonText: '취소' })
   } catch {
     return
   }
   await Promise.all(targets.map((item) => deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: item.namespace, name: item.name, workloadType: item.type })))
-  ElMessage.success(`已删除 ${targets.length} 个工作负载`)
+  ElMessage.success(`${targets.length}개 Workload를 삭제했습니다.`)
   selectedWorkloads.value = []
   await refreshCurrentClusterData()
 }
@@ -1420,7 +1420,7 @@ function removeServicePort(index) {
 async function submitServiceEdit() {
   if (!cluster.value?.id) return
   if (serviceEditForm.type !== 'ExternalName' && !serviceEditForm.ports.length) {
-    ElMessage.warning('请至少保留一个服务端口')
+    ElMessage.warning('Service Port를 최소 1개 이상 유지해야 합니다')
     return
   }
   const selector = Object.fromEntries(serviceEditForm.selectors
@@ -1446,7 +1446,7 @@ async function submitServiceEdit() {
         targetPort: String(port.targetPort || port.port), nodePort: Number(port.nodePort) || 0
       }))
     })
-    ElMessage.success(`服务 ${serviceEditForm.name} 已更新`)
+    ElMessage.success(`Service ${serviceEditForm.name}을(를) 업데이트했습니다.`)
     serviceEditVisible.value = false
     await refreshCurrentClusterData()
     if (serviceDetail.value?.name === serviceEditForm.name && serviceDetail.value?.namespace === serviceEditForm.namespace) {
@@ -1460,9 +1460,9 @@ async function submitServiceEdit() {
 async function copyServiceName(row) {
   try {
     await navigator.clipboard.writeText(row.name)
-    ElMessage.success(`已复制服务名称：${row.name}`)
+    ElMessage.success(`Service 이름을 복제했습니다: ${row.name}`)
   } catch (error) {
-    ElMessage.warning('无法访问剪贴板，请手动复制服务名称')
+    ElMessage.warning('Clipboard에 접근할 수 없습니다. Service 이름을 직접 복제하십시오.')
   }
 }
 
@@ -1478,8 +1478,8 @@ function handlePodPageChange(page) {
 async function handleDeletePod(row) {
   if (!cluster.value?.id || !row?.namespace || !row?.name) return
   await ElMessageBox.confirm(
-    `确认删除 Pod ${row.namespace}/${row.name}？`,
-    '确认删除',
+    `Pod ${row.namespace}/${row.name}을(를) 삭제하시겠습니까?`,
+    '삭제 확인',
     {
       type: 'warning',
       confirmButtonText: t('k8sDelete'),
@@ -1492,7 +1492,7 @@ async function handleDeletePod(row) {
     namespace: row.namespace,
     name: row.name
   })
-  ElMessage.success('Pod 已删除')
+  ElMessage.success('Pod을(를) 삭제했습니다.')
   if (podDrawerVisible.value && podDetail.value?.name === row.name && podDetail.value?.namespace === row.namespace) {
     podDrawerVisible.value = false
   }
@@ -1544,7 +1544,7 @@ async function submitWorkloadResourceSettings() {
   workloadResourceSaving.value = true
   try {
     await updateK8sWorkloadResources({ clusterId: cluster.value.id, ...workloadResourceForm })
-    ElMessage.success('Pod 资源设置已更新')
+    ElMessage.success('Pod Resource 설정을 업데이트했습니다.')
     workloadResourceDialogVisible.value = false
     await refreshCurrentClusterData()
     if (workloadDrawerVisible.value && workloadDetail.value?.name === workloadResourceForm.workloadName) {
@@ -1568,11 +1568,11 @@ function configStorageCreateKind() {
 
 const storageAccessModeOptions = computed(() => (
   storageClassCreateForm.sourceType === 'hostpath'
-    ? [{ value: 'ReadWriteOnce', label: '单节点读写（ReadWriteOnce）' }]
+    ? [{ value: 'ReadWriteOnce', label: '단일 노드 읽기/쓰기(ReadWriteOnce)' }]
     : [
-        { value: 'ReadWriteOnce', label: '单节点读写（ReadWriteOnce）' },
-        { value: 'ReadOnlyMany', label: '多节点只读（ReadOnlyMany）' },
-        { value: 'ReadWriteMany', label: '多节点读写（ReadWriteMany）' }
+        { value: 'ReadWriteOnce', label: '단일 노드 읽기/쓰기(ReadWriteOnce)' },
+        { value: 'ReadOnlyMany', label: '다중 노드 읽기 전용(ReadOnlyMany)' },
+        { value: 'ReadWriteMany', label: '다중 노드 읽기/쓰기(ReadWriteMany)' }
       ]
 ))
 
@@ -1584,9 +1584,9 @@ const pvcStorageClassOptions = computed(() => (
       const scope = String(item.namespaceScope || '').trim()
       return {
         value,
-        label: scope && scope !== '集群级'
-          ? `${value}（限定：${scope}）`
-          : `${value}（集群级）`,
+        label: scope && scope !== 'Cluster-scoped'
+          ? `${value}(Namespace 한정: ${scope})`
+          : `${value}(Cluster 전체)`,
         scope,
         accessModes: String(item.accessModes || 'ReadWriteOnce')
       }
@@ -1599,7 +1599,7 @@ const selectedPVCStorageClass = computed(() => (
 
 const pvcStorageClassScope = computed(() => {
   const scope = selectedPVCStorageClass.value?.scope || ''
-  return scope && scope !== '集群级' ? scope : ''
+  return scope && scope !== 'Cluster-scoped' ? scope : ''
 })
 
 const pvcNamespaceOptions = computed(() => {
@@ -1619,11 +1619,11 @@ const pvcAccessMode = computed(() => (
 ))
 
 const pvcAccessModeLabel = computed(() => {
-  if (!selectedPVCStorageClass.value) return '请先选择存储类'
+  if (!selectedPVCStorageClass.value) return '먼저 StorageClass를 선택하십시오.'
   const labels = {
-    ReadWriteOnce: '单节点读写（ReadWriteOnce）',
-    ReadOnlyMany: '多节点只读（ReadOnlyMany）',
-    ReadWriteMany: '多节点读写（ReadWriteMany）'
+    ReadWriteOnce: '단일 노드 읽기/쓰기(ReadWriteOnce)',
+    ReadOnlyMany: '다중 노드 읽기 전용(ReadOnlyMany)',
+    ReadWriteMany: '다중 노드 읽기/쓰기(ReadWriteMany)'
   }
   return labels[pvcAccessMode.value] || pvcAccessMode.value
 })
@@ -1658,19 +1658,19 @@ async function submitStorageClassCreate() {
     ? String(storageClassCreateForm.scopeNamespace || '').trim()
     : ''
   if (!validK8sResourceName(name)) {
-    ElMessage.warning('请输入符合 Kubernetes 命名规范的存储类名称')
+    ElMessage.warning('Kubernetes 명명 규칙에 맞는 StorageClass 이름을 입력하십시오.')
     return
   }
   if (!capacity || !path) {
-    ElMessage.warning('请填写容量和存储路径')
+    ElMessage.warning('용량과 저장 경로를 입력하십시오.')
     return
   }
   if (sourceType === 'nfs' && !nfsServer) {
-    ElMessage.warning('NFS 存储源需要填写 NFS 服务地址')
+    ElMessage.warning('NFS Storage 소스에는 NFS Server 주소를 입력해야 합니다')
     return
   }
   if (storageClassCreateForm.scopeNamespaceEnabled && !scopeNamespace) {
-    ElMessage.warning('请选择限定的命名空间')
+    ElMessage.warning('제한할 Namespace를 선택하십시오.')
     return
   }
   const manifest = {
@@ -1701,7 +1701,7 @@ async function submitStorageClassCreate() {
       name,
       yaml: JSON.stringify(manifest, null, 2)
     })
-    ElMessage.success('新增存储类成功')
+    ElMessage.success('새 StorageClass를 생성했습니다.')
     storageClassCreateVisible.value = false
     await refreshCurrentClusterData()
   } finally {
@@ -1712,29 +1712,29 @@ async function submitStorageClassCreate() {
 async function deleteStorageClass(row) {
   if (!cluster.value?.id) return
   if (String(row?.status || '').toLowerCase() !== 'available') {
-    ElMessage.warning('仅未绑定存储卷的存储类可以删除')
+    ElMessage.warning('Storage에 바인딩되지 않은 StorageClass만 삭제할 수 있습니다')
     return
   }
   await ElMessageBox.confirm(
-    `确认删除存储类“${row.name}”？删除后不可恢复。`,
-    '删除存储类',
-    { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    `StorageClass "${row.name}"을(를) 삭제하시겠습니까? 삭제 후 되돌릴 수 없습니다.`,
+    'StorageClass 삭제',
+    { type: 'warning', confirmButtonText: '삭제', cancelButtonText: '취소' }
   )
   await deleteK8sResource({
     clusterId: cluster.value.id,
     resourceType: 'pv',
     name: row.name
   })
-  ElMessage.success('存储类已删除')
+  ElMessage.success('StorageClass를 삭제했습니다.')
   await refreshCurrentClusterData()
 }
 
 async function deleteStorageVolume(row) {
   if (!cluster.value?.id || !row?.namespace || !row?.name) return
   await ElMessageBox.confirm(
-    `确认删除存储卷“${row.namespace}/${row.name}”？删除后不可恢复。`,
-    '删除存储卷',
-    { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    `Storage "${row.namespace}/${row.name}"을(를) 삭제하시겠습니까? 삭제 후 되돌릴 수 없습니다.`,
+    'Storage 삭제',
+    { type: 'warning', confirmButtonText: '삭제', cancelButtonText: '취소' }
   )
   await deleteK8sResource({
     clusterId: cluster.value.id,
@@ -1745,16 +1745,16 @@ async function deleteStorageVolume(row) {
   if (storageDrawerVisible.value && storageDetail.value?.kind === 'PVC' && storageDetail.value?.name === row.name && storageDetail.value?.namespace === row.namespace) {
     storageDrawerVisible.value = false
   }
-  ElMessage.success('存储卷已删除')
+  ElMessage.success('Storage를 삭제했습니다.')
   await refreshCurrentClusterData()
 }
 
 function configStorageCreateTitle() {
-  const action = configStorageEditing.value ? '编辑' : '新建'
+  const action = configStorageEditing.value ? '수정' : '생성'
   const titles = {
     configmap: `${action} ConfigMap`,
     secret: `${action} Secret`,
-    pvc: '新增存储（PVC）'
+    pvc: '새 Storage(PVC)'
   }
   return titles[configStorageCreateForm.kind] || titles.configmap
 }
@@ -1794,11 +1794,11 @@ async function submitConfigStorageCreate() {
   const { kind, namespace } = configStorageCreateForm
   const name = String(configStorageCreateForm.name || '').trim().toLowerCase()
   if (!namespace) {
-    ElMessage.warning('请选择命名空间')
+    ElMessage.warning('Namespace를 선택하십시오.')
     return
   }
   if (!validK8sResourceName(name)) {
-    ElMessage.warning('名称必须为不超过 63 位的小写字母、数字或连字符，且不能以连字符开头或结尾')
+    ElMessage.warning('이름은 63자 이하의 소문자, 숫자 또는 하이픈으로 구성되어야 하며 하이픈으로 시작하거나 끝날 수 없습니다')
     return
   }
 
@@ -1807,15 +1807,15 @@ async function submitConfigStorageCreate() {
     const capacity = String(configStorageCreateForm.capacity || '').trim()
     const storageClass = String(configStorageCreateForm.storageClass || '').trim()
     if (!capacity) {
-      ElMessage.warning('请输入存储容量，例如 1Gi')
+      ElMessage.warning('Storage 용량을 입력하십시오(예: 1Gi)')
       return
     }
     if (!storageClass || !selectedPVCStorageClass.value) {
-      ElMessage.warning('请选择存储类')
+      ElMessage.warning('StorageClass를 선택하십시오.')
       return
     }
     if (pvcStorageClassScope.value && namespace !== pvcStorageClassScope.value) {
-      ElMessage.warning(`存储类“${storageClass}”仅允许命名空间“${pvcStorageClassScope.value}”创建存储卷`)
+      ElMessage.warning(`StorageClass "${storageClass}"은(는) Namespace "${pvcStorageClassScope.value}"에서만 Storage를 생성할 수 있습니다`)
       return
     }
     manifest = {
@@ -1834,11 +1834,11 @@ async function submitConfigStorageCreate() {
     for (const entry of entries) {
       const key = String(entry.key || '').trim()
       if (!key) {
-        ElMessage.warning('请填写每一项的键名')
+        ElMessage.warning('각 항목의 Key를 입력하십시오')
         return
       }
       if (Object.prototype.hasOwnProperty.call(values, key)) {
-        ElMessage.warning(`键名“${key}”重复，请调整后再创建`)
+        ElMessage.warning(`Key "${key}"이(가) 중복됩니다. 수정한 뒤 생성하십시오`)
         return
       }
       values[key] = String(entry.value ?? '')
@@ -1870,7 +1870,7 @@ async function submitConfigStorageCreate() {
     } else {
       await createK8sResourceYAML(payload)
     }
-    ElMessage.success(`${configStorageCreateTitle()}成功`)
+    ElMessage.success(`${configStorageCreateTitle()}을(를) 완료했습니다.`)
     configStorageCreateVisible.value = false
     await refreshCurrentClusterData()
   } finally {
@@ -1941,11 +1941,11 @@ async function saveNodeLabels() {
   for (const item of nodeLabelItems.value) {
     const key = String(item.key || '').trim()
     if (!key) {
-      ElMessage.warning('标签键不能为空')
+      ElMessage.warning('Label Key를 입력하십시오')
       return
     }
     if (Object.prototype.hasOwnProperty.call(labels, key)) {
-      ElMessage.warning(`标签键重复：${key}`)
+      ElMessage.warning(`Label Key 중복: ${key}`)
       return
     }
     labels[key] = String(item.value ?? '').trim()
@@ -1953,7 +1953,7 @@ async function saveNodeLabels() {
   nodeLabelsSaving.value = true
   try {
     await updateK8sNodeLabels({ clusterId: cluster.value.id, nodeName: nodeLabelTarget.value.name, labels })
-    ElMessage.success('节点标签已更新')
+    ElMessage.success('Node Label을 업데이트했습니다.')
     nodeLabelsVisible.value = false
     await refreshCurrentClusterData()
     if (nodeDetail.value?.name === nodeLabelTarget.value.name) {
@@ -2221,7 +2221,7 @@ async function openConfigMapEdit(row) {
 
 async function deleteConfigMap(row) {
   if (!cluster.value?.id) return
-  await ElMessageBox.confirm(`确认删除 ConfigMap “${row.name}” 吗？此操作不可恢复。`, '删除 ConfigMap', {
+  await ElMessageBox.confirm(`ConfigMap "${row.name}"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`, 'ConfigMap 삭제', {
     type: 'warning',
     confirmButtonText: t('k8sDelete'),
     cancelButtonText: t('cancel')
@@ -2235,7 +2235,7 @@ async function deleteConfigMap(row) {
   if (configMapDetail.value?.name === row.name && configMapDetail.value?.namespace === row.namespace) {
     configMapDrawerVisible.value = false
   }
-  ElMessage.success('ConfigMap 已删除')
+  ElMessage.success('ConfigMap을(를) 삭제했습니다.')
   await refreshCurrentTab()
 }
 
@@ -2433,7 +2433,7 @@ async function openSecretEdit(row) {
 
 async function deleteSecret(row) {
   if (!cluster.value?.id) return
-  await ElMessageBox.confirm(`确认删除 Secret “${row.name}” 吗？此操作不可恢复。`, '删除 Secret', {
+  await ElMessageBox.confirm(`Secret "${row.name}"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`, 'Secret 삭제', {
     type: 'warning',
     confirmButtonText: t('k8sDelete'),
     cancelButtonText: t('cancel')
@@ -2447,7 +2447,7 @@ async function deleteSecret(row) {
   if (secretDetail.value?.name === row.name && secretDetail.value?.namespace === row.namespace) {
     secretDrawerVisible.value = false
   }
-  ElMessage.success('Secret 已删除')
+  ElMessage.success('Secret을(를) 삭제했습니다.')
   await refreshCurrentTab()
 }
 

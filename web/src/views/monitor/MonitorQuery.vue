@@ -23,24 +23,24 @@ const historyTotal = ref(0)
 const historyQuery = ref({ pageNum: 1, pageSize: 10, keyword: '', status: '' })
 
 const metricTemplates = [
-  { id: 'host-up', category: '主机资源', name: '主机采集状态', query: 'up{job=~"node.*|node-exporter"}', description: '逐台展示主机采集状态，保留 instance 等标签。' },
-  { id: 'host-cpu', category: '主机资源', name: '主机 CPU 使用率', query: '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)', description: '按实例展示近 5 分钟 CPU 使用率。' },
-  { id: 'host-memory', category: '主机资源', name: '主机内存使用率', query: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100', description: '逐台展示主机内存使用率。' },
-  { id: 'host-disk', category: '主机资源', name: '主机磁盘使用率', query: '100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} * 100)', description: '按主机和挂载点展示磁盘使用率。' },
-  { id: 'host-cpu-top', category: '主机资源', name: 'CPU 使用率 Top 10', query: 'topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))', description: '按实例查看 CPU 使用率最高的十台主机。' },
-  { id: 'host-memory-top', category: '主机资源', name: '内存使用率 Top 10', query: 'topk(10, (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)', description: '按实例查看内存使用率最高的十台主机。' },
-  { id: 'host-load-top', category: '主机资源', name: '系统负载 Top 10', query: 'topk(10, node_load1)', description: '按实例查看 1 分钟系统负载最高的十台主机。' },
-  { id: 'host-network-in', category: '主机资源', name: '网络接收速率 Top 10', query: 'topk(10, sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))', description: '按实例查看近 5 分钟网络接收速率。' },
-  { id: 'host-processes', category: '主机资源', name: '运行进程数', query: 'node_procs_running', description: '逐台展示主机正在运行的进程数。' },
-  { id: 'k8s-pods', category: 'Kubernetes', name: 'Pod 基础信息', query: 'kube_pod_info', description: '逐个展示 Pod，保留 namespace、pod、node 等标签。' },
-  { id: 'k8s-running-pods', category: 'Kubernetes', name: '运行中 Pod', query: 'kube_pod_status_phase{phase="Running"}', description: '逐个展示处于 Running 状态的 Pod。' },
-  { id: 'k8s-abnormal-pods', category: 'Kubernetes', name: '异常 Pod', query: 'kube_pod_status_phase{phase=~"Failed|Unknown|Pending"}', description: '逐个展示 Failed、Unknown、Pending 状态的 Pod。' },
-  { id: 'k8s-ready-nodes', category: 'Kubernetes', name: '节点就绪状态', query: 'kube_node_status_condition{condition="Ready",status="true"}', description: '逐节点展示 Ready 状态。' },
-  { id: 'k8s-namespaces', category: 'Kubernetes', name: '命名空间', query: 'kube_namespace_created', description: '展示所有命名空间及创建时间序列。' },
-  { id: 'k8s-workloads', category: 'Kubernetes', name: 'Deployment 工作负载', query: 'kube_deployment_created', description: '展示 Deployment 工作负载及其标签。' },
-  { id: 'k8s-pod-distribution', category: 'Kubernetes', name: '命名空间 Pod 分布', query: 'sum by (namespace) (kube_pod_info)', description: '按命名空间统计 Pod 分布。' },
-  { id: 'k8s-restarts-total', category: 'Kubernetes', name: 'Pod 累计重启次数 Top 10', query: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))', description: '展示自 Pod 启动以来累计重启次数最多的 Pod，适合快速定位历史重启较多的工作负载。' },
-  { id: 'k8s-restarts-hour', category: 'Kubernetes', name: 'Pod 最近 1 小时新增重启 Top 10', query: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))', description: '仅统计最近 1 小时新增的重启次数；没有新重启时结果为 0，属于正常现象。' }
+  { id: 'host-up', category: 'Host 리소스', name: 'Host 수집 상태', query: 'up{job=~"node.*|node-exporter"}', description: 'Host별 수집 상태를 표시하며 instance 등 Label을 유지합니다.' },
+  { id: 'host-cpu', category: 'Host 리소스', name: 'Host CPU 사용률', query: '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)', description: 'Instance별로 최근 5분 CPU 사용률을 표시합니다.' },
+  { id: 'host-memory', category: 'Host 리소스', name: 'Host Memory 사용률', query: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100', description: 'Host별 Memory 사용률을 표시합니다.' },
+  { id: 'host-disk', category: 'Host 리소스', name: 'Host Disk 사용률', query: '100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} * 100)', description: 'Host와 마운트 지점별 Disk 사용률을 표시합니다.' },
+  { id: 'host-cpu-top', category: 'Host 리소스', name: 'CPU 사용률 Top 10', query: 'topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))', description: 'Instance별로 CPU 사용률이 가장 높은 상위 10대 Host를 표시합니다.' },
+  { id: 'host-memory-top', category: 'Host 리소스', name: 'Memory 사용률 Top 10', query: 'topk(10, (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)', description: 'Instance별로 Memory 사용률이 가장 높은 상위 10대 Host를 표시합니다.' },
+  { id: 'host-load-top', category: 'Host 리소스', name: 'System Load Top 10', query: 'topk(10, node_load1)', description: 'Instance별로 1분 System Load가 가장 높은 상위 10대 Host를 표시합니다.' },
+  { id: 'host-network-in', category: 'Host 리소스', name: 'Network 수신 속도 Top 10', query: 'topk(10, sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))', description: 'Instance별로 최근 5분 Network 수신 속도를 표시합니다.' },
+  { id: 'host-processes', category: 'Host 리소스', name: '실행 Process 수', query: 'node_procs_running', description: 'Host별로 실행 중인 Process 수를 표시합니다.' },
+  { id: 'k8s-pods', category: 'Kubernetes', name: 'Pod 기본 정보', query: 'kube_pod_info', description: 'Pod를 하나씩 표시하며 namespace, pod, node 등 Label을 유지합니다.' },
+  { id: 'k8s-running-pods', category: 'Kubernetes', name: '실행 중 Pod', query: 'kube_pod_status_phase{phase="Running"}', description: 'Running 상태인 Pod를 하나씩 표시합니다.' },
+  { id: 'k8s-abnormal-pods', category: 'Kubernetes', name: '비정상 Pod', query: 'kube_pod_status_phase{phase=~"Failed|Unknown|Pending"}', description: 'Failed, Unknown, Pending 상태인 Pod를 하나씩 표시합니다.' },
+  { id: 'k8s-ready-nodes', category: 'Kubernetes', name: 'Node Ready 상태', query: 'kube_node_status_condition{condition="Ready",status="true"}', description: 'Node별 Ready 상태를 표시합니다.' },
+  { id: 'k8s-namespaces', category: 'Kubernetes', name: 'Namespace', query: 'kube_namespace_created', description: '전체 Namespace와 생성 Time Series를 표시합니다.' },
+  { id: 'k8s-workloads', category: 'Kubernetes', name: 'Deployment Workload', query: 'kube_deployment_created', description: 'Deployment Workload와 해당 Label을 표시합니다.' },
+  { id: 'k8s-pod-distribution', category: 'Kubernetes', name: 'Namespace별 Pod 분포', query: 'sum by (namespace) (kube_pod_info)', description: 'Namespace별 Pod 분포를 집계합니다.' },
+  { id: 'k8s-restarts-total', category: 'Kubernetes', name: 'Pod 누적 재시작 횟수 Top 10', query: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))', description: 'Pod 시작 이후 누적 재시작 횟수가 가장 많은 Pod를 표시하며 재시작 이력이 많은 Workload를 빠르게 찾는 데 적합합니다.' },
+  { id: 'k8s-restarts-hour', category: 'Kubernetes', name: 'Pod 최근 1시간 신규 재시작 Top 10', query: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))', description: '최근 1시간 신규 재시작 횟수만 집계합니다. 새 재시작이 없으면 결과는 0이며 정상 현상입니다.' }
 ]
 
 const selectedMetricTemplate = computed(() => metricTemplates.find((item) => item.id === metricTemplateId.value))
@@ -68,16 +68,16 @@ function metricText(metric) {
   return Object.entries(metric || {})
     .filter(([key]) => key !== '__name__')
     .map(([key, value]) => `${key}="${value}"`)
-    .join(', ') || '无标签（汇总结果）'
+    .join(', ') || 'Label 없음(집계 결과)'
 }
 
 function metricName(metric) {
-  return metric?.__name__ || selectedMetricTemplate.value?.name || '汇总结果'
+  return metric?.__name__ || selectedMetricTemplate.value?.name || '집계 결과'
 }
 
 function chartLabel(metric, index) {
   const labels = metric || {}
-  return labels.instance || labels.pod || labels.namespace || labels.job || metricName(labels) || `序列 ${index + 1}`
+  return labels.instance || labels.pod || labels.namespace || labels.job || metricName(labels) || `Series ${index + 1}`
 }
 
 function formatMetricValue(value) {
@@ -178,7 +178,7 @@ async function changeResultView(view) {
 
 async function executeQuery() {
   if (!datasourceId.value || !promql.value.trim()) {
-    ElMessage.warning('请选择 Prometheus 或 VictoriaMetrics 数据源并输入 PromQL')
+    ElMessage.warning('Prometheus 또는 VictoriaMetrics Datasource를 선택하고 PromQL을 입력하십시오.')
     return
   }
   loading.value = true
@@ -213,7 +213,7 @@ async function openHistory() {
 function useHistory(row) {
   const datasource = datasourceOptions.value.find((item) => item.name === row.datasourceName)
   if (!datasource && !datasourceOptions.value.some((item) => item.id === row.datasourceId)) {
-    ElMessage.warning('该记录来自非指标数据源，请在日志查询页面中使用')
+    ElMessage.warning('이 Record는 Metric Datasource에서 온 것이 아니므로 Log Explorer 페이지에서 사용하십시오.')
     return
   }
   datasourceId.value = row.datasourceId || datasource?.id || datasourceId.value
@@ -223,7 +223,7 @@ function useHistory(row) {
 
 onMounted(async () => {
   await loadOptions()
-  if (!datasourceId.value) ElMessage.warning('请先在数据源管理中配置 Prometheus 或 VictoriaMetrics 数据源')
+  if (!datasourceId.value) ElMessage.warning('먼저 Datasource 관리에서 Prometheus 또는 VictoriaMetrics Datasource를 구성하십시오.')
 })
 </script>
 
@@ -232,42 +232,42 @@ onMounted(async () => {
     <div class="query-top">
       <div>
         <p class="query-eyebrow">METRIC EXPLORER</p>
-        <h2>即时查询</h2>
-        <p>仅支持 Prometheus 与 VictoriaMetrics，输入 PromQL 直接查询指标、调试告警规则和排查现场。</p>
+        <h2>Instant Query</h2>
+        <p>Prometheus와 VictoriaMetrics만 지원합니다. PromQL을 입력해 Metric을 직접 조회하고 Alert Rule을 디버깅하며 현상을 파악할 수 있습니다.</p>
       </div>
       <div class="query-top-actions">
-        <el-select v-model="datasourceId" filterable placeholder="选择数据源" style="width: 260px">
+        <el-select v-model="datasourceId" filterable placeholder="Datasource 선택" style="width: 260px">
           <el-option v-for="item in datasourceOptions" :key="item.id" :label="`${item.name} (${item.type})`" :value="item.id" />
         </el-select>
-        <el-button @click="openHistory">查询历史</el-button>
+        <el-button @click="openHistory">Query History</el-button>
       </div>
     </div>
 
     <div class="query-editor">
       <div class="template-toolbar">
-        <span>内置指标</span>
-        <el-select v-model="metricTemplateId" clearable filterable placeholder="选择主机或 Kubernetes 指标" style="width: 310px" @change="applyMetricTemplate">
+        <span>내장 Metric</span>
+        <el-select v-model="metricTemplateId" clearable filterable placeholder="Host 또는 Kubernetes Metric 선택" style="width: 310px" @change="applyMetricTemplate">
           <el-option v-for="item in metricTemplates" :key="item.id" :label="`${item.category} / ${item.name}`" :value="item.id" />
         </el-select>
-        <span class="template-description">{{ selectedMetricTemplate?.description || '从巡检大屏指标中选择一个查询模板。' }}</span>
+        <span class="template-description">{{ selectedMetricTemplate?.description || 'Inspection Dashboard Metric에서 Query Template을 선택하십시오.' }}</span>
       </div>
-      <el-input v-model="promql" type="textarea" :rows="5" placeholder="例如：up 或 sum(rate(http_requests_total[5m]))" />
+      <el-input v-model="promql" type="textarea" :rows="5" placeholder="예: up 또는 sum(rate(http_requests_total[5m]))" />
       <div class="query-actions">
-        <el-button type="primary" :loading="loading" @click="executeQuery">执行查询</el-button>
+        <el-button type="primary" :loading="loading" @click="executeQuery">Query 실행</el-button>
         <span>Result Type: {{ resultType || '-' }}</span>
       </div>
     </div>
 
     <div class="result-toolbar">
-      <div><b>查询结果</b><span>{{ rows.length }} 个时间序列</span></div>
+      <div><b>Query 결과</b><span>{{ rows.length }}개 Time Series</span></div>
       <el-radio-group v-model="resultView" class="result-view-switch" @change="changeResultView">
-        <el-radio-button value="table">表格</el-radio-button>
-        <el-radio-button value="chart">图表</el-radio-button>
+        <el-radio-button value="table">테이블</el-radio-button>
+        <el-radio-button value="chart">차트</el-radio-button>
       </el-radio-group>
     </div>
 
     <section v-if="resultView === 'chart'" class="instant-chart-panel" v-loading="chartLoading || loading">
-      <div class="instant-chart-head"><div><h3>指标趋势</h3><p>Prometheus / VictoriaMetrics 时间序列</p></div><div class="chart-actions"><el-select v-model="chartRange" size="small" style="width: 110px" @change="loadChart"><el-option label="最近 1 小时" value="1h" /><el-option label="最近 6 小时" value="6h" /><el-option label="最近 24 小时" value="24h" /><el-option label="最近 7 天" value="7d" /></el-select><el-button size="small" @click="loadChart">刷新图表</el-button></div></div>
+      <div class="instant-chart-head"><div><h3>Metric 추이</h3><p>Prometheus / VictoriaMetrics Time Series</p></div><div class="chart-actions"><el-select v-model="chartRange" size="small" style="width: 110px" @change="loadChart"><el-option label="최근 1시간" value="1h" /><el-option label="최근 6시간" value="6h" /><el-option label="최근 24시간" value="24h" /><el-option label="최근 7일" value="7d" /></el-select><el-button size="small" @click="loadChart">차트 새로고침</el-button></div></div>
       <template v-if="chartSeries.length">
         <div class="line-chart-wrap">
           <svg class="line-chart" viewBox="0 0 1000 260" preserveAspectRatio="none" role="img" aria-label="Metric trend" @mousemove="updateChartHover" @mouseleave="chartHover = null">
@@ -281,42 +281,42 @@ onMounted(async () => {
         </div>
         <div class="series-list"><div class="series-head"><span>Series</span><button type="button" @click="toggleSeriesSort">Last {{ seriesSortOrder === 'desc' ? '↓' : '↑' }}</button></div><div v-for="series in sortedChartSeries" :key="metricText(series.metric)"><i :style="{ background: chartColor(chartSeries.findIndex((item) => metricText(item.metric) === metricText(series.metric))) }" /><span :title="metricText(series.metric)">{{ metricText(series.metric) }}</span><b>{{ formatMetricValue(series.values.at(-1)?.[1]) }}</b></div></div>
       </template>
-      <el-empty v-else :description="chartLoading ? '正在查询时间序列…' : '暂无可绘制的时间序列；请执行查询或检查指标类型'" :image-size="56" />
+      <el-empty v-else :description="chartLoading ? 'Time Series를 조회하는 중…' : '그릴 수 있는 Time Series가 없습니다. Query를 실행하거나 Metric 유형을 확인하십시오.'" :image-size="56" />
     </section>
 
     <el-table v-else v-loading="loading" :data="rows" border>
-      <el-table-column label="指标" min-width="220" show-overflow-tooltip>
+      <el-table-column label="Metric" min-width="220" show-overflow-tooltip>
         <template #default="{ row }"><code class="metric-name">{{ metricName(row.metric) }}</code></template>
       </el-table-column>
-      <el-table-column label="标签" min-width="420" show-overflow-tooltip>
+      <el-table-column label="Label" min-width="420" show-overflow-tooltip>
         <template #default="{ row }"><span class="metric-labels">{{ metricText(row.metric) }}</span></template>
       </el-table-column>
-      <el-table-column label="当前值" width="180" sortable :sort-method="sortMetricValue">
+      <el-table-column label="현재 값" width="180" sortable :sort-method="sortMetricValue">
         <template #default="{ row }">{{ row.value?.[1] ?? '-' }}</template>
       </el-table-column>
-      <el-table-column label="采样时间" width="190">
+      <el-table-column label="샘플링 시각" width="190">
         <template #default="{ row }">{{ formatTimestamp(row.value?.[0]) }}</template>
       </el-table-column>
     </el-table>
 
-    <el-drawer v-model="historyVisible" title="查询历史" size="640px">
+    <el-drawer v-model="historyVisible" title="Query History" size="640px">
       <div class="history-toolbar">
-        <el-input v-model="historyQuery.keyword" clearable placeholder="搜索查询语句 / 数据源" @keyup.enter="loadHistory" />
-        <el-select v-model="historyQuery.status" clearable placeholder="状态" style="width: 120px">
-          <el-option label="成功" value="success" />
-          <el-option label="失败" value="failed" />
+        <el-input v-model="historyQuery.keyword" clearable placeholder="Query 문 / Datasource 검색" @keyup.enter="loadHistory" />
+        <el-select v-model="historyQuery.status" clearable placeholder="상태" style="width: 120px">
+          <el-option label="성공" value="success" />
+          <el-option label="실패" value="failed" />
         </el-select>
-        <el-button type="primary" @click="loadHistory">搜索</el-button>
+        <el-button type="primary" @click="loadHistory">검색</el-button>
       </div>
       <el-table v-loading="historyLoading" :data="historyRows" border>
-        <el-table-column prop="datasourceName" label="数据源" width="140" />
-        <el-table-column prop="queryType" label="类型" width="120" />
-        <el-table-column prop="query" label="查询语句" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="90" />
-        <el-table-column prop="createTime" label="时间" width="170" />
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column prop="datasourceName" label="Datasource" width="140" />
+        <el-table-column prop="queryType" label="유형" width="120" />
+        <el-table-column prop="query" label="Query 문" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="status" label="상태" width="90" />
+        <el-table-column prop="createTime" label="시각" width="170" />
+        <el-table-column label="작업" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="useHistory(row)">使用</el-button>
+            <el-button link type="primary" @click="useHistory(row)">사용</el-button>
           </template>
         </el-table-column>
       </el-table>

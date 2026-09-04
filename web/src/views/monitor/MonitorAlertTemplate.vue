@@ -67,7 +67,7 @@ const leafGroupIds = computed(() => {
   return groups.value.filter((item) => !parents.has(item.id) && item.parentId).map((item) => item.id)
 })
 
-const dialogTitle = computed(() => (isEdit.value ? '编辑告警模板' : '新增告警模板'))
+const dialogTitle = computed(() => (isEdit.value ? 'Alert Template 수정' : '새 Alert Template'))
 const selectedGroupPath = computed(() => groupPath(form.groupId))
 
 function groupPath(id) {
@@ -78,12 +78,12 @@ function groupPath(id) {
     parts.unshift(item.name)
     item = byId.get(item.parentId)
   }
-  return parts.join(' / ') || '未选择分组'
+  return parts.join(' / ') || 'Group 미선택'
 }
 
 function groupMeta(id) {
   const parts = groupPath(id).split(' / ')
-  return parts.length > 1 ? `${parts[0]} / ${parts[1]}` : '选择二级分组后自动识别'
+  return parts.length > 1 ? `${parts[0]} / ${parts[1]}` : '2차 Group 선택 후 자동 인식'
 }
 
 function resetForm() {
@@ -139,13 +139,13 @@ function openGroupRename(data) {
 
 async function saveGroup() {
   if (!groupForm.name.trim()) {
-    ElMessage.warning('请输入分组名称')
+    ElMessage.warning('Group 이름을 입력하십시오.')
     return
   }
   await saveMonitorAlertTemplateGroup(groupForm)
   groupDialogVisible.value = false
   await loadGroups()
-  ElMessage.success('模板分组已保存')
+  ElMessage.success('Template Group을 저장했습니다.')
 }
 
 function handleGroupCommand(command, data) {
@@ -155,11 +155,11 @@ function handleGroupCommand(command, data) {
 }
 
 async function removeGroup(data) {
-  await ElMessageBox.confirm(`确认删除分组「${data.name}」吗？仅空分组可以删除。`, '删除分组', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  await ElMessageBox.confirm(`Group "${data.name}"을(를) 삭제하시겠습니까? 빈 Group만 삭제할 수 있습니다.`, 'Group 삭제', { type: 'warning', confirmButtonText: '삭제', cancelButtonText: '취소' })
   await deleteMonitorAlertTemplateGroup(data.id)
   if (selectedGroupId.value === data.id) selectGroup()
   await loadGroups()
-  ElMessage.success('分组已删除')
+  ElMessage.success('Group을 삭제했습니다.')
 }
 
 function openCreate() {
@@ -177,7 +177,7 @@ async function openEdit(row) {
 async function openCopy(row) {
   isEdit.value = false
   const data = await monitorAlertTemplateInfo(row.id)
-  Object.assign(form, { ...data, id: undefined, name: `${data.name} - 自定义` })
+  Object.assign(form, { ...data, id: undefined, name: `${data.name} - 사용자 정의` })
   dialogVisible.value = true
 }
 
@@ -188,13 +188,13 @@ async function openDetail(row) {
 
 async function submit() {
   if (!form.name.trim() || !form.groupId || !form.queryText.trim()) {
-    ElMessage.warning('请填写模板名称、模板分组和查询条件')
+    ElMessage.warning('Template 이름, Template Group, Query 조건을 입력하십시오.')
     return
   }
   saving.value = true
   try {
     await saveMonitorAlertTemplate(form)
-    ElMessage.success('告警模板已保存')
+    ElMessage.success('Alert Template을 저장했습니다.')
     dialogVisible.value = false
     await Promise.all([loadGroups(), loadSummary(), loadData()])
   } finally {
@@ -203,9 +203,9 @@ async function submit() {
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`确认删除告警模板「${row.name}」吗？已创建的告警规则不会受影响。`, '删除模板', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  await ElMessageBox.confirm(`Alert Template "${row.name}"을(를) 삭제하시겠습니까? 생성된 Alert Rule에는 영향을 주지 않습니다.`, 'Template 삭제', { type: 'warning', confirmButtonText: '삭제', cancelButtonText: '취소' })
   await deleteMonitorAlertTemplate(row.id)
-  ElMessage.success('告警模板已删除')
+  ElMessage.success('Alert Template을 삭제했습니다.')
   await Promise.all([loadGroups(), loadSummary(), loadData()])
 }
 
@@ -239,14 +239,14 @@ function clearExportSelection() {
 
 async function exportSelectedTemplates() {
   if (!exportSelection.value.length) {
-    ElMessage.warning('请先选择 Prometheus 或 VictoriaMetrics 告警模板')
+    ElMessage.warning('먼저 Prometheus 또는 VictoriaMetrics Alert Template을 선택하십시오.')
     return
   }
   try {
     await ElMessageBox.confirm(
-      `将导出 ${exportSelection.value.length} 条已选指标模板为标准 Prometheus Rule YAML。导出的内容可粘贴到其他平台的模板导入入口。`,
-      '确认导出模板',
-      { type: 'info', confirmButtonText: '确认导出', cancelButtonText: '取消' }
+      `선택한 Metric Template ${exportSelection.value.length}건을 표준 Prometheus Rule YAML로 Export합니다. Export한 내용은 다른 플랫폼의 Template Import 화면에 붙여넣을 수 있습니다.`,
+      'Template Export 확인',
+      { type: 'info', confirmButtonText: 'Export 확인', cancelButtonText: '취소' }
     )
   } catch {
     return
@@ -263,27 +263,27 @@ async function exportSelectedTemplates() {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    ElMessage.success(`已导出 ${exportSelection.value.length} 条模板，可直接粘贴到其他平台导入`)
+    ElMessage.success(`Template ${exportSelection.value.length}건을 Export했습니다. 바로 다른 플랫폼에 붙여넣어 Import할 수 있습니다.`)
   } finally {
     exportLoading.value = false
   }
 }
 
-const prometheusRuleExample = `# 标准 Prometheus Rule YAML：可同时粘贴多个规则组。
-# 仅 alert 规则会导入；recording rule（record）会被忽略。
+const prometheusRuleExample = `# 표준 Prometheus Rule YAML: 여러 Rule Group을 동시에 붙여넣을 수 있습니다.
+# alert Rule만 Import되며 recording Rule(record)은 무시됩니다.
 groups:
-  - name: host.rules          # 规则组名称，仅用于预览
-    interval: 60s             # 评估间隔，可选，默认 60s
+  - name: host.rules          # Rule Group 이름, 미리보기용
+    interval: 60s             # 평가 간격, 선택 사항, 기본값 60s
     rules:
-      - alert: 主机 CPU 使用率过高  # 模板名称，必填
+      - alert: Host CPU 사용률 과다  # Template 이름, 필수
         expr: |
           100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
-        for: 5m               # 持续命中时间，可选
+        for: 5m               # 지속 일치 시간, 선택 사항
         labels:
-          severity: warning   # critical → P1；warning → P2；info → P3
+          severity: warning   # critical → P1; warning → P2; info → P3
         annotations:
-          summary: 主机 CPU 使用率过高
-          description: 持续 5 分钟超过 90%，请检查负载和高消耗进程。`
+          summary: Host CPU 사용률 과다
+          description: 5분 동안 90%를 초과했습니다. 부하와 리소스 소모가 큰 Process를 확인하십시오.`
 
 function openPrometheusImport() {
   importVisible.value = true
@@ -296,7 +296,7 @@ function openPrometheusImport() {
 
 async function parsePrometheusContent() {
   if (!importContent.value.trim()) {
-    importError.value = '请粘贴 Prometheus Rule YAML 后再解析。'
+    importError.value = 'Prometheus Rule YAML을 붙여넣은 뒤 파싱하십시오.'
     return
   }
   importError.value = ''
@@ -304,16 +304,16 @@ async function parsePrometheusContent() {
   try {
     importRows.value = (await parsePrometheusAlertTemplates(importContent.value.trim())) || []
     if (!importRows.value.length) {
-      importError.value = '没有识别到 alert 规则。请检查 groups / rules / alert / expr 是否完整。'
+      importError.value = 'alert Rule을 찾지 못했습니다. groups / rules / alert / expr이 완전한지 확인하십시오.'
       return
     }
     importGroupId.value = leafGroupIds.value.includes(selectedGroupId.value) ? selectedGroupId.value : leafGroupIds.value[0]
     importStage.value = 'preview'
     await nextTick()
     importTableRef.value?.toggleAllSelection()
-    ElMessage.success(`已解析 ${importRows.value.length} 条告警规则，请确认后导入`)
+    ElMessage.success(`Alert Rule ${importRows.value.length}건을 파싱했습니다. 확인한 뒤 Import하십시오.`)
   } catch (error) {
-    importError.value = error?.message || 'YAML 解析失败，请按右侧示例检查缩进和字段。'
+    importError.value = error?.message || 'YAML 파싱에 실패했습니다. 오른쪽 예시에 따라 들여쓰기와 필드를 확인하십시오.'
   } finally {
     importParsing.value = false
   }
@@ -321,17 +321,17 @@ async function parsePrometheusContent() {
 
 async function submitPrometheusImport() {
   if (!importGroupId.value) {
-    ElMessage.warning('请选择目标模板分组')
+    ElMessage.warning('대상 Template Group을 선택하십시오.')
     return
   }
   if (!importSelection.value.length) {
-    ElMessage.warning('请至少选择一条告警规则')
+    ElMessage.warning('Alert Rule을 1건 이상 선택하십시오.')
     return
   }
   importSaving.value = true
   try {
     const result = await importPrometheusAlertTemplates({ groupId: importGroupId.value, duplicateStrategy: duplicateStrategy.value, items: importSelection.value })
-    ElMessage.success(`导入完成：新增 ${result.created || 0} 条，跳过 ${result.skipped || 0} 条`)
+    ElMessage.success(`Import 완료: 신규 ${result.created || 0}건, 건너뜀 ${result.skipped || 0}건`)
     importVisible.value = false
     await Promise.all([loadGroups(), loadSummary(), loadData()])
   } finally {
@@ -349,46 +349,46 @@ onMounted(async () => {
     <section class="template-hero">
       <div class="hero-mark"><el-icon><CollectionTag /></el-icon></div>
       <div class="hero-copy">
-        <h2>告警模板</h2>
-        <p>按模板分组沉淀可复用的告警定义；模板不直接执行，应用后才会生成告警规则。</p>
+        <h2>Alert Template</h2>
+        <p>Template Group별로 재사용 가능한 Alert 정의를 축적합니다. Template은 직접 실행되지 않으며 적용 시 Alert Rule이 생성됩니다.</p>
       </div>
-      <div class="hero-stats"><span>模板 <b>{{ templateTotal }}</b></span><span>分组 <b>{{ groups.length }}</b></span></div>
+      <div class="hero-stats"><span>Template <b>{{ templateTotal }}</b></span><span>Group <b>{{ groups.length }}</b></span></div>
     </section>
 
     <section class="template-workspace">
       <div class="filter-bar">
-        <span class="filter-label">关键词</span>
-        <el-input v-model="query.keyword" clearable placeholder="模板名称 / 查询条件 / 标签" style="width: 248px" @keyup.enter="loadData" />
-        <span class="filter-label">数据源</span>
-        <el-select v-model="query.datasourceType" clearable placeholder="全部" style="width: 150px">
+        <span class="filter-label">Keyword</span>
+        <el-input v-model="query.keyword" clearable placeholder="Template 이름 / Query 조건 / Label" style="width: 248px" @keyup.enter="loadData" />
+        <span class="filter-label">Datasource</span>
+        <el-select v-model="query.datasourceType" clearable placeholder="전체" style="width: 150px">
           <el-option label="Prometheus" value="prometheus" /><el-option label="VictoriaMetrics" value="victoriametrics" /><el-option label="Elasticsearch" value="elasticsearch" /><el-option label="VictoriaLogs" value="victorialogs" />
         </el-select>
-        <span class="filter-label">来源</span>
-        <el-select v-model="query.source" clearable placeholder="全部" style="width: 126px"><el-option label="平台" value="platform" /><el-option label="自定义" value="custom" /></el-select>
-        <el-button type="primary" @click="loadData"><el-icon><Search /></el-icon>查询</el-button>
-        <el-button @click="resetQuery">重置</el-button>
+        <span class="filter-label">출처</span>
+        <el-select v-model="query.source" clearable placeholder="전체" style="width: 126px"><el-option label="플랫폼" value="platform" /><el-option label="사용자 정의" value="custom" /></el-select>
+        <el-button type="primary" @click="loadData"><el-icon><Search /></el-icon>검색</el-button>
+        <el-button @click="resetQuery">초기화</el-button>
         <div class="filter-actions">
-          <el-button @click="openPrometheusImport"><el-icon><DocumentAdd /></el-icon>粘贴 Prometheus 模板</el-button>
-          <el-button :loading="exportLoading" :disabled="!exportSelection.length" @click="exportSelectedTemplates"><el-icon><Download /></el-icon>导出已选<span v-if="exportSelection.length">（{{ exportSelection.length }}）</span></el-button>
-          <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新增模板</el-button>
+          <el-button @click="openPrometheusImport"><el-icon><DocumentAdd /></el-icon>Prometheus Template 붙여넣기</el-button>
+          <el-button :loading="exportLoading" :disabled="!exportSelection.length" @click="exportSelectedTemplates"><el-icon><Download /></el-icon>선택 항목 Export<span v-if="exportSelection.length">({{ exportSelection.length }})</span></el-button>
+          <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>새 Template</el-button>
         </div>
       </div>
 
       <div class="library-layout">
         <aside class="group-library">
-          <div class="tree-heading"><span>组件模板库</span><el-button link type="primary" @click="openGroupCreate()">新增</el-button></div>
-          <button class="all-templates" :class="{ active: !selectedGroupId }" @click="selectGroup()"><el-icon><FolderOpened /></el-icon><span>全部模板</span><b>{{ templateTotal }}</b></button>
-          <p class="tree-tip"><el-icon><InfoFilled /></el-icon><span>分组决定分类与采集器；选择二级分组即可建立模板归属。</span></p>
-          <div class="group-caption">分组维护</div>
+          <div class="tree-heading"><span>컴포넌트 Template Library</span><el-button link type="primary" @click="openGroupCreate()">추가</el-button></div>
+          <button class="all-templates" :class="{ active: !selectedGroupId }" @click="selectGroup()"><el-icon><FolderOpened /></el-icon><span>전체 Template</span><b>{{ templateTotal }}</b></button>
+          <p class="tree-tip"><el-icon><InfoFilled /></el-icon><span>Group이 분류와 Collector를 결정합니다. 2차 Group을 선택하면 Template 소속이 설정됩니다.</span></p>
+          <div class="group-caption">Group 관리</div>
           <el-tree :data="groupTree" node-key="id" :default-expand-all="true" :expand-on-click-node="false" :highlight-current="true" :current-node-key="selectedGroupId" @node-click="(data) => selectGroup(data.id)">
             <template #default="{ data }">
               <span class="group-node">
                 <span class="group-name">{{ data.name }}</span><small class="group-count">{{ data.totalCount }}</small>
                 <span class="node-actions">
-                  <el-button v-if="canCreateChild(data)" link type="primary" title="新增子分组" @click.stop="openGroupCreate(data.id)"><el-icon><Plus /></el-icon></el-button>
+                  <el-button v-if="canCreateChild(data)" link type="primary" title="하위 Group 추가" @click.stop="openGroupCreate(data.id)"><el-icon><Plus /></el-icon></el-button>
                   <el-dropdown trigger="click" @command="(command) => handleGroupCommand(command, data)" @click.stop>
-                    <el-button link type="primary" title="更多分组操作"><el-icon><MoreFilled /></el-icon></el-button>
-                    <template #dropdown><el-dropdown-menu><el-dropdown-item command="rename">重命名</el-dropdown-item><el-dropdown-item command="delete" divided class="danger-menu-item">删除分组</el-dropdown-item></el-dropdown-menu></template>
+                    <el-button link type="primary" title="추가 Group 작업"><el-icon><MoreFilled /></el-icon></el-button>
+                    <template #dropdown><el-dropdown-menu><el-dropdown-item command="rename">이름 변경</el-dropdown-item><el-dropdown-item command="delete" divided class="danger-menu-item">Group 삭제</el-dropdown-item></el-dropdown-menu></template>
                   </el-dropdown>
                 </span>
               </span>
@@ -397,23 +397,23 @@ onMounted(async () => {
         </aside>
 
         <main class="template-table-wrap">
-          <div v-if="exportSelection.length" class="export-selection-tip"><el-icon><Checked /></el-icon><span>已选择 {{ exportSelection.length }} 条可迁移的指标模板</span><el-button link type="primary" @click="exportSelectedTemplates">导出 YAML</el-button><el-button link @click="clearExportSelection">取消选择</el-button></div>
-          <el-table ref="templateTableRef" v-loading="loading" :data="rows" row-key="id" class="template-table" empty-text="暂无告警模板，点击右上角新增模板开始沉淀规则库。" @selection-change="handleExportSelection">
+          <div v-if="exportSelection.length" class="export-selection-tip"><el-icon><Checked /></el-icon><span>마이그레이션 가능한 Metric Template {{ exportSelection.length }}건을 선택했습니다</span><el-button link type="primary" @click="exportSelectedTemplates">YAML Export</el-button><el-button link @click="clearExportSelection">선택 취소</el-button></div>
+          <el-table ref="templateTableRef" v-loading="loading" :data="rows" row-key="id" class="template-table" empty-text="Alert Template이 없습니다. 오른쪽 위에서 Template을 추가해 Rule Library 구축을 시작하십시오." @selection-change="handleExportSelection">
             <el-table-column type="selection" width="48" :selectable="isPrometheusTemplate" reserve-selection />
-            <el-table-column label="模板名称" min-width="270">
+            <el-table-column label="Template 이름" min-width="270">
               <template #default="{ row }"><button class="template-name" @click="openDetail(row)"><strong>{{ row.name }}</strong><span>{{ row.queryText }}</span></button></template>
             </el-table-column>
-            <el-table-column label="模板分组" min-width="205"><template #default="{ row }"><span class="group-path">{{ groupPath(row.groupId) }}</span></template></el-table-column>
-            <el-table-column label="数据源" width="142"><template #default="{ row }">{{ datasourceText(row.datasourceType) }}</template></el-table-column>
-            <el-table-column label="等级" width="86"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
-            <el-table-column label="来源" width="94"><template #default="{ row }"><el-tag :type="row.source === 'platform' ? 'primary' : 'info'" effect="plain" round>{{ row.source === 'platform' ? '平台' : '自定义' }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="156" fixed="right">
+            <el-table-column label="Template Group" min-width="205"><template #default="{ row }"><span class="group-path">{{ groupPath(row.groupId) }}</span></template></el-table-column>
+            <el-table-column label="Datasource" width="142"><template #default="{ row }">{{ datasourceText(row.datasourceType) }}</template></el-table-column>
+            <el-table-column label="Severity" width="86"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
+            <el-table-column label="출처" width="94"><template #default="{ row }"><el-tag :type="row.source === 'platform' ? 'primary' : 'info'" effect="plain" round>{{ row.source === 'platform' ? '플랫폼' : '사용자 정의' }}</el-tag></template></el-table-column>
+            <el-table-column label="작업" width="156" fixed="right">
               <template #default="{ row }">
                 <div class="row-actions">
-                  <el-button link type="primary" @click="useTemplate(row)">创建规则</el-button>
+                  <el-button link type="primary" @click="useTemplate(row)">Rule 생성</el-button>
                   <el-dropdown trigger="click" @command="(command) => handleTemplateCommand(command, row)">
-                    <el-button link type="primary">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-                    <template #dropdown><el-dropdown-menu><el-dropdown-item command="detail">查看详情</el-dropdown-item><el-dropdown-item :command="row.source === 'platform' ? 'copy' : 'edit'">{{ row.source === 'platform' ? '复制模板' : '编辑模板' }}</el-dropdown-item><el-dropdown-item v-if="row.source !== 'platform'" command="delete" divided class="danger-menu-item">删除模板</el-dropdown-item></el-dropdown-menu></template>
+                    <el-button link type="primary">더보기<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                    <template #dropdown><el-dropdown-menu><el-dropdown-item command="detail">상세 보기</el-dropdown-item><el-dropdown-item :command="row.source === 'platform' ? 'copy' : 'edit'">{{ row.source === 'platform' ? 'Template 복제' : 'Template 수정' }}</el-dropdown-item><el-dropdown-item v-if="row.source !== 'platform'" command="delete" divided class="danger-menu-item">Template 삭제</el-dropdown-item></el-dropdown-menu></template>
                   </el-dropdown>
                 </div>
               </template>
@@ -425,48 +425,48 @@ onMounted(async () => {
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(920px, 94vw)" top="5vh" destroy-on-close class="template-editor-dialog">
-      <el-alert title="模板仅保存告警定义；选择数据源并启用通知等执行配置，请在“告警规则”中完成。" type="info" :closable="false" show-icon class="dialog-alert" />
+      <el-alert title="Template은 Alert 정의만 저장합니다. Datasource 선택과 Notification 활성화 등 실행 구성은 “Alert Rule”에서 완료하십시오." type="info" :closable="false" show-icon class="dialog-alert" />
       <el-form label-position="top">
         <div class="identity-grid">
-          <el-form-item label="模板名称" required><el-input v-model="form.name" placeholder="例如：主机 CPU 使用率过高" /></el-form-item>
-          <el-form-item label="模板分组" required><el-cascader v-model="form.groupId" :options="groupTree" :props="{ label: 'name', value: 'id', children: 'children', emitPath: false, checkStrictly: false }" clearable filterable placeholder="选择二级采集器分组" style="width: 100%" /></el-form-item>
+          <el-form-item label="Template 이름" required><el-input v-model="form.name" placeholder="예: Host CPU 사용률 과다" /></el-form-item>
+          <el-form-item label="Template Group" required><el-cascader v-model="form.groupId" :options="groupTree" :props="{ label: 'name', value: 'id', children: 'children', emitPath: false, checkStrictly: false }" clearable filterable placeholder="2차 Collector Group 선택" style="width: 100%" /></el-form-item>
         </div>
-        <p class="group-helper"><el-icon><Connection /></el-icon><span>分组路径：{{ selectedGroupPath }}。分类与采集器将自动识别为：{{ groupMeta(form.groupId) }}。</span></p>
-        <div class="source-row"><el-form-item label="数据源类型"><el-select v-model="form.datasourceType" style="width: 260px"><el-option label="Prometheus" value="prometheus" /><el-option label="VictoriaMetrics" value="victoriametrics" /><el-option label="Elasticsearch" value="elasticsearch" /><el-option label="VictoriaLogs" value="victorialogs" /></el-select></el-form-item></div>
-        <el-form-item label="查询条件" required><el-input v-model="form.queryText" type="textarea" :rows="4" placeholder="例如：100 - (avg by (instance) (irate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)" /></el-form-item>
+        <p class="group-helper"><el-icon><Connection /></el-icon><span>Group 경로: {{ selectedGroupPath }}. 분류와 Collector는 다음으로 자동 인식됩니다: {{ groupMeta(form.groupId) }}.</span></p>
+        <div class="source-row"><el-form-item label="Datasource 유형"><el-select v-model="form.datasourceType" style="width: 260px"><el-option label="Prometheus" value="prometheus" /><el-option label="VictoriaMetrics" value="victoriametrics" /><el-option label="Elasticsearch" value="elasticsearch" /><el-option label="VictoriaLogs" value="victorialogs" /></el-select></el-form-item></div>
+        <el-form-item label="Query 조건" required><el-input v-model="form.queryText" type="textarea" :rows="4" placeholder="예: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)" /></el-form-item>
         <div class="threshold-grid">
-          <el-form-item label="比较符"><el-select v-model="form.comparator"><el-option v-for="item in ['>', '>=', '<', '<=', '==', '!=']" :key="item" :label="item" :value="item" /></el-select><small>与阈值进行比较</small></el-form-item>
-          <el-form-item label="阈值"><el-input-number v-model="form.threshold" :precision="4" controls-position="right" /><small>单条时间序列当前值</small></el-form-item>
-          <el-form-item label="持续时间"><el-input-number v-model="form.forSeconds" :min="0" controls-position="right" /><small>连续命中后触发（秒）</small></el-form-item>
-          <el-form-item label="评估间隔"><el-input-number v-model="form.evalIntervalSeconds" :min="15" controls-position="right" /><small>系统执行规则的频率（秒）</small></el-form-item>
+          <el-form-item label="비교 연산자"><el-select v-model="form.comparator"><el-option v-for="item in ['>', '>=', '<', '<=', '==', '!=']" :key="item" :label="item" :value="item" /></el-select><small>Threshold와 비교합니다</small></el-form-item>
+          <el-form-item label="Threshold"><el-input-number v-model="form.threshold" :precision="4" controls-position="right" /><small>단일 Time Series의 현재 값</small></el-form-item>
+          <el-form-item label="지속 시간"><el-input-number v-model="form.forSeconds" :min="0" controls-position="right" /><small>연속 일치 후 발생(초)</small></el-form-item>
+          <el-form-item label="평가 간격"><el-input-number v-model="form.evalIntervalSeconds" :min="15" controls-position="right" /><small>시스템이 Rule을 실행하는 주기(초)</small></el-form-item>
         </div>
-        <el-form-item label="告警等级" class="severity-field"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0', 'P1', 'P2', 'P3']" :key="item" :label="item" /></el-radio-group></el-form-item>
-        <div class="json-grid"><el-form-item label="标签 JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" /></el-form-item><el-form-item label="注解 JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" /></el-form-item></div>
-        <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="描述告警影响范围或处置建议" /></el-form-item>
+        <el-form-item label="Alert Severity" class="severity-field"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0', 'P1', 'P2', 'P3']" :key="item" :label="item" /></el-radio-group></el-form-item>
+        <div class="json-grid"><el-form-item label="Label JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" /></el-form-item><el-form-item label="Annotation JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" /></el-form-item></div>
+        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="Alert 영향 범위 또는 조치 권고를 입력하십시오" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submit">保存模板</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="submit">Template 저장</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" :title="detail.name || '告警模板详情'" width="760px">
-      <div class="detail-grid"><div><span>模板分组</span><b>{{ groupPath(detail.groupId) }}</b></div><div><span>采集器</span><b>{{ detail.collector || '-' }}</b></div><div><span>数据源</span><b>{{ datasourceText(detail.datasourceType) }}</b></div><div><span>触发条件</span><b>{{ detail.comparator }} {{ detail.threshold }}，持续 {{ detail.forSeconds }} 秒</b></div><div><span>评估间隔</span><b>{{ detail.evalIntervalSeconds }} 秒</b></div><div><span>告警等级</span><b>{{ detail.severity }}</b></div></div>
-      <div class="query-preview">{{ detail.queryText }}</div><p class="detail-description">{{ detail.description || '未填写处置说明。' }}</p>
-      <template #footer><el-button @click="detailVisible = false">关闭</el-button><el-button type="primary" @click="detailVisible = false; useTemplate(detail)">基于模板创建规则</el-button></template>
+    <el-dialog v-model="detailVisible" :title="detail.name || 'Alert Template 상세'" width="760px">
+      <div class="detail-grid"><div><span>Template Group</span><b>{{ groupPath(detail.groupId) }}</b></div><div><span>Collector</span><b>{{ detail.collector || '-' }}</b></div><div><span>Datasource</span><b>{{ datasourceText(detail.datasourceType) }}</b></div><div><span>트리거 조건</span><b>{{ detail.comparator }} {{ detail.threshold }}, 지속 {{ detail.forSeconds }}초</b></div><div><span>평가 간격</span><b>{{ detail.evalIntervalSeconds }}초</b></div><div><span>Alert Severity</span><b>{{ detail.severity }}</b></div></div>
+      <div class="query-preview">{{ detail.queryText }}</div><p class="detail-description">{{ detail.description || '조치 설명이 없습니다.' }}</p>
+      <template #footer><el-button @click="detailVisible = false">닫기</el-button><el-button type="primary" @click="detailVisible = false; useTemplate(detail)">Template으로 Rule 생성</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="groupDialogVisible" :title="groupForm.id ? '重命名模板分组' : '新增模板分组'" width="440px"><el-form label-position="top"><el-form-item label="分组名称" required><el-input v-model="groupForm.name" maxlength="32" show-word-limit placeholder="例如：node_exporter" /></el-form-item></el-form><template #footer><el-button @click="groupDialogVisible = false">取消</el-button><el-button type="primary" @click="saveGroup">保存</el-button></template></el-dialog>
+    <el-dialog v-model="groupDialogVisible" :title="groupForm.id ? 'Template Group 이름 변경' : '새 Template Group'" width="440px"><el-form label-position="top"><el-form-item label="Group 이름" required><el-input v-model="groupForm.name" maxlength="32" show-word-limit placeholder="예: node_exporter" /></el-form-item></el-form><template #footer><el-button @click="groupDialogVisible = false">취소</el-button><el-button type="primary" @click="saveGroup">저장</el-button></template></el-dialog>
 
-    <el-dialog v-model="importVisible" title="导入模板" width="min(940px, 94vw)" top="5vh" destroy-on-close class="prometheus-import-dialog">
-      <div class="dialog-steps" aria-label="导入步骤"><span :class="{ active: importStage === 'paste' }">1. 粘贴 Rule YAML</span><i></i><span :class="{ active: importStage === 'preview' }">2. 选择模板</span><i></i><span :class="{ active: importStage === 'preview' }">3. 导入分组</span></div>
+    <el-dialog v-model="importVisible" title="Template Import" width="min(940px, 94vw)" top="5vh" destroy-on-close class="prometheus-import-dialog">
+      <div class="dialog-steps" aria-label="Import 단계"><span :class="{ active: importStage === 'paste' }">1. Rule YAML 붙여넣기</span><i></i><span :class="{ active: importStage === 'preview' }">2. Template 선택</span><i></i><span :class="{ active: importStage === 'preview' }">3. Group Import</span></div>
       <template v-if="importStage === 'paste'">
         <div class="paste-import-layout">
           <section class="yaml-paste-panel">
-            <div class="yaml-panel-heading"><div><strong>粘贴 Prometheus Rule YAML</strong><p>支持标准 <code>groups / rules / alert / expr</code> 格式，单次最多 2 MB。</p></div><el-button text type="primary" @click="importContent = prometheusRuleExample">填入示例</el-button></div>
-            <el-input v-model="importContent" class="yaml-input" type="textarea" :rows="8" resize="none" spellcheck="false" placeholder="将 Prometheus Rule YAML 粘贴到这里" aria-label="Prometheus Rule YAML" @blur="!importContent.trim() && (importError = '请粘贴 Prometheus Rule YAML 后再解析。')" />
+            <div class="yaml-panel-heading"><div><strong>Prometheus Rule YAML 붙여넣기</strong><p>표준 <code>groups / rules / alert / expr</code> 형식을 지원하며 한 번에 최대 2 MB입니다.</p></div><el-button text type="primary" @click="importContent = prometheusRuleExample">예시 불러오기</el-button></div>
+            <el-input v-model="importContent" class="yaml-input" type="textarea" :rows="8" resize="none" spellcheck="false" placeholder="여기에 Prometheus Rule YAML을 붙여넣으십시오" aria-label="Prometheus Rule YAML" @blur="!importContent.trim() && (importError = 'Prometheus Rule YAML을 붙여넣은 뒤 파싱하십시오.')" />
             <p v-if="importError" class="yaml-error" role="alert"><el-icon><WarningFilled /></el-icon>{{ importError }}</p>
           </section>
           <el-collapse class="yaml-example-collapse">
             <el-collapse-item name="example">
-              <template #title><div class="example-collapse-title"><el-icon><InfoFilled /></el-icon><span>查看带注释的写法示例</span><small>注释仅用于说明字段，不会导入</small></div></template>
+              <template #title><div class="example-collapse-title"><el-icon><InfoFilled /></el-icon><span>주석 포함 작성 예시 보기</span><small>주석은 필드 설명용이며 Import되지 않습니다</small></div></template>
               <pre>{{ prometheusRuleExample }}</pre>
             </el-collapse-item>
           </el-collapse>
@@ -475,28 +475,28 @@ onMounted(async () => {
       <template v-else>
       <div class="import-guide">
         <div class="import-guide-icon"><el-icon><DocumentChecked /></el-icon></div>
-        <div><strong>规则文件已通过结构校验</strong><p>仅展示 <code>alert</code> 规则；recording rule 已自动忽略。确认目标分组并勾选需要导入的模板。</p></div>
-        <el-tag type="success" effect="light">{{ importRows.length }} 条可导入</el-tag>
+        <div><strong>Rule 파일 구조 검증 통과</strong><p><code>alert</code> Rule만 표시하며 recording Rule은 자동으로 무시됩니다. 대상 Group을 확인하고 Import할 Template을 선택하십시오.</p></div>
+        <el-tag type="success" effect="light">Import 가능 {{ importRows.length }}건</el-tag>
       </div>
       <div class="import-settings">
-        <el-form-item label="目标模板分组" required>
-          <el-cascader v-model="importGroupId" :options="groupTree" :props="{ label: 'name', value: 'id', children: 'children', emitPath: false, checkStrictly: false }" filterable placeholder="选择二级采集器分组" />
+        <el-form-item label="대상 Template Group" required>
+          <el-cascader v-model="importGroupId" :options="groupTree" :props="{ label: 'name', value: 'id', children: 'children', emitPath: false, checkStrictly: false }" filterable placeholder="2차 Collector Group 선택" />
         </el-form-item>
-        <el-form-item label="同名模板处理">
-          <el-select v-model="duplicateStrategy"><el-option label="跳过同名模板（推荐）" value="skip" /><el-option label="自动重命名后导入" value="rename" /></el-select>
+        <el-form-item label="동일 이름 Template 처리">
+          <el-select v-model="duplicateStrategy"><el-option label="동일 이름 Template 건너뛰기(권장)" value="skip" /><el-option label="자동 Rename 후 Import" value="rename" /></el-select>
         </el-form-item>
-        <p class="import-target-tip">导入后归属：{{ groupPath(importGroupId) }}</p>
+        <p class="import-target-tip">Import 후 소속: {{ groupPath(importGroupId) }}</p>
       </div>
       <el-table ref="importTableRef" :data="importRows" max-height="430" class="import-preview-table" @selection-change="(items) => importSelection = items">
         <el-table-column type="selection" width="48" />
-        <el-table-column label="模板名称" min-width="220"><template #default="{ row }"><div class="import-name"><strong>{{ row.name }}</strong><span>{{ row.prometheusGroup || '未命名规则组' }}</span></div></template></el-table-column>
-        <el-table-column label="查询表达式" min-width="330"><template #default="{ row }"><code class="import-expression">{{ row.queryText }}</code></template></el-table-column>
-        <el-table-column label="触发条件" width="130"><template #default="{ row }"><span class="condition-pill">{{ row.comparator }} {{ row.threshold }}</span><small class="condition-duration">持续 {{ row.forSeconds }}s</small></template></el-table-column>
-        <el-table-column label="等级" width="82"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
+        <el-table-column label="Template 이름" min-width="220"><template #default="{ row }"><div class="import-name"><strong>{{ row.name }}</strong><span>{{ row.prometheusGroup || '이름 없는 Rule Group' }}</span></div></template></el-table-column>
+        <el-table-column label="Query 식" min-width="330"><template #default="{ row }"><code class="import-expression">{{ row.queryText }}</code></template></el-table-column>
+        <el-table-column label="트리거 조건" width="130"><template #default="{ row }"><span class="condition-pill">{{ row.comparator }} {{ row.threshold }}</span><small class="condition-duration">지속 {{ row.forSeconds }}s</small></template></el-table-column>
+        <el-table-column label="Severity" width="82"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
       </el-table>
-      <div class="import-footnote"><el-icon><InfoFilled /></el-icon><span>已选择 <b>{{ importSelection.length }}</b> 条。Prometheus 表达式末尾的数值比较会自动拆分为查询语句、比较符和阈值。</span></div>
+      <div class="import-footnote"><el-icon><InfoFilled /></el-icon><span><b>{{ importSelection.length }}</b>건을 선택했습니다. Prometheus 식 끝의 수치 비교는 Query 문, 비교 연산자, Threshold로 자동 분리됩니다.</span></div>
       </template>
-      <template #footer><el-button @click="importVisible = false">取消</el-button><el-button v-if="importStage === 'preview'" @click="importStage = 'paste'">返回修改</el-button><el-button v-if="importStage === 'paste'" type="primary" :loading="importParsing" @click="parsePrometheusContent">解析并预览</el-button><el-button v-else type="primary" :loading="importSaving" :disabled="!importSelection.length" @click="submitPrometheusImport">导入 {{ importSelection.length }} 条模板</el-button></template>
+      <template #footer><el-button @click="importVisible = false">취소</el-button><el-button v-if="importStage === 'preview'" @click="importStage = 'paste'">수정으로 돌아가기</el-button><el-button v-if="importStage === 'paste'" type="primary" :loading="importParsing" @click="parsePrometheusContent">파싱 후 미리보기</el-button><el-button v-else type="primary" :loading="importSaving" :disabled="!importSelection.length" @click="submitPrometheusImport">Template {{ importSelection.length }}건 Import</el-button></template>
     </el-dialog>
   </div>
 </template>

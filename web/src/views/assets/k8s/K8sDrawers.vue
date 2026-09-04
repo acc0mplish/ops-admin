@@ -55,28 +55,28 @@ defineProps({
     <template #header>
       <div class="node-label-dialog-title">
         <div>
-          <strong>节点标签管理</strong>
+          <strong>Node Label 관리</strong>
           <span>{{ page.nodeLabelTarget?.name || '-' }}</span>
         </div>
       </div>
     </template>
     <div class="node-label-intro">
-      标签会直接更新到 Kubernetes Node，可用于节点筛选、工作负载调度与环境标识。保存前请确认系统标签是否仍需保留。
+      Label은 Kubernetes Node에 직접 반영되며 Node 필터링, Workload 스케줄링 및 Environment 식별에 사용할 수 있습니다. 저장하기 전에 시스템 Label을 유지해야 하는지 확인하십시오.
     </div>
     <div class="node-label-grid-head">
-      <span>标签键</span>
-      <span>标签值</span>
-      <span>操作</span>
+      <span>Label Key</span>
+      <span>Label 값</span>
+      <span>작업</span>
     </div>
     <div v-for="(item, index) in page.nodeLabelItems" :key="`${item.key}-${index}`" class="node-label-row">
-      <el-input v-model="item.key" placeholder="例如 workload.example.com/tier" />
-      <el-input v-model="item.value" placeholder="可留空" />
-      <el-button link type="danger" @click="page.removeNodeLabel(index)">删除</el-button>
+      <el-input v-model="item.key" placeholder="예: workload.example.com/tier" />
+      <el-input v-model="item.value" placeholder="비워둘 수 있음" />
+      <el-button link type="danger" @click="page.removeNodeLabel(index)">삭제</el-button>
     </div>
-    <el-button link type="primary" @click="page.addNodeLabel">+ 添加标签</el-button>
+    <el-button link type="primary" @click="page.addNodeLabel">+ Label 추가</el-button>
     <template #footer>
-      <el-button @click="page.nodeLabelsVisible = false">取消</el-button>
-      <el-button type="primary" :loading="page.nodeLabelsSaving" @click="page.saveNodeLabels">保存标签</el-button>
+      <el-button @click="page.nodeLabelsVisible = false">취소</el-button>
+      <el-button type="primary" :loading="page.nodeLabelsSaving" @click="page.saveNodeLabels">Label 저장</el-button>
     </template>
   </el-dialog>
 
@@ -157,7 +157,7 @@ defineProps({
             <el-table-column label="CPU Request / Limit" min-width="170">
               <template #default="{ row }">{{ row.requestCPU || '-' }} / {{ row.limitCPU || '-' }}</template>
             </el-table-column>
-            <el-table-column label="内存 Request / Limit" min-width="190">
+            <el-table-column label="Memory Request / Limit" min-width="190">
               <template #default="{ row }">{{ row.requestMemory || '-' }} / {{ row.limitMemory || '-' }}</template>
             </el-table-column>
           </el-table>
@@ -287,10 +287,10 @@ defineProps({
         </el-descriptions>
 
         <div class="drawer-section">
-          <strong>键值</strong>
+          <strong>Key/값</strong>
           <el-table :data="page.configMapDetail.keys || []" class="data-table">
             <el-table-column prop="label" :label="page.t('k8sKeys')" min-width="220" />
-            <el-table-column label="值" min-width="360">
+            <el-table-column label="값" min-width="360">
               <template #default="{ row }">
                 <pre class="k8s-detail-value">{{ row.value }}</pre>
               </template>
@@ -312,10 +312,10 @@ defineProps({
         </el-descriptions>
 
         <div class="drawer-section">
-          <strong>键值</strong>
+          <strong>Key/값</strong>
           <el-table :data="page.secretDetail.keys || []" class="data-table">
             <el-table-column prop="label" :label="page.t('k8sKeys')" min-width="220" />
-            <el-table-column label="值" min-width="360">
+            <el-table-column label="값" min-width="360">
               <template #default="{ row }">
                 <el-input :model-value="row.value" type="password" show-password readonly class="k8s-secret-value" />
               </template>
@@ -336,12 +336,12 @@ defineProps({
           <el-descriptions-item :label="page.t('k8sStatus')">{{ page.storageDetail.status }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sCapacity')">{{ page.storageDetail.capacity }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sStorageClass')">{{ page.storageDetail.storageClass }}</el-descriptions-item>
-          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="存储源">{{ page.storageDetail.sourceType }}</el-descriptions-item>
-          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="限定命名空间">{{ page.storageDetail.namespaceScope || '集群级' }}</el-descriptions-item>
-          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="路径">{{ page.storageDetail.path }}</el-descriptions-item>
-          <el-descriptions-item v-if="page.storageDetail.kind === 'PV' && page.storageDetail.nfsServer !== '-'" label="NFS 服务地址">{{ page.storageDetail.nfsServer }}</el-descriptions-item>
-          <el-descriptions-item label="读取策略">{{ page.storageDetail.accessModes || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="回收策略">{{ page.storageDetail.reclaimPolicy }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="Storage 소스">{{ page.storageDetail.sourceType }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="Namespace 제한">{{ page.storageDetail.namespaceScope || 'Cluster 전체' }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="경로">{{ page.storageDetail.path }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV' && page.storageDetail.nfsServer !== '-'" label="NFS Server 주소">{{ page.storageDetail.nfsServer }}</el-descriptions-item>
+          <el-descriptions-item label="Access Mode">{{ page.storageDetail.accessModes || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="page.storageDetail.kind === 'PV'" label="Reclaim Policy">{{ page.storageDetail.reclaimPolicy }}</el-descriptions-item>
           <el-descriptions-item :label="page.t('k8sAge')">{{ page.storageDetail.age }}</el-descriptions-item>
         </el-descriptions>
       </template>
@@ -404,7 +404,7 @@ defineProps({
     </div>
   </el-drawer>
 
-  <el-drawer v-model="page.podLogDrawerVisible" title="Pod 日志" size="70%" class="pod-log-drawer">
+  <el-drawer v-model="page.podLogDrawerVisible" title="Pod Log" size="70%" class="pod-log-drawer">
     <div v-loading="page.podLogLoading" class="drawer-content pod-log-drawer-content">
       <div class="pod-log-overview">
         <div>
@@ -412,23 +412,23 @@ defineProps({
           <strong>{{ page.currentPodQuery.podName || '-' }}</strong>
         </div>
         <div>
-          <span>命名空间</span>
+          <span>Namespace</span>
           <strong>{{ page.currentPodQuery.namespace || '-' }}</strong>
         </div>
       </div>
       <div class="pod-log-toolbar">
-        <el-select v-model="page.selectedContainer" class="pod-log-container-select" placeholder="选择容器" @change="page.refreshPodLogs">
+        <el-select v-model="page.selectedContainer" class="pod-log-container-select" placeholder="Container 선택" @change="page.refreshPodLogs">
           <el-option v-for="item in page.podContainerOptions" :key="item" :label="item" :value="item" />
         </el-select>
         <el-select v-model="page.podLogTailLines" class="pod-log-tail-select" @change="page.refreshPodLogs">
-          <el-option :value="100" label="最近 100 条" />
-          <el-option :value="200" label="最近 200 条" />
-          <el-option :value="500" label="最近 500 条" />
-          <el-option :value="1000" label="最近 1000 条" />
+          <el-option :value="100" label="최근 100줄" />
+          <el-option :value="200" label="최근 200줄" />
+          <el-option :value="500" label="최근 500줄" />
+          <el-option :value="1000" label="최근 1000줄" />
         </el-select>
-        <el-button :loading="page.podLogLoading" @click="page.refreshPodLogs">刷新日志</el-button>
+        <el-button :loading="page.podLogLoading" @click="page.refreshPodLogs">Log 새로 고침</el-button>
       </div>
-      <div class="pod-log-meta">显示容器标准输出 / 错误输出，默认最近 200 条。</div>
+      <div class="pod-log-meta">Container 표준 출력 / 오류 출력을 표시하며 기본값은 최근 200줄입니다.</div>
       <div class="pod-log-console">
         <template v-if="page.podLogLines.length">
           <div v-for="(line, index) in page.podLogLines" :key="`${index}-${line}`" class="pod-log-line">

@@ -51,7 +51,7 @@ async function submit() {
     }
     return form.hostIds.map(Number).includes(Number(host.id))
   })
-  const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('\u751f\u4ea7'))
+  const includesProduction = selectedHosts.some((host) => ['prod', 'production'].includes(String(host.environment || '').toLowerCase()) || String(host.environment || '').includes('운영'))
   const confirmationRequired = highRisk || includesProduction
   if (confirmationRequired) {
     await confirmRiskOperation({

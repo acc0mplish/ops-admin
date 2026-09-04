@@ -23,10 +23,10 @@ const form = reactive({
 })
 
 const channelTypes = [
-  { label: '钉钉机器人', value: 'dingtalk' },
-  { label: '企微机器人', value: 'wecom' },
-  { label: '飞书机器人', value: 'feishu' },
-  { label: '自定义 HTTP Webhook', value: 'webhook' }
+  { label: 'DingTalk Bot', value: 'dingtalk' },
+  { label: 'WeCom Bot', value: 'wecom' },
+  { label: 'Feishu Bot', value: 'feishu' },
+  { label: '사용자 정의 HTTP Webhook', value: 'webhook' }
 ]
 
 function channelTypeLabel(value) {
@@ -72,13 +72,13 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim() || !form.webhookUrl.trim()) {
-    ElMessage.warning('请填写媒介名称和 Webhook 地址')
+    ElMessage.warning('Channel 이름과 Webhook 주소를 입력하십시오')
     return
   }
   saving.value = true
   try {
     await saveNotifyChannel(form)
-    ElMessage.success('保存成功')
+    ElMessage.success('저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -87,9 +87,9 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除通知媒介「${row.name}」吗？`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`Notification Channel "${row.name}"을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
   await deleteNotifyChannel(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -100,40 +100,40 @@ onMounted(loadData)
   <div class="page-card notify-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">消息通知媒介</h2>
-        <p class="page-desc">维护钉钉、企微、飞书机器人和自定义 HTTP Webhook 的发送通道。</p>
+        <h2 class="page-title">메시지 알림 Channel</h2>
+        <p class="page-desc">DingTalk, WeCom, Feishu Bot과 사용자 정의 HTTP Webhook의 전송 경로를 관리합니다.</p>
       </div>
-      <el-button type="primary" @click="openCreate">新增媒介</el-button>
+      <el-button type="primary" @click="openCreate">Channel 추가</el-button>
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="搜索媒介名称 / 描述" style="width: 260px" @keyup.enter="loadData" />
-      <el-select v-model="query.channelType" clearable placeholder="媒介类型" style="width: 180px">
+      <el-input v-model="query.keyword" clearable placeholder="Channel 이름 / 설명 검색" style="width: 260px" @keyup.enter="loadData" />
+      <el-select v-model="query.channelType" clearable placeholder="Channel 유형" style="width: 180px">
         <el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
-      <el-select v-model="query.status" clearable placeholder="状态" style="width: 120px">
-        <el-option label="启用" value="1" />
-        <el-option label="禁用" value="2" />
+      <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px">
+        <el-option label="활성화" value="1" />
+        <el-option label="비활성화" value="2" />
       </el-select>
-      <el-button type="primary" @click="loadData">搜索</el-button>
+      <el-button type="primary" @click="loadData">검색</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="name" label="媒介名称" min-width="180" />
-      <el-table-column label="媒介类型" width="180">
+      <el-table-column prop="name" label="Channel 이름" min-width="180" />
+      <el-table-column label="Channel 유형" width="180">
         <template #default="{ row }">{{ channelTypeLabel(row.channelType) }}</template>
       </el-table-column>
-      <el-table-column prop="webhookUrl" label="Webhook 地址" min-width="320" show-overflow-tooltip />
-      <el-table-column label="状态" width="100" align="center">
+      <el-table-column prop="webhookUrl" label="Webhook 주소" min-width="320" show-overflow-tooltip />
+      <el-table-column label="상태" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="updateTime" label="更新时间" width="180" />
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column prop="updateTime" label="수정 시각" width="180" />
+      <el-table-column label="작업" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -142,32 +142,32 @@ onMounted(loadData)
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑通知媒介' : '新增通知媒介'" width="760px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Notification Channel 수정' : 'Notification Channel 추가'" width="760px">
       <el-form label-width="120px">
-        <el-form-item label="媒介名称" required><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="媒介类型">
+        <el-form-item label="Channel 이름" required><el-input v-model="form.name" /></el-form-item>
+        <el-form-item label="Channel 유형">
           <el-select v-model="form.channelType" style="width: 100%">
             <el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Webhook 地址" required><el-input v-model="form.webhookUrl" /></el-form-item>
-        <el-form-item label="签名密钥">
-          <el-input v-model="form.secret" show-password placeholder="钉钉加签 Secret，可选" />
+        <el-form-item label="Webhook 주소" required><el-input v-model="form.webhookUrl" /></el-form-item>
+        <el-form-item label="서명 Secret">
+          <el-input v-model="form.secret" show-password placeholder="DingTalk 서명 Secret. 선택 사항" />
         </el-form-item>
-        <el-form-item label="请求头 JSON">
+        <el-form-item label="Request Header JSON">
           <el-input v-model="form.headersJson" type="textarea" :rows="5" placeholder='{"Authorization":"Bearer xxx"}' />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="상태">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="2">禁用</el-radio>
+            <el-radio :value="1">활성화</el-radio>
+            <el-radio :value="2">비활성화</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
       </template>
     </el-dialog>
   </div>

@@ -25,7 +25,7 @@ const form = reactive({
   id: undefined,
   name: '',
   code: '',
-  serviceType: '后端服务',
+  serviceType: '백엔드 서비스',
   repoType: 'git',
   repoUrl: '',
   repoCredentialId: undefined,
@@ -47,7 +47,7 @@ function resetForm() {
     id: undefined,
     name: '',
     code: '',
-    serviceType: '后端服务',
+    serviceType: '백엔드 서비스',
     repoType: 'git',
     repoUrl: '',
     repoCredentialId: undefined,
@@ -84,7 +84,7 @@ async function openEdit(row) {
     id: row.id,
     name: row.name || '',
     code: row.code || '',
-    serviceType: row.serviceType || row.env || '后端服务',
+    serviceType: row.serviceType || row.env || '백엔드 서비스',
     repoType: row.repoType || 'git',
     repoUrl: row.repoUrl || '',
     repoCredentialId: row.repoCredentialId || undefined,
@@ -98,17 +98,17 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name || !form.code || !form.repoUrl) {
-    ElMessage.warning('请填写项目名称、项目编码和仓库地址')
+    ElMessage.warning('Application 이름, Application Code와 Repository 주소를 입력하십시오.')
     return
   }
   if (isSVNRepository() && form.branch && !/^(HEAD|\d+)$/i.test(form.branch.trim())) {
-    ElMessage.warning('SVN 版本号仅支持 HEAD 或数字修订号')
+    ElMessage.warning('SVN Version은 HEAD 또는 숫자 Revision만 지원합니다')
     return
   }
   saving.value = true
   try {
     await saveOpsApplication({ ...form })
-    ElMessage.success('保存成功')
+    ElMessage.success('저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -117,9 +117,9 @@ async function submit() {
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`确认删除项目「${row.name}」？`, '删除项目', { type: 'warning' })
+  await ElMessageBox.confirm(`Application "${row.name}"을(를) 삭제하시겠습니까?`, 'Application 삭제', { type: 'warning' })
   await deleteOpsApplication(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -134,39 +134,39 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
   <div class="app-page">
     <div class="app-header">
       <div>
-        <h1>应用管理</h1>
-        <p>统一维护应用代码仓库，并按环境绑定主机、K8s、数据库、网关和监控资源。</p>
+        <h1>Application 관리</h1>
+        <p>Application Repository를 통합 관리하고 Environment별로 Host, K8s, Database, Gateway, Monitoring Resource를 바인딩합니다.</p>
       </div>
-      <el-button type="primary" @click="openCreate">+ 新建应用</el-button>
+      <el-button type="primary" @click="openCreate">+ 새 Application</el-button>
     </div>
 
     <div class="filter-panel">
       <el-form inline>
-        <el-form-item label="应用名称">
-          <el-input v-model="query.keyword" clearable placeholder="请输入应用名称 / 仓库地址" @keyup.enter="loadData" />
+        <el-form-item label="Application 이름">
+          <el-input v-model="query.keyword" clearable placeholder="Application 이름 / Repository 주소를 입력하십시오" @keyup.enter="loadData" />
         </el-form-item>
-        <el-form-item label="服务类别">
-          <el-select v-model="query.serviceType" clearable placeholder="请选择服务类别">
-            <el-option label="前端服务" value="前端服务" />
-            <el-option label="后端服务" value="后端服务" />
-            <el-option label="中间件" value="中间件" />
+        <el-form-item label="서비스 유형">
+          <el-select v-model="query.serviceType" clearable placeholder="서비스 유형을 선택하십시오">
+            <el-option label="프론트엔드 서비스" value="프론트엔드 서비스" />
+            <el-option label="백엔드 서비스" value="백엔드 서비스" />
+            <el-option label="미들웨어" value="미들웨어" />
           </el-select>
         </el-form-item>
-        <el-form-item label="环境">
-          <el-select v-model="query.env" clearable placeholder="全部环境" @change="loadData">
+        <el-form-item label="Environment">
+          <el-select v-model="query.env" clearable placeholder="전체 Environment" @change="loadData">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">搜索</el-button>
-          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', env: '', pageNum: 1 }); loadData()">重置</el-button>
+          <el-button type="primary" @click="loadData">검색</el-button>
+          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', env: '', pageNum: 1 }); loadData()">초기화</el-button>
         </el-form-item>
       </el-form>
     </div>
 
     <el-card shadow="never" class="table-card">
       <el-table v-loading="loading" :data="rows" row-key="id">
-        <el-table-column prop="name" label="应用名称" min-width="170">
+        <el-table-column prop="name" label="Application 이름" min-width="170">
           <template #default="{ row }">
             <div class="name-cell">
               <strong>{{ row.name }}</strong>
@@ -174,31 +174,31 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="业务功能" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="serviceType" label="服务类别" width="120">
+        <el-table-column prop="description" label="비즈니스 기능" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="serviceType" label="서비스 유형" width="120">
           <template #default="{ row }">{{ row.serviceType || row.env || '-' }}</template>
         </el-table-column>
-        <el-table-column label="默认环境" width="120">
+        <el-table-column label="기본 Environment" width="120">
           <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.env) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="repoUrl" label="仓库地址" min-width="300" show-overflow-tooltip>
+        <el-table-column prop="repoUrl" label="Repository 주소" min-width="300" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ row.repoType || 'git' }}</el-tag>
             <span class="repo-url">{{ row.repoUrl }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="상태" width="90">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ Number(row.status) === 1 ? '正常' : '禁用' }}</el-tag>
+            <el-tag :type="statusType(row.status)" size="small">{{ Number(row.status) === 1 ? '정상' : '비활성화' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建者" width="100">管理员</el-table-column>
-        <el-table-column prop="createTime" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="생성자" width="100">관리자</el-table-column>
+        <el-table-column prop="createTime" label="생성 시각" min-width="170" />
+        <el-table-column label="작업" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">查看</el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <el-button link type="primary" @click="openEdit(row)">조회</el-button>
+            <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+            <el-button link type="danger" @click="remove(row)">삭제</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -207,20 +207,20 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑应用' : '新建应用'" width="min(1280px, 94vw)" top="4vh" class="app-project-dialog">
+    <el-dialog v-model="dialogVisible" :title="form.id ? 'Application 수정' : '새 Application'" width="min(1280px, 94vw)" top="4vh" class="app-project-dialog">
       <el-form :model="form" label-width="96px">
         <el-row :gutter="14">
           <el-col :span="12">
-            <el-form-item label="应用名称" required><el-input v-model="form.name" /></el-form-item>
+            <el-form-item label="Application 이름" required><el-input v-model="form.name" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="应用编码" required><el-input v-model="form.code" /></el-form-item>
+            <el-form-item label="Application Code" required><el-input v-model="form.code" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="服务类别"><el-input v-model="form.serviceType" placeholder="例如：前端服务 / 后端服务" /></el-form-item>
+            <el-form-item label="서비스 유형"><el-input v-model="form.serviceType" placeholder="예: 프론트엔드 서비스 / 백엔드 서비스" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="仓库类型">
+            <el-form-item label="Repository 유형">
               <el-radio-group v-model="form.repoType" @change="handleRepoTypeChange">
                 <el-radio-button label="git">Git</el-radio-button>
                 <el-radio-button label="svn">SVN</el-radio-button>
@@ -228,43 +228,43 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="仓库地址" required><el-input v-model="form.repoUrl" :placeholder="isSVNRepository() ? 'https://svn.example.com/svn/team/app' : 'https://git.example.com/team/app.git'" /></el-form-item>
+            <el-form-item label="Repository 주소" required><el-input v-model="form.repoUrl" :placeholder="isSVNRepository() ? 'https://svn.example.com/svn/team/app' : 'https://git.example.com/team/app.git'" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="仓库凭据">
-              <el-select v-model="form.repoCredentialId" clearable filterable style="width: 100%" :placeholder="isSVNRepository() ? '公开 SVN 可不选择；支持 HTTP(S) 认证' : '公开仓库可不选择'">
+            <el-form-item label="Repository Credential">
+              <el-select v-model="form.repoCredentialId" clearable filterable style="width: 100%" :placeholder="isSVNRepository() ? 'Public SVN은 선택하지 않아도 되며 HTTP(S) 인증을 지원합니다' : 'Public Repository는 선택하지 않아도 됩니다'">
                 <el-option v-for="item in credentialOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item :label="isSVNRepository() ? 'SVN 版本' : '默认分支'">
-              <el-input v-model="form.branch" :placeholder="isSVNRepository() ? 'HEAD（最新版本）或数字修订号' : '例如：main / master / release/1.0'" />
+            <el-form-item :label="isSVNRepository() ? 'SVN Version' : '기본 Branch'">
+              <el-input v-model="form.branch" :placeholder="isSVNRepository() ? 'HEAD(최신 Version) 또는 숫자 Revision' : '예: main / master / release/1.0'" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="默认环境" required>
-              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="请选择环境">
+            <el-form-item label="기본 Environment" required>
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="业务功能"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="例如：提供用户登录、订单处理或游戏网关等业务能力" /></el-form-item>
+            <el-form-item label="비즈니스 기능"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="예: 사용자 Login, Order 처리 또는 Game Gateway 등 비즈니스 기능 제공" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="状态">
+            <el-form-item label="상태">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="2">禁用</el-radio>
+                <el-radio :value="1">활성화</el-radio>
+                <el-radio :value="2">비활성화</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
+        <el-button @click="dialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
       </template>
     </el-dialog>
   </div>

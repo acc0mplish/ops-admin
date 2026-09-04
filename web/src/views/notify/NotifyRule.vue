@@ -35,28 +35,28 @@ const form = reactive({
 })
 
 const scopeOptions = [
-  { label: '作业编排', value: 'job' },
-  { label: 'CI/CD 流水线', value: 'pipeline' },
-  { label: '定时任务', value: 'schedule' },
-  { label: '监控告警', value: 'monitor' }
+  { label: 'Job Orchestration', value: 'job' },
+  { label: 'CI/CD Pipeline', value: 'pipeline' },
+  { label: 'Schedule Task', value: 'schedule' },
+  { label: 'Monitor Alert', value: 'monitor' }
 ]
 const filterScopeOptions = scopeOptions
 
 const eventOptions = [
-  { label: '成功', value: 'success' },
-  { label: '失败', value: 'failed' },
-  { label: '等待人工确认', value: 'waiting_approval' },
-  { label: '已拒绝', value: 'rejected' },
-  { label: '告警触发', value: 'firing' },
-  { label: '告警恢复', value: 'recovered' },
-  { label: '全部事件', value: 'all' }
+  { label: '성공', value: 'success' },
+  { label: '실패', value: 'failed' },
+  { label: '수동 확인 대기', value: 'waiting_approval' },
+  { label: '거부됨', value: 'rejected' },
+  { label: 'Alert 발생', value: 'firing' },
+  { label: 'Alert 복구', value: 'recovered' },
+  { label: '전체 Event', value: 'all' }
 ]
 
 const channelTypeLabels = {
-  dingtalk: '钉钉机器人',
-  wecom: '企业微信机器人',
-  feishu: '飞书机器人',
-  webhook: '自定义 Webhook'
+  dingtalk: 'DingTalk Bot',
+  wecom: 'WeCom Bot',
+  feishu: 'Feishu Bot',
+  webhook: '사용자 정의 Webhook'
 }
 
 const selectedTemplate = computed(() => templateOptions.value.find((item) => Number(item.id) === Number(form.templateId)))
@@ -68,34 +68,34 @@ const compatibleTemplateOptions = computed(() => templateOptions.value.filter((i
 }))
 const selectedChannels = computed(() => channelOptions.value.filter((item) => form.channelIds.map(Number).includes(Number(item.id))))
 const wizardSteps = [
-  { title: '触发场景', description: '选择何时通知' },
-  { title: '发送方式', description: '选择模板与媒介' },
-  { title: '确认启用', description: '检查路由并保存' }
+  { title: '트리거 시나리오', description: '언제 알림을 보낼지 선택' },
+  { title: '전송 방식', description: 'Template과 Channel 선택' },
+  { title: '활성화 확인', description: 'Routing을 확인하고 저장' }
 ]
 const routeWarnings = computed(() => {
   const warnings = []
-  if (!form.scope || form.scope === 'all') warnings.push('请指定具体的业务场景')
-  if (!form.events.length) warnings.push('至少选择一个触发事件')
-  if (!selectedTemplate.value) warnings.push('请选择消息模板')
+  if (!form.scope || form.scope === 'all') warnings.push('구체적인 비즈니스 시나리오를 지정하십시오')
+  if (!form.events.length) warnings.push('하나 이상의 트리거 Event를 선택하십시오')
+  if (!selectedTemplate.value) warnings.push('메시지 Template을 선택하십시오')
   if (selectedTemplate.value && !compatibleTemplateOptions.value.some((item) => Number(item.id) === Number(selectedTemplate.value.id))) {
-    warnings.push('消息模板与适用范围不一致')
+    warnings.push('메시지 Template과 적용 범위가 일치하지 않습니다')
   }
-  if (!selectedChannels.value.length) warnings.push('请选择通知媒介')
+  if (!selectedChannels.value.length) warnings.push('Notification Channel을 선택하십시오')
   const templateType = selectedTemplate.value?.channelType
   if (templateType && selectedChannels.value.some((item) => item.channelType !== templateType)) {
-    warnings.push('模板与通知媒介类型不一致')
+    warnings.push('Template과 Notification Channel 유형이 일치하지 않습니다')
   }
   return warnings
 })
 
 function scopeLabel(value) {
-  if (!value) return '未选择范围'
-  if (value === 'all') return '需指定范围'
+  if (!value) return '범위 미선택'
+  if (value === 'all') return '범위 지정 필요'
   return scopeOptions.find((item) => item.value === value)?.label || value
 }
 
 function templateScopeLabel(value) {
-  return value === 'all' ? '通用模板' : scopeLabel(value)
+  return value === 'all' ? '범용 Template' : scopeLabel(value)
 }
 
 function eventLabel(value) {
@@ -138,7 +138,7 @@ async function loadBaseOptions() {
   } catch (error) {
     templateOptions.value = []
     channelOptions.value = []
-    ElMessage.error(error?.message || '加载消息模板和通知媒介失败')
+    ElMessage.error(error?.message || '메시지 Template과 Notification Channel 로드에 실패했습니다')
   } finally {
     optionsLoading.value = false
   }
@@ -202,7 +202,7 @@ function handleTemplateChange(value) {
   if (!template || form.scope !== 'all' || templateScope === 'all') return
   form.scope = templateScope
   form.events = defaultEventsForScope(templateScope)
-  ElMessage.info(`已根据模板切换到「${scopeLabel(templateScope)}」场景`)
+  ElMessage.info(`Template에 따라 "${scopeLabel(templateScope)}" 시나리오로 전환했습니다`)
 }
 
 function channelDisabled(item) {
@@ -211,8 +211,8 @@ function channelDisabled(item) {
 
 function nextStep() {
   if (activeStep.value === 0) {
-    if (!form.name.trim()) return ElMessage.warning('请先填写规则名称')
-    if (!form.events.length) return ElMessage.warning('请至少选择一个触发事件')
+    if (!form.name.trim()) return ElMessage.warning('먼저 Rule 이름을 입력하십시오')
+    if (!form.events.length) return ElMessage.warning('하나 이상의 트리거 Event를 선택하십시오')
   }
   if (activeStep.value === 1 && routeWarnings.value.length) {
     return ElMessage.warning(routeWarnings.value[0])
@@ -226,13 +226,13 @@ function previousStep() {
 
 async function submit() {
   if (!form.name.trim() || routeWarnings.value.length) {
-    ElMessage.warning(routeWarnings.value[0] || '请填写规则名称')
+    ElMessage.warning(routeWarnings.value[0] || 'Rule 이름을 입력하십시오')
     return
   }
   saving.value = true
   try {
     await saveNotifyRule(form)
-    ElMessage.success('保存成功')
+    ElMessage.success('저장했습니다.')
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -242,18 +242,18 @@ async function submit() {
 
 async function handleTest(row) {
   await ElMessageBox.confirm(
-    `测试会按照规则「${row.name}」向已配置媒介发送一条真实消息，是否继续？`,
-    '测试通知规则',
-    { type: 'warning', confirmButtonText: '确认发送', cancelButtonText: '取消' }
+    `Test는 Rule "${row.name}"에 따라 구성된 Channel로 실제 메시지 1건을 전송합니다. 계속하시겠습니까?`,
+    'Notification Rule Test',
+    { type: 'warning', confirmButtonText: '전송', cancelButtonText: '취소' }
   )
   const result = await testNotifyRule(row.id)
-  ElMessage.success(`测试消息已进入发送队列，共 ${result?.queued || 0} 条`)
+  ElMessage.success(`Test 메시지가 전송 Queue에 추가되었습니다. 총 ${result?.queued || 0}건`)
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`确认删除通知规则「${row.name}」吗？`, '删除规则', { type: 'warning' })
+  await ElMessageBox.confirm(`Notification Rule "${row.name}"을(를) 삭제하시겠습니까?`, 'Rule 삭제', { type: 'warning' })
   await deleteNotifyRule(row.id)
-  ElMessage.success('删除成功')
+  ElMessage.success('삭제했습니다.')
   await loadData()
 }
 
@@ -264,7 +264,7 @@ function templateName(id) {
 function channelNames(ids) {
   return (ids || [])
     .map((id) => channelOptions.value.find((item) => Number(item.id) === Number(id))?.name || id)
-    .join('、') || '-'
+    .join(', ') || '-'
 }
 
 watch(() => form.templateId, () => {
@@ -285,52 +285,52 @@ onMounted(async () => {
   <div class="page-card notify-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">通知规则</h2>
-        <p class="page-desc">将业务事件、消息模板和通知媒介组合为可复用的发送路由。</p>
+        <h2 class="page-title">Notification Rule</h2>
+        <p class="page-desc">Business Event, 메시지 Template, Notification Channel을 조합해 재사용 가능한 전송 Routing을 구성합니다.</p>
       </div>
-      <el-button type="primary" @click="openCreate">新增规则</el-button>
+      <el-button type="primary" @click="openCreate">Rule 추가</el-button>
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="搜索规则名称 / 描述" style="width: 260px" @keyup.enter="loadData" />
-      <el-select v-model="query.scope" clearable placeholder="适用范围" style="width: 160px">
+      <el-input v-model="query.keyword" clearable placeholder="Rule 이름 / 설명 검색" style="width: 260px" @keyup.enter="loadData" />
+      <el-select v-model="query.scope" clearable placeholder="적용 범위" style="width: 160px">
         <el-option v-for="item in filterScopeOptions" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
-      <el-select v-model="query.status" clearable placeholder="状态" style="width: 120px">
-        <el-option label="启用" value="1" />
-        <el-option label="禁用" value="2" />
+      <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px">
+        <el-option label="활성화" value="1" />
+        <el-option label="비활성화" value="2" />
       </el-select>
-      <el-button type="primary" @click="loadData">搜索</el-button>
+      <el-button type="primary" @click="loadData">검색</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="name" label="规则名称" min-width="180" />
-      <el-table-column label="适用范围" width="130">
+      <el-table-column prop="name" label="Rule 이름" min-width="180" />
+      <el-table-column label="적용 범위" width="130">
         <template #default="{ row }">
           <el-tag :type="row.scope === 'all' ? 'warning' : 'info'" effect="plain">{{ scopeLabel(row.scope) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="触发事件" min-width="230">
+      <el-table-column label="트리거 Event" min-width="230">
         <template #default="{ row }">
           <el-tag v-for="item in row.events || []" :key="item" class="tag" effect="plain">{{ eventLabel(item) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="消息模板" min-width="170">
+      <el-table-column label="메시지 Template" min-width="170">
         <template #default="{ row }">{{ templateName(row.templateId) }}</template>
       </el-table-column>
-      <el-table-column label="通知媒介" min-width="220" show-overflow-tooltip>
+      <el-table-column label="Notification Channel" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">{{ channelNames(row.channelIds) }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="90" align="center">
+      <el-table-column label="상태" width="90" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="190" fixed="right">
+      <el-table-column label="작업" width="190" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="handleTest(row)">测试</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button link type="primary" @click="handleTest(row)">Test</el-button>
+          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -339,7 +339,7 @@ onMounted(async () => {
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑通知规则' : '新建通知规则'" width="880px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Notification Rule 수정' : 'Notification Rule 추가'" width="880px" destroy-on-close>
       <div class="notify-wizard-steps">
         <button v-for="(step, index) in wizardSteps" :key="step.title" type="button" class="notify-wizard-step" :class="{ active: activeStep === index, done: activeStep > index }" @click="index < activeStep && (activeStep = index)">
           <span>{{ index + 1 }}</span><strong>{{ step.title }}</strong><small>{{ step.description }}</small>
@@ -347,66 +347,66 @@ onMounted(async () => {
       </div>
       <el-form class="notify-wizard-form" label-position="top">
         <template v-if="activeStep === 0">
-          <div class="wizard-heading"><h3>什么情况需要通知？</h3><p>先定义场景和触发事件，系统会自动推荐适用模板。</p></div>
-          <el-form-item label="规则名称" required><el-input v-model="form.name" placeholder="例如：生产环境告警通知" /></el-form-item>
-          <el-form-item label="适用范围">
+          <div class="wizard-heading"><h3>어떤 상황에 알림을 보내야 하나요?</h3><p>먼저 시나리오와 트리거 Event를 정의하면 시스템이 적합한 Template을 자동 추천합니다.</p></div>
+          <el-form-item label="Rule 이름" required><el-input v-model="form.name" placeholder="예: 운영 Environment Alert Notification" /></el-form-item>
+          <el-form-item label="적용 범위">
             <el-select v-model="form.scope" style="width: 100%" @change="handleScopeChange">
               <el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="触发事件" required>
+          <el-form-item label="트리거 Event" required>
             <el-checkbox-group v-model="form.events" class="event-choice-grid" @change="handleEventsChange">
               <el-checkbox v-for="item in eventOptions" :key="item.value" :value="item.value" border>{{ item.label }}</el-checkbox>
             </el-checkbox-group>
           </el-form-item>
         </template>
         <template v-else-if="activeStep === 1">
-          <div class="wizard-heading"><h3>发给谁，如何呈现？</h3><p>模板和媒介类型会自动校验；可同时选择多个同类型媒介。</p></div>
-          <el-form-item label="消息模板" required>
+          <div class="wizard-heading"><h3>누구에게 어떻게 전달할까요?</h3><p>Template과 Channel 유형은 자동으로 검증됩니다. 동일 유형의 Channel은 여러 개를 동시에 선택할 수 있습니다.</p></div>
+          <el-form-item label="메시지 Template" required>
           <el-select
             v-model="form.templateId"
             filterable
             :loading="optionsLoading"
-            no-data-text="暂无已启用的消息模板，请先在消息模板中创建或启用模板"
-            placeholder="选择与媒介类型一致的模板"
+            no-data-text="활성화된 메시지 Template이 없습니다. 메시지 Template에서 먼저 생성하거나 활성화하십시오"
+            placeholder="Channel 유형과 일치하는 Template을 선택하십시오"
             style="width: 100%"
             @change="handleTemplateChange"
           >
             <el-option v-for="item in compatibleTemplateOptions" :key="item.id" :label="`${item.name} · ${templateScopeLabel(item.scope || 'all')} · ${typeLabel(item.channelType)}`" :value="item.id" />
           </el-select>
           </el-form-item>
-          <el-form-item label="通知媒介" required>
-          <el-select v-model="form.channelIds" multiple filterable :loading="optionsLoading" placeholder="可选择多个同类型媒介" style="width: 100%">
+          <el-form-item label="Notification Channel" required>
+          <el-select v-model="form.channelIds" multiple filterable :loading="optionsLoading" placeholder="동일 유형의 Channel을 여러 개 선택할 수 있습니다" style="width: 100%">
             <el-option v-for="item in channelOptions" :key="item.id" :label="`${item.name} · ${typeLabel(item.channelType)}`" :value="item.id" :disabled="channelDisabled(item)" />
           </el-select>
           </el-form-item>
-          <el-alert v-if="routeWarnings.length" :title="routeWarnings.join('；')" type="warning" :closable="false" show-icon />
+          <el-alert v-if="routeWarnings.length" :title="routeWarnings.join('; ')" type="warning" :closable="false" show-icon />
         </template>
         <template v-else>
-          <div class="wizard-heading"><h3>确认通知路由</h3><p>保存后即可从规则列表发送测试消息，确认实际触达效果。</p></div>
+          <div class="wizard-heading"><h3>Notification Routing 확인</h3><p>저장 후 Rule 목록에서 Test 메시지를 전송해 실제 전달 결과를 확인할 수 있습니다.</p></div>
           <div class="route-preview">
             <div class="route-chain">
-              <span class="route-node">{{ form.events.length ? form.events.map(eventLabel).join('、') : '未选事件' }}</span>
+              <span class="route-node">{{ form.events.length ? form.events.map(eventLabel).join(', ') : 'Event 미선택' }}</span>
               <span class="route-arrow">→</span>
-              <span class="route-node">{{ selectedTemplate?.name || '未选模板' }}</span>
+              <span class="route-node">{{ selectedTemplate?.name || 'Template 미선택' }}</span>
               <span class="route-arrow">→</span>
-              <span class="route-node">{{ selectedChannels.length ? selectedChannels.map((item) => item.name).join('、') : '未选媒介' }}</span>
+              <span class="route-node">{{ selectedChannels.length ? selectedChannels.map((item) => item.name).join(', ') : 'Channel 미선택' }}</span>
             </div>
-            <div v-if="selectedTemplate" class="route-meta">适用场景：{{ templateScopeLabel(selectedTemplate.scope || 'all') }} · 消息格式：{{ typeLabel(selectedTemplate.channelType) }}</div>
-            <el-alert v-if="routeWarnings.length" :title="routeWarnings.join('；')" type="warning" :closable="false" show-icon />
-            <el-alert v-else title="路由配置完整，保存后可在列表中发送测试消息。" type="success" :closable="false" show-icon />
+            <div v-if="selectedTemplate" class="route-meta">적용 시나리오: {{ templateScopeLabel(selectedTemplate.scope || 'all') }} · 메시지 형식: {{ typeLabel(selectedTemplate.channelType) }}</div>
+            <el-alert v-if="routeWarnings.length" :title="routeWarnings.join('; ')" type="warning" :closable="false" show-icon />
+            <el-alert v-else title="Routing 구성이 완전합니다. 저장 후 목록에서 Test 메시지를 전송할 수 있습니다." type="success" :closable="false" show-icon />
           </div>
-          <el-form-item label="保存后状态" class="wizard-status-field">
-            <el-radio-group v-model="form.status"><el-radio :value="1">立即启用</el-radio><el-radio :value="2">暂存为禁用</el-radio></el-radio-group>
+          <el-form-item label="저장 후 상태" class="wizard-status-field">
+            <el-radio-group v-model="form.status"><el-radio :value="1">즉시 활성화</el-radio><el-radio :value="2">비활성 상태로 저장</el-radio></el-radio-group>
           </el-form-item>
-          <el-form-item label="说明（可选）"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="说明通知对象、使用场景或值班要求" /></el-form-item>
+          <el-form-item label="설명 (선택)"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="Notification 대상, 사용 시나리오 또는 온콜 요건을 설명합니다" /></el-form-item>
         </template>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button v-if="activeStep" @click="previousStep">上一步</el-button>
-        <el-button v-if="activeStep < wizardSteps.length - 1" type="primary" @click="nextStep">下一步</el-button>
-        <el-button v-else type="primary" :loading="saving" @click="submit">保存规则</el-button>
+        <el-button @click="dialogVisible = false">취소</el-button>
+        <el-button v-if="activeStep" @click="previousStep">이전</el-button>
+        <el-button v-if="activeStep < wizardSteps.length - 1" type="primary" @click="nextStep">다음</el-button>
+        <el-button v-else type="primary" :loading="saving" @click="submit">Rule 저장</el-button>
       </template>
     </el-dialog>
   </div>
