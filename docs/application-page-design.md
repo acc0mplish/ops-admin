@@ -1244,1010 +1244,1010 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 - 작업 Mode는 “SSH 터미널 진입점”로 정의합니다. 주 작업 영역을 우선하고 Toolbar와 보조 Panel은 접을 수 있게 하며, KPI + 테이블 Page로 바꾸지 않습니다.
 - 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 14. 主机管理
+## 14. Host 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/server/hosts` · `Host.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/server/hosts` · `Host.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：筛选主机并执行查看、连接和管理。
-- 高频任务：新增主机、筛选当前范围、进入详情或结果。
-- 首要信息：主机名、IP、环境、在线、CPU/内存。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Host를 필터링하고 보기, 연결, 관리를 수행.
+- 고빈도 Task: Host 추가, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Host 이름, IP, Environment, 온라인, CPU/Memory.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去环境、主机组、状态、指标。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Environment, Host Group, 상태, Metric을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 环境、主机组、状态、指标
+Page Header(24px page padding)
+├─ Breadcrumb / Environment, Host Group, 상태, Metric
 ├─ Title + 13px description
-└─ Primary: 新增主机
+└─ Primary: Host 추가
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 环境、主机组、状态、指标 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Environment, Host Group, 상태, Metric 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增主机，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Host 추가, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 环境、主机组、状态、指标（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Environment, Host Group, 상태, Metric(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增主机”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Host 추가” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 环境、主机组、状态、指标。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Environment, Host Group, 상태, Metric 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：环境、主机组、状态、指标。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Environment, Host Group, 상태, Metric)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“主机资源工作台”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Host 리소스 워크벤치”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 15. 主机组管理
+## 15. Host Group 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/server/groups` · `HostGroup.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/server/groups` · `HostGroup.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：维护批量运维与授权边界。
-- 高频任务：新增主机组、筛选当前范围、进入详情或结果。
-- 首要信息：分组、成员数、环境、描述。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: 일괄 운영과 권한 부여 경계를 유지.
+- 고빈도 Task: Host Group 추가, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: 그룹, 구성원 수, Environment, 설명.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去环境、成员数、负责人。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Environment, 구성원 수, 담당자을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 环境、成员数、负责人
+Page Header(24px page padding)
+├─ Breadcrumb / Environment, 구성원 수, 담당자
 ├─ Title + 13px description
-└─ Primary: 新增主机组
+└─ Primary: Host Group 추가
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 环境、成员数、负责人 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Environment, 구성원 수, 담당자 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增主机组，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Host Group 추가, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 环境、成员数、负责人（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Environment, 구성원 수, 담당자(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增主机组”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Host Group 추가” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 环境、成员数、负责人。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Environment, 구성원 수, 담당자 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：环境、成员数、负责人。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Environment, 구성원 수, 담당자)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“资源分组维护”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Resource 그룹 관리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 16. 凭据管理
+## 16. Credential 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/server/credentials` · `Credential.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/server/credentials` · `Credential.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：维护密码和密钥凭据。
-- 高频任务：新增凭据、筛选当前范围、进入详情或结果。
-- 首要信息：名称、类型、关联范围、状态、更新时间。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Password와 Key Credential을 유지.
+- 고빈도 Task: Credential 추가, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: 이름, Type, 연관 범위, 상태, 업데이트 시각.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去凭据类型、关联资源、审计。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Credential Type, 연관 Resource, 감사을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 凭据类型、关联资源、审计
+Page Header(24px page padding)
+├─ Breadcrumb / Credential Type, 연관 Resource, 감사
 ├─ Title + 13px description
-└─ Primary: 新增凭据
+└─ Primary: Credential 추가
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 凭据类型、关联资源、审计 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Credential Type, 연관 Resource, 감사 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增凭据，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Credential 추가, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 凭据类型、关联资源、审计（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Credential Type, 연관 Resource, 감사(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增凭据”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Credential 추가” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 凭据类型、关联资源、审计。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Credential Type, 연관 Resource, 감사 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：凭据类型、关联资源、审计。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Credential Type, 연관 Resource, 감사)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“访问凭据管理”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “접근 Credential 관리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 17. 云账号管理
+## 17. Cloud Account 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/server/cloud-accounts` · `CloudAccount.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/server/cloud-accounts` · `CloudAccount.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：维护云账号并检查连通性。
-- 高频任务：新增账号、测试连接、筛选当前范围、进入详情或结果。
-- 首要信息：厂商、账号、区域、同步状态、更新时间。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Cloud Account를 유지하고 연결성을 검사.
+- 고빈도 Task: Account 추가, 연결 테스트, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: 벤더, 계정, Region, 동기화 상태, 업데이트 시각.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去厂商、区域、连接状态。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 벤더, Region, 연결 상태을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 厂商、区域、连接状态
+Page Header(24px page padding)
+├─ Breadcrumb / 벤더, Region, 연결 상태
 ├─ Title + 13px description
-└─ Primary: 新增账号、测试连接
+└─ Primary: Account 추가, 연결 테스트
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 厂商、区域、连接状态 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, 벤더, Region, 연결 상태 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增账号、测试连接，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Account 추가, 연결 테스트, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 厂商、区域、连接状态（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → 벤더, Region, 연결 상태(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增账号、测试连接”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Account 추가, 연결 테스트” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 厂商、区域、连接状态。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 벤더, Region, 연결 상태 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：厂商、区域、连接状态。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(벤더, Region, 연결 상태)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“云接入配置”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Cloud 접속 구성”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 18. 数据库管理
+## 18. Database 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/databases` · `Database.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/databases` · `Database.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：定位连接状态并进入工作台。
-- 高频任务：新增数据库、筛选当前范围、进入详情或结果。
-- 首要信息：数据库、地址、类型、环境、连接状态。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: 연결 상태를 파악하고 워크벤치로 진입.
+- 고빈도 Task: Database 추가, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Database, 주소, Type, Environment, 연결 상태.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去环境、类型、连接、备份。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Environment, Type, 연결, Backup을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 环境、类型、连接、备份
+Page Header(24px page padding)
+├─ Breadcrumb / Environment, Type, 연결, Backup
 ├─ Title + 13px description
-└─ Primary: 新增数据库
+└─ Primary: Database 추가
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 环境、类型、连接、备份 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Environment, Type, 연결, Backup 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增数据库，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Database 추가, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 环境、类型、连接、备份（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Environment, Type, 연결, Backup(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增数据库”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Database 추가” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 环境、类型、连接、备份。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Environment, Type, 연결, Backup 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：环境、类型、连接、备份。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Environment, Type, 연결, Backup)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“数据库资源管理”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Database Resource 관리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 19. 数据库详情
+## 19. Database 상세
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/databases/:id/detail` · `AssetDetail.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/databases/:id/detail` · `AssetDetail.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：查看配置、关联和健康信息。
-- 高频任务：进入工作台、编辑、筛选当前范围、进入详情或结果。
-- 首要信息：连接、版本、环境、关联服务、事件。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: 구성, 연관 정보와 Health 정보를 조회.
+- 고빈도 Task: 워크벤치 진입, 수정, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: 연결, Version, Environment, 연관 Service, Event.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去环境、连接、服务、告警。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Environment, 연결, Service, Alert을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 环境、连接、服务、告警
+Page Header(24px page padding)
+├─ Breadcrumb / Environment, 연결, Service, Alert
 ├─ Title + 13px description
-└─ Primary: 进入工作台、编辑
-Workspace Context / Control Bar\n├─ 当前范围、刷新或连接状态\n└─ 次级操作\nFilter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
+└─ Primary: 워크벤치 진입, 수정
+Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연결 상태\n└─ 보조 작업\nFilter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 环境、连接、服务、告警 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Environment, 연결, Service, Alert 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：进入工作台、编辑，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: 워크벤치 진입, 수정, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 环境、连接、服务、告警（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Environment, 연결, Service, Alert(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“进入工作台、编辑”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “워크벤치 진입, 수정” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 环境、连接、服务、告警。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Environment, 연결, Service, Alert 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：环境、连接、服务、告警。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Environment, 연결, Service, Alert)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“数据库资源详情”。主工作区优先，工具栏与辅助面板可折叠；不将其改造成 KPI + 表格页面。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Database Resource 상세”로 정의합니다. 주 작업 영역을 우선하고 Toolbar와 보조 Panel은 접을 수 있게 하며, KPI + 테이블 Page로 바꾸지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 20. DBMS 工作台
+## 20. DBMS 워크벤치
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/databases/:id/workbench` · `DatabaseWorkbench.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/databases/:id/workbench` · `DatabaseWorkbench.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：查询、浏览结构并安全执行 SQL。
-- 高频任务：执行查询、筛选当前范围、进入详情或结果。
-- 首要信息：连接树、Schema、编辑器、结果、执行风险。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Query 실행, 구조 탐색 및 안전한 SQL 실행.
+- 고빈도 Task: Query 실행, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: 연결 Tree, Schema, 편집기, 결과, 실행 리스크.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去数据库、Schema、会话、风险、审计。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Database, Schema, Session, 리스크, 감사을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 数据库、Schema、会话、风险、审计
+Page Header(24px page padding)
+├─ Breadcrumb / Database, Schema, Session, 리스크, 감사
 ├─ Title + 13px description
-└─ Primary: 执行查询
-Workspace Context / Control Bar\n├─ 当前范围、刷新或连接状态\n└─ 次级操作\nPrimary Content Area\n├─ 核心信息或可视化工作区\n└─ 详情、结果或辅助信息区
+└─ Primary: Query 실행
+Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연결 상태\n└─ 보조 작업\nPrimary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└─ 상세, 결과 또는 보조 정보 영역
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 数据库、Schema、会话、风险、审计 | 32px 高；范围变化立即刷新数据 |
-| WorkspaceToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| PrimaryWorkspace | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Database, Schema, Session, 리스크, 감사 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| WorkspaceToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| PrimaryWorkspace | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：执行查询，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Query 실행, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 内容与状态设计
+### 7. 내용과 상태 설계
 
-- 核心内容置于首个可视区域；辅助说明和原始数据放在第二层或可折叠区。
-- 数字与时间右对齐或等宽显示；异常状态优先于健康状态。
-- 图形、日志、画布和编辑器各自占用明确工作区，避免与普通表单混排。
+- 핵심 Content는 첫 번째 가시 영역에 배치하고, 보조 설명과 원본 Data는 두 번째 계층 또는 접기 영역에 배치합니다.
+- 숫자와 시각은 우측 정렬 또는 고정폭 표시하며, 이상 상태를 Health 상태보다 우선 표시합니다.
+- 그래프, Log, Canvas, 편집기는 각자 명확한 작업 영역을 차지하며 일반 Form과 혼배열하지 않습니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“执行查询”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Query 실행” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 数据库、Schema、会话、风险、审计。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Database, Schema, Session, 리스크, 감사 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：数据库、Schema、会话、风险、审计。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Database, Schema, Session, 리스크, 감사)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“数据库操作工作台”。主工作区优先，工具栏与辅助面板可折叠；不将其改造成 KPI + 表格页面。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Database 조작 워크벤치”로 정의합니다. 주 작업 영역을 우선하고 Toolbar와 보조 Panel은 접을 수 있게 하며, KPI + 테이블 Page로 바꾸지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 21. 数据导入
+## 21. Data Import
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/databases/import` · `DatabaseImport.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/databases/import` · `DatabaseImport.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：选择源文件、目标库并预检后导入。
-- 高频任务：开始导入、筛选当前范围、进入详情或结果。
-- 首要信息：源文件、目标库、预检结果、历史记录。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Source File과 Target Database를 선택하고 사전 검증 후 Import.
+- 고빈도 Task: Import 시작, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Source File, Target Database, 사전 검증 결과, History.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去数据库、目标表、预检、任务。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Database, Target Table, 사전 검증, Task을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 数据库、目标表、预检、任务
+Page Header(24px page padding)
+├─ Breadcrumb / Database, Target Table, 사전 검증, Task
 ├─ Title + 13px description
-└─ Primary: 开始导入
-Primary Content Area\n├─ 核心信息或可视化工作区\n└─ 详情、结果或辅助信息区
+└─ Primary: Import 시작
+Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└─ 상세, 결과 또는 보조 정보 영역
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 数据库、目标表、预检、任务 | 32px 高；范围变化立即刷新数据 |
-| WorkspaceToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| PrimaryWorkspace | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Database, Target Table, 사전 검증, Task 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| WorkspaceToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| PrimaryWorkspace | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：开始导入，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Import 시작, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 内容与状态设计
+### 7. 내용과 상태 설계
 
-- 核心内容置于首个可视区域；辅助说明和原始数据放在第二层或可折叠区。
-- 数字与时间右对齐或等宽显示；异常状态优先于健康状态。
-- 图形、日志、画布和编辑器各自占用明确工作区，避免与普通表单混排。
+- 핵심 Content는 첫 번째 가시 영역에 배치하고, 보조 설명과 원본 Data는 두 번째 계층 또는 접기 영역에 배치합니다.
+- 숫자와 시각은 우측 정렬 또는 고정폭 표시하며, 이상 상태를 Health 상태보다 우선 표시합니다.
+- 그래프, Log, Canvas, 편집기는 각자 명확한 작업 영역을 차지하며 일반 Form과 혼배열하지 않습니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“开始导入”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Import 시작” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 数据库、目标表、预检、任务。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Database, Target Table, 사전 검증, Task 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：数据库、目标表、预检、任务。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Database, Target Table, 사전 검증, Task)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“数据导入工作台”。用当前任务的主信息结构组织首屏，次级信息按阅读路径分层。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Data Import 워크벤치”로 정의합니다. 현재 Task의 주요 정보 구조로 첫 화면을 구성하고 보조 정보는 읽기 경로에 따라 계층화합니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 22. 备份管理
+## 22. Backup 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/databases/backups` · `DatabaseBackup.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/databases/backups` · `DatabaseBackup.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：查看备份、创建备份或恢复。
-- 高频任务：创建备份、筛选当前范围、进入详情或结果。
-- 首要信息：数据库、备份大小、时间、状态、保留期。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Backup을 조회하고 Backup 생성 또는 복구를 수행.
+- 고빈도 Task: Backup 생성, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Database, Backup 크기, 시각, 상태, 보존 기간.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去数据库、备份、恢复、风险。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Database, Backup, 복구, 리스크을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 数据库、备份、恢复、风险
+Page Header(24px page padding)
+├─ Breadcrumb / Database, Backup, 복구, 리스크
 ├─ Title + 13px description
-└─ Primary: 创建备份
+└─ Primary: Backup 생성
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 数据库、备份、恢复、风险 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Database, Backup, 복구, 리스크 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：创建备份，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Backup 생성, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 数据库、备份、恢复、风险（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Database, Backup, 복구, 리스크(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“创建备份”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Backup 생성” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 数据库、备份、恢复、风险。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Database, Backup, 복구, 리스크 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：数据库、备份、恢复、风险。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Database, Backup, 복구, 리스크)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“备份与恢复管理”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Backup 및 복구 관리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 23. 网关管理
+## 23. Gateway 관리
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/gateways` · `Gateway.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/gateways` · `Gateway.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：维护跳板网关与连通状态。
-- 高频任务：新增网关、测试连接、筛选当前范围、进入详情或结果。
-- 首要信息：网关、地址、可用性、关联资源、更新时间。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: 점프 Gateway와 연결 상태를 유지.
+- 고빈도 Task: Gateway 추가, 연결 테스트, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Gateway, 주소, 가용성, 연관 Resource, 업데이트 시각.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去网关、连接、关联范围。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Gateway, 연결, 연관 범위을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 网关、连接、关联范围
+Page Header(24px page padding)
+├─ Breadcrumb / Gateway, 연결, 연관 범위
 ├─ Title + 13px description
-└─ Primary: 新增网关、测试连接
+└─ Primary: Gateway 추가, 연결 테스트
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 网关、连接、关联范围 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Gateway, 연결, 연관 범위 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增网关、测试连接，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Gateway 추가, 연결 테스트, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 网关、连接、关联范围（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Gateway, 연결, 연관 범위(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增网关、测试连接”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Gateway 추가, 연결 테스트” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 网关、连接、关联范围。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Gateway, 연결, 연관 범위 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：网关、连接、关联范围。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Gateway, 연결, 연관 범위)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“访问网关管理”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “접근 Gateway 관리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 24. 环境模型
+## 24. Environment 모델
 
-- **应用 / 路由 / 实现**：资产管理 · `/assets/environments` · `OpsEnvironment.vue`
+- **Application / Route / 구현**: 자산 관리 · `/assets/environments` · `OpsEnvironment.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：管理环境与资源归属。
-- 高频任务：新增环境、筛选当前范围、进入详情或结果。
-- 首要信息：环境名、等级、区域、资源计数、状态。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: Environment와 Resource 소속을 관리.
+- 고빈도 Task: Environment 추가, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Environment 이름, 등급, Region, Resource 수, 상태.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去环境、区域、资源范围。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Environment, Region, Resource 범위을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 环境、区域、资源范围
+Page Header(24px page padding)
+├─ Breadcrumb / Environment, Region, Resource 범위
 ├─ Title + 13px description
-└─ Primary: 新增环境
-Primary Content Area\n├─ 核心信息或可视化工作区\n└─ 详情、结果或辅助信息区
+└─ Primary: Environment 추가
+Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└─ 상세, 결과 또는 보조 정보 영역
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 环境、区域、资源范围 | 32px 高；范围变化立即刷新数据 |
-| WorkspaceToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| PrimaryWorkspace | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Environment, Region, Resource 범위 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| WorkspaceToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| PrimaryWorkspace | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新增环境，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Environment 추가, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 内容与状态设计
+### 7. 내용과 상태 설계
 
-- 核心内容置于首个可视区域；辅助说明和原始数据放在第二层或可折叠区。
-- 数字与时间右对齐或等宽显示；异常状态优先于健康状态。
-- 图形、日志、画布和编辑器各自占用明确工作区，避免与普通表单混排。
+- 핵심 Content는 첫 번째 가시 영역에 배치하고, 보조 설명과 원본 Data는 두 번째 계층 또는 접기 영역에 배치합니다.
+- 숫자와 시각은 우측 정렬 또는 고정폭 표시하며, 이상 상태를 Health 상태보다 우선 표시합니다.
+- 그래프, Log, Canvas, 편집기는 각자 명확한 작업 영역을 차지하며 일반 Form과 혼배열하지 않습니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新增环境”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Environment 추가” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 环境、区域、资源范围。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Environment, Region, Resource 범위 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：环境、区域、资源范围。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Environment, Region, Resource 범위)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“环境模型维护”。用当前任务的主信息结构组织首屏，次级信息按阅读路径分层。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Environment 모델 관리”로 정의합니다. 현재 Task의 주요 정보 구조로 첫 화면을 구성하고 보조 정보는 읽기 경로에 따라 계층화합니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
-## 25. 服务管理
+## 25. Service 관리
 
-- **应用 / 路由 / 实现**：容器管理 · `/containers/services` · `Application.vue`
+- **Application / Route / 구현**: 컨테이너 관리 · `/containers/services` · `Application.vue`
 
-### 1. 页面定位
+### 1. 페이지 목적
 
-- 核心用户：平台管理员、对应业务负责人。
-- 主任务：发现并维护业务服务与工作负载。
-- 高频任务：新建服务、查看详情、筛选当前范围、进入详情或结果。
-- 首要信息：服务、环境、集群、命名空间、健康。
+- 핵심 사용자: 플랫폼 관리자, 해당 비즈니스 담당자.
+- 주요 Task: 비즈니스 Service와 Workload를 발견하고 유지.
+- 고빈도 Task: Service 생성, 상세 보기, 현재 범위 필터링, 상세 또는 결과 진입.
+- 핵심 정보: Service, Environment, Cluster, Namespace, Health.
 
-### 2. 当前 UI 问题
+### 2. 현재 UI 문제
 
-- 标题、上下文和首要操作需要固定在同一视觉带，避免用户只看见表格或内容主体后失去服务、集群、命名空间、健康。
-- 辅助筛选与主操作不应同权；当前页必须只有一个高强调主操作，其余为描边或文字按钮。
-- 状态信息需从大面积高饱和色块收敛为标签、数字和局部色条，避免影响异常扫描。
-- 内容区需在 1366px 视口下保持首屏可读，避免空白、长字段和行操作挤压关键数据。
+- 제목, Context, 핵심 Action은 동일 시각 밴드에 고정해야 하며, 사용자가 테이블이나 Content 본문만 보다가 Service, Cluster, Namespace, Health을(를) 놓치지 않게 합니다.
+- 보조 필터와 주 Action은 동급이 아니어야 합니다. 현재 Page에는 고강조 주 Action이 하나만 있고 나머지는 Outline 또는 Text 버튼입니다.
+- 상태 정보는 대면적 고채도 색 블록에서 Label, 숫자, 부분 색 띠로 수렴해 이상 스캔을 방해하지 않게 합니다.
+- Content 영역은 1366px Viewport에서 첫 화면 가독성을 유지하고, 공백·긴 필드·행 작업이 핵심 Data를 눌러 담지 않게 합니다.
 
-### 3. 整体布局设计
+### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
-├─ Breadcrumb / 服务、集群、命名空间、健康
+Page Header(24px page padding)
+├─ Breadcrumb / Service, Cluster, Namespace, Health
 ├─ Title + 13px description
-└─ Primary: 新建服务、查看详情
+└─ Primary: Service 생성, 상세 보기
 Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch actions\nData Area\n├─ Primary data table or result list\n└─ Pagination + selection feedback
 ```
 
-### 4. 关键组件
+### 4. 주요 Component
 
-| 组件 | 用途与位置 | 视觉层级 / 交互 |
+| Component | 용도와 위치 | 시각 계층 / 상호작용 |
 | --- | --- | --- |
-| PageHeader | 顶部，承载标题、说明与主操作 | 白底，无大阴影；主操作位于右侧 |
-| ContextBar | Header 下方，展示 服务、集群、命名空间、健康 | 32px 高；范围变化立即刷新数据 |
-| FilterToolbar | 核心内容前 | 浅灰底；Enter 查询，重置不抢主操作 |
-| DataTable | 页面主体 | 边框卡片；空态与加载态在区域内出现 |
-| DetailDrawer / Dialog | 详情、编辑、日志或确认 | 不离开当前上下文；关闭后保留筛选与滚动位置 |
+| PageHeader | 상단, 제목·설명·주 Action 담당 | 흰 배경, 큰 그림자 없음; 주 Action은 오른쪽 |
+| ContextBar | Header 아래, Service, Cluster, Namespace, Health 표시 | 높이 32px; 범위 변경 시 즉시 Data 새로고침 |
+| FilterToolbar | 핵심 Content 앞 | 밝은 회색 배경; Enter 조회, 초기화는 주 Action을 뺏지 않음 |
+| DataTable | Page 본문 | 테두리 Card; Empty와 Loading 상태는 영역 내 표시 |
+| DetailDrawer / Dialog | 상세, 수정, Log 또는 확인 | 현재 Context를 벗어나지 않음; 닫은 뒤 필터와 스크롤 위치 유지 |
 
-### 5. 具体视觉规范
+### 5. 구체 시각 Spec
 
-- 页面 padding：24px（窄屏 16px）；Header 下间距：16px；区块 gap：16px。
-- 标题：22px / 650 / `#18243A`；说明：13px / 400 / `#66758D`；等宽字段使用 `ui-monospace` 12px。
-- 卡片：背景 `#FFFFFF`、边框 `#E3E8F0`、圆角 10px、阴影 `0 2px 5px rgba(20,34,58,.035)`。
-- 控件：高度 32px、圆角 7px、间距 8px；Hover 背景 `#F8FAFD`；Focus 边框 `#356AE6`。
-- 状态仅使用 Success `#1F9D62`、Warning `#D98C16`、Danger `#D94F4F`、Info `#356AE6` 的浅色底 + 深色字。
+- Page padding: 24px(좁은 화면 16px); Header 아래 간격: 16px; Block gap: 16px.
+- 제목: 22px / 650 / `#18243A`; 설명: 13px / 400 / `#66758D`; 고정폭 필드는 `ui-monospace` 12px 사용.
+- Card: 배경 `#FFFFFF`, 테두리 `#E3E8F0`, 모서리 반경 10px, 그림자 `0 2px 5px rgba(20,34,58,.035)`.
+- Control: 높이 32px, 모서리 반경 7px, 간격 8px; Hover 배경 `#F8FAFD`; Focus 테두리 `#356AE6`.
+- 상태는 Success `#1F9D62`, Warning `#D98C16`, Danger `#D94F4F`, Info `#356AE6`의 밝은 배경 + 진한 글자만 사용합니다.
 
-### 6. 操作层级
+### 6. 작업 계층
 
-- **Primary**：新建服务、查看详情，实心蓝色按钮；同一屏最多一个。
-- **Secondary**：查询、刷新、筛选、导出，描边按钮或工具栏控件。
-- **Tertiary**：查看、复制、跳转、展开，表格行内文字按钮。
-- **More**：不常用操作收进下拉菜单；**Danger**：删除、终止、关闭或不可逆执行必须二次确认。
+- **Primary**: Service 생성, 상세 보기, Solid Blue 버튼; 화면당 최대 1개.
+- **Secondary**: 조회, 새로고침, 필터, 내보내기, Outline 버튼 또는 Toolbar Control.
+- **Tertiary**: 보기, 복사, 이동, 펼치기, 테이블 행 내 Text 버튼.
+- **More**: 드물게 쓰는 작업은 드롭다운 메뉴로 수납합니다. **Danger**: 삭제, 중단, 닫기 또는 되돌릴 수 없는 실행은 반드시 재확인합니다.
 
-### 7. 表格设计
+### 7. 테이블 설계
 
-- 列顺序：名称/标识（220px）→ 服务、集群、命名空间、健康（160px）→ 状态（100px）→ 最近时间/年龄（150px）→ 操作（140px fixed-right）。
-- 关键列固定：名称与操作；长地址、表达式、响应和备注允许省略，Hover 显示完整值。
-- 状态使用 Tag；ID、地址、命令、查询、版本和时间戳使用等宽字体；次级元信息在名称下第二行弱化。
-- 行高 44px，Hover `#F8FAFD`；点击名称进入详情，勾选后显示批量操作条。
+- 열 순서: 이름/식별자(220px) → Service, Cluster, Namespace, Health(160px) → 상태(100px) → 최근 시각/경과(150px) → 작업(140px fixed-right).
+- 핵심 열 고정: 이름과 작업. 긴 주소, 표현식, Response, 비고는 생략을 허용하며 Hover로 전체 값을 표시합니다.
+- 상태는 Tag를 사용합니다. ID, 주소, Command, 조회, Version, Timestamp는 고정폭 서체를 사용하고, 보조 Meta 정보는 이름 아래 두 번째 줄에서 약화합니다.
+- 행 높이 44px, Hover `#F8FAFD`. 이름 클릭으로 상세에 진입하고 체크 후 일괄 작업 바를 표시합니다.
 
-### 8. 状态设计
+### 8. 상태 설계
 
-- Loading：内容区使用骨架屏，保留 Header 与筛选上下文。
-- Empty：说明当前范围无数据，提供“新建服务、查看详情”或调整筛选的下一步。
-- Error / Permission Denied：显示原因、重试入口与必要的权限申请说明。
-- Running / Success / Warning / Failed / Disabled：使用统一 StatusTag；运维状态补充 Pending、Timeout、Disconnected、Unknown、Partial Success、Terminating。
+- Loading: Content 영역에 Skeleton Screen을 사용하고 Header와 필터 Context는 유지합니다.
+- Empty: 현재 범위에 Data가 없음을 안내하고 “Service 생성, 상세 보기” 또는 필터 조정 같은 다음 단계를 제공합니다.
+- Error / Permission Denied: 원인, 재시도 진입점, 필요한 권한 요청 안내를 표시합니다.
+- Running / Success / Warning / Failed / Disabled: 통일 StatusTag를 사용합니다. 운영 상태는 Pending, Timeout, Disconnected, Unknown, Partial Success, Terminating으로 보강합니다.
 
 ### 9. Dialog / Drawer
 
-- 创建/编辑：字段少于 10 个使用 640px Dialog；字段多、需保留当前对比时使用 720px Drawer。
-- 详情、日志、原始响应和 YAML：使用 80vw Drawer；正文可滚动，Header 固定显示 服务、集群、命名空间、健康。
-- 删除、终止或高风险执行：480px Confirm Dialog；Footer 左侧风险说明，右侧为取消与危险确认，确认按钮不使用默认主色。
+- 생성/수정: 필드가 10개 미만이면 640px Dialog를, 필드가 많거나 현재 대비 유지가 필요하면 720px Drawer를 사용합니다.
+- 상세, Log, 원본 Response, YAML: 80vw Drawer 사용; 본문은 스크롤 가능, Header에 Service, Cluster, Namespace, Health 고정 표시.
+- 삭제, 중단 또는 고위험 실행: 480px Confirm Dialog. Footer 왼쪽에 리스크 설명, 오른쪽에 취소와 위험 확인 버튼을 두고 확인 버튼은 기본 Primary Color를 쓰지 않습니다.
 
-### 10. SRE 专业设计
+### 10. SRE 전문 설계
 
-- 页面仅持续展示对当前任务有价值的上下文：服务、集群、命名空间、健康。
-- 所有会改变运行状态的操作必须展示目标范围、执行时间、结果与审计入口。
-- 对异常、未知、部分成功和断连，优先给出可执行的下一步，而不是只显示颜色。
+- Page는 현재 Task에 가치 있는 Context(Service, Cluster, Namespace, Health)만 지속 표시합니다.
+- 실행 상태를 변경하는 모든 작업은 대상 범위, 실행 시각, 결과, 감사 진입점을 표시해야 합니다.
+- 이상, 미확인, 부분 성공, 연결 끊김에는 색만 표시하지 말고 실행 가능한 다음 단계를 우선 제공합니다.
 
-### 11. 页面专属设计
+### 11. 페이지 전용 설계
 
-- 工作模式定位为“服务资源目录”。保持列表工作台节奏：筛选、扫描、行内操作、详情回看；不堆叠无业务价值的 KPI。
-- 实施后使用 1366px 桌面视口核验标题、主操作、首屏内容、弹层与空/错状态；不改变现有路由、接口与交互逻辑。
+- 작업 Mode는 “Service Resource 디렉터리”로 정의합니다. List 워크벤치 리듬을 유지합니다: 필터, 훑어보기, 행 내 작업, 상세 재확인. 비즈니스 가치 없는 KPI를 쌓지 않습니다.
+- 구현 후 1366px 데스크톱 Viewport로 제목, 주 Action, 첫 화면 Content, 팝업 레이어, Empty/Error 상태를 검증하고 기존 Route, API, 상호작용 로직은 변경하지 않습니다.
 
 ## 26. 服务健康诊断
 
