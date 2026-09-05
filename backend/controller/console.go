@@ -3,28 +3,12 @@ package controller
 import (
 	"errors"
 	"net/http"
-	"strings"
 
-	"ops-admin/backend/auth"
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/service"
 
 	"github.com/gin-gonic/gin"
 )
-
-// legacyTerminalSunset is the placeholder retirement date of the legacy
-// query-token websocket path; Release B confirms the final date.
-const legacyTerminalSunset = "Thu, 31 Dec 2026 23:59:59 GMT"
-
-// legacyTerminalWSHeaders announces the deprecation of the legacy
-// query-token path on the 101 handshake. They must reach the Upgrade call as
-// its responseHeader argument: gorilla writes the 101 response itself and
-// only merges this explicit header into the raw bytes — headers set on the
-// gin writer beforehand are lost.
-var legacyTerminalWSHeaders = http.Header{
-	"Deprecation": []string{"true"},
-	"Sunset":      []string{legacyTerminalSunset},
-}
 
 // consoleResourcePermissions maps a ticket resource type onto the terminal
 // button permission that guards it — the same seeded vocabulary the
@@ -74,35 +58,26 @@ func (ctl *Controller) CreateConsoleSession(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
-// authorizeTerminalWS gates both terminal websocket handlers. A ticket
-// parameter, when present, is consumed atomically: an unknown, expired or
-// reused ticket is rejected with 401 and never falls back to the legacy path,
-// and a valid ticket bound to another resource or protocol is rejected with
-// 403 — the ticket is bound to exactly one resource and one protocol. Without
-// a ticket the legacy query-token path answers (Release C removes it) and the
-// returned headers announce its deprecation on the 101 handshake.
-func (ctl *Controller) authorizeTerminalWS(c *gin.Context, protocol string, resourceType string, resourceID string) (http.Header, bool) {
-	if ticket := c.Query("ticket"); ticket != "" {
-		err := ctl.service.ConsumeConsoleTicket(ticket, protocol, resourceType, resourceID)
-		if err != nil {
-			if errors.Is(err, service.ErrConsoleTicketMismatch) {
-				httpx.Failed(c, http.StatusForbidden, err.Error())
-			} else {
-				httpx.Failed(c, http.StatusUnauthorized, "invalid or expired console ticket")
-			}
-			return nil, false
+// consumeTerminalTicket gates both terminal websocket handlers. The ticket
+// parameter is mandatory and consumed atomically: a missing ticket is rejected
+// with 401 (the legacy query-token path was removed in Release C), an unknown,
+// expired or reused ticket with 401, and a valid ticket bound to another
+// resource or protocol with 403 — the ticket is bound to exactly one resource
+// and one protocol.
+func (ctl *Controller) consumeTerminalTicket(c *gin.Context, protocol string, resourceType string, resourceID string) bool {
+	ticket := c.Query("ticket")
+	if ticket == "" {
+		httpx.Failed(c, http.StatusUnauthorized, "console ticket required")
+		return false
+	}
+	err := ctl.service.ConsumeConsoleTicket(ticket, protocol, resourceType, resourceID)
+	if err != nil {
+		if errors.Is(err, service.ErrConsoleTicketMismatch) {
+			httpx.Failed(c, http.StatusForbidden, err.Error())
+		} else {
+			httpx.Failed(c, http.StatusUnauthorized, "invalid or expired console ticket")
 		}
-		return nil, true
+		return false
 	}
-
-	token := c.Query("token")
-	if strings.TrimSpace(token) == "" {
-		httpx.Failed(c, http.StatusUnauthorized, "authentication required")
-		return nil, false
-	}
-	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
-		return nil, false
-	}
-	return legacyTerminalWSHeaders, true
+	return true
 }

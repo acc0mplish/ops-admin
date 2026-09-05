@@ -989,8 +989,7 @@ func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	rows := mustAtoi(c.DefaultQuery("rows", "30"))
 	cols := mustAtoi(c.DefaultQuery("cols", "120"))
 
-	headers, ok := ctl.authorizeTerminalWS(c, service.ConsoleProtocolAssetTerminal, service.ConsoleResourceAssetHost, bindingKey)
-	if !ok {
+	if !ctl.consumeTerminalTicket(c, service.ConsoleProtocolAssetTerminal, service.ConsoleResourceAssetHost, bindingKey) {
 		return
 	}
 
@@ -1002,7 +1001,7 @@ func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	defer terminal.Session.Close()
 	defer terminal.Client.Close()
 
-	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, headers)
+	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}

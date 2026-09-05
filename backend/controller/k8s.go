@@ -289,12 +289,11 @@ func (ctl *Controller) K8sPodTerminalWS(c *gin.Context) {
 		return
 	}
 
-	headers, ok := ctl.authorizeTerminalWS(c, service.ConsoleProtocolK8sPodTerminal, service.ConsoleResourceK8sPod, bindingKey)
-	if !ok {
+	if !ctl.consumeTerminalTicket(c, service.ConsoleProtocolK8sPodTerminal, service.ConsoleResourceK8sPod, bindingKey) {
 		return
 	}
 
-	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, headers)
+	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}

@@ -71,8 +71,9 @@ func dialTerminalWS(t *testing.T, engine *gin.Engine, path string, query string)
 	return resp, conn, err
 }
 
-// legacyToken mints a syntactically valid access token for the legacy
-// query-token path; the gate only checks the signature, not the session row.
+// legacyToken mints a syntactically valid access token. Since Release C the
+// websocket gate accepts no query token, so dials presenting only this token
+// must be refused with 401.
 func legacyToken(t *testing.T) string {
 	t.Helper()
 	token, _, err := auth.GenerateToken(4242, "legacy-ws-user", "legacy-ws-session")
@@ -191,9 +192,9 @@ func TestTerminalWSTicketMismatchRejected(t *testing.T) {
 	}
 }
 
-// TestTerminalWSTicketNeverFallsBack is the A-1/R-5 negative proof: a present
-// but invalid ticket is rejected with 401 even when a valid legacy token
-// rides along — the legacy path answers only when no ticket was sent.
+// TestTerminalWSTicketNeverFallsBack is the A-1/R-5 negative proof: with no
+// fallback left in the gate, a present but invalid ticket is rejected with
+// 401 immediately — a valid access token riding along buys nothing.
 func TestTerminalWSTicketNeverFallsBack(t *testing.T) {
 	engine, _ := newArtifactEngine(t)
 	token := legacyToken(t)
@@ -209,36 +210,27 @@ func TestTerminalWSTicketNeverFallsBack(t *testing.T) {
 	}
 }
 
-// TestTerminalWSLegacyTokenPath is T6: without a ticket the legacy
-// query-token path still works (Release C removes it). On the k8s endpoint
-// the 101 handshake is observable and must carry the Deprecation and Sunset
-// headers; on the asset endpoint the observable legacy evidence is the 400
-// of the service miss (the 101 needs a live SSH host, and gorilla only merges
-// the Upgrade argument into the raw handshake — headers set earlier are lost).
+// TestTerminalWSLegacyTokenPath is T6 at Release C: the legacy query-token
+// path is gone — a token-only dial on either endpoint is refused with 401,
+// and so is a dial with no credential at all. The one-time ticket is the
+// only way through the gate.
 func TestTerminalWSLegacyTokenPath(t *testing.T) {
 	engine, _ := newArtifactEngine(t)
 	token := legacyToken(t)
 
-	resp, conn, err := dialTerminalWS(t, engine, k8sTerminalWSPath, "token="+token+"&clusterId=3&namespace=default&podName=pod-x")
-	if err != nil || resp == nil || resp.StatusCode != http.StatusSwitchingProtocols {
-		t.Fatalf("legacy k8s path must still upgrade, got resp=%v err=%v", resp, err)
+	resp, _, err := dialTerminalWS(t, engine, assetTerminalWSPath, "token="+token+"&hostId=12")
+	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("legacy token-only asset dial must be 401, got resp=%v err=%v", resp, err)
 	}
-	if got := resp.Header.Get("Deprecation"); got != "true" {
-		t.Fatalf("legacy handshake must carry Deprecation: true, got %q", got)
-	}
-	if got := resp.Header.Get("Sunset"); got == "" {
-		t.Fatal("legacy handshake must carry a Sunset header")
-	}
-	_ = conn.Close()
 
-	resp, _, err = dialTerminalWS(t, engine, assetTerminalWSPath, "token="+token+"&hostId=999999")
-	if err == nil || resp == nil || resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("legacy asset path must reach the service (400 on missing host), got resp=%v err=%v", resp, err)
+	resp, _, err = dialTerminalWS(t, engine, k8sTerminalWSPath, "token="+token+"&clusterId=3&namespace=default&podName=pod-x")
+	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("legacy token-only k8s dial must be 401, got resp=%v err=%v", resp, err)
 	}
 
 	resp, _, err = dialTerminalWS(t, engine, assetTerminalWSPath, "hostId=12")
 	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("legacy path without token must be 401, got resp=%v err=%v", resp, err)
+		t.Fatalf("dial without any credential must be 401, got resp=%v err=%v", resp, err)
 	}
 }
 

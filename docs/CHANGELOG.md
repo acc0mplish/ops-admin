@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09 — Terminal ticket-only enforcement (V2 Phase -1, Release B+C)
+
+### Removed
+
+- **The legacy query-token path of the terminal websockets**
+  (`GET /api/v1/asset/terminal/ws?token=…` and
+  `GET /api/v1/k8s/pod/terminal/ws?token=…`) announced in Release A is now
+  removed. Dials without a valid one-time ticket answer 401
+  (`console ticket required`); the `Deprecation`/`Sunset` headers are gone
+  with the path they announced. **External clients must mint a ticket via
+  `POST /api/v1/console-sessions` and connect with `?ticket=`** — every
+  (re)connect and container switch needs a fresh ticket (30-second TTL,
+  single use). The bundled web UI mints per dial in the same release; a
+  browser still running the pre-ticket bundle after this deploy gets 401
+  until the page is reloaded.
+
 ## 2026-09 — Console ticket issuance and terminal deprecation headers (V2 Phase -1, Release A)
 
 ### Changed
