@@ -5,6 +5,7 @@ import { ArrowLeft, Connection, EditPen, Monitor } from '@element-plus/icons-vue
 import { assetDatabaseInfo, assetHostInfo, queryAssetChangeLogs } from '../../api/asset'
 import { queryK8sClusterInfo } from '../../api/k8s'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
+import { at } from '../../utils/asset-i18n'
 import HostMetrics from './HostMetrics.vue'
 import DatabaseMetrics from './DatabaseMetrics.vue'
 
@@ -17,29 +18,29 @@ const changes = ref([])
 const { environmentName } = useEnvironmentOptions()
 
 const config = computed(() => ({
-  host: { title: 'Host 상세', list: '/assets/server/hosts', name: asset.value.hostName, env: asset.value.environment },
-  database: { title: 'Database 상세', list: '/assets/databases', name: asset.value.name, env: asset.value.env },
-  k8s: { title: 'K8s Cluster 상세', list: '/containers/k8s/clusters', name: asset.value.name, env: asset.value.env }
+  host: { title: at('hostDetailTitle'), list: '/assets/server/hosts', name: asset.value.hostName, env: asset.value.environment },
+  database: { title: at('databaseDetailTitle'), list: '/assets/databases', name: asset.value.name, env: asset.value.env },
+  k8s: { title: at('k8sDetailTitle'), list: '/containers/k8s/clusters', name: asset.value.name, env: asset.value.env }
 }[props.resourceType]))
 
 const status = computed(() => {
-  if (props.resourceType === 'host') return asset.value.aliveStatus === 1 ? ['온라인', 'success'] : ['오프라인', 'danger']
-  if (props.resourceType === 'database') return asset.value.connectStatus === 1 ? ['연결됨', 'success'] : asset.value.connectStatus === 2 ? ['연결 오류', 'danger'] : ['미검사', 'info']
-  return asset.value.status === 'running' ? ['실행 중', 'success'] : asset.value.status === 'offline' ? ['오프라인', 'danger'] : ['주의', 'warning']
+  if (props.resourceType === 'host') return asset.value.aliveStatus === 1 ? [at('online'), 'success'] : [at('offline'), 'danger']
+  if (props.resourceType === 'database') return asset.value.connectStatus === 1 ? [at('dbConnected'), 'success'] : asset.value.connectStatus === 2 ? [at('dbConnectError'), 'danger'] : [at('notInspected'), 'info']
+  return asset.value.status === 'running' ? [at('statusRunning'), 'success'] : asset.value.status === 'offline' ? [at('offline'), 'danger'] : [at('attentionStatus'), 'warning']
 })
 
 const basics = computed(() => {
   if (props.resourceType === 'host') return [
-    ['Host 이름', asset.value.hostName], ['SSH 주소', `${asset.value.sshIp || '-'}:${asset.value.sshPort || 22}`],
-    ['OS', asset.value.os], ['아키텍처', asset.value.arch], ['공인 IP', asset.value.publicIp], ['사설 IP', asset.value.privateIp]
+    [at('hostNameLabel'), asset.value.hostName], [at('sshAddressLabel'), `${asset.value.sshIp || '-'}:${asset.value.sshPort || 22}`],
+    ['OS', asset.value.os], [at('archLabel'), asset.value.arch], [at('publicIpColumn'), asset.value.publicIp], [at('privateIpColumn'), asset.value.privateIp]
   ]
   if (props.resourceType === 'database') return [
-    ['유형', asset.value.dbType], ['연결 주소', `${asset.value.host || '-'}:${asset.value.port || 3306}`],
-    ['기본 DB', asset.value.dbName], ['계정', asset.value.username], ['버전', asset.value.version], ['접근 모드', asset.value.accessMode === 'readonly' ? '읽기 전용' : '읽기/쓰기']
+    [at('typeColumn'), asset.value.dbType], [at('connAddrColumn'), `${asset.value.host || '-'}:${asset.value.port || 3306}`],
+    [at('defaultDbColumn'), asset.value.dbName], [at('accountColumn'), asset.value.username], [at('versionColumn'), asset.value.version], [at('accessModeField'), asset.value.accessMode === 'readonly' ? at('readOnly') : at('readWrite')]
   ]
   return [
-    ['API Server', asset.value.apiServer], ['Kubernetes 버전', asset.value.version], ['Node 수', asset.value.nodeCount],
-    ['접속 방식', asset.value.connectionMode === 'gateway' ? 'Gateway 경유' : '직접 연결'], ['최근 동기화', formatDateTime(asset.value.lastSyncAt)], ['생성 시각', formatDateTime(asset.value.createTime)]
+    ['API Server', asset.value.apiServer], [at('k8sVersionLabel'), asset.value.version], [at('nodeCountColumn'), asset.value.nodeCount],
+    [at('accessModeLabel'), asset.value.connectionMode === 'gateway' ? at('viaGateway') : at('directConnection')], [at('lastSyncLabel'), formatDateTime(asset.value.lastSyncAt)], [at('createdAtColumn'), formatDateTime(asset.value.createTime)]
   ]
 })
 
@@ -52,7 +53,7 @@ function formatDateTime(value) {
 }
 
 function actionText(action) {
-  return ({ create: '생성', update: '수정', delete: '삭제', sync: '동기화', test: '연결 검사' })[action] || action
+  return ({ create: at('createAction'), update: at('editAction2'), delete: at('delete'), sync: at('sync'), test: at('connectionCheck') })[action] || action
 }
 
 async function loadData() {
@@ -83,7 +84,7 @@ onMounted(loadData)
   <div v-loading="loading" class="asset-detail-page">
     <header class="detail-header">
       <div class="detail-title">
-        <el-button :icon="ArrowLeft" circle title="뒤로" @click="router.push(config.list)" />
+        <el-button :icon="ArrowLeft" circle :title="at('back')" @click="router.push(config.list)" />
         <div>
           <div class="detail-kicker">{{ config.title }}</div>
           <h2>{{ config.name || '-' }}</h2>
@@ -91,24 +92,24 @@ onMounted(loadData)
         <el-tag :type="status[1]" effect="light">{{ status[0] }}</el-tag>
       </div>
       <el-button v-if="resourceType !== 'host'" type="primary" :icon="Monitor" @click="enterConsole">
-        {{ resourceType === 'database' ? 'DBMS Workbench로 이동' : 'Cluster 콘솔로 이동' }}
+        {{ resourceType === 'database' ? at('goWorkbench') : at('goClusterConsole') }}
       </el-button>
     </header>
 
     <section class="detail-section">
-      <div class="section-heading"><h3>기본 정보</h3><span>자산 식별 및 연결 정보</span></div>
+      <div class="section-heading"><h3>{{ at('basicInfoTitle') }}</h3><span>{{ at('basicInfoDesc') }}</span></div>
       <el-descriptions :column="3" border>
         <el-descriptions-item v-for="item in basics" :key="item[0]" :label="item[0]">{{ item[1] ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="소속 Environment">{{ environmentName(config.env) }}</el-descriptions-item>
+        <el-descriptions-item :label="at('environmentLabel')">{{ environmentName(config.env) }}</el-descriptions-item>
         <el-descriptions-item v-if="resourceType === 'host'" label="Host Group">{{ groupNames }}</el-descriptions-item>
-        <el-descriptions-item label="접속 Gateway"><el-icon><Connection /></el-icon> {{ gatewayName }}</el-descriptions-item>
-        <el-descriptions-item v-if="resourceType !== 'database'" label="최근 검사">{{ formatDateTime(asset.lastCheckTime || asset.lastSyncAt) }}</el-descriptions-item>
-        <el-descriptions-item label="수정 시간">{{ formatDateTime(asset.updateTime) }}</el-descriptions-item>
+        <el-descriptions-item :label="at('accessGatewayLabel')"><el-icon><Connection /></el-icon> {{ gatewayName }}</el-descriptions-item>
+        <el-descriptions-item v-if="resourceType !== 'database'" :label="at('lastCheckColumn')">{{ formatDateTime(asset.lastCheckTime || asset.lastSyncAt) }}</el-descriptions-item>
+        <el-descriptions-item :label="at('updatedAtColumn')">{{ formatDateTime(asset.updateTime) }}</el-descriptions-item>
         <el-descriptions-item v-if="resourceType === 'k8s'" label="Label" :span="3">
           <el-tag v-for="tag in asset.tags || []" :key="tag" class="asset-tag" effect="plain">{{ tag }}</el-tag>
           <span v-if="!asset.tags?.length">-</span>
         </el-descriptions-item>
-        <el-descriptions-item label="비고" :span="3">{{ asset.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="at('noteLabel')" :span="3">{{ asset.description || '-' }}</el-descriptions-item>
       </el-descriptions>
     </section>
 
@@ -116,12 +117,12 @@ onMounted(loadData)
     <DatabaseMetrics v-if="resourceType === 'database'" :database-id="Number(route.params.id)" :enabled="Boolean(asset.monitorEnabled)" />
 
     <section class="detail-section">
-      <div class="section-heading"><h3>최근 변경</h3><span>핵심 자산 작업을 기록해 추적을 돕습니다</span></div>
-      <el-table :data="changes" empty-text="변경 기록이 없습니다">
-        <el-table-column label="시각" width="190"><template #default="{ row }">{{ formatDateTime(row.createTime) }}</template></el-table-column>
-        <el-table-column label="동작" width="110"><template #default="{ row }"><el-tag effect="plain">{{ actionText(row.action) }}</el-tag></template></el-table-column>
-        <el-table-column prop="summary" label="변경 내용" min-width="280" />
-        <el-table-column label="작업자" width="160"><template #default="{ row }"><el-icon><EditPen /></el-icon> {{ row.operator || 'system' }}</template></el-table-column>
+      <div class="section-heading"><h3>{{ at('recentChangesTitle') }}</h3><span>{{ at('recentChangesDesc') }}</span></div>
+      <el-table :data="changes" :empty-text="at('noChangeLogs')">
+        <el-table-column :label="at('timeColumn')" width="190"><template #default="{ row }">{{ formatDateTime(row.createTime) }}</template></el-table-column>
+        <el-table-column :label="at('actionColumn')" width="110"><template #default="{ row }"><el-tag effect="plain">{{ actionText(row.action) }}</el-tag></template></el-table-column>
+        <el-table-column prop="summary" :label="at('changeSummaryColumn')" min-width="280" />
+        <el-table-column :label="at('operatorColumn')" width="160"><template #default="{ row }"><el-icon><EditPen /></el-icon> {{ row.operator || 'system' }}</template></el-table-column>
       </el-table>
     </section>
   </div>
