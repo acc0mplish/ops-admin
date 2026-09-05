@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -15,6 +16,10 @@ import (
 )
 
 func main() {
+	// Read-only subcommand, dispatched before any server startup path.
+	if len(os.Args) >= 2 && os.Args[1] == "inventory-secrets" {
+		os.Exit(runSecretInventory(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)
