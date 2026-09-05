@@ -82,7 +82,7 @@ function validateTargets(hostIds, groupIds) {
 
 async function submitCommand() {
   if (!commandForm.commandText.trim()) {
-    ElMessage.warning(ot('commandRequired'))
+    ElMessage.warning(ot('quickCommandRequired'))
     return
   }
   if (!validateTargets(commandForm.hostIds, commandForm.groupIds)) return

@@ -46,7 +46,7 @@ const filterScopeOptions = scopeOptions
 const eventOptions = [
   { label: nt('success'), value: 'success' },
   { label: nt('failed'), value: 'failed' },
-  { label: nt('waiting_approval'), value: 'waiting_approval' },
+  { label: nt('pendingManualReview'), value: 'waiting_approval' },
   { label: nt('rejected'), value: 'rejected' },
   { label: nt('firing'), value: 'firing' },
   { label: nt('recovered'), value: 'recovered' },
