@@ -44,7 +44,28 @@ const ko = {
   seedWecomPipelineContent: '# <font color="{{statusTone}}">【{{status}}】{{appName}} · {{stageName}}</font>\n\n> Pipeline: {{pipelineName}}\n> 실행 번호: {{pipelineRunId}}\n> Environment: {{env}}\n> Branch: {{branch}}\n> Image Version: {{imageTag}}\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', seedWecomPipelineDesc: 'WeCom Markdown 형식의 Pipeline 실행 결과 Notification입니다.',
   seedFeishuPipelineContent: '**Pipeline:** {{pipelineName}}\n**실행 번호:** #{{pipelineRunId}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**Notification 시각:** {{notifyAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', seedFeishuPipelineDesc: 'Feishu Card 스타일이며 Build, Deploy, Stage 결과 Notification에 사용합니다.',
   seedWebhookPipelineName: '범용 Webhook - CI/CD Pipeline Notification', seedWebhookPipelineContent: 'Pipeline: {{pipelineName}}\n실행 번호: {{pipelineRunId}}\nEnvironment: {{env}}\nBranch: {{branch}}\nImage Version: {{imageTag}}\nStage: {{stageName}}\n요약: {{summary}}\n상세: {{detail}}', seedWebhookPipelineDesc: '범용 HTTP Webhook의 Pipeline 구조화 Notification입니다.',
-  seedResetContent: '### {{alertName}}\n\n- 상태: {{status}}\n- 요약: {{summary}}\n- 시각: {{startedAt}}\n\n{{detail}}'
+  seedResetContent: '### {{alertName}}\n\n- 상태: {{status}}\n- 요약: {{summary}}\n- 시각: {{startedAt}}\n\n{{detail}}',
+  allEvents: '전체 Event', applyRange: '적용 범위', ruleName: 'Rule 이름', triggerEvent: '트리거 Event', messageTemplate: '메시지 Template',
+  rulePageDesc: 'Business Event, 메시지 Template, Notification Channel을 조합해 재사용 가능한 전송 Routing을 구성합니다.', addRule: 'Rule 추가', addRuleTitle: 'Notification Rule 추가', editRuleTitle: 'Notification Rule 수정',
+  ruleSearchPlaceholder: 'Rule 이름 / 설명 검색', ruleNamePlaceholder: '예: 운영 Environment Alert Notification',
+  step1Title: '트리거 시나리오', step1Desc: '언제 알림을 보낼지 선택', step2Title: '전송 방식', step2Desc: 'Template과 Channel 선택', step3Title: '활성화 확인', step3Desc: 'Routing을 확인하고 저장',
+  step1Heading: '어떤 상황에 알림을 보내야 하나요?', step1Sub: '먼저 시나리오와 트리거 Event를 정의하면 시스템이 적합한 Template을 자동 추천합니다.',
+  step2Heading: '누구에게 어떻게 전달할까요?', step2Sub: 'Template과 Channel 유형은 자동으로 검증됩니다. 동일 유형의 Channel은 여러 개를 동시에 선택할 수 있습니다.',
+  step3Heading: 'Notification Routing 확인', step3Sub: '저장 후 Rule 목록에서 Test 메시지를 전송해 실제 전달 결과를 확인할 수 있습니다.',
+  warnScopeSpecific: '적용 시나리오를 구체적으로 지정하십시오', warnSelectEvent: '하나 이상의 트리거 Event를 선택하십시오', warnSelectTemplate: '메시지 Template을 선택하십시오',
+  warnScopeMismatch: '메시지 Template과 적용 범위가 일치하지 않습니다', warnSelectChannel: 'Notification Channel을 선택하십시오', warnTypeMismatch: 'Template과 Notification Channel 유형이 일치하지 않습니다',
+  ruleScopeNone: '범위 미선택', ruleScopeRequired: '범위 지정 필요', genericTemplate: '범용 Template', warnLoadOptions: '메시지 Template과 Notification Channel 로드에 실패했습니다',
+  scopeSwitched: 'Template에 따라 "{scope}" 시나리오로 전환했습니다', warnRuleNameFirst: '먼저 Rule 이름을 입력하십시오', warnRuleName: 'Rule 이름을 입력하십시오',
+  testConfirm: 'Test는 Rule "{name}"에 따라 구성된 Channel로 실제 메시지 1건을 전송합니다. 계속하시겠습니까?', send: '전송', testQueued: 'Test 메시지가 전송 Queue에 추가되었습니다. 총 {count}건',
+  ruleDeleteConfirm: 'Notification Rule "{name}"을(를) 삭제하시겠습니까?', ruleDeleteTitle: 'Rule 삭제',
+  noTemplatesHint: '활성화된 메시지 Template이 없습니다. 메시지 Template에서 먼저 생성하거나 활성화하십시오', templatePlaceholder: 'Channel 유형과 일치하는 Template을 선택하십시오',
+  channelPlaceholder: '동일 유형의 Channel을 여러 개 선택할 수 있습니다', eventNotSelected: 'Event 미선택', templateNotSelected: 'Template 미선택', channelNotSelected: 'Channel 미선택',
+  routeMeta: '적용 시나리오: {scope} · 메시지 형식: {type}', routingComplete: 'Routing 구성이 완전합니다. 저장 후 목록에서 Test 메시지를 전송할 수 있습니다.',
+  statusAfterSave: '저장 후 상태', activateNow: '즉시 활성화', saveInactive: '비활성 상태로 저장', descriptionOptional: '설명 (선택)',
+  ruleDescPlaceholder: 'Notification 대상, 사용 시나리오 또는 온콜 요건을 설명합니다', previous: '이전', next: '다음', saveRule: 'Rule 저장', customWebhookShort: '사용자 정의 Webhook',
+  channelPageTitle: '메시지 알림 Channel', channelPageDesc: 'DingTalk, WeCom, Feishu Bot과 사용자 정의 HTTP Webhook의 전송 경로를 관리합니다.', addChannel: 'Channel 추가', addChannelTitle: 'Notification Channel 추가', editChannelTitle: 'Notification Channel 수정',
+  channelSearchPlaceholder: 'Channel 이름 / 설명 검색', channelName: 'Channel 이름', webhookUrlLabel: 'Webhook 주소', signingSecret: '서명 Secret', secretPlaceholder: 'DingTalk 서명 Secret. 선택 사항',
+  warnChannelFields: 'Channel 이름과 Webhook 주소를 입력하십시오', channelDeleteConfirm: 'Notification Channel "{name}"을(를) 삭제하시겠습니까?'
 }
 
 const en = {
@@ -91,7 +112,28 @@ const en = {
   seedWecomPipelineContent: '# <font color="{{statusTone}}">【{{status}}】{{appName}} · {{stageName}}</font>\n\n> Pipeline: {{pipelineName}}\n> Run Number: {{pipelineRunId}}\n> Environment: {{env}}\n> Branch: {{branch}}\n> Image Version: {{imageTag}}\n\n**Execution Summary**\n{{summary}}\n\n{{detail}}', seedWecomPipelineDesc: 'WeCom Markdown notification for pipeline execution results.',
   seedFeishuPipelineContent: '**Pipeline:** {{pipelineName}}\n**Run Number:** #{{pipelineRunId}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**Notified At:** {{notifyAt}}\n\n---\n\n**Execution Summary**\n{{summary}}\n\n{{detail}}', seedFeishuPipelineDesc: 'Feishu card style, used for build, deploy, and stage result notifications.',
   seedWebhookPipelineName: 'Generic Webhook - CI/CD Pipeline Notification', seedWebhookPipelineContent: 'Pipeline: {{pipelineName}}\nRun Number: {{pipelineRunId}}\nEnvironment: {{env}}\nBranch: {{branch}}\nImage Version: {{imageTag}}\nStage: {{stageName}}\nSummary: {{summary}}\nDetail: {{detail}}', seedWebhookPipelineDesc: 'Structured pipeline notification for the generic HTTP webhook.',
-  seedResetContent: '### {{alertName}}\n\n- Status: {{status}}\n- Summary: {{summary}}\n- Time: {{startedAt}}\n\n{{detail}}'
+  seedResetContent: '### {{alertName}}\n\n- Status: {{status}}\n- Summary: {{summary}}\n- Time: {{startedAt}}\n\n{{detail}}',
+  allEvents: 'All Events', applyRange: 'Scope', ruleName: 'Rule Name', triggerEvent: 'Trigger Event', messageTemplate: 'Message Template',
+  rulePageDesc: 'Compose reusable delivery routing from business events, message templates, and notification channels.', addRule: 'Add Rule', addRuleTitle: 'Add Notification Rule', editRuleTitle: 'Edit Notification Rule',
+  ruleSearchPlaceholder: 'Search rule name or description', ruleNamePlaceholder: 'e.g. Production Environment Alert Notification',
+  step1Title: 'Trigger Scenario', step1Desc: 'Choose when to send notifications', step2Title: 'Delivery Method', step2Desc: 'Select a template and channels', step3Title: 'Activation Check', step3Desc: 'Review the routing and save',
+  step1Heading: 'What situations should trigger notifications?', step1Sub: 'Define the scenario and trigger events first, and the system will recommend suitable templates.',
+  step2Heading: 'Who should receive them, and how?', step2Sub: 'Template and channel types are validated automatically. Multiple channels of the same type can be selected at once.',
+  step3Heading: 'Confirm Notification Routing', step3Sub: 'After saving, send a test message from the rule list to verify actual delivery.',
+  warnScopeSpecific: 'Specify a concrete application scope', warnSelectEvent: 'Select at least one trigger event', warnSelectTemplate: 'Select a message template',
+  warnScopeMismatch: 'The message template does not match the application scope', warnSelectChannel: 'Select a notification channel', warnTypeMismatch: 'The template and notification channel types do not match',
+  ruleScopeNone: 'No scope selected', ruleScopeRequired: 'Scope required', genericTemplate: 'Generic Template', warnLoadOptions: 'Failed to load message templates and notification channels',
+  scopeSwitched: 'Switched to the "{scope}" scenario per the template', warnRuleNameFirst: 'Enter a rule name first', warnRuleName: 'Enter the rule name',
+  testConfirm: 'The test sends one real message to the channels configured in rule "{name}". Continue?', send: 'Send', testQueued: 'The test message was added to the delivery queue. {count} in total',
+  ruleDeleteConfirm: 'Delete notification rule "{name}"?', ruleDeleteTitle: 'Delete Rule',
+  noTemplatesHint: 'No enabled message templates. Create or enable one in Message Templates first', templatePlaceholder: 'Select a template matching the channel type',
+  channelPlaceholder: 'Multiple channels of the same type can be selected', eventNotSelected: 'No event selected', templateNotSelected: 'No template selected', channelNotSelected: 'No channel selected',
+  routeMeta: 'Application scope: {scope} · Message format: {type}', routingComplete: 'The routing configuration is complete. After saving, you can send a test message from the list.',
+  statusAfterSave: 'Status After Save', activateNow: 'Activate Immediately', saveInactive: 'Save as Inactive', descriptionOptional: 'Description (Optional)',
+  ruleDescPlaceholder: 'Describe notification targets, usage scenarios, or on-call requirements', previous: 'Previous', next: 'Next', saveRule: 'Save Rule', customWebhookShort: 'Custom Webhook',
+  channelPageTitle: 'Notification Channels', channelPageDesc: 'Manage delivery paths for DingTalk, WeCom, and Feishu bots and the custom HTTP webhook.', addChannel: 'Add Channel', addChannelTitle: 'Add Notification Channel', editChannelTitle: 'Edit Notification Channel',
+  channelSearchPlaceholder: 'Search channel name or description', channelName: 'Channel Name', webhookUrlLabel: 'Webhook URL', signingSecret: 'Signing Secret', secretPlaceholder: 'DingTalk signing secret. Optional',
+  warnChannelFields: 'Enter the channel name and webhook URL', channelDeleteConfirm: 'Delete notification channel "{name}"?'
 }
 
 export function nt(key, params = {}) {
