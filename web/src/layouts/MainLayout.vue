@@ -14,7 +14,7 @@ import {
   setUser
 } from '../utils/auth'
 import { appDefinitions, getAppByRoute, setCurrentApp } from '../utils/apps'
-import { t, translateRoute } from '../utils/i18n'
+import { t, translateRoute } from '../utils/i18n-runtime'
 import { applySystemTheme, getSystemConfig, resolveSystemAsset, setSystemConfig } from '../utils/system-config'
 
 const route = useRoute()
@@ -323,7 +323,7 @@ function ensureTag(path, title, fullPath = path) {
   if (!path || path === '/login') {
     return
   }
-  const translated = translateRoute(path, title || '미지정 페이지')
+  const translated = translateRoute(path, title || t('untitledPage'))
   const found = tagViews.value.find((item) => item.path === path)
   if (found) {
     found.title = translated
@@ -524,13 +524,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <div v-else class="brand-mark">{{ currentLogoText() }}</div>
           <div v-if="!collapsed" class="brand-text">
             <strong>{{ siteName }}</strong>
-            <span>{{ layoutConfig.siteSlogan || '개인 운영 관리 플랫폼' }}</span>
+            <span>{{ layoutConfig.siteSlogan || t('siteSloganDefault') }}</span>
           </div>
           <el-popover v-model:visible="appNavigationVisible" placement="bottom-start" :width="820" trigger="click" popper-class="platform-nav-popper">
             <template #reference>
               <button type="button" class="platform-nav-trigger" :aria-label="t('appSwitch')" :title="t('appSwitch')">
                 <el-icon><Grid /></el-icon>
-                <span>플랫폼 탐색</span>
+                <span>{{ t('platformNavigation') }}</span>
                 <el-icon class="platform-nav-arrow"><ArrowDown /></el-icon>
               </button>
             </template>
@@ -538,9 +538,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
               <div class="platform-navigation-head">
                 <div>
                   <span>PLATFORM NAVIGATION</span>
-                  <strong>애플리케이션 플랫폼</strong>
+                  <strong>{{ t('applicationPlatform') }}</strong>
                 </div>
-                <small>애플리케이션을 선택해 워크스페이스와 메뉴를 전환합니다.</small>
+                <small>{{ t('applicationPlatformHint') }}</small>
               </div>
               <div class="platform-navigation-grid">
                 <button
@@ -555,7 +555,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
                   <span class="platform-app-icon"><el-icon><component :is="app.icon || House" /></el-icon></span>
                   <span class="platform-app-copy">
                     <strong>{{ t(app.labelKey || 'appConsole') }}</strong>
-                    <small>메뉴 {{ app.menuCount }}개</small>
+                    <small>{{ t('menuEntries', { count: app.menuCount }) }}</small>
                   </span>
                   <el-icon v-if="app.key === currentApp.key" class="platform-app-check"><Check /></el-icon>
                 </button>
@@ -624,7 +624,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <div class="header-right">
             <el-button class="command-trigger" @click="openCommandPalette">
               <el-icon><Search /></el-icon>
-              <span>전체 검색</span>
+              <span>{{ t('globalSearch') }}</span>
               <kbd>⌘K</kbd>
             </el-button>
 
@@ -689,7 +689,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           </span>
           <span class="app-drawer-text">
             <strong>{{ t(app.labelKey || 'appConsole') }}</strong>
-            <small>{{ app.key === currentApp.key ? '현재 애플리케이션' : '전환' }}</small>
+            <small>{{ app.key === currentApp.key ? t('currentApplication') : t('switchApplication') }}</small>
           </span>
           <el-icon v-if="app.key === currentApp.key" class="app-drawer-check"><Check /></el-icon>
         </button>
@@ -702,9 +702,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
         :style="{ left: `${tagContextMenu.x}px`, top: `${tagContextMenu.y}px` }"
         @click.stop
       >
-        <button type="button" @click="closeLeftTags">왼쪽 탭 닫기</button>
-        <button type="button" @click="closeRightTags">오른쪽 탭 닫기</button>
-        <button type="button" @click="closeOtherTags">다른 탭 닫기</button>
+        <button type="button" @click="closeLeftTags">{{ t('closeLeftTabs') }}</button>
+        <button type="button" @click="closeRightTags">{{ t('closeRightTabs') }}</button>
+        <button type="button" @click="closeOtherTags">{{ t('closeOtherTabs') }}</button>
       </div>
     </div>
 
@@ -713,12 +713,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
         <div class="command-palette-head">
           <div>
             <span>GLOBAL COMMAND</span>
-            <strong>빠른 이동 및 검색</strong>
+            <strong>{{ t('quickJumpSearch') }}</strong>
           </div>
           <kbd>ESC</kbd>
         </div>
       </template>
-      <el-input v-model="commandKeyword" autofocus placeholder="전체 애플리케이션의 페이지, 모듈 또는 경로 검색" clearable>
+      <el-input v-model="commandKeyword" autofocus :placeholder="t('searchPagesPlaceholder')" clearable>
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <div class="command-result-list">
@@ -727,7 +727,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
           <span><b>{{ item.title }}</b><small>{{ [item.appLabel, item.parentTitle].filter(Boolean).join(' / ') }} · {{ item.path }}</small></span>
           <em>Enter</em>
         </button>
-        <el-empty v-if="!commandItems.length" description="일치하는 페이지 또는 작업이 없습니다." :image-size="48" />
+        <el-empty v-if="!commandItems.length" :description="t('noMatchingPage')" :image-size="48" />
       </div>
     </el-dialog>
   </el-container>
