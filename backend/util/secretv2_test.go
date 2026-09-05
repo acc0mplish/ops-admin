@@ -255,7 +255,7 @@ func TestReadSecretFieldPlaintextPassthrough(t *testing.T) {
 }
 
 // TestSecretRegistryMatchesInventory pins the registry to the §4.1 inventory
-// (architecture r2.4): 15 rows, E-legacy rows 1-4, P rows 5-15, unique
+// (architecture r2.5): 14 rows, E-legacy rows 1-4, P rows 5-14 (row 7 removed — phantom), unique
 // table+column, the row 4 mixed-declaration flag and the row 14 conditional
 // webhook_url flag.
 func TestSecretRegistryMatchesInventory(t *testing.T) {
@@ -277,7 +277,6 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 		{5, "AssetCredential", "asset_credential", "passphrase", ClassPlaintext},
 		{6, "AssetCloudAccount", "asset_cloud_account", "access_key", ClassPlaintext},
 		{6, "AssetCloudAccount", "asset_cloud_account", "secret_key", ClassPlaintext},
-		{7, "AssetGateway", "asset_gateway", "password", ClassPlaintext},
 		{8, "K8sCluster", "k8s_cluster", "kube_config", ClassPlaintext},
 		{9, "IntegrationFinOpsAccount", "integration_finops_account", "secret_key", ClassPlaintext},
 		{9, "IntegrationFinOpsAccount", "integration_finops_account", "billing_token", ClassPlaintext},
@@ -315,10 +314,13 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 			conditional++
 		}
 	}
-	if len(rows) != 15 {
-		t.Fatalf("registry spans %d inventory rows, want 15", len(rows))
+	if len(rows) != 14 {
+		t.Fatalf("registry spans %d inventory rows, want 14", len(rows))
 	}
 	for row := 1; row <= 15; row++ {
+		if row == 7 {
+			continue // phantom row removed in architecture r2.5
+		}
 		if rows[row] == 0 {
 			t.Fatalf("inventory row %d missing from the registry", row)
 		}
@@ -328,7 +330,7 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 		classRows[field.Class][field.Row] = struct{}{}
 	}
 	eRows, pRows := len(classRows[ClassELegacy]), len(classRows[ClassPlaintext])
-	if eRows != 4 || pRows != 11 {
+	if eRows != 4 || pRows != 10 {
 		t.Fatalf("class distribution must be E=4 rows / P=11 rows, got E=%d P=%d", eRows, pRows)
 	}
 	if mixed != 1 {

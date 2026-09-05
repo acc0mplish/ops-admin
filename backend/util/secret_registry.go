@@ -62,7 +62,6 @@ var SecretFields = []SecretField{
 	{Row: 5, Model: "AssetCredential", Table: "asset_credential", Column: "passphrase", Class: ClassPlaintext, Labels: []string{"asset credential passphrase"}},
 	{Row: 6, Model: "AssetCloudAccount", Table: "asset_cloud_account", Column: "access_key", Class: ClassPlaintext, Labels: []string{"cloud account AccessKeyID"}},
 	{Row: 6, Model: "AssetCloudAccount", Table: "asset_cloud_account", Column: "secret_key", Class: ClassPlaintext, Labels: []string{"cloud account SecretKey"}},
-	{Row: 7, Model: "AssetGateway", Table: "asset_gateway", Column: "password", Class: ClassPlaintext, Labels: []string{"gateway password"}},
 	{Row: 8, Model: "K8sCluster", Table: "k8s_cluster", Column: "kube_config", Class: ClassPlaintext, Labels: []string{"cluster kubeconfig"}},
 	{Row: 9, Model: "IntegrationFinOpsAccount", Table: "integration_finops_account", Column: "secret_key", Class: ClassPlaintext, Labels: []string{"FinOps account SecretKey"}},
 	{Row: 9, Model: "IntegrationFinOpsAccount", Table: "integration_finops_account", Column: "billing_token", Class: ClassPlaintext, Labels: []string{"FinOps billing token"}},
