@@ -46,7 +46,7 @@ const form = reactive({
 })
 const datasourceForm = reactive({ name: '', type: 'prometheus', url: '', authType: 'none', username: '', password: '', token: '', env: 'test', status: 1, description: '' })
 
-const dialogTitle = computed(() => (isEdit.value ? t('k8sEditCluster') : t('k8sCreateCluster')))
+const dialogTitle = computed(() => (isEdit.value ? kt('k8sEditCluster') : kt('k8sCreateCluster')))
 
 function clusterStatusText(status) {
   const map = {
@@ -95,7 +95,7 @@ function openDatasourceCreate() {
 
 async function saveDatasource() {
   if (!datasourceForm.name.trim() || !datasourceForm.url.trim()) {
-    ElMessage.warning('Datasource 이름과 주소를 입력하십시오.')
+    ElMessage.warning(kt('enterDatasourceInfo'))
     return
   }
   datasourceSaving.value = true
@@ -105,7 +105,7 @@ async function saveDatasource() {
     const created = datasourceOptions.value.find((item) => item.name === datasourceForm.name.trim() && item.url === datasourceForm.url.trim().replace(/\/$/, ''))
     form.monitorDatasourceId = created?.id
     datasourceDialogVisible.value = false
-    ElMessage.success('Datasource를 생성하고 현재 Cluster에 바인딩했습니다.')
+    ElMessage.success(kt('datasourceCreatedAndBound'))
   } finally {
     datasourceSaving.value = false
   }
@@ -135,15 +135,15 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning(t('k8sPleaseInputClusterName'))
+    ElMessage.warning(kt('k8sPleaseInputClusterName'))
     return
   }
   if (!form.kubeConfig.trim()) {
-    ElMessage.warning(t('k8sPleaseInputKubeconfig'))
+    ElMessage.warning(kt('k8sPleaseInputKubeconfig'))
     return
   }
   if (form.connectionMode === 'gateway' && !form.gatewayId) {
-    ElMessage.warning('접속 Gateway를 선택하십시오.')
+    ElMessage.warning(kt('selectGatewayWarning'))
     return
   }
 
@@ -151,10 +151,10 @@ async function submit() {
   try {
     if (isEdit.value) {
       await updateK8sCluster({ ...form })
-      ElMessage.success(t('k8sClusterUpdated'))
+      ElMessage.success(kt('k8sClusterUpdated'))
     } else {
       await addK8sCluster({ ...form })
-      ElMessage.success(t('k8sClusterCreated'))
+      ElMessage.success(kt('k8sClusterCreated'))
     }
     dialogVisible.value = false
     await loadClusters()
@@ -164,9 +164,9 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(t('k8sDeleteClusterConfirm', { name: row.name }), t('k8sPrompt'), { type: 'warning' })
+  await ElMessageBox.confirm(kt('k8sDeleteClusterConfirm', { name: row.name }), kt('k8sPrompt'), { type: 'warning' })
   await deleteK8sCluster(row.id)
-  ElMessage.success(t('k8sClusterDeleted'))
+  ElMessage.success(kt('k8sClusterDeleted'))
   await loadClusters()
 }
 
@@ -198,87 +198,87 @@ onMounted(async () => {
   <div class="cluster-manage-page">
     <section class="page-header">
       <div>
-        <h2>{{ t('k8sManageTitle') }}</h2>
-        <p>{{ t('k8sManageDesc') }}</p>
+        <h2>{{ kt('k8sManageTitle') }}</h2>
+        <p>{{ kt('k8sManageDesc') }}</p>
       </div>
       <div class="header-actions">
-        <el-select v-model="selectedEnv" clearable placeholder="전체 Environment" style="width: 160px">
+        <el-select v-model="selectedEnv" clearable :placeholder="kt('allEnvironments')" style="width: 160px">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
-        <el-button :icon="Refresh" @click="loadClusters">{{ t('k8sRefresh') }}</el-button>
-        <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('k8sNewCluster') }}</el-button>
+        <el-button :icon="Refresh" @click="loadClusters">{{ kt('k8sRefresh') }}</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">{{ kt('k8sNewCluster') }}</el-button>
       </div>
     </section>
 
     <section v-loading="loading" class="table-panel">
       <el-table :data="filteredClusters" class="cluster-table">
-        <el-table-column :label="t('k8sClusterName')" min-width="180"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button></template></el-table-column>
+        <el-table-column :label="kt('k8sClusterName')" min-width="180"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button></template></el-table-column>
         <el-table-column label="Environment" width="120">
           <template #default="{ row }">
             <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="t('k8sStatus')" width="120">
+        <el-table-column :label="kt('k8sStatus')" width="120">
           <template #default="{ row }">
             <el-tag :type="tagType(row.status)" effect="light">{{ clusterStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="apiServer" :label="t('k8sApiServer')" min-width="260" />
-        <el-table-column prop="version" :label="t('k8sVersion')" width="140" />
-        <el-table-column prop="nodeCount" :label="t('k8sNodeCount')" width="100" />
+        <el-table-column prop="apiServer" :label="kt('k8sApiServer')" min-width="260" />
+        <el-table-column prop="version" :label="kt('k8sVersion')" width="140" />
+        <el-table-column prop="nodeCount" :label="kt('k8sNodeCount')" width="100" />
         <el-table-column label="Monitoring Datasource" min-width="160">
-          <template #default="{ row }">{{ row.monitorDatasourceName || '미바인딩' }}</template>
+          <template #default="{ row }">{{ row.monitorDatasourceName || kt('unboundLabel') }}</template>
         </el-table-column>
-        <el-table-column label="접속 방식" min-width="150">
+        <el-table-column :label="kt('accessModeLabel')" min-width="150">
           <template #default="{ row }">
             <span v-if="row.connectionMode === 'gateway'">Gateway: {{ row.gatewayName || row.gatewayId || '-' }}</span>
-            <span v-else>직접 연결</span>
+            <span v-else>{{ kt('directConnection') }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="description" :label="t('k8sDescription')" min-width="180" show-overflow-tooltip />
-        <el-table-column :label="t('k8sOperations')" width="160" fixed="right">
+        <el-table-column prop="description" :label="kt('k8sDescription')" min-width="180" show-overflow-tooltip />
+        <el-table-column :label="kt('k8sOperations')" width="160" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">{{ t('k8sEdit') }}</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">{{ t('k8sDelete') }}</el-button>
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">{{ kt('k8sEdit') }}</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">{{ kt('k8sDelete') }}</el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!loading && !filteredClusters.length" :description="t('k8sNoClustersRecorded')" />
+      <el-empty v-if="!loading && !filteredClusters.length" :description="kt('k8sNoClustersRecorded')" />
     </section>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="760px" destroy-on-close>
       <el-form label-width="100px">
-        <el-form-item :label="t('k8sClusterName')" required>
-          <el-input v-model="form.name" :placeholder="t('k8sClusterNamePlaceholder')" />
+        <el-form-item :label="kt('k8sClusterName')" required>
+          <el-input v-model="form.name" :placeholder="kt('k8sClusterNamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="소속 Environment" required>
-          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오">
+        <el-form-item :label="kt('environmentLabel')" required>
+          <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" :placeholder="kt('selectEnvironmentShort')">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('k8sDescription')">
+        <el-form-item :label="kt('k8sDescription')">
           <el-input
             v-model="form.description"
             type="textarea"
             :rows="2"
-            :placeholder="t('k8sClusterDescriptionPlaceholder')"
+            :placeholder="kt('k8sClusterDescriptionPlaceholder')"
           />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="연결 방식">
+            <el-form-item :label="kt('connectionModeLabel')">
               <el-radio-group v-model="form.connectionMode">
-                <el-radio-button label="direct">직접 연결</el-radio-button>
-                <el-radio-button label="gateway">Gateway 사용</el-radio-button>
+                <el-radio-button label="direct">{{ kt('directConnection') }}</el-radio-button>
+                <el-radio-button label="gateway">{{ kt('useGateway') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col v-if="form.connectionMode === 'gateway'" :span="12">
-            <el-form-item label="접속 Gateway" required>
-              <el-select v-model="form.gatewayId" filterable placeholder="Gateway를 선택하십시오" style="width: 100%">
+            <el-form-item :label="kt('accessGatewayLabel')" required>
+              <el-select v-model="form.gatewayId" filterable :placeholder="kt('selectGatewayShort')" style="width: 100%">
                 <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
@@ -286,39 +286,39 @@ onMounted(async () => {
         </el-row>
         <el-form-item label="Monitoring Datasource">
           <div class="datasource-binding-control">
-            <el-select v-model="form.monitorDatasourceId" clearable filterable placeholder="Prometheus / VictoriaMetrics 선택" style="flex: 1">
+            <el-select v-model="form.monitorDatasourceId" clearable filterable :placeholder="kt('selectMetricsDatasource')" style="flex: 1">
               <el-option v-for="item in datasourceOptions" :key="item.id" :label="`${item.name} · ${item.type}`" :value="item.id" />
             </el-select>
-            <el-button plain @click="openDatasourceCreate">새 사용자 정의 Datasource</el-button>
+            <el-button plain @click="openDatasourceCreate">{{ kt('newCustomDatasource') }}</el-button>
           </div>
-          <div class="form-hint">Pod CPU, Memory 모니터링은 이 Cluster에 바인딩된 Datasource만 사용합니다. 바인딩하지 않으면 전역 기본 Datasource를 조회하지 않습니다.</div>
+          <div class="form-hint">{{ kt('datasourceBindingHint') }}</div>
         </el-form-item>
-        <el-form-item :label="t('k8sKubeConfig')" required>
+        <el-form-item :label="kt('k8sKubeConfig')" required>
           <el-input
             v-model="form.kubeConfig"
             type="textarea"
             :rows="14"
-            :placeholder="t('k8sKubeConfigPlaceholder')"
+            :placeholder="kt('k8sKubeConfigPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">{{ t('cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">{{ t('save') }}</el-button>
+        <el-button @click="dialogVisible = false">{{ kt('cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">{{ kt('save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="datasourceDialogVisible" title="새 사용자 정의 Monitoring Datasource" width="620px" append-to-body>
+    <el-dialog v-model="datasourceDialogVisible" :title="kt('newCustomMonitoringDatasource')" width="620px" append-to-body>
       <el-form label-width="110px">
-        <el-form-item label="이름" required><el-input v-model="datasourceForm.name" placeholder="예: 테스트 Cluster Prometheus" /></el-form-item>
+        <el-form-item :label="kt('nameLabel')" required><el-input v-model="datasourceForm.name" :placeholder="kt('datasourceNamePlaceholder')" /></el-form-item>
         <el-form-item label="Type"><el-radio-group v-model="datasourceForm.type"><el-radio-button label="prometheus">Prometheus</el-radio-button><el-radio-button label="victoriametrics">VictoriaMetrics</el-radio-button></el-radio-group></el-form-item>
-        <el-form-item label="주소" required><el-input v-model="datasourceForm.url" placeholder="http://prometheus:9090" /></el-form-item>
-        <el-form-item label="인증 방식"><el-select v-model="datasourceForm.authType" style="width: 100%"><el-option label="인증 없음" value="none" /><el-option label="Basic Auth" value="basic" /><el-option label="Bearer Token" value="bearer" /></el-select></el-form-item>
-        <el-form-item v-if="datasourceForm.authType === 'basic'" label="사용자 이름"><el-input v-model="datasourceForm.username" /></el-form-item>
-        <el-form-item v-if="datasourceForm.authType === 'basic'" label="비밀번호"><el-input v-model="datasourceForm.password" type="password" show-password /></el-form-item>
+        <el-form-item :label="kt('addressLabel')" required><el-input v-model="datasourceForm.url" placeholder="http://prometheus:9090" /></el-form-item>
+        <el-form-item :label="kt('authTypeLabel')"><el-select v-model="datasourceForm.authType" style="width: 100%"><el-option :label="kt('noAuthOption')" value="none" /><el-option label="Basic Auth" value="basic" /><el-option label="Bearer Token" value="bearer" /></el-select></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" :label="kt('usernameLabel')"><el-input v-model="datasourceForm.username" /></el-form-item>
+        <el-form-item v-if="datasourceForm.authType === 'basic'" :label="kt('passwordLabel')"><el-input v-model="datasourceForm.password" type="password" show-password /></el-form-item>
         <el-form-item v-if="datasourceForm.authType === 'bearer'" label="Token"><el-input v-model="datasourceForm.token" type="password" show-password /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="datasourceDialogVisible = false">취소</el-button><el-button type="primary" :loading="datasourceSaving" @click="saveDatasource">생성 후 바인딩</el-button></template>
+      <template #footer><el-button @click="datasourceDialogVisible = false">{{ kt('cancel') }}</el-button><el-button type="primary" :loading="datasourceSaving" @click="saveDatasource">{{ kt('createAndBind') }}</el-button></template>
     </el-dialog>
   </div>
 </template>

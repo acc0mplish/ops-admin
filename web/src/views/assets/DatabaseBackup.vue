@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryAssetDatabaseList } from '../../api/asset'
+import { at } from '../../utils/asset-i18n'
 import {
   deleteDBMSBackupPlan,
   downloadDBMSBackup,
@@ -117,14 +118,14 @@ function openPlan(row) {
 
 async function submitPlan() {
   if (!planForm.name.trim() || !planForm.databaseId || !planForm.schemaName) {
-    ElMessage.warning('Plan 이름을 입력하고 Backup할 Business DB를 선택하십시오.')
+    ElMessage.warning(at('selectPlanNameAndDb'))
     return
   }
   saving.value = true
   try {
     await saveDBMSBackupPlan({ ...planForm })
     planDialogVisible.value = false
-    ElMessage.success('Backup Plan을 저장했습니다.')
+    ElMessage.success(at('planSaved'))
     await loadPlans()
   } finally {
     saving.value = false
@@ -132,23 +133,23 @@ async function submitPlan() {
 }
 
 async function removePlan(row) {
-  await ElMessageBox.confirm(`Backup Plan “${row.name}”을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' })
+  await ElMessageBox.confirm(at('deletePlanConfirm', { name: row.name }), at('confirmDeleteTitle'), { type: 'warning' })
   await deleteDBMSBackupPlan(row.id)
-  ElMessage.success('Backup Plan을 삭제했습니다.')
+  ElMessage.success(at('planDeleted'))
   await loadPlans()
 }
 
 async function runPlan(row) {
-  await ElMessageBox.confirm(`Backup Plan “${row.name}”을(를) 즉시 실행하시겠습니까?`, '수동 실행', { type: 'warning' })
+  await ElMessageBox.confirm(at('runPlanConfirm', { name: row.name }), at('manualRunTitle'), { type: 'warning' })
   await runDBMSBackupPlan(row.id)
-  ElMessage.success('Backup Task를 시작했습니다.')
+  ElMessage.success(at('backupTaskStarted'))
   activeTab.value = 'records'
   await loadRecords()
 }
 
 async function runManual() {
   if (!manualForm.databaseId || !manualForm.schemaName) {
-    ElMessage.warning('Database 연결과 Backup할 Business DB를 선택하십시오.')
+    ElMessage.warning(at('selectDbAndSchema'))
     return
   }
   saving.value = true
@@ -156,7 +157,7 @@ async function runManual() {
     await runDBMSManualBackup({ ...manualForm })
     manualDialogVisible.value = false
     activeTab.value = 'records'
-    ElMessage.success('수동 Backup을 시작했습니다.')
+    ElMessage.success(at('manualBackupStarted'))
     await loadRecords()
   } finally {
     saving.value = false
@@ -213,12 +214,12 @@ onBeforeUnmount(() => {
   <div class="database-tool-page">
     <header class="tool-header">
       <div>
-        <h1>Backup 관리</h1>
-        <p>Database Backup Plan, 수동 Backup, 다운로드 가능한 Backup Record를 통합 관리합니다.</p>
+        <h1>{{ at('backupManageTitle') }}</h1>
+        <p>{{ at('backupManageDesc') }}</p>
       </div>
       <div class="header-actions">
-        <el-button @click="manualDialogVisible = true">수동 Backup</el-button>
-        <el-button type="primary" @click="openPlan()">Backup Plan 추가</el-button>
+        <el-button @click="manualDialogVisible = true">{{ at('manualBackup') }}</el-button>
+        <el-button type="primary" @click="openPlan()">{{ at('addPlanButton') }}</el-button>
       </div>
     </header>
 
@@ -226,88 +227,88 @@ onBeforeUnmount(() => {
       <el-tabs v-model="activeTab">
         <el-tab-pane label="Backup Plan" name="plans">
           <div class="toolbar">
-            <el-input v-model="planQuery.keyword" clearable placeholder="Plan 또는 Database 검색" @keyup.enter="loadPlans" />
-            <el-select v-model="planQuery.status" clearable placeholder="전체 상태">
-              <el-option label="활성화" value="1" />
-              <el-option label="비활성화" value="2" />
+            <el-input v-model="planQuery.keyword" clearable :placeholder="at('planSearchPlaceholder')" @keyup.enter="loadPlans" />
+            <el-select v-model="planQuery.status" clearable :placeholder="at('allStatusPlaceholder')">
+              <el-option :label="at('enabled')" value="1" />
+              <el-option :label="at('disabled')" value="2" />
             </el-select>
-            <el-button type="primary" @click="loadPlans">조회</el-button>
+            <el-button type="primary" @click="loadPlans">{{ at('queryButton') }}</el-button>
           </div>
           <el-table v-loading="planLoading" :data="plans" border>
-            <el-table-column prop="name" label="Plan 이름" min-width="180" />
+            <el-table-column prop="name" :label="at('planNameColumn')" min-width="180" />
             <el-table-column prop="databaseName" label="Database" min-width="150" />
             <el-table-column prop="schemaName" label="Schema" width="130" />
             <el-table-column prop="cronExpr" label="Cron" width="160" />
-            <el-table-column prop="retentionDays" label="보존 일수" width="100" />
-            <el-table-column prop="lastRunAt" label="마지막 실행" width="180" />
-            <el-table-column prop="nextRunAt" label="다음 실행" width="180" />
-            <el-table-column label="상태" width="90"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag></template></el-table-column>
-            <el-table-column label="작업" width="220" fixed="right">
+            <el-table-column prop="retentionDays" :label="at('retentionDaysColumn')" width="100" />
+            <el-table-column prop="lastRunAt" :label="at('lastRunColumn')" width="180" />
+            <el-table-column prop="nextRunAt" :label="at('nextRunColumn')" width="180" />
+            <el-table-column :label="at('status')" width="90"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? at('enabled') : at('disabled') }}</el-tag></template></el-table-column>
+            <el-table-column :label="at('actions')" width="220" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="runPlan(row)">즉시 Backup</el-button>
-                <el-button link type="primary" @click="openPlan(row)">수정</el-button>
-                <el-button link type="danger" @click="removePlan(row)">삭제</el-button>
+                <el-button link type="primary" @click="runPlan(row)">{{ at('backupNow') }}</el-button>
+                <el-button link type="primary" @click="openPlan(row)">{{ at('edit') }}</el-button>
+                <el-button link type="danger" @click="removePlan(row)">{{ at('delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
           <div class="pager"><el-pagination v-model:current-page="planQuery.pageNum" :total="planTotal" layout="total, prev, pager, next" @current-change="loadPlans" /></div>
         </el-tab-pane>
 
-        <el-tab-pane label="Backup 목록" name="records">
+        <el-tab-pane :label="at('recordsTabLabel')" name="records">
           <div class="toolbar">
-            <el-select v-model="recordQuery.databaseId" clearable filterable placeholder="전체 Database">
+            <el-select v-model="recordQuery.databaseId" clearable filterable :placeholder="at('allDatabasesPlaceholder')">
               <el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" />
             </el-select>
-            <el-select v-model="recordQuery.triggerType" clearable placeholder="Trigger 방식">
-              <el-option label="수동" value="manual" />
+            <el-select v-model="recordQuery.triggerType" clearable :placeholder="at('triggerTypeLabel')">
+              <el-option :label="at('manualOption')" value="manual" />
               <el-option label="Plan" value="schedule" />
             </el-select>
-            <el-select v-model="recordQuery.status" clearable placeholder="상태">
-              <el-option label="실행 중" value="running" />
-              <el-option label="성공" value="success" />
-              <el-option label="실패" value="failed" />
+            <el-select v-model="recordQuery.status" clearable :placeholder="at('statusSelect')">
+              <el-option :label="at('statusRunning')" value="running" />
+              <el-option :label="at('statusSuccess')" value="success" />
+              <el-option :label="at('statusFailed')" value="failed" />
             </el-select>
-            <el-button type="primary" @click="loadRecords">조회</el-button>
+            <el-button type="primary" @click="loadRecords">{{ at('queryButton') }}</el-button>
           </div>
           <el-table v-loading="recordLoading" :data="records" border>
             <el-table-column prop="databaseName" label="Database" min-width="150" />
             <el-table-column prop="schemaName" label="Schema" width="130" />
-            <el-table-column label="Trigger 방식" width="100"><template #default="{ row }">{{ row.triggerType === 'schedule' ? 'Plan' : '수동' }}</template></el-table-column>
+            <el-table-column :label="at('triggerTypeLabel')" width="100"><template #default="{ row }">{{ row.triggerType === 'schedule' ? 'Plan' : at('manualOption') }}</template></el-table-column>
             <el-table-column prop="planName" label="Backup Plan" min-width="150" />
-            <el-table-column label="상태" width="100"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
-            <el-table-column prop="fileName" label="Backup 파일" min-width="220" show-overflow-tooltip />
-            <el-table-column label="크기" width="100"><template #default="{ row }">{{ formatSize(row.fileSize) }}</template></el-table-column>
-            <el-table-column prop="operator" label="실행자" width="110" />
-            <el-table-column prop="message" label="결과" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="createTime" label="생성 시각" width="180" />
-            <el-table-column label="작업" width="100" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="row.status !== 'success'" @click="downloadRecord(row)">Download</el-button></template></el-table-column>
+            <el-table-column :label="at('status')" width="100"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
+            <el-table-column prop="fileName" :label="at('backupFileLabel')" min-width="220" show-overflow-tooltip />
+            <el-table-column :label="at('sizeColumn')" width="100"><template #default="{ row }">{{ formatSize(row.fileSize) }}</template></el-table-column>
+            <el-table-column prop="operator" :label="at('operatorColumn')" width="110" />
+            <el-table-column prop="message" :label="at('resultColumn')" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="createTime" :label="at('createdAtColumn')" width="180" />
+            <el-table-column :label="at('actions')" width="100" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="row.status !== 'success'" @click="downloadRecord(row)">Download</el-button></template></el-table-column>
           </el-table>
           <div class="pager"><el-pagination v-model:current-page="recordQuery.pageNum" :total="recordTotal" layout="total, prev, pager, next" @current-change="loadRecords" /></div>
         </el-tab-pane>
       </el-tabs>
     </section>
 
-    <el-dialog v-model="planDialogVisible" :title="planForm.id ? 'Backup Plan 수정' : 'Backup Plan 추가'" width="min(900px, 92vw)">
+    <el-dialog v-model="planDialogVisible" :title="planForm.id ? at('editPlanTitle') : at('addPlanButton')" width="min(900px, 92vw)">
       <el-form label-width="100px">
         <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="Plan 이름" required><el-input v-model="planForm.name" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="Database 연결" required><el-select v-model="planForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item></el-col>
-          <el-col :span="12"><el-form-item :label="selectedPlanDatabase?.dbType === 'postgresql' ? 'Business Schema' : 'Business DB'" required><el-select v-model="planForm.schemaName" :loading="schemaLoading" :disabled="!planForm.databaseId" filterable :placeholder="selectedPlanDatabase?.dbType === 'postgresql' ? 'Backup할 Business Schema를 선택하십시오:' : 'Backup할 Business DB를 선택하십시오:'"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedPlanDatabase, schema)" :value="schema" /></el-select><div v-if="selectedPlanDatabase" class="schema-hint">연결됨: {{ selectedPlanDatabase.host }}:{{ selectedPlanDatabase.port }}</div></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="보존 일수"><el-input-number v-model="planForm.retentionDays" :min="1" :max="365" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="상태"><el-switch v-model="planForm.status" :active-value="1" :inactive-value="2" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="실행 주기"><OpsCronEditor v-model="planForm.cronExpr" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="설명"><el-input v-model="planForm.description" type="textarea" :rows="2" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="at('planNameColumn')" required><el-input v-model="planForm.name" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="at('dbConnectionLabel')" required><el-select v-model="planForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="selectedPlanDatabase?.dbType === 'postgresql' ? 'Business Schema' : 'Business DB'" required><el-select v-model="planForm.schemaName" :loading="schemaLoading" :disabled="!planForm.databaseId" filterable :placeholder="selectedPlanDatabase?.dbType === 'postgresql' ? at('selectBusinessSchemaPlaceholder') : at('selectBusinessDbPlaceholder')"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedPlanDatabase, schema)" :value="schema" /></el-select><div v-if="selectedPlanDatabase" class="schema-hint">{{ at('dbConnected') }}: {{ selectedPlanDatabase.host }}:{{ selectedPlanDatabase.port }}</div></el-form-item></el-col>
+          <el-col :span="6"><el-form-item :label="at('retentionDaysColumn')"><el-input-number v-model="planForm.retentionDays" :min="1" :max="365" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item :label="at('status')"><el-switch v-model="planForm.status" :active-value="1" :inactive-value="2" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item :label="at('scheduleLabel')"><OpsCronEditor v-model="planForm.cronExpr" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item :label="at('description')"><el-input v-model="planForm.description" type="textarea" :rows="2" /></el-form-item></el-col>
         </el-row>
       </el-form>
-      <template #footer><el-button @click="planDialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="submitPlan">저장</el-button></template>
+      <template #footer><el-button @click="planDialogVisible = false">{{ at('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="submitPlan">{{ at('save') }}</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="manualDialogVisible" title="수동 Backup" width="520px">
+    <el-dialog v-model="manualDialogVisible" :title="at('manualBackup')" width="520px">
       <el-form label-width="90px">
-        <el-form-item label="Database 연결" required><el-select v-model="manualForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item>
-        <el-form-item :label="selectedManualDatabase?.dbType === 'postgresql' ? 'Business Schema' : 'Business DB'" required><el-select v-model="manualForm.schemaName" :loading="schemaLoading" :disabled="!manualForm.databaseId" filterable :placeholder="selectedManualDatabase?.dbType === 'postgresql' ? 'Backup할 Business Schema를 선택하십시오:' : 'Backup할 Business DB를 선택하십시오:'"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedManualDatabase, schema)" :value="schema" /></el-select><div v-if="selectedManualDatabase" class="schema-hint">{{ schemaLabel(selectedManualDatabase, manualForm.schemaName || (selectedManualDatabase.dbType === 'postgresql' ? '선택한 Business Schema' : '선택한 Business DB')) }}의 Table 구조, Primary Key, Data를 Backup합니다.</div></el-form-item>
+        <el-form-item :label="at('dbConnectionLabel')" required><el-select v-model="manualForm.databaseId" filterable><el-option v-for="item in databases" :key="item.id" :label="databaseLabel(item)" :value="item.id" /></el-select></el-form-item>
+        <el-form-item :label="selectedManualDatabase?.dbType === 'postgresql' ? 'Business Schema' : 'Business DB'" required><el-select v-model="manualForm.schemaName" :loading="schemaLoading" :disabled="!manualForm.databaseId" filterable :placeholder="selectedManualDatabase?.dbType === 'postgresql' ? at('selectBusinessSchemaPlaceholder') : at('selectBusinessDbPlaceholder')"><el-option v-for="schema in schemaOptions" :key="schema" :label="schemaLabel(selectedManualDatabase, schema)" :value="schema" /></el-select><div v-if="selectedManualDatabase" class="schema-hint">{{ at('schemaBackupDesc', { target: schemaLabel(selectedManualDatabase, manualForm.schemaName || (selectedManualDatabase.dbType === 'postgresql' ? at('selectedBusinessSchema') : at('selectedBusinessDb'))) }) }}</div></el-form-item>
       </el-form>
-      <template #footer><el-button @click="manualDialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="runManual">Backup 시작</el-button></template>
+      <template #footer><el-button @click="manualDialogVisible = false">{{ at('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="runManual">{{ at('startBackup') }}</el-button></template>
     </el-dialog>
   </div>
 </template>
