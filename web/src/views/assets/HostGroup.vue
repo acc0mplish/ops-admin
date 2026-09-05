@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { at } from '../../utils/asset-i18n'
 import {
   addAssetHostGroup,
   assetHostGroupInfo,
@@ -36,7 +37,7 @@ const treeProps = {
 const parentTreeOptions = computed(() => [
   {
     id: 0,
-    name: '루트 Group',
+    name: at('rootGroupLabel'),
     children: form.id ? filterTree(cloneTree(treeData.value), form.id) : cloneTree(treeData.value)
   }
 ])
@@ -110,24 +111,24 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning('Host Group 이름을 입력하십시오.')
+    ElMessage.warning(at('enterGroupName'))
     return
   }
   if (isEdit.value) {
     await updateAssetHostGroup(form)
-    ElMessage.success('Host Group을 수정했습니다.')
+    ElMessage.success(at('groupUpdated'))
   } else {
     await addAssetHostGroup(form)
-    ElMessage.success('Host Group을 생성했습니다.')
+    ElMessage.success(at('groupCreated'))
   }
   dialogVisible.value = false
   await loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Host Group “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(at('deleteGroupConfirm', { name: row.name }), at('notice'), { type: 'warning' })
   await deleteAssetHostGroup(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(at('rowDeleted'))
   await loadData()
 }
 
@@ -149,10 +150,10 @@ onMounted(loadData)
   <div class="page-card host-group-page asset-card-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">Host Group 관리</h2>
-        <p class="page-desc">트리 구조로 Host Group을 관리합니다. Group 이름을 클릭하면 해당 Group의 서버 목록으로 바로 이동합니다.</p>
+        <h2 class="page-title">{{ at('groupManageTitle') }}</h2>
+        <p class="page-desc">{{ at('groupManageDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate()">Host Group 추가</el-button>
+      <el-button type="primary" @click="openCreate()">{{ at('addGroupButton') }}</el-button>
     </div>
 
     <div class="toolbar">
@@ -160,12 +161,12 @@ onMounted(loadData)
         <el-input
           v-model="query.keyword"
           clearable
-          placeholder="Host Group 이름 / Code 검색"
+          :placeholder="at('groupSearchPlaceholder')"
           style="width: 280px"
           @keyup.enter="loadData"
         />
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button @click="resetQuery">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ at('search') }}</el-button>
+        <el-button @click="resetQuery">{{ at('reset') }}</el-button>
       </div>
     </div>
 
@@ -178,7 +179,7 @@ onMounted(loadData)
       :tree-props="{ children: 'children' }"
       class="group-table"
     >
-      <el-table-column prop="name" label="Host Group 이름" min-width="240">
+      <el-table-column prop="name" :label="at('groupNameColumn')" min-width="240">
         <template #default="{ row }">
           <div class="group-name-cell">
             <span class="group-dot" />
@@ -187,36 +188,36 @@ onMounted(loadData)
         </template>
       </el-table-column>
       <el-table-column prop="code" label="Code" min-width="140" />
-      <el-table-column label="연관 Host 수" width="120" align="center">
+      <el-table-column :label="at('hostCountColumn')" width="120" align="center">
         <template #default="{ row }">
-          <el-tag type="info" >{{ row.hostCount || 0 }}대</el-tag>
+          <el-tag type="info" >{{ at('hostCountUnit', { count: row.hostCount || 0 }) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="sort" label="정렬" width="90" align="center" />
-      <el-table-column label="상태" width="100" align="center">
+      <el-table-column prop="sort" :label="at('sortColumn')" width="90" align="center" />
+      <el-table-column :label="at('status')" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="Number(row.status) === 1 ? 'success' : 'danger'" effect="light">
-            {{ Number(row.status) === 1 ? '정상' : '사용 중지' }}
+            {{ Number(row.status) === 1 ? at('groupNormal') : at('disabledStatus') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="비고" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="updateTime" label="수정 시간" min-width="170" />
-      <el-table-column label="작업" width="260" fixed="right">
+      <el-table-column prop="description" :label="at('noteLabel')" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="updateTime" :label="at('updatedAtColumn')" min-width="170" />
+      <el-table-column :label="at('actions')" width="260" fixed="right">
         <template #default="{ row }">
           <div class="action-row">
-            <el-button link type="primary" @click="openGroupHosts(row)">Host 조회</el-button>
-            <el-button link type="primary" @click="openCreate(row.id)">하위 Group 추가</el-button>
-            <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
+            <el-button link type="primary" @click="openGroupHosts(row)">{{ at('viewHostsButton') }}</el-button>
+            <el-button link type="primary" @click="openCreate(row.id)">{{ at('addChildGroupButton') }}</el-button>
+            <el-button link type="primary" @click="openEdit(row)">{{ at('edit') }}</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">{{ at('delete') }}</el-button>
           </div>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Host Group 수정' : 'Host Group 추가'" width="620px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? at('editGroupTitle') : at('addGroupButton')" width="620px">
       <el-form label-width="108px">
-        <el-form-item label="상위 Host Group">
+        <el-form-item :label="at('parentGroupLabel')">
           <el-tree-select
             v-model="form.parentId"
             :data="parentTreeOptions"
@@ -227,31 +228,31 @@ onMounted(loadData)
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item v-if="isEdit" label="연관 Host 수">
-          <el-tag type="info">Host {{ form.hostCount || 0 }}대</el-tag>
+        <el-form-item v-if="isEdit" :label="at('hostCountColumn')">
+          <el-tag type="info">{{ at('hostsCountLabel', { count: form.hostCount || 0 }) }}</el-tag>
         </el-form-item>
-        <el-form-item label="Host Group 이름" required>
-          <el-input v-model="form.name" placeholder="Host Group 이름을 입력하십시오." />
+        <el-form-item :label="at('groupNameColumn')" required>
+          <el-input v-model="form.name" :placeholder="at('enterGroupName')" />
         </el-form-item>
         <el-form-item label="Code">
-          <el-input v-model="form.code" placeholder="Host Group Code를 입력하십시오." />
+          <el-input v-model="form.code" :placeholder="at('enterGroupCode')" />
         </el-form-item>
-        <el-form-item label="정렬">
+        <el-form-item :label="at('sortColumn')">
           <el-input-number v-model="form.sort" :min="0" style="width: 180px" />
         </el-form-item>
-        <el-form-item label="상태">
+        <el-form-item :label="at('status')">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">정상</el-radio>
-            <el-radio :value="2">사용 중지</el-radio>
+            <el-radio :value="1">{{ at('groupNormal') }}</el-radio>
+            <el-radio :value="2">{{ at('disabledStatus') }}</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="비고">
-          <el-input v-model="form.description" type="textarea" :rows="4" placeholder="비고를 입력하십시오." />
+        <el-form-item :label="at('noteLabel')">
+          <el-input v-model="form.description" type="textarea" :rows="4" :placeholder="at('enterNote')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" @click="submit">{{ at('save') }}</el-button>
       </template>
     </el-dialog>
   </div>

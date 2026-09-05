@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { at } from '../../utils/asset-i18n'
 import {
   addAssetGateway,
   assetGatewayInfo,
@@ -90,15 +91,15 @@ async function openEdit(row) {
 
 async function saveGateway() {
   if (!form.name.trim() || !form.host.trim() || !form.credentialId) {
-    ElMessage.warning('Gateway 이름, 주소, Credential을 입력하십시오.')
+    ElMessage.warning(at('enterGatewayFields'))
     return
   }
   if (isEdit.value) {
     await updateAssetGateway(form)
-    ElMessage.success('Gateway를 수정했습니다.')
+    ElMessage.success(at('gatewayUpdated'))
   } else {
     await addAssetGateway(form)
-    ElMessage.success('Gateway를 생성했습니다.')
+    ElMessage.success(at('gatewayCreated'))
   }
   dialogVisible.value = false
   loadData()
@@ -106,20 +107,20 @@ async function saveGateway() {
 
 async function handleTest(row) {
   await testAssetGateway(row.id)
-  ElMessage.success('Gateway 연결이 정상입니다.')
+  ElMessage.success(at('gatewayAlive'))
   loadData()
 }
 
 async function toggleStatus(row) {
   await updateAssetGatewayStatus({ id: row.id, status: row.status === 1 ? 2 : 1 })
-  ElMessage.success(row.status === 1 ? 'Gateway를 비활성화했습니다.' : 'Gateway를 활성화했습니다.')
+  ElMessage.success(row.status === 1 ? at('gatewayDeactivated') : at('gatewayActivated'))
   loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Gateway “${row.name}”을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' })
+  await ElMessageBox.confirm(at('deleteGatewayConfirm', { name: row.name }), at('confirmDeleteTitle'), { type: 'warning' })
   await deleteAssetGateway(row.id)
-  ElMessage.success('Gateway를 삭제했습니다.')
+  ElMessage.success(at('gatewayDeleted'))
   loadData()
 }
 
@@ -133,32 +134,32 @@ onMounted(() => {
   <div class="gateway-page">
     <div class="page-hero">
       <div>
-        <h1>Gateway 관리</h1>
-        <p>SSH 점프 Gateway를 관리하여 내부 Host, Database, K8s Cluster에 통일된 접속 창구를 제공합니다.</p>
+        <h1>{{ at('gatewayManageTitle') }}</h1>
+        <p>{{ at('gatewayManageDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate">Gateway 추가</el-button>
+      <el-button type="primary" @click="openCreate">{{ at('addGatewayButton') }}</el-button>
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" placeholder="이름 / 주소 / Network Zone 검색" clearable style="width: 280px" @keyup.enter="loadData" />
-      <el-select v-model="query.status" placeholder="상태" clearable style="width: 140px">
-        <el-option label="활성화" value="1" />
-        <el-option label="비활성화" value="2" />
+      <el-input v-model="query.keyword" :placeholder="at('gatewaySearchPlaceholder')" clearable style="width: 280px" @keyup.enter="loadData" />
+      <el-select v-model="query.status" :placeholder="at('statusSelect')" clearable style="width: 140px">
+        <el-option :label="at('enabled')" value="1" />
+        <el-option :label="at('disabled')" value="2" />
       </el-select>
-      <el-button type="primary" @click="loadData">검색</el-button>
-      <el-button @click="Object.assign(query, { keyword: '', status: '', pageNum: 1 }); loadData()">초기화</el-button>
+      <el-button type="primary" @click="loadData">{{ at('search') }}</el-button>
+      <el-button @click="Object.assign(query, { keyword: '', status: '', pageNum: 1 }); loadData()">{{ at('reset') }}</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" class="gateway-table">
-      <el-table-column prop="name" label="Gateway 이름" min-width="160" />
-      <el-table-column prop="host" label="Gateway 주소" min-width="170">
+      <el-table-column prop="name" :label="at('gatewayNameColumn')" min-width="160" />
+      <el-table-column prop="host" :label="at('gatewayAddrColumn')" min-width="170">
         <template #default="{ row }">{{ row.host }}:{{ row.port || 22 }}</template>
       </el-table-column>
       <el-table-column label="Credential" min-width="150">
         <template #default="{ row }">{{ row.credential?.name || '-' }}</template>
       </el-table-column>
       <el-table-column prop="networkZone" label="Network Zone" min-width="140" />
-      <el-table-column label="참조 Asset" min-width="210">
+      <el-table-column :label="at('refAssetsColumn')" min-width="210">
         <template #default="{ row }">
           <span>Host {{ row.hostCount || 0 }}</span>
           <el-divider direction="vertical" />
@@ -167,27 +168,27 @@ onMounted(() => {
           <span>K8s {{ row.clusterCount || 0 }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="상태" width="100">
+      <el-table-column :label="at('status')" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? at('enabled') : at('disabled') }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="연결 상태" width="120">
+      <el-table-column :label="at('connStatusColumn')" width="120">
         <template #default="{ row }">
           <el-tag :type="row.connectStatus === 1 ? 'success' : row.connectStatus === 2 ? 'danger' : 'info'">
-            {{ row.connectStatus === 1 ? '정상' : row.connectStatus === 2 ? '실패' : '미검사' }}
+            {{ row.connectStatus === 1 ? at('groupNormal') : row.connectStatus === 2 ? at('statusFailed') : at('notInspected') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="최근 검사" min-width="190"><template #default="{ row }">{{ formatDateTime(row.lastCheckTime) }}</template></el-table-column>
-      <el-table-column label="작업" fixed="right" width="260">
+      <el-table-column :label="at('lastCheckColumn')" min-width="190"><template #default="{ row }">{{ formatDateTime(row.lastCheckTime) }}</template></el-table-column>
+      <el-table-column :label="at('actions')" fixed="right" width="260">
         <template #default="{ row }">
-          <el-button link type="primary" @click="handleTest(row)">테스트</el-button>
-          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+          <el-button link type="primary" @click="handleTest(row)">{{ at('testButton') }}</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ at('edit') }}</el-button>
           <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
-            {{ row.status === 1 ? '비활성화' : '활성화' }}
+            {{ row.status === 1 ? at('disabled') : at('enabled') }}
           </el-button>
-          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ at('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -202,51 +203,51 @@ onMounted(() => {
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Gateway 수정' : 'Gateway 추가'" width="720px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? at('editGatewayTitle') : at('addGatewayButton')" width="720px">
       <el-form label-width="110px">
         <el-row :gutter="18">
           <el-col :span="12">
-            <el-form-item label="Gateway 이름" required>
-              <el-input v-model="form.name" placeholder="예: prod-bastion" />
+            <el-form-item :label="at('gatewayNameColumn')" required>
+              <el-input v-model="form.name" :placeholder="at('gatewayNamePlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Gateway Code">
-              <el-input v-model="form.code" placeholder="선택 사항. 예: prod-vpc-a" />
+              <el-input v-model="form.code" :placeholder="at('codeOptionalPlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Gateway 주소" required>
-              <el-input v-model="form.host" placeholder="IP 또는 Domain" />
+            <el-form-item :label="at('gatewayAddrColumn')" required>
+              <el-input v-model="form.host" :placeholder="at('ipOrDomainPlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="SSH 포트" required>
+            <el-form-item :label="at('sshPortLabel')" required>
               <el-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Login Credential" required>
-              <el-select v-model="form.credentialId" filterable placeholder="Gateway Credential 선택" style="width: 100%">
+              <el-select v-model="form.credentialId" filterable :placeholder="at('selectGatewayCredential')" style="width: 100%">
                 <el-option v-for="item in credentials" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Network Zone">
-              <el-input v-model="form.networkZone" placeholder="예: prod-vpc / idc-a" />
+              <el-input v-model="form.networkZone" :placeholder="at('networkZonePlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="비고">
+            <el-form-item :label="at('noteLabel')">
               <el-input v-model="form.description" type="textarea" :rows="3" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="saveGateway">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" @click="saveGateway">{{ at('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
