@@ -2,64 +2,64 @@
   <div class="env-page">
     <section class="page-head">
       <div>
-        <h1>Environment 모델</h1>
-        <p>dev / test / prod 등 Environment를 통합 관리하고 Application, K8s, Database, Monitoring이 동일한 Environment를 중심으로 구성되도록 합니다.</p>
+        <h1>{{ ot('environmentModel') }}</h1>
+        <p>{{ ot('envModelDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openForm()">새 Environment</el-button>
+      <el-button type="primary" @click="openForm()">{{ ot('newEnvironment') }}</el-button>
     </section>
 
     <section class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="Environment 이름 / Code 검색" @keyup.enter="loadData" />
-      <el-select v-model="query.status" clearable placeholder="상태" @change="loadData">
-        <el-option label="활성화" value="1" />
-        <el-option label="비활성화" value="2" />
+      <el-input v-model="query.keyword" clearable :placeholder="ot('searchEnvironment')" @keyup.enter="loadData" />
+      <el-select v-model="query.status" clearable :placeholder="ot('status')" @change="loadData">
+        <el-option :label="ot('enabled')" value="1" />
+        <el-option :label="ot('disabled')" value="2" />
       </el-select>
-      <el-button type="primary" @click="loadData">검색</el-button>
-      <el-button @click="resetQuery">초기화</el-button>
+      <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+      <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
     </section>
 
     <el-table :data="list" class="data-table">
-      <el-table-column prop="name" label="Environment 이름" min-width="160" />
+      <el-table-column prop="name" :label="ot('environmentName')" min-width="160" />
       <el-table-column prop="code" label="Environment Code" width="140" />
-      <el-table-column prop="sort" label="정렬" width="100" />
-      <el-table-column label="상태" width="100">
+      <el-table-column prop="sort" :label="ot('sortLabel')" width="100" />
+      <el-table-column :label="ot('status')" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? ot('enabled') : ot('disabled') }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="설명" min-width="240" show-overflow-tooltip />
-      <el-table-column label="작업" width="150" fixed="right">
+      <el-table-column prop="description" :label="ot('description')" min-width="240" show-overflow-tooltip />
+      <el-table-column :label="ot('actions')" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openForm(row)">수정</el-button>
-          <el-button link type="danger" @click="remove(row)">삭제</el-button>
+          <el-button link type="primary" @click="openForm(row)">{{ ot('edit') }}</el-button>
+          <el-button link type="danger" @click="remove(row)">{{ ot('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? 'Environment 수정' : '새 Environment'" width="560px">
+    <el-dialog v-model="dialogVisible" :title="form.id ? ot('editEnvironment') : ot('newEnvironment')" width="560px">
       <el-form :model="form" label-width="92px">
-        <el-form-item label="Environment 이름" required>
-          <el-input v-model="form.name" placeholder="예: 테스트 Environment" />
+        <el-form-item :label="ot('environmentName')" required>
+          <el-input v-model="form.name" :placeholder="ot('envNameExample')" />
         </el-form-item>
         <el-form-item label="Environment Code" required>
-          <el-input v-model="form.code" :disabled="Boolean(form.id)" placeholder="예: test" />
+          <el-input v-model="form.code" :disabled="Boolean(form.id)" :placeholder="ot('codeExample')" />
         </el-form-item>
-        <el-form-item label="정렬">
+        <el-form-item :label="ot('sortLabel')">
           <el-input-number v-model="form.sort" :min="0" />
         </el-form-item>
-        <el-form-item label="상태">
+        <el-form-item :label="ot('status')">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">활성화</el-radio>
-            <el-radio :value="2">비활성화</el-radio>
+            <el-radio :value="1">{{ ot('enabled') }}</el-radio>
+            <el-radio :value="2">{{ ot('disabled') }}</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="설명">
+        <el-form-item :label="ot('description')">
           <el-input v-model="form.description" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ ot('cancel') }}</el-button>
+        <el-button type="primary" @click="submit">{{ ot('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -69,6 +69,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteOpsEnvironment, queryOpsEnvironmentList, saveOpsEnvironment } from '../../api/ops'
+import { ot } from '../../utils/ops-i18n'
 
 const query = reactive({ keyword: '', status: '' })
 const list = ref([])
@@ -92,15 +93,15 @@ function openForm(row) {
 
 async function submit() {
   await saveOpsEnvironment(form)
-  ElMessage.success('저장했습니다.')
+  ElMessage.success(ot('savedSuccess'))
   dialogVisible.value = false
   loadData()
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`Environment ${row.name}을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' })
+  await ElMessageBox.confirm(ot('deleteEnvironmentConfirm', { name: row.name }), ot('deleteConfirmTitle'), { type: 'warning' })
   await deleteOpsEnvironment(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(ot('deleteSuccess'))
   loadData()
 }
 
