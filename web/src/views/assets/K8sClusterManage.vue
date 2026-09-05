@@ -12,7 +12,7 @@ import {
 } from '../../api/k8s'
 import { queryAssetGatewayOptions } from '../../api/asset'
 import { queryMonitorDatasourceOptions, saveMonitorDatasource } from '../../api/monitor'
-import { t } from '../../utils/i18n'
+import { kt } from '../../utils/k8s-extra-i18n'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 
 const loading = ref(false)
@@ -54,7 +54,7 @@ function clusterStatusText(status) {
     warning: 'k8sStatusWarning',
     offline: 'k8sStatusOffline'
   }
-  return t(map[status] || 'k8sStatusWarning')
+  return kt(map[status] || 'k8sStatusWarning')
 }
 
 function resetForm() {
