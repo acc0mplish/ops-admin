@@ -6,6 +6,7 @@ import { Back, Monitor } from '@element-plus/icons-vue'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { buildK8sPodTerminalWSUrl, queryK8sPodContainers } from '../../api/k8s'
+import { mintK8sPodTerminalTicket } from '../../api/console'
 import { kt } from '../../utils/k8s-extra-i18n'
 
 const route = useRoute(), router = useRouter()
@@ -28,14 +29,22 @@ function syncTerminalSize() {
   if(term.cols!==cols||term.rows!==rows){term.resize(cols,rows);if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({operation:'resize',data:{cols,rows}}))}
 }
 async function loadContainers(){const list=await queryK8sPodContainers(clusterId.value,namespace.value,podName.value);containers.value=Array.isArray(list)?list:[];if(!containers.value.length){ElMessage.warning(kt('noAvailableContainer'));return}if(!containers.value.includes(selectedContainer.value))selectedContainer.value=containers.value[0]}
-function connectTerminal(){
+async function connectTerminal(){
   if(!selectedContainer.value){ElMessage.warning(kt('selectContainerFirst'));return}
   disconnectTerminal();connecting.value=true
-  socket=new WebSocket(buildK8sPodTerminalWSUrl({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value,container:selectedContainer.value,rows:term?.rows||32,cols:term?.cols||120}))
-  socket.onopen=()=>{connecting.value=false;connected.value=true;term?.clear();term?.writeln(`\x1b[32m${kt('connectedTo',{namespace:namespace.value,pod:podName.value})}\x1b[0m`);term?.writeln(`\x1b[36m${kt('container')}: ${selectedContainer.value}\x1b[0m`);term?.writeln('');syncTerminalSize()}
-  socket.onmessage=(event)=>{try{const payload=JSON.parse(event.data);if(payload?.operation==='stdout'&&payload.data){term?.write(payload.data);return}}catch{}term?.write(event.data)}
-  socket.onerror=()=>{connecting.value=false;connected.value=false;ElMessage.error(kt('terminalConnectionFailed'))}
-  socket.onclose=()=>{connecting.value=false;connected.value=false;term?.writeln(`\r\n\x1b[33m${kt('connectionClosed')}\x1b[0m`)}
+  // One-time console ticket (§4.8): minted per dial, consumed by the WS gate.
+  let ticket
+  try{ticket=(await mintK8sPodTerminalTicket({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value})).ticket}catch{connecting.value=false;connected.value=false;term?.writeln(`\r\n\x1b[31m${kt('terminalConnectionFailed')}\x1b[0m`);return}
+  // Re-run after the mint await: a container switch or reconnect click while
+  // suspended must leave exactly one live socket — this resume tears down
+  // whatever a previous resume created before dialing its own.
+  disconnectTerminal();connecting.value=true
+  const currentSocket=new WebSocket(buildK8sPodTerminalWSUrl({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value,container:selectedContainer.value,rows:term?.rows||32,cols:term?.cols||120,ticket}))
+  socket=currentSocket
+  socket.onopen=()=>{if (socket !== currentSocket) return;connecting.value=false;connected.value=true;term?.clear();term?.writeln(`\x1b[32m${kt('connectedTo',{namespace:namespace.value,pod:podName.value})}\x1b[0m`);term?.writeln(`\x1b[36m${kt('container')}: ${selectedContainer.value}\x1b[0m`);term?.writeln('');syncTerminalSize()}
+  socket.onmessage=(event)=>{if (socket !== currentSocket) return;try{const payload=JSON.parse(event.data);if(payload?.operation==='stdout'&&payload.data){term?.write(payload.data);return}}catch{}term?.write(event.data)}
+  socket.onerror=()=>{if (socket !== currentSocket) return;connecting.value=false;connected.value=false;ElMessage.error(kt('terminalConnectionFailed'))}
+  socket.onclose=()=>{if (socket !== currentSocket) return;connecting.value=false;connected.value=false;term?.writeln(`\r\n\x1b[33m${kt('connectionClosed')}\x1b[0m`)}
 }
 function disconnectTerminal(){if(socket){socket.onclose=null;socket.close();socket=undefined}connected.value=false;connecting.value=false}
 function clearTerminal(){term?.clear()}

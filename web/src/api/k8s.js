@@ -1,5 +1,4 @@
 import http from './http'
-import { getToken } from '../utils/auth'
 
 export const queryK8sClusterList = () => http.get('/api/v1/k8s/cluster/list')
 
@@ -94,18 +93,19 @@ export const buildK8sPodTerminalWSUrl = ({
   container = '',
   command = '/bin/sh',
   rows = 32,
-  cols = 120
+  cols = 120,
+  ticket
 }) => {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const params = new URLSearchParams({
     clusterId: String(clusterId),
     namespace,
     podName,
-    token: getToken() || '',
     command,
     rows: String(rows),
     cols: String(cols)
   })
+  params.set('ticket', ticket)
   if (container) {
     params.set('container', container)
   }
