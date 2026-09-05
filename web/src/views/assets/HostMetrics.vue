@@ -13,7 +13,7 @@ const ranges = [
   ['1d', at('range1d')], ['3d', at('range3d')], ['7d', at('range7d')], ['14d', at('range14d')], ['custom', at('customRangeLabel')]
 ]
 const metricCards = [
-  ['cpu', at('cpuUsageRate'), '#4f7cff'], ['memory', at('memoryUsageRate'), '#28b889'],
+  ['cpu', at('cpuUsageRate'), '#4f7cff'], ['memory', at('hostMetricsMemoryRate'), '#28b889'],
   ['disk', at('diskUsageRate'), '#f0a04a'], ['io', at('ioLoad'), '#8c67e8']
 ]
 const hasMetrics = computed(() => metricCards.some(([key]) => (data.value.metrics?.[key]?.points || []).length))
