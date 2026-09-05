@@ -22,6 +22,16 @@ type DNSAuditActor struct {
 	AdminID      uint
 	Username, IP string
 }
+
+// registeredSecretField resolves a §4.1 secret inventory entry for the
+// credential paths below. A lookup miss fails closed so registry drift can
+// never turn a secret column into a plaintext passthrough.
+func registeredSecretField(table, column string) (util.SecretField, error) {
+	if field, ok := util.LookupSecretField(table, column); ok {
+		return field, nil
+	}
+	return util.SecretField{}, fmt.Errorf("secret field %s.%s is not registered in the secret field inventory", table, column)
+}
 type PublicDNSAccountPayload struct {
 	ID        uint   `json:"id"`
 	Name      string `json:"name"`
@@ -99,8 +109,12 @@ func (s *Service) ListPublicDNSAccounts(pageNum, pageSize int, keyword, provider
 	list := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		hint := "Configured"
-		if value, err := util.DecryptSecret(item.AccessKeyCipher); err == nil {
-			hint = maskDNSKey(value)
+		// The plaintext fallback for unknown formats stays until Step 4;
+		// empty values keep the generic hint, matching the previous behavior.
+		if accessField, fieldErr := registeredSecretField("domain_public_dns_account", "access_key_cipher"); fieldErr == nil {
+			if value, err := util.ReadSecretField(item.AccessKeyCipher, accessField, false); err == nil && value != "" {
+				hint = maskDNSKey(value)
+			}
 		}
 		list = append(list, map[string]any{"id": item.ID, "name": item.Name, "provider": item.Provider, "accessKeyHint": hint, "status": item.Status, "lastConnectionStatus": item.LastConnectionStatus, "lastConnectionError": item.LastConnectionError, "lastConnectionAt": item.LastConnectionAt, "createdAt": item.CreatedAt, "updatedAt": item.UpdatedAt})
 	}
@@ -146,13 +160,13 @@ func (s *Service) SavePublicDNSAccount(payload PublicDNSAccountPayload, actor DN
 	secretCipher := old.SecretKeyCipher
 	var err error
 	if strings.TrimSpace(payload.AccessKey) != "" {
-		accessCipher, err = util.EncryptSecret(strings.TrimSpace(payload.AccessKey))
+		accessCipher, err = util.EncryptSecretV2(strings.TrimSpace(payload.AccessKey))
 		if err != nil {
 			return err
 		}
 	}
 	if strings.TrimSpace(payload.SecretKey) != "" {
-		secretCipher, err = util.EncryptSecret(strings.TrimSpace(payload.SecretKey))
+		secretCipher, err = util.EncryptSecretV2(strings.TrimSpace(payload.SecretKey))
 		if err != nil {
 			return err
 		}
@@ -219,11 +233,19 @@ func (s *Service) publicProvider(accountID uint) (provider.PublicDNSProvider, *m
 	if account.Status != 1 {
 		return nil, nil, errors.New("DNS account is disabled")
 	}
-	access, err := util.DecryptSecret(account.AccessKeyCipher)
+	accessField, fieldErr := registeredSecretField("domain_public_dns_account", "access_key_cipher")
+	if fieldErr != nil {
+		return nil, nil, fieldErr
+	}
+	secretField, fieldErr := registeredSecretField("domain_public_dns_account", "secret_key_cipher")
+	if fieldErr != nil {
+		return nil, nil, fieldErr
+	}
+	access, err := util.ReadSecretField(account.AccessKeyCipher, accessField, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	secret, err := util.DecryptSecret(account.SecretKeyCipher)
+	secret, err := util.ReadSecretField(account.SecretKeyCipher, secretField, false)
 	if err != nil {
 		return nil, nil, err
 	}

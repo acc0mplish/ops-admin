@@ -272,7 +272,7 @@ func (s *Service) executeACMECertificateTask(task model.SSLCertificateTask) (tas
 	if err != nil {
 		return fmt.Errorf("failed to parse ACME issuance result: %w", err)
 	}
-	cipherText, err := util.EncryptSecret(string(resource.PrivateKey))
+	cipherText, err := util.EncryptSecretV2(string(resource.PrivateKey))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt private key: %w", err)
 	}

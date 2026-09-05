@@ -243,7 +243,7 @@ func (s *Service) UploadSSLCertificate(payload SSLCertificateUploadPayload, acto
 			return 0, fmt.Errorf("certificate domain %s does not belong to public main domain %s", domain, payload.MainDomain)
 		}
 	}
-	cipherText, err := util.EncryptSecret(strings.TrimSpace(payload.PrivateKeyPEM))
+	cipherText, err := util.EncryptSecretV2(strings.TrimSpace(payload.PrivateKeyPEM))
 	if err != nil {
 		return 0, err
 	}
@@ -519,7 +519,11 @@ func (s *Service) syncCertificateToCloudTask(task model.SSLCertificateTask) erro
 	if cert.CertificatePEM == "" || cert.PrivateKeyCipher == "" {
 		return errors.New("the current certificate has no certificate body and private key available for upload")
 	}
-	privateKey, err := util.DecryptSecret(cert.PrivateKeyCipher)
+	keyField, fieldErr := registeredSecretField("ssl_certificates", "private_key_cipher")
+	if fieldErr != nil {
+		return fieldErr
+	}
+	privateKey, err := util.ReadSecretField(cert.PrivateKeyCipher, keyField, false)
 	if err != nil {
 		return err
 	}
@@ -686,13 +690,21 @@ func (s *Service) DownloadSSLCertificate(id uint, kind string) ([]byte, string, 
 		if cert.PrivateKeyCipher == "" {
 			return nil, "", "", errors.New("the certificate has no private key stored by the platform")
 		}
-		key, err := util.DecryptSecret(cert.PrivateKeyCipher)
+		keyField, fieldErr := registeredSecretField("ssl_certificates", "private_key_cipher")
+		if fieldErr != nil {
+			return nil, "", "", fieldErr
+		}
+		key, err := util.ReadSecretField(cert.PrivateKeyCipher, keyField, false)
 		return []byte(key), base + ".key.pem", "application/x-pem-file", err
 	case "zip":
 		if cert.PrivateKeyCipher == "" {
 			return nil, "", "", errors.New("the certificate has no private key stored by the platform")
 		}
-		key, err := util.DecryptSecret(cert.PrivateKeyCipher)
+		keyField, fieldErr := registeredSecretField("ssl_certificates", "private_key_cipher")
+		if fieldErr != nil {
+			return nil, "", "", fieldErr
+		}
+		key, err := util.ReadSecretField(cert.PrivateKeyCipher, keyField, false)
 		if err != nil {
 			return nil, "", "", err
 		}
@@ -829,11 +841,19 @@ func (s *Service) certificateCloudProvider(accountID uint) (provider.Certificate
 	if account.Status != 1 {
 		return nil, nil, errors.New("DNS cloud account is disabled")
 	}
-	access, err := util.DecryptSecret(account.AccessKeyCipher)
+	accessField, fieldErr := registeredSecretField("domain_public_dns_account", "access_key_cipher")
+	if fieldErr != nil {
+		return nil, nil, fieldErr
+	}
+	secretField, fieldErr := registeredSecretField("domain_public_dns_account", "secret_key_cipher")
+	if fieldErr != nil {
+		return nil, nil, fieldErr
+	}
+	access, err := util.ReadSecretField(account.AccessKeyCipher, accessField, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	secret, err := util.DecryptSecret(account.SecretKeyCipher)
+	secret, err := util.ReadSecretField(account.SecretKeyCipher, secretField, false)
 	if err != nil {
 		return nil, nil, err
 	}

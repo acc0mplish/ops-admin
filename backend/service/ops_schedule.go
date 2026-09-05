@@ -153,7 +153,13 @@ func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string
 		value := strings.TrimSpace(rawValue)
 		if existingValue := strings.TrimSpace(existing[name]); existingValue != "" && (!suppliedValue || (variable.Secret && value == "")) {
 			if variable.Secret {
-				plain, err := util.DecryptSecret(existingValue)
+				// variable.Secret is the declared-secret gate: the schedule
+				// column is mixed-declaration, so the script metadata decides.
+				field, fieldErr := registeredSecretField("ops_schedule_task", "variables")
+				if fieldErr != nil {
+					return nil, nil, fieldErr
+				}
+				plain, err := util.ReadSecretField(existingValue, field, variable.Secret)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to read variable VARIABLE_%s: %w", name, err)
 				}
@@ -173,7 +179,7 @@ func resolveScheduleScriptVariables(script *model.OpsScript, supplied map[string
 		}
 		runtimeValues[name] = value
 		if variable.Secret {
-			encrypted, err := util.EncryptSecret(value)
+			encrypted, err := util.EncryptSecretV2(value)
 			if err != nil {
 				return nil, nil, err
 			}
