@@ -28,7 +28,7 @@ var updateArtifacts = flag.Bool("update", false, "rewrite the committed docs/sec
 // newArtifactEngine boots the real router against a single-connection
 // in-memory sqlite database (M-2), with the full migration and seed run first
 // so the permission middleware queries behave exactly as in production.
-func newArtifactEngine(t *testing.T) *gin.Engine {
+func newArtifactEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	t.Setenv("OPS_ADMIN_INITIAL_PASSWORD", "inventory-test-password")
@@ -57,7 +57,7 @@ func newArtifactEngine(t *testing.T) *gin.Engine {
 		// directory; keep the repository tree clean.
 		_ = os.RemoveAll("uploads")
 	})
-	return engine
+	return engine, db
 }
 
 // routeInventoryLines serializes every registered route — no filtering
@@ -121,7 +121,7 @@ func writeOrCompareArtifact(t *testing.T, name string, header []string, lines []
 // exactly 435 routes (H-1: 1 ping + 7 public + 425 authGroup + 2 uploads
 // static — gin's Static registers GET and HEAD).
 func TestRouteInventoryArtifact(t *testing.T) {
-	engine := newArtifactEngine(t)
+	engine, _ := newArtifactEngine(t)
 	lines := routeInventoryLines(engine)
 	if len(lines) != 435 {
 		t.Fatalf("route inventory holds %d routes, contract is 435", len(lines))
