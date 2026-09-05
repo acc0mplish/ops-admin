@@ -29,7 +29,9 @@ import sys
 SELF_RELATIVE_PATH = "scripts/secret-scan.py"
 
 # Skipped directory names (relative to any level).
-SKIPPED_DIRS = {".git", "node_modules", "dist", "uploads", ".tmp"}
+# uploads is NOT skipped: backend/uploads is git-tracked (④review M-3) —
+# a committed secret there must fire. dist is a build artifact directory.
+SKIPPED_DIRS = {".git", "node_modules", "dist", ".tmp"}
 
 # Rules: (name, compiled pattern, value extractor). The extractor returns the
 # credential substring so the allowlist can key on the value itself.

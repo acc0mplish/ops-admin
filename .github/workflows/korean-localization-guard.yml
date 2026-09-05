@@ -1,5 +1,8 @@
 name: Korean localization guard
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

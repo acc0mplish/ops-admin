@@ -1,4 +1,4 @@
-# CI 베이라인 — 9 required checks와 게이트 자기검증 카나리
+# CI 베이스라인 — 9 required checks와 게이트 자기검증 카나리
 
 V2 Phase -1 Task 6가 도입한 CI 베이스라인의 운영 문서. 원천 스펙은 V2 아키텍처
 문서 §4.10(CI baseline and its self-verification)이며, 핵심 원칙은 하나다:

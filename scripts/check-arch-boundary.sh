@@ -53,13 +53,19 @@ for pkg in "${CORE_PACKAGES[@]}"; do
 done
 
 # --- R3: opdef direct imports limited to the pure vocabulary set ------------
-# Stdlib imports carry no dot in their first path segment (fmt, net/http);
-# every module path (github.com/..., gorm.io/..., ops-admin/...) does.
+# Classification is explicit, not dot-based: the module is `ops-admin/backend`
+# (hyphen, no dot), so a dot heuristic lets every internal import bypass the
+# check (④review HIGH-1). Internal = ops-admin/backend/*; external module =
+# dot in the first path segment; everything else is stdlib.
+opdef_imports="$(go list -f '{{join .Imports "\n"}}' ./opdef)" || {
+  echo "R3 FAIL: go list could not enumerate opdef imports"
+  exit 1
+}
 violations=0
 while IFS= read -r imp; do
   [[ -z "$imp" ]] && continue
   case "$imp" in
-    *.*)
+    ops-admin/backend/*)
       allowed=0
       for ok in "${OPDEF_ALLOWED_NONSTD[@]}"; do
         if [[ "$imp" == "$ok" ]]; then allowed=1; break; fi
@@ -69,8 +75,21 @@ while IFS= read -r imp; do
         violations=$((violations + 1))
       fi
       ;;
+    *) # external module paths have a dot in the first segment; stdlib does not
+      first="${imp%%/*}"
+      if [[ "$first" == *.* ]]; then
+        allowed=0
+        for ok in "${OPDEF_ALLOWED_NONSTD[@]}"; do
+          if [[ "$imp" == "$ok" ]]; then allowed=1; break; fi
+        done
+        if [[ "$allowed" -eq 0 ]]; then
+          echo "R3 FAIL: opdef imports non-allowlisted module: $imp"
+          violations=$((violations + 1))
+        fi
+      fi
+      ;;
   esac
-done < <(go list -f '{{join .Imports "\n"}}' ./opdef)
+done <<< "$opdef_imports"
 
 if [[ "$violations" -eq 0 ]]; then
   echo "R3 PASS: opdef imports only {middleware, gin, gorm.io/gorm, stdlib}"
