@@ -291,7 +291,7 @@ The complete list of secret-bearing persisted fields, with today's storage forma
 | 4 | OpsScheduleTask secret variables (service/ops_schedule.go:156,176) | encrypted variable values | legacy envelope | E-legacy |
 | 5 | AssetCredential (asset.go:65-67) | Password, PrivateKey, Passphrase | **plaintext** | P |
 | 6 | AssetCloudAccount (asset.go:83) | AccessKeyID + SecretKey | **plaintext** | P |
-| 7 | AssetGateway (asset.go:178) | Password | **plaintext** | P |
+| ~~7~~ | *(removed r2.5 — phantom: AssetGateway has no password column; gateway credentials live in row 5 AssetCredential via CredentialID)* | | | |
 | 8 | K8sCluster (k8s.go:20) | KubeConfig | **plaintext** | P |
 | 9 | IntegrationFinOpsAccount (integration_finops.go:11,15) | SecretKey, BillingToken | **plaintext** | P |
 | 10 | MonitorDatasource (monitor.go:12-13) | Password, Token | **plaintext** | P |
@@ -301,7 +301,7 @@ The complete list of secret-bearing persisted fields, with today's storage forma
 | 14 | NotifyChannel (ops.go:599) | Secret (and WebhookURL when it embeds a path token) | **plaintext** | P |
 | 15 | AssetDatabase (asset.go:178) | Password | **plaintext** | P |
 
-The r2 review cross-check caught rows 12–14 missing from the first cut of this table, and the Phase -1 Task 1 plan cross-check caught row 15; the count is now 15 and G-1 (§4.10) gates over all of them.
+The r2 review cross-check caught rows 12–14 missing from the first cut of this table, and the Phase -1 Task 1 plan cross-check caught row 15; and the Task 1 implementation cross-check removed phantom row 7 (AssetGateway — no such column; measured: the model carries CredentialID, not a password). The registry is therefore 14 live rows (E-legacy 4 / P 10) with doc-row numbering preserved; G-1 (§4.10) gates over all of them.
 
 Two defects beyond field classification:
 
