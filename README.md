@@ -176,7 +176,7 @@ ops-admin/
 
 - Go `1.24+`
 - Node.js `18+` (`20+` 권장)
-- npm `9+`
+- bun `1.4.2+`
 - MySQL `8.x`
 
 사용하는 기능에 따라 다음 환경도 준비해야 합니다.
@@ -243,8 +243,8 @@ go run .
 
 ```bash
 cd web
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 `http://127.0.0.1:8080`에 접속합니다. Vite는 `/api/v1`과 `/uploads`를 Backend의 `8082` 포트로 Proxy합니다.
@@ -298,7 +298,7 @@ Frontend Production Build:
 
 ```bash
 cd web
-npm run build
+bun run build
 ```
 
 Build Artifact는 `web/dist/`에 생성됩니다.
