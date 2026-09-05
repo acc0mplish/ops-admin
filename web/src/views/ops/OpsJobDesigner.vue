@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Graph, Shape } from '@antv/x6'
+import { ot } from '../../utils/ops-i18n'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
 import {
   addOpsJob,
@@ -56,8 +57,8 @@ const selectedNodeForm = reactive({
 let graph
 
 const isTemplateMode = computed(() => String(route.query.mode || '') === 'template')
-const editorTitle = computed(() => (isTemplateMode.value ? 'Job Template 편집' : 'Job Orchestration'))
-const saveButtonText = computed(() => (isTemplateMode.value ? 'Template 저장' : 'Job 저장'))
+const editorTitle = computed(() => (isTemplateMode.value ? ot('editJobTemplate') : 'Job Orchestration'))
+const saveButtonText = computed(() => (isTemplateMode.value ? ot('saveTemplate') : ot('saveJob')))
 const selectedCount = computed(() => selectedCellIds.value.length)
 const selectedScriptTimeout = computed(() => {
   const script = scriptOptions.value.find((item) => Number(item.id) === Number(selectedNodeForm.config?.scriptId))
@@ -163,13 +164,13 @@ function updateSelectedGroupIds(groupIds) {
 function defaultNodeLabel(type) {
   switch (type) {
     case 'file':
-      return '파일 배포'
+      return ot('nodeFileDeploy')
     case 'approval':
       return 'Manual Approval'
     case 'notify':
-      return '메시지 알림'
+      return ot('messageNotify')
     default:
-      return 'Script 실행'
+      return ot('scriptExecution')
   }
 }
 
@@ -188,14 +189,14 @@ function createDefaultConfig(type) {
       }
     case 'approval':
       return {
-        message: 'Manual Approval 대기',
-        content: '확인 후 해당 Job 실행을 계속하십시오.'
+        message: ot('approvalNodeMessage'),
+        content: ot('approvalNodeContent')
       }
     case 'notify':
       return {
         notifyRuleId: undefined,
-        message: 'Job 알림',
-        content: 'Job이 메시지 알림 Step에 도달했습니다'
+        message: ot('notifyNodeMessage'),
+        content: ot('notifyNodeContent')
       }
     default:
       return {
@@ -313,7 +314,7 @@ function removeSelectedEdge() {
   graph.cleanSelection()
   selectedCellIds.value = []
   loadSelectedEdge('')
-  ElMessage.success('연결선을 삭제했습니다.')
+  ElMessage.success(ot('edgeDeleted'))
 }
 
 function syncSelectionState() {
@@ -604,7 +605,7 @@ function handleCanvasKeydown(event) {
 }
 
 async function clearCanvas() {
-  await ElMessageBox.confirm('현재 Orchestration Canvas를 비우시겠습니까?', '알림', { type: 'warning' })
+  await ElMessageBox.confirm(ot('clearCanvasConfirm'), ot('noticeTitle'), { type: 'warning' })
   graph.clearCells()
   loadSelectedNode('')
 }
@@ -646,7 +647,7 @@ async function loadCurrentRecord() {
 
 async function importTemplate() {
   if (!importTemplateId.value) {
-    ElMessage.warning('먼저 Job Template을 선택하십시오.')
+    ElMessage.warning(ot('selectTemplateFirst'))
     return
   }
   const data = await opsJobTemplateInfo(importTemplateId.value)
@@ -660,22 +661,22 @@ async function importTemplate() {
   const definition = JSON.parse(data.definitionJson || '{"nodes":[],"edges":[]}')
   loadDefinition(definition, data.graphJson || '')
   importDialogVisible.value = false
-  ElMessage.success('Template을 Orchestration Canvas로 가져왔습니다.')
+  ElMessage.success(ot('templateImported'))
 }
 
 async function save() {
   if (!form.name.trim()) {
-    ElMessage.warning(isTemplateMode.value ? 'Template 이름을 입력하십시오.' : 'Job 이름을 입력하십시오.')
+    ElMessage.warning(isTemplateMode.value ? ot('templateNameRequired') : ot('jobNameRequired'))
     return
   }
   const definition = serializeDefinition()
   if (!definition.nodes.length) {
-    ElMessage.warning('Step을 하나 이상 추가하십시오.')
+    ElMessage.warning(ot('addStepRequired'))
     return
   }
   const invalidNotifyNode = definition.nodes.find((node) => node.type === 'notify' && !node.config?.notifyRuleId)
   if (invalidNotifyNode) {
-    ElMessage.warning('메시지 알림 Step의 Notification Rule을 선택하십시오.')
+    ElMessage.warning(ot('notifyRuleRequiredForNotifyStep'))
     return
   }
   saving.value = true
@@ -697,7 +698,7 @@ async function save() {
       } else {
         await addOpsJobTemplate(payload)
       }
-      ElMessage.success('Job Template을 저장했습니다.')
+      ElMessage.success(ot('jobTemplateSaved'))
       router.push('/ops/jobs/templates')
       return
     }
@@ -706,7 +707,7 @@ async function save() {
     } else {
       await addOpsJob(payload)
     }
-    ElMessage.success('Job을 저장했습니다.')
+    ElMessage.success(ot('jobSaved'))
     router.push('/ops/jobs/list')
   } finally {
     saving.value = false
@@ -735,14 +736,14 @@ onBeforeUnmount(() => {
     <div class="page-card page-head">
       <div>
         <h2 class="page-title">{{ editorTitle }}</h2>
-        <p class="page-desc">Flow Orchestration 콘솔 스타일을 참고해 Script 실행, File Distribution, Manual Approval을 재사용 가능한 Job으로 조합할 수 있습니다.</p>
+        <p class="page-desc">{{ ot('jobDesignerDesc') }}</p>
       </div>
       <div class="head-actions">
-        <el-button @click="importDialogVisible = true">Job Template 가져오기</el-button>
+        <el-button @click="importDialogVisible = true">{{ ot('importJobTemplate') }}</el-button>
         <el-button @click="selectedEdgeId ? removeSelectedEdge() : removeSelectedNode()" :disabled="!selectedCount && !selectedNodeId && !selectedEdgeId">
-          {{ selectedEdgeId ? '연결선 삭제' : (selectedCount > 1 ? `선택 항목 삭제(${selectedCount})` : '선택한 Step 삭제') }}
+          {{ selectedEdgeId ? ot('removeEdge') : (selectedCount > 1 ? ot('deleteSelectedItems', { count: selectedCount }) : ot('deleteSelectedStep')) }}
         </el-button>
-        <el-button @click="clearCanvas" :disabled="!graphReady">Canvas 비우기</el-button>
+        <el-button @click="clearCanvas" :disabled="!graphReady">{{ ot('clearCanvas') }}</el-button>
         <el-button type="primary" :loading="saving" @click="save">{{ saveButtonText }}</el-button>
       </div>
     </div>
@@ -751,28 +752,28 @@ onBeforeUnmount(() => {
       <el-form label-width="100px">
         <el-row :gutter="16">
           <el-col :span="8">
-            <el-form-item :label="isTemplateMode ? 'Template 이름' : 'Job 이름'" required>
-              <el-input v-model="form.name" :placeholder="isTemplateMode ? 'Template 이름을 입력하십시오.' : 'Job 이름을 입력하십시오.'" />
+            <el-form-item :label="isTemplateMode ? ot('templateName') : ot('jobName')" required>
+              <el-input v-model="form.name" :placeholder="isTemplateMode ? ot('templateNameRequired') : ot('jobNameRequired')" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="상태">
+            <el-form-item :label="ot('status')">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">활성화</el-radio>
-                <el-radio :value="2">비활성화</el-radio>
+                <el-radio :value="1">{{ ot('enabled') }}</el-radio>
+                <el-radio :value="2">{{ ot('disabled') }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="8" v-if="!isTemplateMode">
             <el-form-item label="Source Template">
-              <el-select v-model="form.templateId" clearable filterable placeholder="선택 사항">
+              <el-select v-model="form.templateId" clearable filterable :placeholder="ot('optionalLabel')">
                 <el-option v-for="item in templateOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="설명">
-              <el-input v-model="form.description" type="textarea" :rows="2" placeholder="Job 용도, 실행 순서, 위험 안내를 설명하는 데 사용합니다." />
+            <el-form-item :label="ot('description')">
+              <el-input v-model="form.description" type="textarea" :rows="2" :placeholder="ot('jobDescriptionPlaceholder')" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -782,11 +783,11 @@ onBeforeUnmount(() => {
     <div class="designer-layout">
       <div class="page-card left-palette">
         <div class="panel-title">Step Library</div>
-        <el-button class="palette-btn" @click="addStep('script')">Script 실행</el-button>
+        <el-button class="palette-btn" @click="addStep('script')">{{ ot('scriptExecution') }}</el-button>
         <el-button class="palette-btn" @click="addStep('file')">File Distribution</el-button>
         <el-button class="palette-btn" @click="addStep('approval')">Manual Approval</el-button>
-        <el-button class="palette-btn" @click="addStep('notify')">메시지 알림</el-button>
-        <div class="panel-tip">Node를 드래그해 위치를 조정할 수 있으며 연결선이 실행 순서를 결정합니다.</div>
+        <el-button class="palette-btn" @click="addStep('notify')">{{ ot('messageNotify') }}</el-button>
+        <div class="panel-tip">{{ ot('dragNodeHint') }}</div>
       </div>
 
       <div class="page-card canvas-panel">
@@ -795,28 +796,28 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="page-card config-panel">
-        <div class="panel-title">{{ selectedEdgeId ? '연결선 설정' : 'Step 설정' }}</div>
-        <el-empty v-if="!selectedNodeId && !selectedEdgeId" :image-size="68" description="Step Node를 클릭해 Parameter를 편집하거나 연결선을 클릭해 실행 관계를 변경하십시오." />
-        <el-empty v-else-if="selectedEdgeId" :image-size="68" description="연결선 양 끝의 핸들을 드래그하면 Step을 다시 연결할 수 있습니다." />
+        <div class="panel-title">{{ selectedEdgeId ? ot('edgeSettings') : ot('stepSettings') }}</div>
+        <el-empty v-if="!selectedNodeId && !selectedEdgeId" :image-size="68" :description="ot('emptySelectionHint')" />
+        <el-empty v-else-if="selectedEdgeId" :image-size="68" :description="ot('edgeReconnectHint')" />
         <el-form v-else-if="selectedNodeId" label-position="top">
-          <el-form-item label="Step 이름">
+          <el-form-item :label="ot('stepName')">
             <el-input v-model="selectedNodeForm.label" />
           </el-form-item>
 
           <template v-if="selectedNodeForm.type === 'script'">
             <el-form-item label="Script">
-              <el-select v-model="selectedNodeForm.config.scriptId" filterable placeholder="Script 선택" @change="handleSelectedScriptChange">
+              <el-select v-model="selectedNodeForm.config.scriptId" filterable :placeholder="ot('selectScriptShort')" @change="handleSelectedScriptChange">
                 <el-option v-for="item in scriptOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
             <div class="job-variable-panel">
-              <div class="job-variable-panel__title">Step 변수</div>
-              <div class="job-variable-panel__hint">실행 시 <code>VARIABLE_변수명</code> 형태로 Script에 주입되며 민감 값은 저장한 뒤 다시 표시되지 않습니다.</div>
-              <div v-if="!selectedScriptVariables.length" class="job-variable-panel__empty">이 Script는 변수를 선언하지 않았습니다.</div>
+              <div class="job-variable-panel__title">{{ ot('stepVariables') }}</div>
+              <div class="job-variable-panel__hint">{{ ot('stepVariableHintStart') }}<code>VARIABLE_{{ ot('variableNameWord') }}</code>{{ ot('stepVariableHintEnd') }}</div>
+              <div v-if="!selectedScriptVariables.length" class="job-variable-panel__empty">{{ ot('scriptDeclaresNoVariables') }}</div>
               <div v-else class="job-variable-list">
                 <div v-for="variable in selectedScriptVariables" :key="variable.name" class="job-variable-field">
-                  <div class="job-variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">필수</el-tag></div>
-                  <el-input v-model="selectedNodeForm.config.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '비워두면 기존 값을 유지합니다' : (variable.defaultValue || '변수 값을 입력하십시오.')" />
+                  <div class="job-variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">{{ ot('required') }}</el-tag></div>
+                  <el-input v-model="selectedNodeForm.config.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? ot('leaveBlankKeepExisting') : (variable.defaultValue || ot('enterVarValue'))" />
                   <div v-if="variable.description" class="job-variable-field__desc">{{ variable.description }}</div>
                 </div>
               </div>
@@ -841,7 +842,7 @@ onBeforeUnmount(() => {
 
           <template v-else-if="selectedNodeForm.type === 'file'">
             <el-form-item label="Source Host">
-              <el-select v-model="selectedNodeForm.config.sourceHostId" filterable placeholder="Source Host 선택">
+              <el-select v-model="selectedNodeForm.config.sourceHostId" filterable :placeholder="ot('selectSourceHost')">
                 <el-option v-for="item in hostOptions" :key="item.id" :label="item.hostName" :value="item.id" />
               </el-select>
             </el-form-item>
@@ -854,10 +855,10 @@ onBeforeUnmount(() => {
             <el-form-item label="Concurrency">
               <el-input-number v-model="selectedNodeForm.config.concurrency" :min="1" :max="10" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="Timeout(초)">
+            <el-form-item :label="ot('timeoutSecondsLabel')">
               <el-input-number v-model="selectedNodeForm.config.timeoutSeconds" :min="10" :max="3600" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="Target File 덮어쓰기">
+            <el-form-item :label="ot('overwriteTargetFile')">
               <el-switch v-model="selectedNodeForm.config.overwrite" />
             </el-form-item>
             <OpsTargetScope
@@ -871,42 +872,42 @@ onBeforeUnmount(() => {
           </template>
           <template v-else-if="selectedNodeForm.type === 'notify'">
             <el-form-item label="Notification Rule" required>
-              <el-select v-model="selectedNodeForm.config.notifyRuleId" filterable placeholder="Notification Rule 선택">
+              <el-select v-model="selectedNodeForm.config.notifyRuleId" filterable :placeholder="ot('selectNotificationRulePlaceholder')">
                 <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="`${item.name} · Job Orchestration`" :value="item.id" />
               </el-select>
-              <div class="form-tip">Job Orchestration용 Notification Rule만 표시합니다. 카드에 Job과 현재 Step 정보가 자동으로 포함됩니다.</div>
+              <div class="form-tip">{{ ot('notifyRuleScopeHint') }}</div>
             </el-form-item>
-            <el-form-item label="알림 요약">
-              <el-input v-model="selectedNodeForm.config.message" placeholder="예: 배포 완료 알림" />
+            <el-form-item :label="ot('notifySummary')">
+              <el-input v-model="selectedNodeForm.config.message" :placeholder="ot('notifySummaryExample')" />
             </el-form-item>
-            <el-form-item label="알림 내용">
-              <el-input v-model="selectedNodeForm.config.content" type="textarea" :rows="6" placeholder="이 값은 {{detail}} 변수로 메시지 Template에 전달됩니다" />
+            <el-form-item :label="ot('notifyContent')">
+              <el-input v-model="selectedNodeForm.config.content" type="textarea" :rows="6" :placeholder="ot('notifyContentPlaceholder')" />
             </el-form-item>
           </template>
 
           <template v-else>
-            <el-form-item label="확인 메시지">
-              <el-input v-model="selectedNodeForm.config.message" placeholder="예: 유지보수 Window가 완료되었는지 확인하십시오." />
+            <el-form-item :label="ot('confirmMessage')">
+              <el-input v-model="selectedNodeForm.config.message" :placeholder="ot('confirmMessageExample')" />
             </el-form-item>
-            <el-form-item label="확인 설명">
-              <el-input v-model="selectedNodeForm.config.content" type="textarea" :rows="6" placeholder="여기에 Manual Approval Node의 작업 설명, 주의 사항, 진행 조건을 입력하십시오." />
+            <el-form-item :label="ot('confirmDescription')">
+              <el-input v-model="selectedNodeForm.config.content" type="textarea" :rows="6" :placeholder="ot('confirmDescriptionPlaceholder')" />
             </el-form-item>
           </template>
         </el-form>
       </div>
     </div>
 
-    <el-dialog v-model="importDialogVisible" title="Job Template 가져오기" width="520px">
+    <el-dialog v-model="importDialogVisible" :title="ot('importJobTemplate')" width="520px">
       <el-form label-width="90px">
         <el-form-item label="Job Template">
-          <el-select v-model="importTemplateId" filterable placeholder="가져올 Template 선택" style="width: 100%">
+          <el-select v-model="importTemplateId" filterable :placeholder="ot('selectTemplateToImport')" style="width: 100%">
             <el-option v-for="item in templateOptions" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="importDialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="importTemplate">가져오기</el-button>
+        <el-button @click="importDialogVisible = false">{{ ot('cancel') }}</el-button>
+        <el-button type="primary" @click="importTemplate">{{ ot('importAction') }}</el-button>
       </template>
     </el-dialog>
   </div>
