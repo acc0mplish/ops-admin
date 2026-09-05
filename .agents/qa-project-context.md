@@ -1,64 +1,64 @@
-# Ops Admin QA 项目上下文
+# Ops Admin QA 프로젝트 컨텍스트
 
 ## Product
 
-- **产品：** Ops Admin，面向企业运维与 SRE 场景的内部运维控制台。
-- **类型：** Vue 单页管理平台 + Go REST API。
-- **当前验证环境：** Web `http://localhost:8080`，API `http://localhost:8082`。
-- **关键业务链路：** 登录与鉴权；RBAC 菜单与权限控制；资产、主机与数据库管理；Kubernetes 集群与工作负载操作；标准运维任务执行；应用构建与发布；消息通知；监控查询、告警与事件处置。
+- **제품:** Ops Admin — 기업 운영·SRE 시나리오를 위한 내부 운영 콘솔.
+- **유형:** Vue SPA 관리 플랫폼 + Go REST API.
+- **현재 검증 환경:** Web `http://localhost:8080`, API `http://localhost:8082`.
+- **핵심 비즈니스 체인:** 로그인·인증; RBAC 메뉴·권한 제어; 자산·Host·Database 관리; Kubernetes Cluster·Workload 작업; 표준 운영 Job 실행; Application Build·배포; 알림; 모니터링 조회·Alert·이벤트 처리.
 
 ## Tech Stack
 
-- **前端：** Vue 3.5、Vue Router 4、Vite 5、Element Plus、Axios，代码位于 `web/`。
-- **后端：** Go 1.24、Gin 1.11、REST API、GORM，代码位于 `backend/`。
-- **数据与依赖：** MySQL 8；按功能可接入 Redis、MongoDB、Prometheus 或 VictoriaMetrics、Kubernetes、LDAP、腾讯云等外部系统。
-- **部署：** Docker Compose 提供 MySQL、API 与 Web 服务；本次联调使用本地服务。
+- **Frontend:** Vue 3.5, Vue Router 4, Vite 5, Element Plus, Axios — 코드 위치 `web/`.
+- **Backend:** Go 1.24, Gin 1.11, REST API, GORM — 코드 위치 `backend/`.
+- **데이터·의존성:** MySQL 8; 기능에 따라 Redis, MongoDB, Prometheus 또는 VictoriaMetrics, Kubernetes, LDAP, Tencent Cloud 등 외부 시스템 연동.
+- **배포:** Docker Compose로 MySQL·API·Web 서비스 제공; 이번 통합 검증은 로컬 서비스 기준.
 
 ## Test Stack
 
-- **后端：** 已有 Go 测试，主要在 `backend/service/*_test.go`；执行命令为 `go test ./...`。
-- **前端构建：** `web/package.json` 提供 Vite build；未发现已配置的 Playwright、Cypress、Vitest 或 Jest 测试套件。
-- **本轮联调：** 浏览器关键路径验证、HTTP API 冒烟与 Go 服务测试；后续自动化默认采用 Playwright。
+- **Backend:** Go 테스트 존재 — 주로 `backend/service/*_test.go`; 실행 명령 `go test ./...`.
+- **Frontend 빌드:** `web/package.json`에 Vite build 제공; Playwright·Cypress·Vitest·Jest 테스트 스위트 설정 미발견.
+- **이번 통합 검증:** 브라우저 핵심 경로 검증, HTTP API 스모크, Go 서비스 테스트; 이후 자동화는 Playwright 기본 채택.
 
 ## CI/CD
 
-- 未检测到 GitHub Actions、GitLab CI 或 Jenkins 配置。
-- 当前质量门禁以本地后端测试、前端构建与联调报告为准；尚未配置自动上传覆盖率、截图或报告工件。
+- GitHub Actions·GitLab CI·Jenkins 설정 미탐지.
+- 현재 품질 게이트는 로컬 Backend 테스트·Frontend 빌드·통합 검증 보고서 기준; 커버리지·스크린샷·보고서 아티팩트 자동 업로드 미구성.
 
 ## Environments
 
-- 本地 Web：`http://localhost:8080`。
-- 本地 API：`http://localhost:8082`。
-- MySQL 由 Docker Compose 配置，容器内端口为 3306。
-- 生产与预发地址、外部依赖凭据及数据脱敏策略未在仓库中提供；本轮不对外部云、集群、数据库或通知渠道实施写操作。
+- 로컬 Web: `http://localhost:8080`.
+- 로컬 API: `http://localhost:8082`.
+- MySQL은 Docker Compose 구성 — 컨테이너 내부 포트 3306.
+- Production·Staging 주소, 외부 의존성 Credential, 데이터 마스킹 정책은 저장소에 미제공; 이번 라운드는 외부 Cloud·Cluster·Database·알림 채널에 쓰기 작업 미수행.
 
 ## Quality Goals
 
-- 后端全量 Go 测试必须通过。
-- 前端生产构建必须通过。
-- 高风险 API 的未认证访问必须被拒绝；关键读取链路应返回可解析的成功响应。
-- 关键浏览器流程在本地环境可访问且无阻断性前端控制台错误。
-- 作为当前基线：关键 API 冒烟在 10 秒内完成；后续目标为关键 E2E 小于 15 分钟、失败用例可复现。
+- Backend 전체 Go 테스트 통과 필수.
+- Frontend Production 빌드 통과 필수.
+- 고위험 API 미인증 접근은 반드시 거부; 핵심 읽기 경로는 파싱 가능한 성공 응답 반환.
+- 핵심 브라우저 플로우는 로컬 환경에서 접근 가능 + 블로킹 Frontend Console 오류 없음.
+- 현재 기준선: 핵심 API 스모크 10초 내 완료; 이후 목표 — 핵심 E2E 15분 미만, 실패 케이스 재현 가능.
 
 ## Risk Areas
 
-| 区域 | 影响 | 概率 | 分值 | 等级 | 原因与测试动作 |
+| 영역 | 영향 | 확률 | 점수 | 등급 | 원인과 테스트 동작 |
 |---|---:|---:|---:|---|---|
-| 认证与 RBAC | 5 | 3 | 15 | Critical | 未授权访问或越权会暴露运维能力；验证认证拦截、登录、权限菜单与接口响应。 |
-| 资产、数据库、K8s 的变更/删除 | 5 | 3 | 15 | Critical | 可能造成运行资源或数据误操作；验证参数校验、引用保护、确认交互和接口错误响应。 |
-| 应用构建、发布与标准运维任务 | 5 | 3 | 15 | Critical | 会影响线上服务；验证列表、详情、状态反馈与受保护接口。 |
-| 环境模型与配置关联 | 4 | 4 | 16 | Critical | 删除后重建曾发生；验证删除后的持久化与列表一致性。 |
-| 监控、告警、通知 | 4 | 3 | 12 | High | 失效会延迟事故发现；验证页面加载、查询错误反馈和规则接口。 |
-| 外部云、K8s、LDAP 与监控数据源 | 4 | 3 | 12 | High | 依赖可用性和凭据决定结果；本轮只进行无副作用的边界与错误路径检查。 |
+| 인증·RBAC | 5 | 3 | 15 | Critical | 미인증 접근 또는 권한 초과가 운영 기능 노출로 이어짐; 인증 차단·로그인·권한 메뉴·API 응답 검증. |
+| 자산·Database·K8s 변경/삭제 | 5 | 3 | 15 | Critical | 운영 Resource·데이터 오조작 가능; Parameter 검증·참조 보호·확인 인터랙션·API 오류 응답 검증. |
+| Application Build·배포·표준 운영 Job | 5 | 3 | 15 | Critical | 라이브 서비스 영향; 목록·상세·상태 피드백·보호 API 검증. |
+| 환경 모델·설정 연관 | 4 | 4 | 16 | Critical | 삭제 후 재생성 이력 있음; 삭제 후 영속화·목록 일관성 검증. |
+| 모니터링·Alert·알림 | 4 | 3 | 12 | High | 장애 시 사고 발견 지연; 페이지 로드·조회 오류 피드백·Rule API 검증. |
+| 외부 Cloud·K8s·LDAP·모니터링 Data Source | 4 | 3 | 12 | High | 가용성·Credential이 결과 결정; 이번 라운드는 부작용 없는 경계·오류 경로 검사만 수행. |
 
 ## Team
 
-- 当前由开发人员主导质量工作；未提供独立 QA 团队或比例信息。
-- 自动化优先覆盖关键业务路径与回归风险，探索性测试用于高风险管理操作的异常场景。
+- 현재 개발자 주도 품질 작업; 독립 QA 팀·비율 정보 미제공.
+- 자동화 우선 = 핵심 비즈니스 경로·회귀 리스크 커버; 탐색적 테스트는 고위험 관리 작업의 예외 시나리오에 사용.
 
 ## Conventions
 
-- 前端页面位于 `web/src/views`，接口封装位于 `web/src/api`，后端路由位于 `backend/router`。
-- 测试不删除或修改现有用户数据；写操作只在隔离数据或已有防护路径下验证。
-- 浏览器自动化优先使用可访问名称、角色和明确页面文案定位；新增稳定自动化时使用 kebab-case `data-testid`。
-- 测试工件与报告应放在 `.agents/` 或 `docs/`，不混入生产源码目录。
+- Frontend 페이지 `web/src/views`, API 래퍼 `web/src/api`, Backend 라우팅 `backend/router`.
+- 테스트는 기존 사용자 데이터 삭제·수정 금지; 쓰기 작업은 격리 데이터 또는 기존 보호 경로에서만 검증.
+- 브라우저 자동화는 접근 가능한 이름·Role·명확한 화면 문구 우선 사용; 새 안정 자동화는 kebab-case `data-testid`.
+- 테스트 아티팩트·보고서는 `.agents/` 또는 `docs/`에 두고 Production 소스 디렉토리 혼입 금지.
