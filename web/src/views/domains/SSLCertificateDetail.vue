@@ -12,6 +12,7 @@ import {
   resyncSSLCertificate,
   updateSSLCertificateRenewSettings
 } from '../../api/domain'
+import { dt } from '../../utils/domain-i18n'
 
 const route = useRoute(), router = useRouter()
 const loading = ref(false), saving = ref(false), certificate = ref(null), tasks = ref([])
@@ -19,19 +20,19 @@ const renewForm = reactive({ autoRenew: false, renewBeforeDays: 30 })
 let pollTimer
 
 const statusMeta = {
-  PENDING: ['발급 대기', 'info'], APPLYING: ['신청 중', 'warning'], DNS_PENDING: ['DNS 검증 대기', 'warning'], VALIDATING: ['검증 중', 'warning'], ISSUING: ['발급 중', 'warning'], ISSUED: ['발급됨', 'success'], NORMAL: ['정상', 'success'], EXPIRING: ['만료 임박', 'warning'], EXPIRED: ['만료', 'danger'], RENEWING: ['갱신 중', 'warning'], RENEW_FAILED: ['갱신 실패', 'danger'], APPLY_FAILED: ['발급 실패', 'danger'], SYNC_FAILED: ['동기화 실패', 'danger'], REVOKED: ['폐기됨', 'info']
+  PENDING: [dt('sslStatusPending'), 'info'], APPLYING: [dt('sslStatusApplying'), 'warning'], DNS_PENDING: [dt('sslStatusDnsPending'), 'warning'], VALIDATING: [dt('sslStatusValidating'), 'warning'], ISSUING: [dt('sslStatusIssuing'), 'warning'], ISSUED: [dt('sslStatusIssued'), 'success'], NORMAL: [dt('sslStatusNormal'), 'success'], EXPIRING: [dt('sslStatusExpiring'), 'warning'], EXPIRED: [dt('sslStatusExpired'), 'danger'], RENEWING: [dt('sslStatusRenewing'), 'warning'], RENEW_FAILED: [dt('sslStatusRenewFailed'), 'danger'], APPLY_FAILED: [dt('sslStatusApplyFailed'), 'danger'], SYNC_FAILED: [dt('sslStatusSyncFailed'), 'danger'], REVOKED: [dt('sslStatusRevoked'), 'info']
 }
-const sourceLabels = { ALIYUN: 'Alibaba Cloud 동기화', TENCENT: 'Tencent Cloud 동기화', MANUAL: '수동 업로드', ACME: '플랫폼 ACME' }
-const typeLabels = { SINGLE: '단일 Domain', WILDCARD: '와일드카드 Domain', SAN: 'SAN 다중 Domain' }
-const taskLabels = { APPLY: '인증서 발급', RENEW: '인증서 갱신', SYNC: '클라우드 동기화', DELETE: '인증서 삭제' }
-const stageLabels = { QUEUED: '실행 대기', STARTING: '시작 중', PREPARING: '발급 준비', DNS_CHALLENGE: 'DNS 검증 구성', VALIDATING: 'CA 검증 대기', ISSUING: '인증서 발급', SAVING: '인증서 저장', CLOUD_SYNC: '클라우드 동기화', COMPLETED: '완료됨', FAILED: '실행 실패' }
+const sourceLabels = { ALIYUN: dt('sourceAliyunSync'), TENCENT: dt('sourceTencentSync'), MANUAL: dt('sourceManualUpload'), ACME: dt('sourcePlatformAcme') }
+const typeLabels = { SINGLE: dt('certTypeSingle'), WILDCARD: dt('certTypeWildcard'), SAN: dt('certTypeSan') }
+const taskLabels = { APPLY: dt('taskApply'), RENEW: dt('taskRenew'), SYNC: dt('cloudSync'), DELETE: dt('deleteCert') }
+const stageLabels = { QUEUED: dt('stageQueued'), STARTING: dt('stageStarting'), PREPARING: dt('stagePreparing'), DNS_CHALLENGE: dt('stageDnsChallenge'), VALIDATING: dt('stageValidating'), ISSUING: dt('stageIssuing'), SAVING: dt('stageSaving'), CLOUD_SYNC: dt('cloudSync'), COMPLETED: dt('stageCompleted'), FAILED: dt('stageFailed') }
 const hasActiveTask = computed(() => tasks.value.some(item => ['PENDING', 'RUNNING'].includes(item.status)))
 
 function formatDate(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
-function providerLabel(value) { return value === 'aliyun' ? 'Alibaba Cloud' : value === 'tencent' ? 'Tencent Cloud' : '로컬 전용' }
+function providerLabel(value) { return value === 'aliyun' ? 'Alibaba Cloud' : value === 'tencent' ? 'Tencent Cloud' : dt('syncStateLocal') }
 function statusLabel(value) { return statusMeta[value]?.[0] || value || '—' }
 function statusType(value) { return statusMeta[value]?.[1] || 'info' }
-function syncLabel(value) { return ({ SYNCED: '동기화됨', FAILED: '동기화 실패', PENDING: '동기화 중', LOCAL: '로컬 전용' })[value] || value || '—' }
+function syncLabel(value) { return ({ SYNCED: dt('syncStateSynced'), FAILED: dt('sslStatusSyncFailed'), PENDING: dt('syncStatePending'), LOCAL: dt('syncStateLocal') })[value] || value || '—' }
 
 async function load() {
   loading.value = true
@@ -54,19 +55,19 @@ async function saveRenewSettings() {
   saving.value = true
   try {
     await updateSSLCertificateRenewSettings({ id: certificate.value.id, ...renewForm })
-    ElMessage.success('갱신 정책을 저장했습니다.'); await load()
+    ElMessage.success(dt('renewPolicySaved')); await load()
   } finally { saving.value = false }
 }
 async function renewNow() {
-  await ElMessageBox.confirm('DNS-01 검증을 다시 실행하고 새 버전을 발급합니다. 기존 인증서는 성공할 때까지 유지됩니다.', '즉시 갱신', { type: 'warning' })
-  await renewSSLCertificate(certificate.value.id); ElMessage.success('갱신 Task를 생성했습니다.'); await loadTasks(); syncPolling()
+  await ElMessageBox.confirm(dt('renewConfirmDetail'), dt('renewNow'), { type: 'warning' })
+  await renewSSLCertificate(certificate.value.id); ElMessage.success(dt('renewTaskCreated')); await loadTasks(); syncPolling()
 }
-async function syncCloud() { await resyncSSLCertificate(certificate.value.id); ElMessage.success('클라우드 동기화 Task를 생성했습니다.'); await loadTasks(); syncPolling() }
+async function syncCloud() { await resyncSSLCertificate(certificate.value.id); ElMessage.success(dt('resyncTaskCreated')); await loadTasks(); syncPolling() }
 async function remove() {
   const deleteCloud = Boolean(certificate.value.cloudCertificateId)
-  await ElMessageBox.confirm(`삭제 전에 퍼블릭 DNS와 인증서 유효 기간을 확인합니다. ${deleteCloud ? '클라우드 인증서도 함께 삭제를 시도하며, 클라우드 삭제가 실패하면 로컬 Data는 유지됩니다.' : ''}`, '인증서 삭제', { type: 'error', confirmButtonText: '삭제 확인' })
+  await ElMessageBox.confirm(dt('deleteConfirmDetailPrefix') + (deleteCloud ? ` ${dt('deleteCloudAttempt')}` : ''), dt('deleteCert'), { type: 'error', confirmButtonText: dt('confirmDelete') })
   const result = await deleteSSLCertificate({ id: certificate.value.id, deleteCloud })
-  if (result.taskId) { ElMessage.success('삭제 Task를 생성했습니다.'); await loadTasks(); syncPolling() } else { ElMessage.success('인증서를 삭제했습니다.'); router.push('/domains/public/certificates') }
+  if (result.taskId) { ElMessage.success(dt('deleteTaskCreatedDetail')); await loadTasks(); syncPolling() } else { ElMessage.success(dt('certDeleted')); router.push('/domains/public/certificates') }
 }
 function filenameFrom(response, fallback) {
   const disposition = response.headers?.['content-disposition'] || ''
@@ -89,21 +90,21 @@ onBeforeUnmount(stopPolling)
     <template v-if="certificate">
       <div class="cert-hero">
         <div>
-          <el-button link class="cert-back" @click="router.push('/domains/public/certificates')">← SSL 인증서로 돌아가기</el-button>
+          <el-button link class="cert-back" @click="router.push('/domains/public/certificates')">{{ dt('backToSslList') }}</el-button>
           <div class="domain-eyebrow">{{ uiT('tlsCertificateDetail') }}</div>
           <div class="cert-title"><h2>{{ certificate.name }}</h2><el-tag :type="statusType(certificate.status)" effect="light">{{ statusLabel(certificate.status) }}</el-tag></div>
           <p class="domain-mono">{{ certificate.domains.join(' · ') }}</p>
         </div>
         <div class="cert-actions">
-          <el-dropdown trigger="click"><el-button>인증서 다운로드⌄</el-button><template #dropdown><el-dropdown-menu>
+          <el-dropdown trigger="click"><el-button>{{ dt('downloadCertMenu') }}</el-button><template #dropdown><el-dropdown-menu>
             <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('certificate')">{{ uiT('certificatePem') }}</el-dropdown-item>
             <el-dropdown-item v-permission="'domains:ssl:download'" @click="download('chain')">{{ uiT('certificateChain') }}</el-dropdown-item>
-            <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" divided @click="download('private-key', true)">Private Key (민감)</el-dropdown-item>
-            <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" @click="download('zip', true)">전체 ZIP (민감)</el-dropdown-item>
+            <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" divided @click="download('private-key', true)">{{ dt('privateKeySensitive') }}</el-dropdown-item>
+            <el-dropdown-item v-if="certificate.hasPrivateKey" v-permission="'domains:ssl:download-key'" @click="download('zip', true)">{{ dt('fullZipSensitive') }}</el-dropdown-item>
           </el-dropdown-menu></template></el-dropdown>
-          <el-button v-permission="'domains:ssl:sync'" @click="syncCloud">클라우드로 동기화</el-button>
-          <el-button v-if="certificate.source==='ACME'" v-permission="'domains:ssl:renew'" type="primary" @click="renewNow">즉시 갱신</el-button>
-          <el-button v-permission="'domains:ssl:delete'" type="danger" plain @click="remove">삭제</el-button>
+          <el-button v-permission="'domains:ssl:sync'" @click="syncCloud">{{ dt('syncToCloud') }}</el-button>
+          <el-button v-if="certificate.source==='ACME'" v-permission="'domains:ssl:renew'" type="primary" @click="renewNow">{{ dt('renewNow') }}</el-button>
+          <el-button v-permission="'domains:ssl:delete'" type="danger" plain @click="remove">{{ dt('delete') }}</el-button>
         </div>
       </div>
 
@@ -111,35 +112,35 @@ onBeforeUnmount(stopPolling)
 
       <div class="cert-grid">
         <article class="cert-card cert-overview">
-          <div class="cert-card-head"><div><span>인증서 정보</span><h3>식별 정보와 유효 기간</h3></div><strong :class="{'is-warning':certificate.remainingDays<=30}">{{ certificate.remainingDays }} 일</strong></div>
+          <div class="cert-card-head"><div><span>{{ dt('certInfoTitle') }}</span><h3>{{ dt('certInfoSub') }}</h3></div><strong :class="{'is-warning':certificate.remainingDays<=30}">{{ certificate.remainingDays }} {{ dt('dayUnit') }}</strong></div>
           <dl class="cert-meta">
-            <div><dt>Main Domain</dt><dd class="domain-mono">{{ certificate.mainDomain }}</dd></div><div><dt>인증서 유형</dt><dd>{{ typeLabels[certificate.type] || certificate.type }}</dd></div>
-            <div><dt>Source</dt><dd>{{ sourceLabels[certificate.source] || certificate.source }}</dd></div><div><dt>발급 기관</dt><dd>{{ certificate.issuer || '—' }}</dd></div>
-            <div><dt>적용 시각</dt><dd>{{ formatDate(certificate.notBefore) }}</dd></div><div><dt>만료 시각</dt><dd>{{ formatDate(certificate.notAfter) }}</dd></div>
-            <div><dt>Key 알고리즘</dt><dd class="domain-mono">{{ certificate.keyAlgorithm || '—' }}</dd></div><div><dt>Private Key</dt><dd><el-tag :type="certificate.hasPrivateKey?'success':'info'" effect="plain">{{ certificate.hasPrivateKey?'암호화 저장됨':'저장 안 됨' }}</el-tag></dd></div>
-            <div class="cert-wide"><dt>시리얼 번호</dt><dd class="domain-mono cert-break">{{ certificate.serialNumber || '—' }}</dd></div><div class="cert-wide"><dt>SHA-256 Fingerprint</dt><dd class="domain-mono cert-break">{{ certificate.fingerprintSha256 || '—' }}</dd></div>
+            <div><dt>Main Domain</dt><dd class="domain-mono">{{ certificate.mainDomain }}</dd></div><div><dt>{{ dt('certTypeLabel') }}</dt><dd>{{ typeLabels[certificate.type] || certificate.type }}</dd></div>
+            <div><dt>Source</dt><dd>{{ sourceLabels[certificate.source] || certificate.source }}</dd></div><div><dt>{{ dt('issuer') }}</dt><dd>{{ certificate.issuer || '—' }}</dd></div>
+            <div><dt>{{ dt('notBeforeLabel') }}</dt><dd>{{ formatDate(certificate.notBefore) }}</dd></div><div><dt>{{ dt('notAfterLabel') }}</dt><dd>{{ formatDate(certificate.notAfter) }}</dd></div>
+            <div><dt>{{ dt('keyAlgorithm') }}</dt><dd class="domain-mono">{{ certificate.keyAlgorithm || '—' }}</dd></div><div><dt>Private Key</dt><dd><el-tag :type="certificate.hasPrivateKey?'success':'info'" effect="plain">{{ certificate.hasPrivateKey?dt('keyStoredEncrypted'):dt('keyNotStored') }}</el-tag></dd></div>
+            <div class="cert-wide"><dt>{{ dt('serialNumber') }}</dt><dd class="domain-mono cert-break">{{ certificate.serialNumber || '—' }}</dd></div><div class="cert-wide"><dt>SHA-256 Fingerprint</dt><dd class="domain-mono cert-break">{{ certificate.fingerprintSha256 || '—' }}</dd></div>
           </dl>
         </article>
 
         <article class="cert-card">
-          <div class="cert-card-head"><div><span>클라우드 사본</span><h3>동기화 상태</h3></div><el-tag :type="certificate.cloudSyncStatus==='SYNCED'?'success':certificate.cloudSyncStatus==='FAILED'?'danger':'info'" effect="plain">{{ syncLabel(certificate.cloudSyncStatus) }}</el-tag></div>
-          <dl class="cert-stack"><div><dt>Cloud Provider</dt><dd>{{ providerLabel(certificate.provider) }}</dd></div><div><dt>DNS / Cloud Account</dt><dd>{{ certificate.dnsAccountName || '—' }}</dd></div><div><dt>클라우드 인증서 ID</dt><dd class="domain-mono cert-break">{{ certificate.cloudCertificateId || '—' }}</dd></div><div><dt>마지막 동기화</dt><dd>{{ formatDate(certificate.lastSyncAt) }}</dd></div></dl>
+          <div class="cert-card-head"><div><span>{{ dt('cloudCopyTitle') }}</span><h3>{{ dt('syncStatusTitle') }}</h3></div><el-tag :type="certificate.cloudSyncStatus==='SYNCED'?'success':certificate.cloudSyncStatus==='FAILED'?'danger':'info'" effect="plain">{{ syncLabel(certificate.cloudSyncStatus) }}</el-tag></div>
+          <dl class="cert-stack"><div><dt>Cloud Provider</dt><dd>{{ providerLabel(certificate.provider) }}</dd></div><div><dt>DNS / Cloud Account</dt><dd>{{ certificate.dnsAccountName || '—' }}</dd></div><div><dt>{{ dt('cloudCertId') }}</dt><dd class="domain-mono cert-break">{{ certificate.cloudCertificateId || '—' }}</dd></div><div><dt>{{ dt('lastSync') }}</dt><dd>{{ formatDate(certificate.lastSyncAt) }}</dd></div></dl>
           <el-alert v-if="certificate.lastSyncError" :title="certificate.lastSyncError" type="error" :closable="false" show-icon />
         </article>
 
         <article class="cert-card">
-          <div class="cert-card-head"><div><span>갱신 정책</span><h3>자동 갱신</h3></div><el-switch v-model="renewForm.autoRenew" :disabled="certificate.source!=='ACME'" /></div>
-          <el-form label-position="top"><el-form-item label="만료 며칠 전에 갱신 시작"><el-input-number v-model="renewForm.renewBeforeDays" :min="1" :max="90" :disabled="certificate.source!=='ACME'" /><span class="cert-unit">일</span></el-form-item><el-form-item label="ACME CA"><span class="domain-mono">{{ certificate.acmeCa || '—' }}</span></el-form-item><el-button v-if="certificate.source==='ACME'" v-permission="'domains:ssl:settings'" type="primary" :loading="saving" @click="saveRenewSettings">갱신 정책 저장</el-button><div v-else class="domain-form-tip">클라우드 동기화 및 수동 업로드 인증서는 플랫폼이 자동 갱신하지 않습니다.</div></el-form>
+          <div class="cert-card-head"><div><span>{{ dt('renewPolicyTitle') }}</span><h3>{{ dt('autoRenewLabel') }}</h3></div><el-switch v-model="renewForm.autoRenew" :disabled="certificate.source!=='ACME'" /></div>
+          <el-form label-position="top"><el-form-item :label="dt('renewStartDaysBefore')"><el-input-number v-model="renewForm.renewBeforeDays" :min="1" :max="90" :disabled="certificate.source!=='ACME'" /><span class="cert-unit">{{ dt('dayUnit') }}</span></el-form-item><el-form-item label="ACME CA"><span class="domain-mono">{{ certificate.acmeCa || '—' }}</span></el-form-item><el-button v-if="certificate.source==='ACME'" v-permission="'domains:ssl:settings'" type="primary" :loading="saving" @click="saveRenewSettings">{{ dt('saveRenewPolicy') }}</el-button><div v-else class="domain-form-tip">{{ dt('noAutoRenewTip') }}</div></el-form>
           <el-alert v-if="certificate.lastRenewError" :title="certificate.lastRenewError" type="error" :closable="false" show-icon />
         </article>
       </div>
 
       <article class="cert-card cert-tasks">
-        <div class="cert-card-head"><div><span>실행 기록</span><h3>인증서 Task</h3></div><el-button link @click="loadTasks">새로고침</el-button></div>
-        <el-table :data="tasks" border><el-table-column label="Task" width="130"><template #default="{row}">{{ taskLabels[row.taskType] || row.taskType }}</template></el-table-column><el-table-column label="진행률" min-width="210"><template #default="{row}"><div class="task-progress"><el-progress :percentage="row.progress" :status="row.status==='FAILED'?'exception':row.status==='SUCCESS'?'success':''" /><small>{{ stageLabels[row.stage] || row.stage }}</small></div></template></el-table-column><el-table-column prop="username" label="작업자" width="120"/><el-table-column label="시작 시각" width="180"><template #default="{row}">{{ formatDate(row.startedAt || row.createdAt) }}</template></el-table-column><el-table-column label="완료 시각" width="180"><template #default="{row}">{{ formatDate(row.finishedAt) }}</template></el-table-column><el-table-column prop="errorMessage" label="실패 원인" min-width="220" show-overflow-tooltip /></el-table>
+        <div class="cert-card-head"><div><span>{{ dt('executionHistory') }}</span><h3>{{ dt('certTaskTitle') }}</h3></div><el-button link @click="loadTasks">{{ dt('refresh') }}</el-button></div>
+        <el-table :data="tasks" border><el-table-column label="Task" width="130"><template #default="{row}">{{ taskLabels[row.taskType] || row.taskType }}</template></el-table-column><el-table-column :label="dt('progressCol')" min-width="210"><template #default="{row}"><div class="task-progress"><el-progress :percentage="row.progress" :status="row.status==='FAILED'?'exception':row.status==='SUCCESS'?'success':''" /><small>{{ stageLabels[row.stage] || row.stage }}</small></div></template></el-table-column><el-table-column prop="username" :label="dt('operatorShort')" width="120"/><el-table-column :label="dt('startedAtLabel')" width="180"><template #default="{row}">{{ formatDate(row.startedAt || row.createdAt) }}</template></el-table-column><el-table-column :label="dt('finishedAtLabel')" width="180"><template #default="{row}">{{ formatDate(row.finishedAt) }}</template></el-table-column><el-table-column prop="errorMessage" :label="dt('failReason')" min-width="220" show-overflow-tooltip /></el-table>
       </article>
 
-      <div class="cert-footnote">생성 {{ formatDate(certificate.createdAt) }} · 마지막 업데이트 {{ formatDate(certificate.updatedAt) }} · 생성자 {{ certificate.createdBy || '—' }}</div>
+      <div class="cert-footnote">{{ dt('certFootnote', { created: formatDate(certificate.createdAt), updated: formatDate(certificate.updatedAt), by: certificate.createdBy || '—' }) }}</div>
     </template>
   </section>
 </template>
