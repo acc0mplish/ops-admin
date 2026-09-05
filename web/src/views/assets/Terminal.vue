@@ -126,7 +126,10 @@ async function connectSocket(id) {
   }
   // Re-run after the mint await: a reconnect double-click while suspended must
   // leave exactly one live socket — this resume tears down whatever a previous
-  // resume created before dialing its own.
+  // resume created before dialing its own. Liveness guard: if the tab was
+  // closed or the session disposed during the await, do not dial into a stale
+  // runtime (orphaned WS + backend SSH residue — ④review N-1).
+  if (!sessions.value.some((item) => item.id === id) || runtimes.get(id) !== runtime) return
   disconnectSession(id, false)
   updateSession(id, { status: 'connecting' })
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'

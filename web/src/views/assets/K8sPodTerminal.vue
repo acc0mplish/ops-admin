@@ -31,15 +31,19 @@ function syncTerminalSize() {
 async function loadContainers(){const list=await queryK8sPodContainers(clusterId.value,namespace.value,podName.value);containers.value=Array.isArray(list)?list:[];if(!containers.value.length){ElMessage.warning(kt('noAvailableContainer'));return}if(!containers.value.includes(selectedContainer.value))selectedContainer.value=containers.value[0]}
 async function connectTerminal(){
   if(!selectedContainer.value){ElMessage.warning(kt('selectContainerFirst'));return}
+  const container=selectedContainer.value
   disconnectTerminal();connecting.value=true
   // One-time console ticket (§4.8): minted per dial, consumed by the WS gate.
   let ticket
   try{ticket=(await mintK8sPodTerminalTicket({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value})).ticket}catch{connecting.value=false;connected.value=false;term?.writeln(`\r\n\x1b[31m${kt('terminalConnectionFailed')}\x1b[0m`);return}
   // Re-run after the mint await: a container switch or reconnect click while
   // suspended must leave exactly one live socket — this resume tears down
-  // whatever a previous resume created before dialing its own.
+  // whatever a previous resume created before dialing its own. Liveness
+  // guard: dial only while this container selection is still current
+  // (④review N-1 — no orphan WS into a disposed terminal).
+  if(container!==selectedContainer.value||!clusterId.value||!namespace.value||!podName.value)return
   disconnectTerminal();connecting.value=true
-  const currentSocket=new WebSocket(buildK8sPodTerminalWSUrl({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value,container:selectedContainer.value,rows:term?.rows||32,cols:term?.cols||120,ticket}))
+  const currentSocket=new WebSocket(buildK8sPodTerminalWSUrl({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value,container,rows:term?.rows||32,cols:term?.cols||120,ticket}))
   socket=currentSocket
   socket.onopen=()=>{if (socket !== currentSocket) return;connecting.value=false;connected.value=true;term?.clear();term?.writeln(`\x1b[32m${kt('connectedTo',{namespace:namespace.value,pod:podName.value})}\x1b[0m`);term?.writeln(`\x1b[36m${kt('container')}: ${selectedContainer.value}\x1b[0m`);term?.writeln('');syncTerminalSize()}
   socket.onmessage=(event)=>{if (socket !== currentSocket) return;try{const payload=JSON.parse(event.data);if(payload?.operation==='stdout'&&payload.data){term?.write(payload.data);return}}catch{}term?.write(event.data)}
