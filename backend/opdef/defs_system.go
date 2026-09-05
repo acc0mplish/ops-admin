@@ -16,6 +16,13 @@ var systemDefs = []Def{
 
 	{Method: http.MethodPost, Path: "/admin/ldap/sync", Permission: "system:admin:ldap-sync", Mutating: true, Risk: RiskMedium},
 
+	// POST /console-sessions mints the one-time terminal tickets of §4.8.
+	// The endpoint sits outside any single domain, so the AnyOf set is the
+	// union of the terminal button vocabularies; the handler re-verifies the
+	// resource-specific permission (M-1) because AnyOf alone would let a
+	// pod-terminal role mint host tickets.
+	{Method: http.MethodPost, Path: "/console-sessions", AnyOf: []string{"assets:host:terminal", "assets:k8s:pod:terminal"}, Mutating: true, Risk: RiskHigh},
+
 	{Method: http.MethodGet, Path: "/admin/list", Permission: "system:admin:list", Risk: RiskLow},
 	{Method: http.MethodGet, Path: "/admin/info", Permission: "system:admin:list", Risk: RiskLow},
 	{Method: http.MethodPost, Path: "/admin/add", Permission: "system:admin:add", Mutating: true, Risk: RiskMedium},

@@ -66,6 +66,9 @@ var assetDefs = []Def{
 	{Method: http.MethodGet, Path: "/asset/service/diagnosis/processes", Permission: "assets:service:diagnosis", Risk: RiskLow},
 	{Method: http.MethodGet, Path: "/asset/service/diagnosis/environment", Permission: "assets:service:diagnosis", Risk: RiskLow},
 	{Method: http.MethodGet, Path: "/asset/service/diagnosis/run", Permission: "assets:service:diagnosis", Risk: RiskLow},
+	// POST replacement route of the §4.9 mutating-GET conversion: same
+	// permission string, so existing grants carry over with zero lockout.
+	{Method: http.MethodPost, Path: "/asset/service/diagnosis/run", Permission: "assets:service:diagnosis", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/asset/service/diagnosis/arthas/download", Permission: "assets:service:arthas", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/asset/service/diagnosis/arthas/upload", Permission: "assets:service:arthas", Mutating: true, Risk: RiskMedium},
 

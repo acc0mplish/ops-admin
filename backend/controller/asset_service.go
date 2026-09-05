@@ -35,9 +35,12 @@ func (ctl *Controller) GetAssetServiceDiagnosisEnvironment(c *gin.Context) {
 	}
 	httpx.Success(c, data)
 }
+// RunAssetServiceDiagnosis answers the POST replacement route of the §4.9
+// mutating-GET conversion; the target struct carries both json and form tags,
+// so only the binding changed and the service logic is untouched.
 func (ctl *Controller) RunAssetServiceDiagnosis(c *gin.Context) {
 	var target service.AssetServiceDiagnosisTarget
-	if err := c.ShouldBindQuery(&target); err != nil {
+	if err := c.ShouldBindJSON(&target); err != nil {
 		httpx.FailedCode(c, 400, "INVALID_DIAGNOSIS_TARGET", nil)
 		return
 	}
@@ -47,6 +50,15 @@ func (ctl *Controller) RunAssetServiceDiagnosis(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, data)
+}
+
+// AssetServiceDiagnosisRunGone answers the retired GET form of the diagnosis
+// run endpoint for one release with 410 Gone plus headers naming the POST
+// replacement — external scripts and bookmarks are the remaining audience.
+func (ctl *Controller) AssetServiceDiagnosisRunGone(c *gin.Context) {
+	c.Header("Allow", http.MethodPost)
+	c.Header("Location", "/api/v1/asset/service/diagnosis/run")
+	httpx.FailedCode(c, http.StatusGone, "DIAGNOSIS_RUN_MOVED_TO_POST", nil)
 }
 func (ctl *Controller) DownloadAssetServiceArthas(c *gin.Context) {
 	var target service.AssetServiceDiagnosisTarget
