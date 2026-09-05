@@ -1489,8 +1489,8 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="execMeta.sqlType" class="exec-meta">
-            <span>Type：{{ execMeta.sqlType }}</span>
-            <span>Affected Rows：{{ execMeta.rowsAffected }}</span>
+            <span>Type: {{ execMeta.sqlType }}</span>
+            <span>Affected Rows: {{ execMeta.rowsAffected }}</span>
             <span>Duration: {{ execMeta.durationMs }} ms</span>
           </div>
         </div>

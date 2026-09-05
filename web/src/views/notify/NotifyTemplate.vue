@@ -248,7 +248,7 @@ async function submit() {
     return
   }
   if (!form.scope || form.scope === 'all') {
-    ElMessage.warning('메시지 Template에 구체적인 적용 시나리오를 지정하십시오.')
+    ElMessage.warning('적용 시나리오를 구체적으로 지정하십시오.')
     return
   }
   saving.value = true

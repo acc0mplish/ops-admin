@@ -426,10 +426,10 @@ function exportInspectionReportPdf() {
         <button class="no-print" onclick="window.print()" style="float:right;padding:8px 14px;">인쇄 / PDF 저장</button>
         <h1>${escapeHtml(activeDashboard.value.name)} Inspection Report</h1>
         <div class="meta">
-          <span>생성 시각：${escapeHtml(now)}</span>
-          <span>Query Datasource：${escapeHtml(currentDatasourceName)}</span>
-          <span>Dashboard 상태：${escapeHtml(dashboardHealth.value.text)}</span>
-          <span>Refresh 주기：${autoRefreshSeconds.value ? `${autoRefreshSeconds.value}s` : '꺼짐'}</span>
+          <span>생성 시각: ${escapeHtml(now)}</span>
+          <span>Query Datasource: ${escapeHtml(currentDatasourceName)}</span>
+          <span>Dashboard 상태: ${escapeHtml(dashboardHealth.value.text)}</span>
+          <span>Refresh 주기: ${autoRefreshSeconds.value ? `${autoRefreshSeconds.value}s` : '꺼짐'}</span>
         </div>
         <div class="summary">
           <div class="card"><span>Panel 수</span><strong>${panels.value.length}</strong></div>

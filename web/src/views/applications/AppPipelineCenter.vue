@@ -247,7 +247,7 @@ async function loadExecutorHosts() {
 
 function executorHostLabel(host) {
   const address = host.sshIp || host.privateIp || host.publicIp || '-'
-  return `${host.hostName || `Host #${host.id}`}（${address}）`
+  return `${host.hostName || `Host #${host.id}`} (${address})`
 }
 
 function executorHostName(id) {
@@ -388,7 +388,7 @@ async function submitPipeline() {
       description: form.description,
       definitionJson: stringifyDefinition()
     })
-    ElMessage.success('저장성공')
+    ElMessage.success('저장 성공')
     editorVisible.value = false
     await loadData()
   } finally {
@@ -428,7 +428,7 @@ async function submitRun() {
     imageTag: runForm.imageTag,
     params
   })
-  ElMessage.success(`Pipeline실행 시작：#${data.runId}`)
+  ElMessage.success(`Pipeline 실행 시작: #${data.runId}`)
   runVisible.value = false
   await loadData()
   await openRunDetail(data.runId)
@@ -491,14 +491,14 @@ async function toggleStatus(row) {
 
 async function copyPipeline(row) {
   await copyOpsAppPipeline(row.id)
-  ElMessage.success('복제성공')
+  ElMessage.success('복제 성공')
   await loadData()
 }
 
 async function removePipeline(row) {
   await ElMessageBox.confirm(`Pipeline “${row.name}”과 해당 Run History를 삭제하시겠습니까?`, 'Pipeline 삭제', { type: 'warning' })
   await deleteOpsAppPipeline(row.id)
-  ElMessage.success('삭제성공')
+  ElMessage.success('삭제 성공')
   await loadData()
 }
 
@@ -761,7 +761,7 @@ onBeforeUnmount(stopRunRefresh)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editorVisible" :title="form.id ? '수정Pipeline' : '새 Pipeline'" width="1180px" class="pipeline-editor">
+    <el-dialog v-model="editorVisible" :title="form.id ? 'Pipeline 수정' : '새 Pipeline'" width="1180px" class="pipeline-editor">
       <el-form label-width="100px">
         <div class="form-grid">
           <el-form-item label="Pipeline 이름" required><el-input v-model="form.name" placeholder="입력하십시오: Pipeline 이름" /></el-form-item>
@@ -857,7 +857,7 @@ onBeforeUnmount(stopRunRefresh)
           <div v-else-if="stage.type === 'dockerBuild'" class="image-stage-config">
             <div class="image-stage-title"><span class="image-stage-badge build">01</span><div><strong>Image Artifact 정의</strong><small>Build Image Tag는 Registry Address / Namespace / Application Code : Branch-Time 형식으로 자동 생성됩니다.</small></div></div>
             <div class="image-stage-fields build-fields">
-              <label><span>Target Image Registry</span><el-select v-model="stage.config.registryId" filterable placeholder="Build 후 사용할 Image Registry 선택"><el-option v-for="registry in imageRegistryOptions" :key="registry.id" :label="`${registry.name}（${registry.address}${registry.namespace ? '/' + registry.namespace : ''}）`" :value="registry.id" /></el-select></label>
+              <label><span>Target Image Registry</span><el-select v-model="stage.config.registryId" filterable placeholder="Build 후 사용할 Image Registry 선택"><el-option v-for="registry in imageRegistryOptions" :key="registry.id" :label="`${registry.name} (${registry.address}${registry.namespace ? '/' + registry.namespace : ''})`" :value="registry.id" /></el-select></label>
               <label><span>Dockerfile</span><el-input v-model="stage.config.dockerfile" placeholder="Dockerfile" /></label>
               <label><span>Build Context</span><el-input v-model="stage.config.context" placeholder="." /></label>
             </div>
@@ -869,7 +869,7 @@ onBeforeUnmount(stopRunRefresh)
               <label><span>Image Source</span><el-select v-model="stage.config.sourceStageId" filterable placeholder="이전 Image Build Stage 선택"><el-option v-for="buildStage in dockerBuildStages(stage.id)" :key="buildStage.id" :label="`${buildStage.name} · ${registryName(buildStage.config.registryId)}`" :value="buildStage.id" /></el-select></label>
               <label><span>Login 방식</span><el-radio-group v-model="stage.config.loginMode" class="login-mode-group"><el-radio-button value="registry">Image Registry Credential</el-radio-button><el-radio-button value="executor">실행 Node Login 사용</el-radio-button></el-radio-group></label>
             </div>
-            <div class="image-stage-tip"><span>✓</span><p><b>Image Registry Credential 사용 권장</b>：Image Registry Page에서 Account와 Password를 읽습니다. “실행 Node Login 사용”을 선택하면 Platform은 docker login을 실행하지 않습니다.</p></div>
+            <div class="image-stage-tip"><span>✓</span><p><b>Image Registry Credential 사용 권장</b>: Image Registry Page에서 Account와 Password를 읽습니다. “실행 Node Login 사용”을 선택하면 Platform은 docker login을 실행하지 않습니다.</p></div>
           </div>
           <div v-else-if="stage.type === 'k8sDeploy'" class="delivery-stage-config">
             <div class="delivery-stage-title"><b>Deploy Target</b><span>실행 Node의 kubectl로 Workload Image Update와 Health Check를 수행합니다.</span></div>
@@ -878,7 +878,7 @@ onBeforeUnmount(stopRunRefresh)
               <el-option
                 v-for="cluster in k8sClusterOptions"
                 :key="cluster.id"
-                :label="`${cluster.name}（${cluster.statusText || cluster.status || '-'} / ${cluster.version || '-'}）`"
+                :label="`${cluster.name} (${cluster.statusText || cluster.status || '-'} / ${cluster.version || '-'})`"
                 :value="cluster.id"
               />
             </el-select></label>
@@ -899,7 +899,7 @@ onBeforeUnmount(stopRunRefresh)
           <div v-else-if="stage.type === 'notify'" class="stage-notify-config">
             <div class="stage-note notify-note"><b>Pipeline Notification 전송</b><p>선택한 Rule로 Delivery Task를 생성하며 결과는 Notification / Send Log에서 확인할 수 있습니다.</p></div>
             <label><span>Notification Rule</span><el-select v-model="stage.config.notifyRuleId" filterable placeholder="CI/CD Pipeline Notification Rule 선택">
-              <el-option v-for="rule in notifyRuleOptions" :key="rule.id" :label="`${rule.name}（${rule.channelIds?.length || 0} 개 Channel）`" :value="rule.id" />
+              <el-option v-for="rule in notifyRuleOptions" :key="rule.id" :label="`${rule.name} (${rule.channelIds?.length || 0}개 Channel)`" :value="rule.id" />
             </el-select></label>
           </div>
           <div class="stage-card-footer">
@@ -927,7 +927,7 @@ onBeforeUnmount(stopRunRefresh)
         </el-form-item>
         <el-form-item label="Branch/Tag"><el-input v-model="runForm.branch" /></el-form-item>
         <el-form-item label="Image Version"><el-input :model-value="'자동 생성: ' + (runForm.branch || 'main').replace(/[^a-zA-Z0-9_.-]+/g, '-') + '-YYYYMMDDHHmmss'" disabled /></el-form-item>
-        <el-form-item label="Custom Parameter"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" placeholder='예：{"version":"1.0.0"}' /></el-form-item>
+        <el-form-item label="Custom Parameter"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" placeholder='예: {"version":"1.0.0"}' /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="runVisible = false">취소</el-button>

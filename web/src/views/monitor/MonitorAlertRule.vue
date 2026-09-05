@@ -443,8 +443,8 @@ async function importSelectedTemplates() {
     }
     if (failed.length) {
       await ElMessageBox.alert(
-        failed.map((item) => `${item.template.name}：${item.message}`).join('\n'),
-        `${failed.length} 개 Rule생성 실패`,
+        failed.map((item) => `${item.template.name}: ${item.message}`).join('\n'),
+        `${failed.length}개 Rule 생성 실패`,
         { type: 'error', confirmButtonText: '검토로 돌아가기' }
       )
       restoreTemplateSelection()
@@ -903,7 +903,7 @@ onMounted(async () => {
       <template #footer>
         <div class="template-dialog-footer">
           <div class="template-selection-summary"><span>선택됨 <b>{{ selectedManagedTemplates.length }}</b> 개 Template</span><el-button v-if="selectedManagedTemplates.length" link type="primary" @click="clearTemplateSelection">선택 초기화</el-button></div>
-          <div><el-button @click="templateDialogVisible = false">취소</el-button><el-button type="primary" :loading="templateImporting" :disabled="!selectedManagedTemplates.length" @click="importSelectedTemplates">Rule 일괄 생성<span v-if="selectedManagedTemplates.length">（{{ selectedManagedTemplates.length }}）</span></el-button></div>
+          <div><el-button @click="templateDialogVisible = false">취소</el-button><el-button type="primary" :loading="templateImporting" :disabled="!selectedManagedTemplates.length" @click="importSelectedTemplates">Rule 일괄 생성<span v-if="selectedManagedTemplates.length"> ({{ selectedManagedTemplates.length }})</span></el-button></div>
         </div>
       </template>
     </el-dialog>

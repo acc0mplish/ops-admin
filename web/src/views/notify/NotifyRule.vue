@@ -74,7 +74,7 @@ const wizardSteps = [
 ]
 const routeWarnings = computed(() => {
   const warnings = []
-  if (!form.scope || form.scope === 'all') warnings.push('구체적인 비즈니스 시나리오를 지정하십시오')
+  if (!form.scope || form.scope === 'all') warnings.push('적용 시나리오를 구체적으로 지정하십시오')
   if (!form.events.length) warnings.push('하나 이상의 트리거 Event를 선택하십시오')
   if (!selectedTemplate.value) warnings.push('메시지 Template을 선택하십시오')
   if (selectedTemplate.value && !compatibleTemplateOptions.value.some((item) => Number(item.id) === Number(selectedTemplate.value.id))) {

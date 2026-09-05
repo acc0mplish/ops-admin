@@ -6615,7 +6615,7 @@ Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / 시간 범위, Alert, Datasource, 담당자
 ├─ Title + 13px description
 └─ Primary: 새로고침, 시간 범위 전환
@@ -6698,7 +6698,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / 시각, Alert, Resource, 지역
 ├─ Title + 13px description
 └─ Primary: 전체 화면, 새로고침
@@ -6781,7 +6781,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Datasource, Health, 오류
 ├─ Title + 13px description
 └─ Primary: Datasource 추가, 테스트
@@ -6865,7 +6865,7 @@ Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch acti
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Datasource, Query, 시각, Metric
 ├─ Title + 13px description
 └─ Primary: 실행, Query 저장
@@ -6948,7 +6948,7 @@ Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Datasource, 시각, Service, Log Level
 ├─ Title + 13px description
 └─ Primary: 조회, 저장, Context 펼치기
@@ -7032,7 +7032,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Service, 시각, 소요 시간, 오류
 ├─ Title + 13px description
 └─ Primary: 조회, 상세 보기
@@ -7115,7 +7115,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Trace, Service, Span, 오류, Log
 ├─ Title + 13px description
 └─ Primary: 뒤로 가기, Span 보기
@@ -7198,7 +7198,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Datasource, 표현식, 등급, Notification
 ├─ Title + 13px description
 └─ Primary: Rule 추가, 일괄 작업
@@ -7282,7 +7282,7 @@ Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch acti
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Service, Alert, 담당자, 지속 시간
 ├─ Title + 13px description
 └─ Primary: 인계, 종료, 상세 보기
@@ -7366,7 +7366,7 @@ Filter Toolbar\n├─ Search + core filters\n└─ Reset / export / batch acti
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Rule, 시간 창, 매칭 Label
 ├─ Title + 13px description
 └─ Primary: 차단 추가
@@ -7449,7 +7449,7 @@ Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / Label, 창, Notification
 ├─ Title + 13px description
 └─ Primary: Rule 추가
@@ -7532,7 +7532,7 @@ Primary Content Area\n├─ 핵심 정보 또는 시각화 작업 영역\n└�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / 시각, Panel, Metric, Health
 ├─ Title + 13px description
 └─ Primary: Panel 전환, 전체 화면, 새로고침
@@ -7615,7 +7615,7 @@ Workspace Context / Control Bar\n├─ 현재 범위, 새로고침 또는 연�
 ### 3. 전체 레이아웃 설계
 
 ```text
-Page Header（24px page padding）
+Page Header (24px page padding)
 ├─ Breadcrumb / 시각, Panel, Health, 이상
 ├─ Title + 13px description
 └─ Primary: 필터링, Report 내보내기

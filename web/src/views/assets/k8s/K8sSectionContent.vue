@@ -195,8 +195,8 @@ defineProps({
           <div class="service-name-cell">
             <span class="service-name-icon"><el-icon><Connection /></el-icon></span>
             <el-button link class="service-name-link" @click="page.openServiceDetail(row)">{{ row.name }}</el-button>
-            <el-tooltip content="Service 이름 복제" placement="top">
-              <el-button link class="service-copy-button" aria-label="Service 이름 복제" @click="page.copyServiceName(row)">
+            <el-tooltip content="Service 이름 복사" placement="top">
+              <el-button link class="service-copy-button" aria-label="Service 이름 복사" @click="page.copyServiceName(row)">
                 <el-icon><CopyDocument /></el-icon>
               </el-button>
             </el-tooltip>

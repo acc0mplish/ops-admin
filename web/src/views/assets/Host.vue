@@ -805,7 +805,7 @@ watch(
               v-for="item in filteredCloudAccounts"
               :key="item.id"
               :value="item.id"
-              :label="`${item.name}（${(item.regions?.length ? item.regions : (item.region ? item.region.split(/[,，;；\s]+/).filter(Boolean) : [])).join('、')}）`"
+              :label="`${item.name} (${(item.regions?.length ? item.regions : (item.region ? item.region.split(/[,，;；\s]+/).filter(Boolean) : [])).join(', ')})`"
             />
           </el-select>
         </el-form-item>

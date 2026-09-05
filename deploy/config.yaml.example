@@ -12,7 +12,7 @@ db:
   log-mode: false
 
 security:
-  # 使用至少 32 字节的独立随机字符串；投入使用后禁止更换。
+  # 최소 32바이트 이상의 고유한 랜덤 문자열을 사용하십시오. 운영 투입 후에는 교체하지 마십시오.
   credential-key: replace_with_a_stable_random_key_at_least_32_bytes
 
 ssl:

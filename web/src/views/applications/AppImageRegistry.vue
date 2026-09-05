@@ -18,7 +18,7 @@ onMounted(loadData)
 
 <template>
   <div class="registry-page">
-    <section class="registry-hero"><div><span>CONTAINER IMAGE DELIVERY</span><h1>{{ apt('imageRegistry') }}</h1><p>{{ apt('imageRegistryDesc') }}</p></div><el-button class="create-registry-button" @click="openCreate"><span class="create-registry-icon">＋</span>{{ apt('addRegistry') }}</el-button></section>
+    <section class="registry-hero"><div><span>CONTAINER IMAGE DELIVERY</span><h1>{{ apt('imageRegistry') }}</h1><p>{{ apt('imageRegistryDesc') }}</p></div><el-button class="create-registry-button" @click="openCreate"><span class="create-registry-icon">+</span>{{ apt('addRegistry') }}</el-button></section>
     <section class="registry-card">
       <div class="registry-card-head"><div><strong>{{ apt('registryList') }}</strong><span>{{ apt('imageFormat') }}</span></div><el-button link @click="loadData">{{ apt('refresh') }}</el-button></div>
       <el-table :data="rows" v-loading="loading" :empty-text="apt('noRegistries')">
