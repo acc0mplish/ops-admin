@@ -3,7 +3,6 @@ name: Korean localization guard
 on:
   push:
     branches:
-      - localize/ko-KR-adversarial
       - main
   pull_request:
 
