@@ -48,8 +48,10 @@ func (ctl *Controller) CreateConsoleSession(c *gin.Context) {
 		httpx.Failed(c, http.StatusBadRequest, "invalid console session payload")
 		return
 	}
-	// Contract order: bind → canonical binding key (which also rejects the
-	// unknown protocol/resourceType pairs) → resource permission (M-1) → mint.
+	// Contract order: bind → canonical binding key (normalizes the resource ID;
+	// unknown resourceType pairs are rejected here, but protocol pairing is
+	// validated inside mint, after the M-1 permission check) → resource
+	// permission (M-1) → mint.
 	resourceID, err := service.CanonicalConsoleResourceID(req.ResourceType, req.ResourceID)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())

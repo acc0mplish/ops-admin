@@ -53,7 +53,14 @@ type MintedConsoleTicket struct {
 // consumption (the WS query parameters) funnel through this single function
 // so raw forms such as "0123" or "+123" denote the same bound resource as
 // "123" instead of mapping to a phantom one.
+// canonicalResourceMaxLen bounds the canonical key length so an authorized
+// caller cannot force deterministic DB errors with oversized IDs (④review F-4).
+const canonicalResourceMaxLen = 128
+
 func CanonicalConsoleResourceID(resourceType string, raw string) (string, error) {
+	if len(raw) > canonicalResourceMaxLen {
+		return "", ErrConsoleResourceInvalid
+	}
 	switch resourceType {
 	case ConsoleResourceAssetHost:
 		parsed, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
