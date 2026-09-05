@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { opsAppReleaseInfo, queryOpsApplicationOptions, queryOpsAppReleaseList, retryOpsAppRelease } from '../../api/ops'
+import { apt } from '../../utils/application-i18n'
 
 const route = useRoute()
 const loading = ref(false)
@@ -33,11 +34,11 @@ function search() { query.pageNum = 1; loadData() }
 function reset() { Object.assign(query, { pageNum: 1, appId: undefined, env: '', status: '', keyword: '' }); dateRange.value = []; loadData() }
 function toggleStatus(status) { query.status = query.status === status ? '' : status; search() }
 function statusType(status) { return ({ success: 'success', running: 'warning', failed: 'danger', waiting: 'info' })[status] || 'info' }
-function statusText(status) { return ({ success: '성공', running: '실행 중', failed: '실패', waiting: '대기' })[status] || status || '-' }
-function stageText(stage) { return ({ checkout: 'Source Checkout', build: 'Build', post_build: 'Build 후 작업', prepare: '실행 준비', done: '완료' })[stage] || stage || '-' }
+function statusText(status) { return ({ success: apt('statusSuccess'), running: apt('statusRunning'), failed: apt('statusFailed'), waiting: apt('statusWaitingShort') })[status] || status || '-' }
+function stageText(stage) { return ({ checkout: 'Source Checkout', build: 'Build', post_build: apt('postBuildTitle'), prepare: apt('stagePrepare'), done: apt('stageDone') })[stage] || stage || '-' }
 function sourceText(row) { return row.repoType === 'svn' ? 'SVN Update' : 'Git Checkout' }
 function versionText(row) { return row.repoType === 'svn' ? (row.branch || 'HEAD') : (row.branch || '-') }
-function durationText(ms) { if (!ms) return '-'; const seconds = Math.max(0, Math.round(ms / 1000)); return seconds < 60 ? `${seconds}초` : `${Math.floor(seconds / 60)}분${seconds % 60}초` }
+function durationText(ms) { if (!ms) return '-'; const seconds = Math.max(0, Math.round(ms / 1000)); return seconds < 60 ? apt('durationSecondsCompact', { seconds }) : apt('durationMinutesCompact', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 }) }
 function releaseTitle(row) { return `${row.buildTaskName || row.appName || 'Build Task'} #${row.id || ''}` }
 function stages(row) {
   const stateFor = (name) => {
@@ -47,7 +48,7 @@ function stages(row) {
     return row.status === 'waiting' ? 'waiting' : 'success'
   }
   const list = [{ key: 'checkout', name: sourceText(row) }, { key: 'build', name: 'Build' }]
-  if (row.deployLog || row.stage === 'post_build') list.push({ key: 'post_build', name: 'Build 후 작업' })
+  if (row.deployLog || row.stage === 'post_build') list.push({ key: 'post_build', name: apt('postBuildTitle') })
   return list.map((item) => ({ ...item, status: stateFor(item.key) }))
 }
 const detailLogs = computed(() => {
@@ -92,12 +93,12 @@ async function openDetail(row) {
   } finally { detailLoading.value = false }
 }
 async function retry(row) {
-  await ElMessageBox.confirm(`"${releaseTitle(row)}"의 Task, Branch와 원본 Parameter로 Build를 다시 실행합니다.`, 'Build 재시도 확인', { type: 'warning', confirmButtonText: '즉시 재시도' })
+  await ElMessageBox.confirm(apt('retryConfirm', { title: releaseTitle(row) }), apt('retryConfirmTitle'), { type: 'warning', confirmButtonText: apt('retryNow') })
   await retryOpsAppRelease(row.id)
-  ElMessage.success('새 Build Task를 생성했습니다')
+  ElMessage.success(apt('retryTaskCreated'))
   await loadData()
 }
-async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('Log를 복사했습니다') }
+async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success(apt('logCopied')) }
 function downloadLog() { const blob = new Blob([detailLogs.value || ''], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = logFileName.value; link.click(); URL.revokeObjectURL(url) }
 watch(detailVisible, (visible) => { if (!visible) stopDetailPolling() })
 onBeforeUnmount(stopDetailPolling)
@@ -106,36 +107,36 @@ onMounted(async () => { if (route.query.appId) query.appId = Number(route.query.
 
 <template>
   <div class="history-page">
-    <div class="app-header"><div><h1>Build History</h1><p>Build 상태, 실패 원인과 전체 Log를 한 곳에서 확인합니다.</p></div><el-button @click="loadData">새로고침</el-button></div>
+    <div class="app-header"><div><h1>Build History</h1><p>{{ apt('historyHeroDesc') }}</p></div><el-button @click="loadData">{{ apt('refresh') }}</el-button></div>
     <section class="filter-panel">
       <div class="filter-main">
-        <el-select v-model="query.appId" clearable filterable placeholder="전체 Application"><el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select>
-        <el-select v-model="query.env" clearable placeholder="전체 Environment"><el-option label="dev" value="dev" /><el-option label="test" value="test" /><el-option label="prod" value="prod" /></el-select>
-        <el-date-picker v-model="dateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" start-placeholder="시작 시각" end-placeholder="종료 시각" />
-        <el-input v-model="query.keyword" clearable placeholder="Task, Version, Summary 검색" @keyup.enter="search" />
-        <el-button type="primary" @click="search">검색</el-button><el-button @click="reset">초기화</el-button>
+        <el-select v-model="query.appId" clearable filterable :placeholder="apt('allApplicationsPlaceholder')"><el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select>
+        <el-select v-model="query.env" clearable :placeholder="apt('allEnvironmentsPlaceholder')"><el-option label="dev" value="dev" /><el-option label="test" value="test" /><el-option label="prod" value="prod" /></el-select>
+        <el-date-picker v-model="dateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" range-separator="~" :start-placeholder="apt('startTimeCol')" :end-placeholder="apt('endTimeCol')" />
+        <el-input v-model="query.keyword" clearable :placeholder="apt('historySearchPlaceholder')" @keyup.enter="search" />
+        <el-button type="primary" @click="search">{{ apt('search') }}</el-button><el-button @click="reset">{{ apt('reset') }}</el-button>
       </div>
-      <div class="quick-filters"><span>빠른 필터</span><el-button :type="query.status === 'running' ? 'warning' : 'default'" plain @click="toggleStatus('running')">실행 중</el-button><el-button :type="query.status === 'failed' ? 'danger' : 'default'" plain @click="toggleStatus('failed')">실패만 보기</el-button><el-button :type="query.status === 'success' ? 'success' : 'default'" plain @click="toggleStatus('success')">성공만 보기</el-button></div>
+      <div class="quick-filters"><span>{{ apt('quickFilters') }}</span><el-button :type="query.status === 'running' ? 'warning' : 'default'" plain @click="toggleStatus('running')">{{ apt('statusRunning') }}</el-button><el-button :type="query.status === 'failed' ? 'danger' : 'default'" plain @click="toggleStatus('failed')">{{ apt('showFailuresOnly') }}</el-button><el-button :type="query.status === 'success' ? 'success' : 'default'" plain @click="toggleStatus('success')">{{ apt('showSuccessOnly') }}</el-button></div>
     </section>
     <section v-loading="loading" class="history-list">
-      <el-empty v-if="!rows.length" description="조건에 맞는 Build 기록이 없습니다" />
+      <el-empty v-if="!rows.length" :description="apt('emptyHistory')" />
       <el-table v-else :data="rows" class="history-table">
-        <el-table-column label="상태" width="104"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+        <el-table-column :label="apt('status')" width="104"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
         <el-table-column label="Task / Application" min-width="220"><template #default="{ row }"><div class="task-cell"><strong>{{ releaseTitle(row) }}</strong><span>{{ row.appName || '-' }} · {{ row.env || '-' }}</span></div></template></el-table-column>
-        <el-table-column label="Code Version" min-width="170"><template #default="{ row }"><div class="code-cell"><span>{{ row.repoType === 'svn' ? 'SVN' : 'Git' }} · {{ versionText(row) }}</span><code>{{ row.commitId || 'Commit Version 미확인' }}</code></div></template></el-table-column>
-        <el-table-column label="현재 Stage" min-width="220"><template #default="{ row }"><div class="stage-cell"><strong>{{ stageText(row.stage) }}</strong><span>{{ row.summary || '-' }}</span></div></template></el-table-column>
-        <el-table-column label="시작 시각" prop="createTime" width="190" /><el-table-column label="소요 시간" width="100"><template #default="{ row }">{{ durationText(row.durationMs) }}</template></el-table-column>
-        <el-table-column label="작업" width="156" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">상세 조회</el-button><el-button v-if="row.status === 'failed' && row.buildTaskId" link type="danger" @click="retry(row)">재시도</el-button></template></el-table-column>
+        <el-table-column label="Code Version" min-width="170"><template #default="{ row }"><div class="code-cell"><span>{{ row.repoType === 'svn' ? 'SVN' : 'Git' }} · {{ versionText(row) }}</span><code>{{ row.commitId || apt('commitUnknown') }}</code></div></template></el-table-column>
+        <el-table-column :label="apt('currentStageLabel')" min-width="220"><template #default="{ row }"><div class="stage-cell"><strong>{{ stageText(row.stage) }}</strong><span>{{ row.summary || '-' }}</span></div></template></el-table-column>
+        <el-table-column :label="apt('startTimeCol')" prop="createTime" width="190" /><el-table-column :label="apt('durationCol')" width="100"><template #default="{ row }">{{ durationText(row.durationMs) }}</template></el-table-column>
+        <el-table-column :label="apt('actions')" width="156" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openDetail(row)">{{ apt('detailView') }}</el-button><el-button v-if="row.status === 'failed' && row.buildTaskId" link type="danger" @click="retry(row)">{{ apt('retry') }}</el-button></template></el-table-column>
       </el-table>
       <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" :total="total" @current-change="loadData" @size-change="search" /></div>
     </section>
     <el-drawer v-model="detailVisible" :title="releaseTitle(currentDetail)" size="min(760px, 100vw)" class="build-detail-drawer">
       <div v-loading="detailLoading" class="detail-content"><template v-if="currentDetail.id">
-        <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>소요 시간 {{ durationText(currentDetail.durationMs) }}</strong></div>
-        <div class="detail-meta"><span>Application<b>{{ currentDetail.appName || '-' }}</b></span><span>Environment<b>{{ currentDetail.env || '-' }}</b></span><span>Code Version<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>Commit Version<b>{{ currentDetail.commitId || '-' }}</b></span><span>실행 Path<b>{{ currentDetail.workspace || '-' }}</b></span><span>시작 시각<b>{{ currentDetail.createTime || '-' }}</b></span></div>
-        <section class="detail-section"><div class="section-head"><strong>Build Stage</strong><span>현재: {{ stageText(currentDetail.stage) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
-        <section class="detail-section"><div class="section-head"><strong>전체 Log</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="Log 검색" /><el-button link type="primary" @click="copyLog">복사</el-button><el-button link type="primary" @click="downloadLog">Download</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || 'Log 출력 없음' }}</pre></section>
-        <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">원본 구성으로 재시도</el-button></div>
+        <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>{{ apt('durationPrefix', { duration: durationText(currentDetail.durationMs) }) }}</strong></div>
+        <div class="detail-meta"><span>Application<b>{{ currentDetail.appName || '-' }}</b></span><span>Environment<b>{{ currentDetail.env || '-' }}</b></span><span>Code Version<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>Commit Version<b>{{ currentDetail.commitId || '-' }}</b></span><span>{{ apt('executionPathLabel') }}<b>{{ currentDetail.workspace || '-' }}</b></span><span>{{ apt('startTimeCol') }}<b>{{ currentDetail.createTime || '-' }}</b></span></div>
+        <section class="detail-section"><div class="section-head"><strong>Build Stage</strong><span>{{ apt('currentStageNow', { stage: stageText(currentDetail.stage) }) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
+        <section class="detail-section"><div class="section-head"><strong>{{ apt('allLogsLabel') }}</strong><div><el-input v-model="logKeyword" clearable size="small" :placeholder="apt('logSearchPlaceholder')" /><el-button link type="primary" @click="copyLog">{{ apt('copyButton') }}</el-button><el-button link type="primary" @click="downloadLog">Download</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || apt('noLogOutput') }}</pre></section>
+        <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">{{ apt('retryOriginalConfig') }}</el-button></div>
       </template></div>
     </el-drawer>
   </div>
