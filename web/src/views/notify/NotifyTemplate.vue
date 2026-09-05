@@ -8,6 +8,7 @@ import {
   saveNotifyTemplate
 } from '../../api/ops'
 import { queryMonitorAlertEventList } from '../../api/monitor'
+import { nt } from '../../utils/notify-i18n'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -36,26 +37,26 @@ const channelTypes = [
   { label: 'DingTalk Bot', value: 'dingtalk', tone: 'ding' },
   { label: 'WeCom Bot', value: 'wecom', tone: 'wecom' },
   { label: 'Feishu Bot', value: 'feishu', tone: 'feishu' },
-  { label: '사용자 정의 HTTP Webhook', value: 'webhook', tone: 'webhook' }
+  { label: nt('userDefinedWebhook'), value: 'webhook', tone: 'webhook' }
 ]
 
 const commonTemplates = [
-  { id: 'ding-alert', scope: 'monitor', channelType: 'dingtalk', name: 'DingTalk - Monitor Alert Notification', title: '【{{severity}}】{{alertName}} -- {{status}}', content: '### <font color={{statusColor}}>【{{severity}}】{{alertName}} -- {{status}}</font>\n\n- Datasource: {{datasourceName}}\n- Instance: {{instance}}\n- 현재 값: {{value}}\n- Alert Threshold: {{threshold}}\n- 트리거 시각: {{startedAt}}\n\n> {{summary}}\n\n{{detail}}', description: 'PromQL과 Log Alert에 사용하며 트리거 중에는 빨강, 복구됨에는 초록으로 표시합니다.' },
-  { id: 'ding-schedule', scope: 'schedule', channelType: 'dingtalk', name: 'DingTalk - Schedule Task Notification', title: '【Schedule Task】{{taskName}} -- {{status}}', content: '### <font color={{statusColor}}>【Schedule Task】{{taskName}} -- {{status}}</font>\n\n- Task Type: {{taskType}}\n- Cron: {{cronExpr}}\n- 소요 시간: {{duration}}\n- 완료 시각: {{finishedAt}}\n\n> {{summary}}\n\n{{detail}}', description: 'Schedule Task의 성공/실패 Notification용이며 Task, 소요 시간, 결과를 강조합니다.' },
-  { id: 'ding-job', scope: 'job', channelType: 'dingtalk', name: 'DingTalk - Job Orchestration Notification', title: '【Job 알림】{{jobName}} · {{stepName}}', content: '### <font color={{statusColor}}>【Job 알림】{{jobName}} · {{stepName}}</font>\n\n- Notification 유형: {{status}}\n- 실행 번호: #{{jobHistoryId}}\n- 트리거 방식: {{triggerType}}\n- Notification 시각: {{notifyAt}}\n\n> **Notification 요약**\n> {{summary}}\n\n{{detail}}', description: 'Job Orchestration의 메시지 알림 Step용이며 Job, 실행 번호, 현재 Step을 표시합니다.' },
-  { id: 'wecom-alert', scope: 'monitor', channelType: 'wecom', name: 'WeCom - Monitor Alert Markdown', title: '【{{severity}}】{{alertName}} -- {{status}}', content: '# <font color="{{statusTone}}">【{{severity}}】{{alertName}} -- {{status}}</font>\n\n> Datasource: {{datasourceName}}\n> Instance: {{instance}}\n> 현재 값: {{value}}\n> Threshold: {{threshold}}\n> 트리거 시각: {{startedAt}}\n\n**Alert 요약**\n{{summary}}\n\n{{detail}}', description: 'WeCom Markdown 형식이며 트리거 중에는 빨강, 복구됨에는 초록으로 표시합니다.' },
-  { id: 'wecom-schedule', scope: 'schedule', channelType: 'wecom', name: 'WeCom - Schedule Task Notification', title: '【Schedule Task】{{taskName}} -- {{status}}', content: '# 【Schedule Task】{{taskName}} -- {{status}}\n\n> Task Type: {{taskType}}\n> Cron: {{cronExpr}}\n> 소요 시간: {{duration}}\n> 완료 시각: {{finishedAt}}\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', description: 'WeCom Schedule Task Markdown Notification입니다.' },
-  { id: 'wecom-job', scope: 'job', channelType: 'wecom', name: 'WeCom - Job Orchestration Notification', title: '【Job 알림】{{jobName}} · {{stepName}}', content: '# 【Job 알림】{{jobName}} · {{stepName}}\n\n> Notification 유형: <font color="info">{{status}}</font>\n> 실행 번호: #{{jobHistoryId}}\n> 트리거 방식: {{triggerType}}\n> Notification 시각: {{notifyAt}}\n\n**Notification 요약**\n{{summary}}\n\n{{detail}}', description: 'Job Orchestration의 메시지 알림 Step용입니다.' },
-  { id: 'feishu-alert', scope: 'monitor', channelType: 'feishu', name: 'Feishu - Alert Card Message', title: '【{{severity}}】{{alertName}} -- {{status}}', content: '**상태:** {{status}}\n\n**Datasource:** {{datasourceName}}\n**Instance:** {{instance}}\n**현재 값:** {{value}}\n**Threshold:** {{threshold}}\n**트리거 시각:** {{startedAt}}\n\n---\n\n**Alert 요약**\n{{summary}}\n\n{{detail}}', description: 'Feishu Interactive Card이며 카드 Header는 트리거/복구 상태에 따라 빨강과 초록을 전환합니다.' },
-  { id: 'feishu-schedule', scope: 'schedule', channelType: 'feishu', name: 'Feishu - Schedule Task Notification Card', title: '【Schedule Task】{{taskName}} -- {{status}}', content: '**Task 이름:** {{taskName}}\n**Task Type:** {{taskType}}\n**Cron:** {{cronExpr}}\n**소요 시간:** {{duration}}\n**완료 시각:** {{finishedAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', description: 'Feishu Schedule Task 실행 결과 Card입니다.' },
-  { id: 'feishu-job', scope: 'job', channelType: 'feishu', name: 'Feishu - Job Orchestration Notification Card', title: '【Job 알림】{{jobName}} · {{stepName}}', content: '**Notification 유형:** {{status}}\n\n**Job 이름:** {{jobName}}\n**실행 번호:** #{{jobHistoryId}}\n**현재 Step:** {{stepName}}\n**트리거 방식:** {{triggerType}}\n**Notification 시각:** {{notifyAt}}\n\n---\n\n**Notification 요약**\n{{summary}}\n\n{{detail}}', description: 'Feishu Job Orchestration 메시지 알림 Step 전용 Card입니다.' },
-  { id: 'webhook-alert', scope: 'monitor', channelType: 'webhook', name: '범용 Webhook - Alert Notification', title: '{{alertName}}', content: '상태: {{status}}\n요약: {{summary}}\nDatasource: {{datasourceName}}\nInstance: {{instance}}\n현재 값: {{value}}\nThreshold: {{threshold}}\n상세: {{detail}}', description: '범용 HTTP Webhook 텍스트 Content이며 Backend가 구조화된 Event 필드를 보완합니다.' },
-  { id: 'webhook-schedule', scope: 'schedule', channelType: 'webhook', name: '범용 Webhook - Schedule Task Notification', title: '【Schedule Task】{{taskName}} -- {{status}}', content: 'Task 이름: {{taskName}}\nTask Type: {{taskType}}\nCron: {{cronExpr}}\n소요 시간: {{duration}}\n완료 시각: {{finishedAt}}\n요약: {{summary}}\n상세: {{detail}}', description: '범용 Webhook Schedule Task 실행 결과 Notification입니다.' },
-  { id: 'webhook-job', scope: 'job', channelType: 'webhook', name: '범용 Webhook - Job Orchestration Notification', title: '【Job 알림】{{jobName}} · {{stepName}}', content: 'Notification 유형: {{status}}\nJob 이름: {{jobName}}\n실행 번호: {{jobHistoryId}}\n현재 Step: {{stepName}}\n트리거 방식: {{triggerType}}\nNotification 시각: {{notifyAt}}\n요약: {{summary}}\n상세: {{detail}}', description: '범용 Webhook Job Orchestration 메시지 알림 Step입니다.' },
-  { id: 'ding-pipeline', scope: 'pipeline', channelType: 'dingtalk', name: 'DingTalk - CI/CD Pipeline Notification', title: '【{{status}}】{{appName}} · {{stageName}}', content: '### <font color={{statusColor}}>【{{status}}】{{appName}} · {{stageName}}</font>\n\n- Pipeline: {{pipelineName}}\n- 실행 번호: {{pipelineRunId}}\n- Environment: {{env}}\n- Branch: {{branch}}\n- Image Version: {{imageTag}}\n- Notification 시각: {{notifyAt}}\n\n> {{summary}}\n\n{{detail}}', description: 'CI/CD Pipeline Stage 완료, 실패 또는 Manual Approval Notification용입니다.' },
-  { id: 'wecom-pipeline', scope: 'pipeline', channelType: 'wecom', name: 'WeCom - CI/CD Pipeline Notification', title: '【{{status}}】{{appName}} · {{stageName}}', content: '# <font color="{{statusTone}}">【{{status}}】{{appName}} · {{stageName}}</font>\n\n> Pipeline: {{pipelineName}}\n> 실행 번호: {{pipelineRunId}}\n> Environment: {{env}}\n> Branch: {{branch}}\n> Image Version: {{imageTag}}\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', description: 'WeCom Markdown 형식의 Pipeline 실행 결과 Notification입니다.' },
-  { id: 'feishu-pipeline', scope: 'pipeline', channelType: 'feishu', name: 'Feishu - CI/CD Pipeline Notification Card', title: '【{{status}}】{{appName}} · {{stageName}}', content: '**Pipeline:** {{pipelineName}}\n**실행 번호:** #{{pipelineRunId}}\n**Environment:** {{env}}\n**Branch:** {{branch}}\n**Image Version:** {{imageTag}}\n**Notification 시각:** {{notifyAt}}\n\n---\n\n**실행 요약**\n{{summary}}\n\n{{detail}}', description: 'Feishu Card 스타일이며 Build, Deploy, Stage 결과 Notification에 사용합니다.' },
-  { id: 'webhook-pipeline', scope: 'pipeline', channelType: 'webhook', name: '범용 Webhook - CI/CD Pipeline Notification', title: '【{{status}}】{{appName}} · {{stageName}}', content: 'Pipeline: {{pipelineName}}\n실행 번호: {{pipelineRunId}}\nEnvironment: {{env}}\nBranch: {{branch}}\nImage Version: {{imageTag}}\nStage: {{stageName}}\n요약: {{summary}}\n상세: {{detail}}', description: '범용 HTTP Webhook의 Pipeline 구조화 Notification입니다.' }
+  { id: 'ding-alert', scope: 'monitor', channelType: 'dingtalk', name: 'DingTalk - Monitor Alert Notification', title: '【{{severity}}】{{alertName}} -- {{status}}', content: nt('seedDingAlertContent'), description: nt('seedDingAlertDesc') },
+  { id: 'ding-schedule', scope: 'schedule', channelType: 'dingtalk', name: 'DingTalk - Schedule Task Notification', title: '【Schedule Task】{{taskName}} -- {{status}}', content: nt('seedDingScheduleContent'), description: nt('seedDingScheduleDesc') },
+  { id: 'ding-job', scope: 'job', channelType: 'dingtalk', name: 'DingTalk - Job Orchestration Notification', title: nt('seedJobTitle'), content: nt('seedDingJobContent'), description: nt('seedDingJobDesc') },
+  { id: 'wecom-alert', scope: 'monitor', channelType: 'wecom', name: 'WeCom - Monitor Alert Markdown', title: '【{{severity}}】{{alertName}} -- {{status}}', content: nt('seedWecomAlertContent'), description: nt('seedWecomAlertDesc') },
+  { id: 'wecom-schedule', scope: 'schedule', channelType: 'wecom', name: 'WeCom - Schedule Task Notification', title: '【Schedule Task】{{taskName}} -- {{status}}', content: nt('seedWecomScheduleContent'), description: nt('seedWecomScheduleDesc') },
+  { id: 'wecom-job', scope: 'job', channelType: 'wecom', name: 'WeCom - Job Orchestration Notification', title: nt('seedJobTitle'), content: nt('seedWecomJobContent'), description: nt('seedWecomJobDesc') },
+  { id: 'feishu-alert', scope: 'monitor', channelType: 'feishu', name: 'Feishu - Alert Card Message', title: '【{{severity}}】{{alertName}} -- {{status}}', content: nt('seedFeishuAlertContent'), description: nt('seedFeishuAlertDesc') },
+  { id: 'feishu-schedule', scope: 'schedule', channelType: 'feishu', name: 'Feishu - Schedule Task Notification Card', title: '【Schedule Task】{{taskName}} -- {{status}}', content: nt('seedFeishuScheduleContent'), description: nt('seedFeishuScheduleDesc') },
+  { id: 'feishu-job', scope: 'job', channelType: 'feishu', name: 'Feishu - Job Orchestration Notification Card', title: nt('seedJobTitle'), content: nt('seedFeishuJobContent'), description: nt('seedFeishuJobDesc') },
+  { id: 'webhook-alert', scope: 'monitor', channelType: 'webhook', name: nt('seedWebhookAlertName'), title: '{{alertName}}', content: nt('seedWebhookAlertContent'), description: nt('seedWebhookAlertDesc') },
+  { id: 'webhook-schedule', scope: 'schedule', channelType: 'webhook', name: nt('seedWebhookScheduleName'), title: '【Schedule Task】{{taskName}} -- {{status}}', content: nt('seedWebhookScheduleContent'), description: nt('seedWebhookScheduleDesc') },
+  { id: 'webhook-job', scope: 'job', channelType: 'webhook', name: nt('seedWebhookJobName'), title: nt('seedJobTitle'), content: nt('seedWebhookJobContent'), description: nt('seedWebhookJobDesc') },
+  { id: 'ding-pipeline', scope: 'pipeline', channelType: 'dingtalk', name: 'DingTalk - CI/CD Pipeline Notification', title: '【{{status}}】{{appName}} · {{stageName}}', content: nt('seedDingPipelineContent'), description: nt('seedDingPipelineDesc') },
+  { id: 'wecom-pipeline', scope: 'pipeline', channelType: 'wecom', name: 'WeCom - CI/CD Pipeline Notification', title: '【{{status}}】{{appName}} · {{stageName}}', content: nt('seedWecomPipelineContent'), description: nt('seedWecomPipelineDesc') },
+  { id: 'feishu-pipeline', scope: 'pipeline', channelType: 'feishu', name: 'Feishu - CI/CD Pipeline Notification Card', title: '【{{status}}】{{appName}} · {{stageName}}', content: nt('seedFeishuPipelineContent'), description: nt('seedFeishuPipelineDesc') },
+  { id: 'webhook-pipeline', scope: 'pipeline', channelType: 'webhook', name: nt('seedWebhookPipelineName'), title: '【{{status}}】{{appName}} · {{stageName}}', content: nt('seedWebhookPipelineContent'), description: nt('seedWebhookPipelineDesc') }
 ]
 
 const visibleTemplates = computed(() => commonTemplates.filter((item) =>
@@ -73,11 +74,11 @@ const scopeVariables = {
 const availableVariables = computed(() => [...scopeVariables.all, ...(scopeVariables[form.scope] || [])])
 
 const previewContext = reactive({
-  scope: 'monitor', event: 'firing', targetName: 'Host CPU 사용률 과다', status: '트리거 중', summary: 'node-01 CPU 사용률이 5분 연속 90%를 초과했습니다',
+  scope: 'monitor', event: 'firing', targetName: nt('sampleHostCpu'), status: nt('statusFiring'), summary: nt('sampleCpuSummary'),
   detail: 'instance="10.0.0.12:9100", job="node-exporter"', startedAt: '2026-07-10 18:30:00', finishedAt: '-',
-  alertName: 'Host CPU 사용률 과다', severity: 'P1', datasourceName: '운영 Prometheus', instance: '10.0.0.12:9100', value: '93.42', threshold: '90',
-  taskName: '핵심 API Health Check', taskType: 'HTTP Probe', cronExpr: '0 */5 * * * *', duration: '1.8초',
-  jobName: '운영 서비스 Rolling Deploy', jobHistoryId: '1024', stepName: 'Deploy 결과 Notification', stepMessage: '모든 Deploy Step이 실행 완료되었습니다', triggerType: '수동 트리거', notifyAt: '2026-07-15 11:05:35',
+  alertName: nt('sampleHostCpu'), severity: 'P1', datasourceName: nt('samplePrometheus'), instance: '10.0.0.12:9100', value: '93.42', threshold: '90',
+  taskName: nt('sampleHealthCheck'), taskType: 'HTTP Probe', cronExpr: '0 */5 * * * *', duration: nt('sampleDuration'),
+  jobName: nt('sampleRollingDeploy'), jobHistoryId: '1024', stepName: nt('sampleDeployStep'), stepMessage: nt('sampleDeployDone'), triggerType: nt('sampleManualTrigger'), notifyAt: '2026-07-15 11:05:35',
   statusColor: '#F53F3F', statusTone: 'warning'
 })
 
@@ -102,15 +103,15 @@ function resetForm() {
     channelType: 'dingtalk',
     scope: 'monitor',
     title: '【{{severity}}】{{alertName}}',
-    content: '### {{alertName}}\n\n- 상태: {{status}}\n- 요약: {{summary}}\n- 시각: {{startedAt}}\n\n{{detail}}',
+    content: nt('seedResetContent'),
     status: 1,
     description: ''
   })
 }
 
 function scopeLabel(value) {
-  if (!value) return '시나리오 미선택'
-  if (value === 'all') return '시나리오 지정 필요'
+  if (!value) return nt('scopeNone')
+  if (value === 'all') return nt('scopeRequired')
   return scopeOptions.find((item) => item.value === value)?.label || value
 }
 
@@ -123,34 +124,34 @@ async function preparePreview() {
   const success = statusStyle('success')
   if (form.scope === 'schedule') {
     Object.assign(previewContext, {
-      scope: 'schedule', event: 'success', targetName: '핵심 API Health Check', status: '성공',
-      summary: 'HTTP Probe가 200을 반환했으며 기대 상태 코드와 일치합니다.', detail: 'GET https://api.example.com/health -> 200',
-      startedAt: '2026-07-15 10:00:00', finishedAt: '2026-07-15 10:00:02', taskName: '핵심 API Health Check',
-      taskType: 'HTTP Probe', cronExpr: '0 */5 * * * *', duration: '1.8초', triggerType: '스케줄 실행',
+      scope: 'schedule', event: 'success', targetName: nt('sampleHealthCheck'), status: nt('success'),
+      summary: nt('sampleHttpSummary'), detail: 'GET https://api.example.com/health -> 200',
+      startedAt: '2026-07-15 10:00:00', finishedAt: '2026-07-15 10:00:02', taskName: nt('sampleHealthCheck'),
+      taskType: 'HTTP Probe', cronExpr: '0 */5 * * * *', duration: nt('sampleDuration'), triggerType: nt('sampleScheduleTrigger'),
       statusColor: success.color, statusTone: success.tone
     })
     return
   }
   if (form.scope === 'job') {
     Object.assign(previewContext, {
-      scope: 'job', event: 'notify', targetName: '운영 서비스 Rolling Deploy', status: 'Notification',
-      summary: '운영 Deploy가 결과 Notification Step에 진입했습니다.', detail: '모든 Deploy Step이 실행 완료되었습니다. Business Health 상태를 확인하십시오.',
-      startedAt: '2026-07-15 10:58:10', finishedAt: '2026-07-15 11:05:35', jobName: '운영 서비스 Rolling Deploy',
-      jobHistoryId: '1024', stepName: 'Deploy 결과 Notification', stepMessage: '모든 Deploy Step이 실행 완료되었습니다', triggerType: '수동 트리거',
+      scope: 'job', event: 'notify', targetName: nt('sampleRollingDeploy'), status: 'Notification',
+      summary: nt('sampleJobSummary'), detail: nt('sampleJobDetail'),
+      startedAt: '2026-07-15 10:58:10', finishedAt: '2026-07-15 11:05:35', jobName: nt('sampleRollingDeploy'),
+      jobHistoryId: '1024', stepName: nt('sampleDeployStep'), stepMessage: nt('sampleDeployDone'), triggerType: nt('sampleManualTrigger'),
       notifyAt: '2026-07-15 11:05:35', statusColor: '#3370FF', statusTone: 'info'
     })
     return
   }
   if (form.scope === 'pipeline') {
     Object.assign(previewContext, {
-      scope: 'pipeline', event: 'notify', targetName: '운영 Deploy Pipeline', status: 'Notification',
-      summary: 'Pipeline이 메시지 알림 Stage에 도달했습니다.', detail: 'Pipeline 실행 기록에서 Stage 실행 상황을 확인하십시오.',
+      scope: 'pipeline', event: 'notify', targetName: nt('sampleDeployPipeline'), status: 'Notification',
+      summary: nt('samplePipelineSummary'), detail: nt('samplePipelineDetail'),
       startedAt: '2026-07-21 10:00:00', finishedAt: '2026-07-21 10:05:35',
-      pipelineName: '운영 Deploy Pipeline', pipelineRunId: '1024', appName: '주문 서비스', env: 'prod', branch: 'main', imageTag: 'v20260721.1', stageName: 'Deploy 결과 Notification', notifyAt: '2026-07-21 10:05:35', statusColor: '#3370FF', statusTone: 'info'
+      pipelineName: nt('sampleDeployPipeline'), pipelineRunId: '1024', appName: nt('sampleOrderService'), env: 'prod', branch: 'main', imageTag: 'v20260721.1', stageName: nt('sampleDeployStep'), notifyAt: '2026-07-21 10:05:35', statusColor: '#3370FF', statusTone: 'info'
     })
     return
   }
-  Object.assign(previewContext, { scope: 'all', event: 'notify', targetName: '플랫폼 Notification', status: 'Notification', summary: '범용 Notification입니다.', detail: 'Notification 상세', statusColor: '#3370FF', statusTone: 'info' })
+  Object.assign(previewContext, { scope: 'all', event: 'notify', targetName: nt('samplePlatformNotify'), status: 'Notification', summary: nt('sampleGenericSummary'), detail: nt('sampleGenericDetail'), statusColor: '#3370FF', statusTone: 'info' })
 }
 
 function parseLabels(raw) {
@@ -170,7 +171,7 @@ function applyPreviewEvent(id) {
     scope: 'monitor',
     event: event.status || 'firing',
     targetName: event.ruleName || event.metric || 'Alert Event',
-    status: ({ pending: '대기 중', firing: '트리거 중', claimed: '인계됨', silenced: '차단됨', recovered: '복구됨', resolved: '종료됨' }[event.status] || event.status || '-'),
+    status: ({ pending: nt('statusPending'), firing: nt('statusFiring'), claimed: nt('statusClaimed'), silenced: nt('statusSilenced'), recovered: nt('statusRecovered'), resolved: nt('statusResolved') }[event.status] || event.status || '-'),
     summary: event.summary || '-',
     detail: event.labelsJson || '-',
     startedAt: event.firstTriggerAt || event.lastTriggerAt || '-',
@@ -244,17 +245,17 @@ async function applyTemplate(template) {
 
 async function submit() {
   if (!form.name.trim() || !form.content.trim()) {
-    ElMessage.warning('Template 이름과 Template 내용을 입력하십시오.')
+    ElMessage.warning(nt('warnRequiredFields'))
     return
   }
   if (!form.scope || form.scope === 'all') {
-    ElMessage.warning('적용 시나리오를 구체적으로 지정하십시오.')
+    ElMessage.warning(nt('warnScopeRequired'))
     return
   }
   saving.value = true
   try {
     await saveNotifyTemplate(form)
-    ElMessage.success('저장했습니다.')
+    ElMessage.success(nt('saved'))
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -263,9 +264,9 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Template "${row.name}"을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(nt('deleteConfirm', { name: row.name }), nt('notice'), { type: 'warning' })
   await deleteNotifyTemplate(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(nt('deleted'))
   await loadData()
 }
 
@@ -282,73 +283,73 @@ onMounted(loadData)
   <div class="page-card notify-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">메시지 Template</h2>
-        <p class="page-desc">DingTalk, WeCom, Feishu, Webhook용 재사용 가능한 메시지 스타일을 관리합니다. 변수는 전송 시 자동 치환됩니다.</p>
+        <h2 class="page-title">{{ nt('pageTitle') }}</h2>
+        <p class="page-desc">{{ nt('pageDesc') }}</p>
       </div>
-      <div class="header-actions"><el-button @click="openTemplateDialog">자주 쓰는 Template 가져오기</el-button><el-button type="primary" @click="openCreate">Template 추가</el-button></div>
+      <div class="header-actions"><el-button @click="openTemplateDialog">{{ nt('importTemplates') }}</el-button><el-button type="primary" @click="openCreate">{{ nt('addTemplate') }}</el-button></div>
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="Template 이름 / 제목 검색" style="width: 260px" @keyup.enter="loadData" />
-      <el-select v-model="query.channelType" clearable placeholder="Channel 유형" style="width: 180px"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select>
-      <el-select v-model="query.scope" clearable placeholder="적용 시나리오" style="width: 150px"><el-option v-for="item in filterScopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
-      <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px"><el-option label="활성화" value="1" /><el-option label="비활성화" value="2" /></el-select>
-      <el-button type="primary" @click="loadData">검색</el-button>
+      <el-input v-model="query.keyword" clearable :placeholder="nt('searchPlaceholder')" style="width: 260px" @keyup.enter="loadData" />
+      <el-select v-model="query.channelType" clearable :placeholder="nt('channelType')" style="width: 180px"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+      <el-select v-model="query.scope" clearable :placeholder="nt('applyScope')" style="width: 150px"><el-option v-for="item in filterScopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+      <el-select v-model="query.status" clearable :placeholder="nt('status')" style="width: 120px"><el-option :label="nt('actionEnable')" value="1" /><el-option :label="nt('actionDisable')" value="2" /></el-select>
+      <el-button type="primary" @click="loadData">{{ nt('search') }}</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="name" label="Template 이름" min-width="180" />
-      <el-table-column label="Channel 유형" width="180"><template #default="{ row }"><el-tag effect="light">{{ channelTypeLabel(row.channelType) }}</el-tag></template></el-table-column>
-      <el-table-column label="적용 시나리오" width="120"><template #default="{ row }"><el-tag effect="plain" :type="row.scope === 'all' ? 'warning' : 'info'">{{ scopeLabel(row.scope) }}</el-tag></template></el-table-column>
-      <el-table-column prop="title" label="제목" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="description" label="설명" min-width="240" show-overflow-tooltip />
-      <el-table-column label="상태" width="100" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '활성화' : '비활성화' }}</el-tag></template></el-table-column>
-      <el-table-column prop="updateTime" label="수정 시각" width="180" />
-      <el-table-column label="작업" width="150" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openEdit(row)">수정</el-button><el-button link type="danger" @click="handleDelete(row)">삭제</el-button></template></el-table-column>
+      <el-table-column prop="name" :label="nt('templateName')" min-width="180" />
+      <el-table-column :label="nt('channelType')" width="180"><template #default="{ row }"><el-tag effect="light">{{ channelTypeLabel(row.channelType) }}</el-tag></template></el-table-column>
+      <el-table-column :label="nt('applyScope')" width="120"><template #default="{ row }"><el-tag effect="plain" :type="row.scope === 'all' ? 'warning' : 'info'">{{ scopeLabel(row.scope) }}</el-tag></template></el-table-column>
+      <el-table-column prop="title" :label="nt('title')" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="description" :label="nt('description')" min-width="240" show-overflow-tooltip />
+      <el-table-column :label="nt('status')" width="100" align="center"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? nt('enabled') : nt('disabled') }}</el-tag></template></el-table-column>
+      <el-table-column prop="updateTime" :label="nt('updatedAt')" width="180" />
+      <el-table-column :label="nt('actions')" width="150" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openEdit(row)">{{ nt('edit') }}</el-button><el-button link type="danger" @click="handleDelete(row)">{{ nt('delete') }}</el-button></template></el-table-column>
     </el-table>
     <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '메시지 Template 수정' : '메시지 Template 추가'" width="1180px" top="5vh">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? nt('editTemplate') : nt('addTemplateTitle')" width="1180px" top="5vh">
       <el-form label-width="100px">
         <el-row :gutter="18">
-          <el-col :span="8"><el-form-item label="Template 이름" required><el-input v-model="form.name" placeholder="예: 운영 Environment P1 Alert" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="Channel 유형"><el-select v-model="form.channelType" style="width: 100%"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="적용 시나리오" required><el-select v-model="form.scope" placeholder="적용 시나리오를 선택하십시오" style="width: 100%"><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
-          <el-col :span="18"><el-form-item label="제목"><el-input v-model="form.title" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="상태"><el-radio-group v-model="form.status"><el-radio :value="1">활성화</el-radio><el-radio :value="2">비활성화</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="nt('templateName')" required><el-input v-model="form.name" :placeholder="nt('namePlaceholder')" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="nt('channelType')"><el-select v-model="form.channelType" style="width: 100%"><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="nt('applyScope')" required><el-select v-model="form.scope" :placeholder="nt('scopePlaceholder')" style="width: 100%"><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
+          <el-col :span="18"><el-form-item :label="nt('title')"><el-input v-model="form.title" /></el-form-item></el-col>
+          <el-col :span="6"><el-form-item :label="nt('status')"><el-radio-group v-model="form.status"><el-radio :value="1">{{ nt('actionEnable') }}</el-radio><el-radio :value="2">{{ nt('actionDisable') }}</el-radio></el-radio-group></el-form-item></el-col>
         </el-row>
         <div class="template-workbench">
           <section class="editor-pane">
-            <div class="pane-title"><strong>Template 내용</strong><el-button link type="primary" @click="openTemplateDialog">자주 쓰는 Template 가져오기</el-button></div>
-            <el-input v-model="form.content" class="template-editor" type="textarea" :rows="18" placeholder="Markdown으로 메시지 내용을 작성하십시오" />
-            <div class="variable-list"><span>{{ scopeLabel(form.scope) }} 사용 가능 변수</span><code v-for="key in availableVariables" :key="key">{{ variableToken(key) }}</code></div>
+            <div class="pane-title"><strong>{{ nt('templateContent') }}</strong><el-button link type="primary" @click="openTemplateDialog">{{ nt('importTemplates') }}</el-button></div>
+            <el-input v-model="form.content" class="template-editor" type="textarea" :rows="18" :placeholder="nt('contentPlaceholder')" />
+            <div class="variable-list"><span>{{ nt('availableVars', { scope: scopeLabel(form.scope) }) }}</span><code v-for="key in availableVariables" :key="key">{{ variableToken(key) }}</code></div>
           </section>
           <section class="preview-pane" :class="`preview-${selectedChannel.tone}`">
-            <div class="pane-title preview-title"><strong>전송 미리보기</strong><div><template v-if="form.scope === 'monitor'"><el-select v-model="previewEventId" :loading="previewLoading" filterable clearable placeholder="Alert Event 선택" style="width: 220px" @change="applyPreviewEvent"><el-option v-for="item in previewEvents" :key="item.id" :label="`${item.ruleName || item.metric} / ${item.status}`" :value="item.id" /></el-select><el-button link type="primary" @click="loadPreviewEvents">새로 고침</el-button></template><el-tag v-else effect="plain">{{ scopeLabel(form.scope) }} 예시 데이터</el-tag></div></div>
+            <div class="pane-title preview-title"><strong>{{ nt('sendPreview') }}</strong><div><template v-if="form.scope === 'monitor'"><el-select v-model="previewEventId" :loading="previewLoading" filterable clearable :placeholder="nt('selectAlertEvent')" style="width: 220px" @change="applyPreviewEvent"><el-option v-for="item in previewEvents" :key="item.id" :label="`${item.ruleName || item.metric} / ${item.status}`" :value="item.id" /></el-select><el-button link type="primary" @click="loadPreviewEvents">{{ nt('refreshList') }}</el-button></template><el-tag v-else effect="plain">{{ nt('sampleDataFor', { scope: scopeLabel(form.scope) }) }}</el-tag></div></div>
             <div v-if="form.channelType === 'feishu'" class="feishu-card">
-              <div class="feishu-header" :style="{ background: previewContext.statusColor }"><span>{{ scopeLabel(form.scope) }}</span><strong>{{ renderPreview(form.title) || 'Notification 제목' }}</strong></div>
+              <div class="feishu-header" :style="{ background: previewContext.statusColor }"><span>{{ scopeLabel(form.scope) }}</span><strong>{{ renderPreview(form.title) || nt('notificationTitle') }}</strong></div>
               <pre>{{ renderPreview(form.content) }}</pre>
               <div class="feishu-footer">Ops Admin</div>
             </div>
-            <div v-else-if="form.channelType === 'wecom'" class="wecom-message"><strong>{{ renderPreview(form.title) || 'Notification 제목' }}</strong><pre>{{ renderPreview(form.content) }}</pre></div>
-            <div v-else-if="form.channelType === 'dingtalk'" class="dingtalk-message"><div class="ding-top">DINGTALK BOT</div><strong>{{ renderPreview(form.title) || 'Notification 제목' }}</strong><pre>{{ renderPreview(form.content) }}</pre></div>
+            <div v-else-if="form.channelType === 'wecom'" class="wecom-message"><strong>{{ renderPreview(form.title) || nt('notificationTitle') }}</strong><pre>{{ renderPreview(form.content) }}</pre></div>
+            <div v-else-if="form.channelType === 'dingtalk'" class="dingtalk-message"><div class="ding-top">DINGTALK BOT</div><strong>{{ renderPreview(form.title) || nt('notificationTitle') }}</strong><pre>{{ renderPreview(form.content) }}</pre></div>
             <div v-else class="webhook-message"><span>POST / webhook</span><pre>{{ JSON.stringify({ title: renderPreview(form.title), content: renderPreview(form.content), status: previewContext.status, targetName: previewContext.targetName }, null, 2) }}</pre></div>
           </section>
         </div>
-        <el-form-item label="설명" style="margin-top: 18px"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="적용 시나리오와 온콜 사용 방식을 설명하십시오" /></el-form-item>
+        <el-form-item :label="nt('description')" style="margin-top: 18px"><el-input v-model="form.description" type="textarea" :rows="2" :placeholder="nt('descPlaceholder')" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="submit">저장</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">{{ nt('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="submit">{{ nt('save') }}</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="templateDialogVisible" title="자주 쓰는 메시지 Template 가져오기" width="980px" top="8vh">
-      <div class="template-import-head"><div><strong>메시지 스타일 선택</strong><span>선택하면 적용 시나리오, Channel 유형, 제목, 내용이 채워집니다.</span></div><div class="import-filters"><el-select v-model="templateScopeCategory" style="width: 150px"><el-option label="전체 시나리오" value="all" /><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select><el-select v-model="templateCategory" style="width: 190px"><el-option label="전체 Channel" value="all" /><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></div>
+    <el-dialog v-model="templateDialogVisible" :title="nt('importDialogTitle')" width="980px" top="8vh">
+      <div class="template-import-head"><div><strong>{{ nt('selectStyle') }}</strong><span>{{ nt('selectStyleDesc') }}</span></div><div class="import-filters"><el-select v-model="templateScopeCategory" style="width: 150px"><el-option :label="nt('allScopes')" value="all" /><el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select><el-select v-model="templateCategory" style="width: 190px"><el-option :label="nt('allChannels')" value="all" /><el-option v-for="item in channelTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></div>
       <div class="template-card-grid">
         <button v-for="item in visibleTemplates" :key="item.id" type="button" class="import-card" @click="applyTemplate(item)">
           <div class="template-tags"><el-tag size="small" :type="item.channelType === 'feishu' ? 'primary' : item.channelType === 'wecom' ? 'success' : item.channelType === 'dingtalk' ? 'warning' : 'info'">{{ channelTypeLabel(item.channelType) }}</el-tag><el-tag size="small" effect="plain" type="info">{{ scopeLabel(item.scope) }}</el-tag></div>
           <strong>{{ item.name }}</strong><p>{{ item.description }}</p><code>{{ item.title }}</code>
         </button>
       </div>
-      <template #footer><el-button @click="templateDialogVisible = false">취소</el-button></template>
+      <template #footer><el-button @click="templateDialogVisible = false">{{ nt('cancel') }}</el-button></template>
     </el-dialog>
   </div>
 </template>
