@@ -2,7 +2,7 @@
 
 > Tracking issue: #4
 >
-> Revision: r2. This revision incorporates the findings of a five-lens adversarial review of r1 (4 CRITICAL, 17 HIGH, 15 MEDIUM) plus a code-level cross-check of every claim. Appendix A maps each finding to the section that resolves it.
+> Revision: r2. This revision incorporates the findings of a five-lens adversarial review of r1 (4 CRITICAL, 16 HIGH, 15 MEDIUM) plus a code-level cross-check of every claim. Appendix A maps each finding to the section that resolves it.
 >
 > Target platforms: Kubernetes (including K3s), public cloud (Aliyun, Tencent) as the second real provider family, and reserved support for Proxmox VE, VMware vCenter, Apache CloudStack, and OpenStack. r1 treated the reserved platforms as near-term phases; r2 corrects that ordering (Section 14, Section 20).
 
@@ -215,7 +215,7 @@ OUT-OF-SCOPE  A product domain V2 does not govern even later (unless a
 | 17 | FinOps (integration_finops.go) | IntegrationFinOpsAccount | EXTEND | -1 / M1 | Credentials (`SecretKey`, `BillingToken`) encrypted Phase -1; account unified with AssetCloudAccount identity at Phase 4 (same SecretRef); table remains for billing records. |
 | 18 | | IntegrationFinOpsCostRecord, -Recommendation, -SyncLog | REMAIN | — | Sync continues via existing scheduler in M1; adapters migrate behind provider contracts read-only in Phase 4. |
 | 19 | Monitor (monitor.go) | MonitorDatasource, MonitorLogShortcut, MonitorAlertRule, MonitorAlertTemplate, MonitorAlertTemplateGroup, MonitorAlertEvent, MonitorAlertEventTimeline, MonitorAlertAction, MonitorSilenceRule, MonitorAggregationRule, MonitorQueryHistory, MonitorDashboard, MonitorDashboardPanel | REMAIN | — | Datasource `Password`/`Token` encrypted Phase -1 (§4.1). Resource attachment via typed binding is a Milestone 2+ decision. |
-| 20 | Ops execution (ops.go, scripts/exec/schedule) | OpsScript, OpsScriptVersion, OpsScriptVariable, OpsExecTask, OpsExecTargetResult, OpsScheduleTemplate, OpsScheduleTask, OpsScheduleTaskLog | REMAIN | — | Existing execution engine keeps its lanes. Schedule variable secrets re-encrypted Phase -1 (§4.1). Convergence with the provider task engine is a Milestone 2 decision (§3.3). |
+| 20 | Ops execution (ops.go, scripts/exec/schedule) | OpsScript, OpsScriptVersion, OpsScriptVariable¹, OpsExecTask, OpsExecTargetResult, OpsScheduleTemplate, OpsScheduleTask, OpsScheduleTaskLog | REMAIN | — | Existing execution engine keeps its lanes. Schedule variable secrets re-encrypted Phase -1 (§4.1). Convergence with the provider task engine is a Milestone 2 decision (§3.3). ¹OpsScriptVariable is an embedded struct serialized into a text column, not a table — listed for completeness. |
 | 21 | Ops jobs (ops.go) | OpsJobTemplate, OpsJob, OpsJobHistory, OpsJobHistoryStep | REMAIN | — | **Approval model reused**: ProviderTask adopts the `ApprovalStatus`/`Approver` semantics (§13.3) instead of new approval tables. |
 | 22 | CI/CD (ops.go, app/pipeline) | OpsEnvironment, OpsApplication, OpsApplicationEnvironmentBinding, OpsAppBuildTask, OpsAppRelease, OpsAppArtifact, OpsImageRegistry, OpsAppPipeline, OpsAppPipelineRun, OpsAppPipelineRunStage | REMAIN | — | `OpsImageRegistry.Password` encrypted Phase -1. `OpsApplicationEnvironmentBinding.K8sClusterID` FK converts to a typed binding at Milestone 2 cutover together with §2.3. Deploy pipeline mutations are not absorbed by the task engine. |
 | 23 | Notify (ops.go, notify) | NotifyTemplate, NotifyChannel, NotifyRule, NotifySendLog | REMAIN | — | Provider-task notifications wire into NotifyRule in Milestone 2 (§13.6 outbox deferral). |
@@ -294,10 +294,15 @@ The complete list of secret-bearing persisted fields, with today's storage forma
 | 9 | IntegrationFinOpsAccount (integration_finops.go:11,15) | SecretKey, BillingToken | **plaintext** | P |
 | 10 | MonitorDatasource (monitor.go:12-13) | Password, Token | **plaintext** | P |
 | 11 | OpsImageRegistry (ops.go:486) | Password | **plaintext** | P |
+| 12 | IntegrationAIModel (integration_ai.go:10) | APIKey | **plaintext** | P |
+| 13 | LDAPConfig (ldap_config.go:14) | BindPassword | **plaintext** | P |
+| 14 | NotifyChannel (ops.go:599) | Secret (and WebhookURL when it embeds a path token) | **plaintext** | P |
+
+The r2 review cross-check caught rows 12–14 missing from the first cut of this table; the count is now 14 and G-1 (§4.10) gates over all of them.
 
 Two defects beyond field classification:
 
-- **Plaintext-tolerant decryption.** `service/domain.go:102` treats the stored value as plaintext when `DecryptSecret` errors (`err == nil` guard). This fallback is deleted in Phase -1 step 2 (§4.4); after that, an undecryptable value in an E-class field is a hard error.
+- **Plaintext-tolerant decryption.** `service/domain.go:102` treats the stored value as plaintext when `DecryptSecret` errors (`err == nil` guard; measured: the fallback applies to the masked display-hint path, while the credential-material path at `service/domain.go:222` is already fail-closed). This fallback is deleted in Phase -1 **Step 4** (§4.4 — code removal rides the last step only, after verification); before Step 4 the dual-key reader tolerates the mixed window by design.
 - **Hard-coded development fallback key.** `util/secret.go:41` seeds `"ops-admin-development-credential-key"` when no env key is set. After Phase -1, the fallback is permitted only when `GO_ENV == development` is explicit; production startup without a master key fails (§4.7 acceptance).
 
 ### 4.2 Envelope format v2
@@ -309,6 +314,7 @@ v2:<key_id>:<base64url(nonce || ciphertext)>
 - `<key_id>` names the master key in the key set, making rotation self-describing: the reader selects the key by ID, never by trial.
 - Legacy values (no `v2:` prefix) remain readable during the migration window only.
 - The key set comes from `OPS_SECRET_MASTER_KEYS` (ordered: `current_key_id:key_material[,old_key_id:key_material...]`). The writer always uses `current`.
+- `key_material` is the **raw seed string**, not a digest: the runtime derives the AES key exactly as today (`sha256(seed)`, util/secret.go:44). The legacy key enters the set as `legacy:<the current credential-key value>` so Step-1 dual-key readers decrypt pre-migration data without format probing.
 
 ### 4.3 Triple detection rule
 
@@ -317,6 +323,9 @@ Migration and reads classify every inventory field by this ordered rule—format
 ```text
 classify(value, field):
   if field not in §4.1 inventory        -> NOT_SECRET (skip)
+  if value is NULL or empty string      -> EMPTY       (skip; optional secrets are
+                                                       legitimate, e.g. a certificate
+                                                       version without a private key)
   if value starts with "v2:"            -> V2          (parse; decrypt with key_id)
   else if field class == E-legacy
        and value decodes as rawurl base64
@@ -513,6 +522,7 @@ Estimates are planning anchors, not commitments. If a phase exceeds its band by 
 - **After Phase -1 alone:** a security-hardened v1. Secrets in v2 envelopes with no plaintext fallback, permissions enforced with zero lockouts, one-time console tickets, tracked-config hygiene. Valid permanent stopping point; nothing else in the plan is required for this to be worth having.
 - **After Phase 1:** foundation tables exist and are covered by tests but carry no production data yet. This is the weakest intermediate state, which is why Phases 1–2 are planned as one continuous block; Phase 1 does not ship alone.
 - **After Milestone 1:** dual-run steady state. v1 remains authoritative for everything in §3 marked REMAIN; V2 serves K8s inventory + one mutation class and cloud inventory read-only, both through the new contracts. This is a valid *indefinite* state, not debt: the system is strictly better than pre-V2 at every moment.
+- **Keeping the indefinite state true — backfill is a propagation rule, not a one-shot.** v1 CRUD for SUPERSEDE models stays live through all of M1 (CreateK8sCluster k8s.go:674 / Update :720 / Delete :770). Therefore: (a) the Phase 2 backfill command is **re-runnable and incremental** (checkpointed per row, keyed on updated-at; a second run reconciles only rows created or changed since the last run); (b) a v1 delete of an entity that has a V2 counterpart marks the V2 rows `stale_source=true` rather than silently keeping them; (c) until Phase 6 cutover, the V2 read side treats `stale_source` rows as absent for comparison purposes. Missing this rule would let a cluster added through v1 sit invisible to V2 forever — the exact "half-state" this section prohibits.
 - **Invalid states, prohibited:** schema merged without behavior (dead tables), dual-write lanes with unclear authority (§19 names the authority during cutover), or a half-decomposed service (Phase 6 has its own rollback contract for exactly this reason).
 
 ### 5.5 Deferral triggers (what re-enables deferred scope)
@@ -1231,6 +1241,13 @@ pairing rule:
   v2 sync completes -> legacy capture runs immediately after
   -> the pair (legacy_ts, v2_ts) is recorded; |delta| must be <= 60s
      for counts/identity comparisons to be evaluated at all
+  legacy_ts is the capture START instant (read set is frozen as the
+  per-section capture begins); v2_ts is the sync completion instant.
+  If a cluster's capture takes longer than 60s (measured by the tool,
+  reported per run): re-pair once with sections captured serially and
+  volatile sections dropped from that pair's evaluation (§15.3 classifies
+  them anyway). A second over-run is a BLOCKER report, not an infinite
+  re-capture loop.
 ```
 
 Snapshots are stored as dated artifacts under the deployment's data directory and retained for the Phase 2 duration; they are not test fixtures.
@@ -1526,7 +1543,7 @@ Work:
 Exit gate:
 ```text
 G-1  §4.1 classifier report: zero PLAINTEXT, zero LEGACY, zero UNKNOWN
-     across all 11 inventory rows (post Step-3 artifact)
+     across all 14 inventory rows (post Step-3 artifact)
 G-2  key-rotation report: migrated == verified == total, per field
 G-3  route-coverage CI: generated router list == committed list;
      100% of sensitive-routes.txt entries carry RequirePermission
@@ -1551,7 +1568,7 @@ Exit gate: crash-recovery test (kill worker mid-task, reaper re-queues) green un
 
 ### Phase 2: Kubernetes/K3s read-only vertical slice
 
-Work: backfill cluster connections into connection/context/SecretRef; read-only discovery into resource/observation/relationship; distribution detection; comparison tooling per §15.
+Work: backfill cluster connections into connection/context/SecretRef (re-runnable and incremental, with stale-source marking — the propagation rule in §5.4); read-only discovery into resource/observation/relationship; distribution detection; comparison tooling per §15.
 
 Exit gate: §15.4 pass (3 consecutive clean paired runs); identity-conflict count zero; sync of the largest cluster completes within rate budget (`provider_rate_limit_total` flat); UI shows K8s inventory from V2 (additive routes).
 
