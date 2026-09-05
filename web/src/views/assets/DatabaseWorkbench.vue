@@ -1,5 +1,6 @@
 <script setup>
 import { uiT } from '../../utils/english-hardcoding-i18n'
+import { at } from '../../utils/asset-i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -201,7 +202,7 @@ const sqlSnippets = computed(() => [
   ...baseSqlSnippets,
   isPostgres.value
     ? {
-        label: 'Table 보기',
+        label: at('viewTablesLabel'),
         text: "SELECT table_schema, table_name\nFROM information_schema.tables\nWHERE table_type = 'BASE TABLE'\n  AND table_schema NOT IN ('pg_catalog', 'information_schema')\n  AND table_schema NOT LIKE 'pg_%'\nORDER BY table_schema, table_name;"
       }
     : { label: 'SHOW TABLES', text: 'SHOW TABLES;' }
@@ -217,7 +218,7 @@ const redisKeyValuePlaceholder = computed(() => {
   if (redisKeyForm.type === 'hash') return '{"field":"value"}'
   if (redisKeyForm.type === 'zset') return '[{"member":"user:1","score":100}]'
   if (['list', 'set'].includes(redisKeyForm.type)) return '["value-1", "value-2"]'
-  return 'String Value를 입력하십시오.'
+  return at('enterStringValue')
 })
 const sourceTables = computed(() => {
   const schema = sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)
@@ -315,7 +316,7 @@ function basicFormatSQL(source) {
 function formatSQL() {
   const editor = sqlEditorRef.value
   const source = selectedSQLText()
-  if (!source) return ElMessage.warning('Format할 SQL을 입력하십시오.')
+  if (!source) return ElMessage.warning(at('enterSQLToFormat'))
   const formatted = basicFormatSQL(source)
   if (editor && editor.selectionStart !== editor.selectionEnd) {
     const before = sqlText.value.slice(0, editor.selectionStart)
@@ -325,22 +326,22 @@ function formatSQL() {
   } else {
     sqlText.value = formatted
   }
-  ElMessage.success('SQL Format을 완료했습니다.')
+  ElMessage.success(at('sqlFormatDone'))
 }
 
 async function saveCurrentSQL() {
   const statement = selectedSQLText()
-  if (!statement) return ElMessage.warning('Favorite에 저장할 SQL을 입력하십시오.')
-  const { value } = await ElMessageBox.prompt('이 SQL의 이름을 지정하면 이후 Editor에 바로 불러올 수 있습니다.', 'SQL Favorite', {
-    inputPlaceholder: '예: 최근 24시간 Order 조회',
+  if (!statement) return ElMessage.warning(at('enterSQLToSave'))
+  const { value } = await ElMessageBox.prompt(at('sqlFavoritePrompt'), 'SQL Favorite', {
+    inputPlaceholder: at('sqlFavoriteNamePlaceholder'),
     inputPattern: /\S+/,
-    inputErrorMessage: 'Favorite 이름을 입력하십시오.',
-    confirmButtonText: '저장',
-    cancelButtonText: '취소'
+    inputErrorMessage: at('sqlFavoriteNameRequired'),
+    confirmButtonText: at('save'),
+    cancelButtonText: at('cancel')
   })
   sqlFavorites.value.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: value.trim(), sqlText: statement, updatedAt: Date.now() })
   persistSqlFavorites()
-  ElMessage.success('SQL을 Favorite에 저장했습니다.')
+  ElMessage.success(at('sqlFavoriteSaved'))
 }
 
 function applySqlFavorite(item) {
@@ -360,7 +361,7 @@ function reuseHistorySQL(row) {
 }
 
 function exportResultCSV() {
-  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning('Export할 SQL 결과가 없습니다.')
+  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning(at('noResultToExport'))
   const escapeCSV = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
   const lines = [resultColumns.value, ...filteredResultRows.value.map((row) => resultColumns.value.map((column) => row[column]))]
     .map((row) => row.map(escapeCSV).join(','))
@@ -449,7 +450,7 @@ function isEditingCell(row, column, index) {
 
 function startCellEdit(row, column, index) {
   if (!canEditRows.value) {
-    ElMessage.warning(isReadOnly.value ? '현재 Database는 Read-only Mode입니다.' : '현재 Table에 Primary Key가 없어 직접 편집할 수 없습니다.')
+    ElMessage.warning(isReadOnly.value ? at('readOnlyDatabaseWarning') : at('noPrimaryKeyWarning'))
     return
   }
   editingCell.rowKey = rowKeyFor(row, index)
@@ -478,7 +479,7 @@ async function commitCellEdit(row, column) {
     original: editingOriginalRow.value,
     current
   })
-  ElMessage.success('Cell을 업데이트했습니다.')
+  ElMessage.success(at('cellUpdated'))
   cancelCellEdit()
   await Promise.all([loadTableData(), loadHistory()])
 }
@@ -543,7 +544,7 @@ async function onCreateDatabaseCharsetChange() {
 async function submitCreateDatabase() {
   const name = createDatabaseForm.name.trim()
   if (!name) {
-    ElMessage.warning(`${createDatabaseObjectLabel.value} 이름을 입력하십시오.`)
+    ElMessage.warning(at('enterObjectName', { label: createDatabaseObjectLabel.value }))
     return
   }
   creatingDatabase.value = true
@@ -558,7 +559,7 @@ async function submitCreateDatabase() {
     selectedTable.value = ''
     await loadTree()
     createDatabaseVisible.value = false
-    ElMessage.success(`${createDatabaseObjectLabel.value} ${name}을(를) 생성했습니다.`)
+    ElMessage.success(at('createObjectSuccess', { label: createDatabaseObjectLabel.value, name }))
   } finally {
     creatingDatabase.value = false
   }
@@ -670,7 +671,7 @@ async function initialize() {
 function switchDatabase(database) {
   if (!database?.id || Number(database.id) === databaseId.value) return
   if (database.connectStatus !== 1) {
-    ElMessage.warning('현재 Database가 연결되지 않았습니다. Connection 설정을 확인하십시오.')
+    ElMessage.warning(at('disconnectedDatabaseWarning'))
     return
   }
   router.replace({ name: 'DatabaseWorkbench', params: { id: database.id } })
@@ -719,7 +720,7 @@ function onTreeNodeClick(node) {
       selectedRows.value = []
       selectedTotal.value = 0
       activeTab.value = 'data'
-      ElMessage.info(`Schema ${node.name}에 탐색 가능한 Table이 없습니다.`)
+      ElMessage.info(at('schemaNoTables', { name: node.name }))
       return
     }
     treeRef.value?.setCurrentKey(firstTable.id)
@@ -736,7 +737,7 @@ function onTreeNodeClick(node) {
     return
   }
   if (!supportsTableData.value) {
-    ElMessage.info('현재 Database Type은 Connection과 Structure 탐색을 지원합니다. Data 편집은 추후 Version에서 제공합니다.')
+    ElMessage.info(at('typeBrowsingOnlyInfo'))
     return
   }
   loadTableData()
@@ -755,7 +756,7 @@ function isProductionEnvironment(value) {
 }
 
 function sqlConfirmationText() {
-  return isProductionEnvironment(sqlAnalysis.value?.environment) ? '운영 환경' : '실행 확인'
+  return isProductionEnvironment(sqlAnalysis.value?.environment) ? at('prodConfirmPhrase') : at('execConfirmPhrase')
 }
 
 async function executeAnalyzedSQL(statement, confirmed = false) {
@@ -771,7 +772,7 @@ async function executeAnalyzedSQL(statement, confirmed = false) {
   execMeta.rowsAffected = Number(data.rowsAffected || 0)
   execMeta.durationMs = Number(data.durationMs || 0)
   activeTab.value = 'result'
-  ElMessage.success('SQL 실행을 완료했습니다.')
+  ElMessage.success(at('sqlExecutionDone'))
   await Promise.all([loadHistory(), loadTasks()])
   if (selectedTable.value) {
     await loadTableData()
@@ -780,7 +781,7 @@ async function executeAnalyzedSQL(statement, confirmed = false) {
 
 async function runSQL() {
   if (!supportsSQL.value) {
-    ElMessage.warning('현재 Database Type은 SQL Workbench를 사용하지 않습니다. 왼쪽 Resource Tree에서 Connection과 Structure를 확인하십시오.')
+    ElMessage.warning(at('notSQLWorkbenchWarning'))
     return
   }
   const statement = selectedSQLText()
@@ -811,7 +812,7 @@ async function runSQL() {
 
 async function confirmSQLExecution() {
   if (sqlAcknowledgement.value !== sqlConfirmationText()) {
-    ElMessage.warning(`실행을 확인하려면 “${sqlConfirmationText()}”을(를) 입력하십시오.`)
+    ElMessage.warning(at('enterConfirmationPhrase', { phrase: sqlConfirmationText() }))
     return
   }
   sqlRunning.value = true
@@ -835,7 +836,7 @@ async function executeRedisCommandText(confirmed = false) {
   execMeta.rowsAffected = Number(data.rowsAffected || 0)
   execMeta.durationMs = Number(data.durationMs || 0)
   activeTab.value = 'result'
-  ElMessage.success('Redis Command 실행을 완료했습니다.')
+  ElMessage.success(at('redisCommandDone'))
   await loadHistory()
   if (selectedTable.value) await loadResourceData()
 }
@@ -843,7 +844,7 @@ async function executeRedisCommandText(confirmed = false) {
 async function runRedisCommand() {
   if (!isRedis.value) return
   if (!redisCommandText.value.trim()) {
-    ElMessage.warning('Redis Command를 입력하십시오.')
+    ElMessage.warning(at('enterRedisCommand'))
     return
   }
   redisRunning.value = true
@@ -888,7 +889,7 @@ function openRedisKeyCreate() {
 
 function openRedisKeyEdit(row) {
   if (row.type === 'stream') {
-    ElMessage.warning('Stream Type은 아직 Visual Editing을 지원하지 않습니다. 위 Redis Command Console을 사용하십시오.')
+    ElMessage.warning(at('streamNotEditableWarning'))
     return
   }
   redisKeyDialogMode.value = 'edit'
@@ -906,35 +907,35 @@ function parseRedisValueArguments() {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('Complex Type Value는 유효한 JSON이어야 합니다.')
+    throw new Error(at('invalidComplexValue'))
   }
   if (redisKeyForm.type === 'hash') {
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Hash Value는 JSON Object여야 합니다.')
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error(at('hashMustBeObject'))
     const entries = Object.entries(parsed)
-    if (!entries.length) throw new Error('Hash에는 하나 이상의 Field가 필요합니다.')
+    if (!entries.length) throw new Error(at('hashRequiresField'))
     return entries.flatMap(([field, value]) => [quoteRedisArgument(field), quoteRedisArgument(value)])
   }
   if (redisKeyForm.type === 'zset') {
-    if (!Array.isArray(parsed) || !parsed.length) throw new Error('Sorted Set Value는 비어 있지 않은 JSON Array여야 합니다.')
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error(at('zsetMustBeArray'))
     return parsed.flatMap((item) => {
-      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error('Sorted Set Element에는 member와 score가 필요합니다.')
+      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error(at('zsetElementRequired'))
       return [quoteRedisArgument(item.score), quoteRedisArgument(item.member)]
     })
   }
-  if (!Array.isArray(parsed) || !parsed.length) throw new Error('List 또는 Set Value는 비어 있지 않은 JSON Array여야 합니다.')
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error(at('listSetMustBeArray'))
   return parsed.map((item) => quoteRedisArgument(item))
 }
 
 function redisTTLCommand(key) {
   if (redisKeyForm.ttl === undefined || redisKeyForm.ttl === null || redisKeyForm.ttl === '') return ''
   const ttl = Number(redisKeyForm.ttl)
-  if (!Number.isInteger(ttl) || ttl < -1) throw new Error('TTL은 -1 또는 0 이상의 정수 초로 설정해야 합니다.')
+  if (!Number.isInteger(ttl) || ttl < -1) throw new Error(at('invalidTTL'))
   return ttl === -1 ? `PERSIST ${quoteRedisArgument(key)}` : `EXPIRE ${quoteRedisArgument(key)} ${ttl}`
 }
 
 function buildRedisKeyCommands() {
   const key = redisKeyForm.key.trim()
-  if (!key) throw new Error('Key 이름을 입력하십시오.')
+  if (!key) throw new Error(at('enterKeyName'))
   const valueArgs = parseRedisValueArguments()
   const quotedKey = quoteRedisArgument(key)
   const editing = redisKeyDialogMode.value === 'edit'
@@ -947,7 +948,7 @@ function buildRedisKeyCommands() {
     case 'list': command = `RPUSH ${quotedKey} ${valueArgs.join(' ')}`; break
     case 'set': command = `SADD ${quotedKey} ${valueArgs.join(' ')}`; break
     case 'zset': command = `ZADD ${quotedKey} ${valueArgs.join(' ')}`; break
-    default: throw new Error('지원하지 않는 Redis Key Type입니다.')
+    default: throw new Error(at('unsupportedRedisKeyType'))
   }
   const commands = []
   if (editing && redisKeyForm.type !== 'string') commands.push(`DEL ${quotedKey}`)
@@ -962,13 +963,13 @@ async function submitRedisKey() {
   try {
     commands = buildRedisKeyCommands()
   } catch (error) {
-    ElMessage.warning(error.message || 'Key 내용이 올바르지 않습니다.')
+    ElMessage.warning(error.message || at('invalidKeyContent'))
     return
   }
-  const action = redisKeyDialogMode.value === 'create' ? '추가' : '업데이트'
+  const action = redisKeyDialogMode.value === 'create' ? at('addAction') : at('updateAction')
   try {
     await confirmRiskOperation({
-      operation: `${action} Redis Key`,
+      operation: at('redisKeyOperation', { action }),
       targetSummary: redisKeyForm.key,
       production: isProductionEnvironment(connection.value?.environment),
       destructive: redisKeyDialogMode.value === 'edit'
@@ -986,7 +987,7 @@ async function submitRedisKey() {
     selectedSchema.value = schemaTree.value?.[0]?.name || selectedSchema.value
     selectedTable.value = redisKeyForm.key
     await loadResourceData()
-    ElMessage.success(`Redis Key ${action}을(를) 완료했습니다.`)
+    ElMessage.success(at('redisKeyActionDone', { action }))
   } finally {
     redisRunning.value = false
   }
@@ -995,7 +996,7 @@ async function submitRedisKey() {
 async function deleteRedisKey(row) {
   try {
     await confirmRiskOperation({
-      operation: 'Redis Key 삭제',
+      operation: at('redisKeyDeleteOperation'),
       targetSummary: row.key,
       production: isProductionEnvironment(connection.value?.environment),
       destructive: true
@@ -1012,7 +1013,7 @@ async function deleteRedisKey(row) {
       selectedColumns.value = []
     }
     await Promise.all([loadTree(), loadHistory()])
-    ElMessage.success('Redis Key를 삭제했습니다.')
+    ElMessage.success(at('redisKeyDeleted'))
   } finally {
     redisRunning.value = false
   }
@@ -1096,7 +1097,7 @@ function openRollback(row) {
 
 async function copyRollback(row) {
   await navigator.clipboard.writeText(row.rollbackSql || '')
-  ElMessage.success('Rollback SQL을 복사했습니다.')
+  ElMessage.success(at('rollbackSqlCopied'))
 }
 
 function openInsertRow() {
@@ -1121,7 +1122,7 @@ function openEditRow(row) {
 
 async function submitRow() {
   await confirmRiskOperation({
-    operation: rowDialogMode.value === 'insert' ? 'Table Data 추가' : 'Table Data 업데이트',
+    operation: rowDialogMode.value === 'insert' ? at('rowInsertOperation') : at('rowUpdateOperation'),
     targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
     production: isProductionEnvironment(connection.value?.environment),
     destructive: rowDialogMode.value === 'update'
@@ -1133,7 +1134,7 @@ async function submitRow() {
       table: selectedTable.value,
       row: { ...rowForm }
     })
-    ElMessage.success('추가했습니다.')
+    ElMessage.success(at('rowInserted'))
   } else {
     await updateDBMSTableRow({
       databaseId: databaseId.value,
@@ -1142,7 +1143,7 @@ async function submitRow() {
       original: rowOriginal.value,
       current: { ...rowForm }
     })
-    ElMessage.success('업데이트했습니다.')
+    ElMessage.success(at('rowUpdated'))
   }
   rowDialogVisible.value = false
   await Promise.all([loadTableData(), loadHistory()])
@@ -1150,7 +1151,7 @@ async function submitRow() {
 
 async function handleDeleteRow(row) {
   await confirmRiskOperation({
-    operation: 'Table Data Row 삭제',
+    operation: at('rowDeleteOperation'),
     targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
     production: isProductionEnvironment(connection.value?.environment),
     destructive: true
@@ -1161,13 +1162,13 @@ async function handleDeleteRow(row) {
     table: selectedTable.value,
     row
   })
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(at('rowDeleted'))
   await Promise.all([loadTableData(), loadHistory()])
 }
 
 async function createExportTask() {
   if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('Export할 Table을 먼저 선택하십시오.')
+    ElMessage.warning(at('selectTableToExport'))
     return
   }
   await createDBMSExportTask({
@@ -1176,7 +1177,7 @@ async function createExportTask() {
     table: selectedTable.value,
     includeData: true
   })
-  ElMessage.success('Export Task를 생성했습니다.')
+  ElMessage.success(at('exportTaskCreated'))
   activeTab.value = 'tasks'
   await loadTasks()
 }
@@ -1200,16 +1201,16 @@ async function loadImportSchemas() {
 
 async function submitImportTask() {
   if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('현재 Workbench의 Target Table을 먼저 선택하십시오.')
+    ElMessage.warning(at('selectTargetTableFirst'))
     return
   }
   if (!importPrecheck.value?.ready) {
-    ElMessage.warning('Import Precheck를 먼저 완료하십시오.')
+    ElMessage.warning(at('runImportPrecheckFirst'))
     return
   }
   await createDBMSImportTask(importPayload())
   importDialogVisible.value = false
-  ElMessage.success('Import Task를 생성했습니다.')
+  ElMessage.success(at('importTaskCreated'))
   activeTab.value = 'tasks'
   await loadTasks()
 }
@@ -1229,7 +1230,7 @@ function importPayload() {
 
 async function runImportPrecheck() {
   if (!importForm.sourceDatabaseId || !importForm.sourceSchema || !importForm.sourceTable || !selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning('Source Database, Source Table 및 Target Table을 모두 선택하십시오.')
+    ElMessage.warning(at('selectSourceAndTarget'))
     return
   }
   importPrechecking.value = true
@@ -1258,10 +1259,10 @@ function taskStatusType(status) {
 }
 
 function taskStatusText(status) {
-  if (status === 'success') return '성공'
-  if (status === 'failed') return '실패'
-  if (status === 'running') return '실행 중'
-  return '대기 중'
+  if (status === 'success') return at('statusSuccess')
+  if (status === 'failed') return at('statusFailed')
+  if (status === 'running') return at('statusRunning')
+  return at('statusPending')
 }
 
 watch(treeKeyword, () => {
@@ -1312,7 +1313,7 @@ onBeforeUnmount(() => {
       <div class="dbms-console-identity">
         <span>{{ uiT('dbmsWorkbench') }}</span>
         <strong>{{ connection?.name || connection?.databaseName || 'Database Workbench' }}</strong>
-        <small>{{ connection?.host || connection?.address || 'Connection을 선택하면 Object 탐색, Statement 실행 및 결과 확인이 가능합니다.' }}</small>
+        <small>{{ connection?.host || connection?.address || at('workbenchIdleHint') }}</small>
       </div>
       <div class="dbms-console-status">
         <el-tag effect="plain">{{ (connection?.dbType || 'DBMS').toUpperCase() }}</el-tag>
@@ -1325,7 +1326,7 @@ onBeforeUnmount(() => {
         <section class="sidebar-section connection-section">
           <div class="sidebar-section-title">
             <strong>{{ uiT('databaseConnection') }}</strong>
-            <span>Connection을 클릭해 전환</span>
+            <span>{{ at('clickConnectionToSwitch') }}</span>
           </div>
           <DatabaseConnectionTree :active-id="databaseId" @select="switchDatabase" />
         </section>
@@ -1335,14 +1336,14 @@ onBeforeUnmount(() => {
             <strong>{{ uiT('databaseTableStructure') }}</strong>
             <div class="schema-title-actions">
               <el-button v-if="supportsCreateDatabase" type="primary" link @click="openCreateDatabase">
-                추가{{ createDatabaseObjectLabel }}
+                {{ at('createObjectButton', { label: createDatabaseObjectLabel }) }}
               </el-button>
-              <span>{{ connection?.dbName || '전체 Database' }}</span>
+              <span>{{ connection?.dbName || at('allDatabases') }}</span>
             </div>
           </div>
           <div class="sidebar-top">
-            <el-input v-model="treeKeyword" clearable placeholder="Database 또는 Table 검색" />
-            <el-button @click="loadTree">새로고침</el-button>
+            <el-input v-model="treeKeyword" clearable :placeholder="at('searchDatabaseOrTable')" />
+            <el-button @click="loadTree">{{ at('refresh') }}</el-button>
           </div>
           <el-tree
             ref="treeRef"
@@ -1368,17 +1369,17 @@ onBeforeUnmount(() => {
                         text
                         size="small"
                         :disabled="data.currentPage <= 1"
-                        title="이전 Page"
+                        :title="at('previousPage')"
                         @click.stop="changeSchemaTablePage(data, data.currentPage - 1)"
-                      >이전 Page</el-button>
+                      >{{ at('previousPage') }}</el-button>
                       <span>{{ data.currentPage }}/{{ data.totalPages }}</span>
                       <el-button
                         text
                         size="small"
                         :disabled="data.currentPage >= data.totalPages"
-                        title="다음 Page"
+                        :title="at('nextPage')"
                         @click.stop="changeSchemaTablePage(data, data.currentPage + 1)"
-                      >다음 Page</el-button>
+                      >{{ at('nextPage') }}</el-button>
                     </span>
                   </span>
                 </template>
@@ -1393,12 +1394,12 @@ onBeforeUnmount(() => {
           <div class="panel-head">
             <div>
               <h3>{{ supportsSQL ? 'SQL Editor' : isRedis ? 'Redis Command Console' : `${connection?.dbType?.toUpperCase() || 'Database'} Resource Explorer` }}</h3>
-              <p v-if="supportsSQL">Syntax Highlighting, Keyword 및 Database/Table Column 자동완성, 자주 쓰는 Query Template과 Quick Execution을 지원합니다.</p>
-              <p v-else-if="isRedis">일반적인 Redis Read/Write Command를 지원합니다. Write 작업은 재확인 후 Execution History에 기록됩니다.</p>
-              <p v-else>현재 Type은 Connection Test와 Resource Structure 탐색을 지원합니다. Document, Key-Value 및 Data 편집 기능은 Type별로 단계적으로 제공합니다.</p>
+              <p v-if="supportsSQL">{{ at('sqlEditorDescription') }}</p>
+              <p v-else-if="isRedis">{{ at('redisEditorDescription') }}</p>
+              <p v-else>{{ at('genericEditorDescription') }}</p>
             </div>
             <div class="panel-actions">
-              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">SQL 실행</el-button>
+              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">{{ at('runSQL') }}</el-button>
               <el-button v-if="supportsSQL" @click="formatSQL">Format</el-button>
               <el-button v-if="supportsSQL" @click="saveCurrentSQL">SQL Favorite</el-button>
               <el-dropdown v-if="supportsSQL && sqlFavorites.length" trigger="click">
@@ -1407,12 +1408,12 @@ onBeforeUnmount(() => {
                   <el-dropdown-menu class="sql-favorite-menu">
                     <el-dropdown-item v-for="item in sqlFavorites" :key="item.id" class="sql-favorite-item">
                       <span @click="applySqlFavorite(item)">{{ item.name }}</span>
-                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">삭제</el-button>
+                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">{{ at('delete') }}</el-button>
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
-              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">Redis Command 실행</el-button>
+              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">{{ at('runRedisCommand') }}</el-button>
               <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">Export Task</el-button>
               <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">Import Task</el-button>
             </div>
@@ -1422,13 +1423,13 @@ onBeforeUnmount(() => {
             <el-button v-for="item in sqlSnippets" :key="item.label" size="small" plain @click="insertSnippet(item.text)">
               {{ item.label }}
             </el-button>
-              <span class="snippet-hint">`Ctrl + Enter`로 선택한 SQL을 실행합니다. Format과 Favorite는 선택한 SQL에만 적용되며 선택 영역이 없으면 전체 내용에 적용됩니다.</span>
+              <span class="snippet-hint">{{ at('snippetHint') }}</span>
           </div>
 
           <div v-else-if="isRedis" class="redis-command-console">
             <div class="redis-command-head">
               <strong>Redis Command Console</strong>
-              <span>Read Command는 즉시 실행할 수 있고 Write Command는 확인이 필요합니다. 고위험 관리 Command는 비활성화되어 있습니다.</span>
+              <span>{{ at('redisConsoleHint') }}</span>
             </div>
             <div class="redis-command-snippets">
               <el-button v-for="item in redisCommandSnippets" :key="item.label" size="small" plain @click="redisCommandText = item.text">
@@ -1441,15 +1442,15 @@ onBeforeUnmount(() => {
               type="textarea"
               :rows="6"
               spellcheck="false"
-              placeholder="예: GET key, HGETALL hash_key 또는 SET key value"
+              :placeholder="at('redisCommandPlaceholder')"
               @keydown.ctrl.enter.prevent="runRedisCommand"
               @keydown.meta.enter.prevent="runRedisCommand"
             />
-            <div class="redis-command-hint">Quote가 포함된 Parameter를 지원합니다. Ctrl + Enter로 실행하며 기록은 아래 History에 보존됩니다.</div>
+            <div class="redis-command-hint">{{ at('redisCommandHint') }}</div>
           </div>
 
-          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon title="현재 Database는 SQL Type이 아닙니다.">
-            왼쪽에서 Database와 Resource를 선택해 Structure를 확인할 수 있습니다. MySQL은 전체 Data 편집, Import/Export 및 Backup 기능을 제공합니다.
+          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon :title="at('nonSqlDatabaseAlert')">
+            {{ at('nonSqlDatabaseAlertDesc') }}
           </el-alert>
 
           <div v-if="supportsSQL" ref="editorWrapRef" class="editor-shell">
@@ -1465,7 +1466,7 @@ onBeforeUnmount(() => {
                 v-model="sqlText"
                 class="sql-editor"
                 spellcheck="false"
-                placeholder="SQL을 입력하십시오. 선택한 Statement를 실행할 수 있습니다."
+                :placeholder="at('sqlEditorPlaceholder')"
                 @input="updateAutocomplete"
                 @click="updateAutocomplete"
                 @keyup="updateAutocomplete"
@@ -1500,12 +1501,12 @@ onBeforeUnmount(() => {
             <div>
               <h3>Workspace</h3>
               <p v-if="selectedTable">{{ selectedSchema }} / {{ selectedTable }}</p>
-              <p v-else>왼쪽에서 Table을 선택하거나 SQL을 직접 실행해 결과를 확인하십시오.</p>
+              <p v-else>{{ at('workspaceIdleHint') }}</p>
             </div>
             <div v-if="selectedTable || isRedis" class="panel-actions">
-              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">Key 추가</el-button>
-              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">Data 추가</el-button>
-              <el-button @click="refreshSelectedData">Data 새로고침</el-button>
+              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">{{ at('addKey') }}</el-button>
+              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">{{ at('addData') }}</el-button>
+              <el-button @click="refreshSelectedData">{{ at('refreshData') }}</el-button>
             </div>
           </div>
 
@@ -1515,7 +1516,7 @@ onBeforeUnmount(() => {
                 <el-select v-model="tableFilter.key" clearable placeholder="Filter Column" style="width: 180px">
                   <el-option v-for="item in filterableColumns" :key="item" :label="item" :value="item" />
                 </el-select>
-                <el-input v-model="tableFilter.text" clearable placeholder="Filter Value 입력, Fuzzy Match 지원" style="width: 280px" />
+                <el-input v-model="tableFilter.text" clearable :placeholder="at('filterValuePlaceholder')" style="width: 280px" />
               </div>
               <el-alert
                 v-if="supportsResourceData"
@@ -1523,23 +1524,23 @@ onBeforeUnmount(() => {
                 type="info"
                 :closable="false"
                 show-icon
-                :title="isRedis && canManageRedisKeys ? '현재 Redis Connection은 Key 직접 관리를 지원합니다.' : '현재 Resource는 Read-only로 탐색합니다.'"
+                :title="isRedis && canManageRedisKeys ? at('redisKeyManageTitle') : at('resourceReadOnlyTitle')"
               >
-                <template v-if="resourceType === 'collection'">Column 기준으로 MongoDB Document를 Filter할 수 있으며 아래에 Collection Index 요약을 표시합니다.</template>
+                <template v-if="resourceType === 'collection'">{{ at('mongoFilterHint') }}</template>
                 <template v-else-if="resourceType === 'key'">
-                  <span v-if="canManageRedisKeys">Redis Key 추가, 수정, 삭제를 지원합니다. 모든 Write 작업은 확인 후 Audit에 기록됩니다.</span>
-                  <span v-else>Redis Key의 Type, TTL 및 Value 요약을 표시하며 Key를 직접 변경하지 않습니다.</span>
+                  <span v-if="canManageRedisKeys">{{ at('redisKeyWriteHint') }}</span>
+                  <span v-else>{{ at('redisKeyReadOnlyHint') }}</span>
                 </template>
-                <template v-else>PostgreSQL Table Data는 Pagination과 Column Filter를 지원합니다. SQL Editor에서 EXPLAIN ANALYZE로 Execution Plan을 확인할 수 있습니다.</template>
+                <template v-else>{{ at('pgTableDataHint') }}</template>
               </el-alert>
               <el-table v-if="supportsResourceData" v-loading="dataLoading" :data="selectedRows" border height="380">
                 <el-table-column v-for="col in selectedColumns" :key="col.name" :label="col.name" min-width="180" show-overflow-tooltip>
                   <template #default="{ row }">{{ formatResourceValue(row[col.name]) }}</template>
                 </el-table-column>
-                <el-table-column v-if="isRedis" label="작업" width="150" fixed="right">
+                <el-table-column v-if="isRedis" :label="at('actions')" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">수정</el-button>
-                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">삭제</el-button>
+                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">{{ at('edit') }}</el-button>
+                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">{{ at('delete') }}</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -1558,10 +1559,10 @@ onBeforeUnmount(() => {
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="작업" width="150" fixed="right">
+                <el-table-column :label="at('actions')" width="150" fixed="right">
                   <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">수정</el-button>
-                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">삭제</el-button>
+                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">{{ at('edit') }}</el-button>
+                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">{{ at('delete') }}</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -1583,7 +1584,7 @@ onBeforeUnmount(() => {
               </div>
             </el-tab-pane>
 
-            <el-tab-pane label="SQL 결과" name="result">
+            <el-tab-pane :label="at('sqlResultsTab')" name="result">
               <div class="filter-row result-filter-row">
                 <el-select v-model="resultFilter.key" clearable placeholder="Filter Column" style="width: 180px">
                   <el-option v-for="item in resultColumns" :key="item" :label="item" :value="item" />
@@ -1604,10 +1605,10 @@ onBeforeUnmount(() => {
                 <el-table-column prop="schemaName" label="Database" width="120" />
                 <el-table-column prop="tableName" label="Table" width="140" />
                 <el-table-column prop="sqlText" label="SQL" min-width="320" show-overflow-tooltip />
-                <el-table-column label="상태" width="90">
+                <el-table-column :label="at('status')" width="90">
                   <template #default="{ row }">
                     <el-tag :type="row.status === 1 ? 'success' : 'danger'" effect="light">
-                      {{ row.status === 1 ? '성공' : '실패' }}
+                      {{ row.status === 1 ? at('statusSuccess') : at('statusFailed') }}
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -1619,13 +1620,13 @@ onBeforeUnmount(() => {
                 <el-table-column label="Rollback SQL" width="150">
                   <template #default="{ row }">
                     <el-tag v-if="row.rollbackSql" :type="row.rollbackConfidence === 'high' ? 'success' : 'warning'" size="small" effect="plain">
-                      {{ row.rollbackConfidence === 'high' ? '높은 신뢰도' : '검토 필요' }}
+                      {{ row.rollbackConfidence === 'high' ? at('highConfidence') : at('reviewRequired') }}
                     </el-tag>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">보기</el-button>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">복사</el-button>
+                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">{{ at('view') }}</el-button>
+                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">{{ at('copy') }}</el-button>
                   </template>
                 </el-table-column>
-                <el-table-column label="작업" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">재사용</el-button></template></el-table-column>
+                <el-table-column :label="at('actions')" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">{{ at('reuse') }}</el-button></template></el-table-column>
               </el-table>
               <div class="pager">
                 <el-pagination
@@ -1656,20 +1657,20 @@ onBeforeUnmount(() => {
                     <span v-else>-</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="상태" width="110">
+                <el-table-column :label="at('status')" width="110">
                   <template #default="{ row }">
                     <el-tag :type="taskStatusType(row.status)" effect="light">{{ taskStatusText(row.status) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="진행률" width="180">
+                <el-table-column :label="at('progress')" width="180">
                   <template #default="{ row }">
                     <el-progress :percentage="Number(row.progress || 0)" :status="row.status === 'failed' ? 'exception' : row.status === 'success' ? 'success' : ''" />
                   </template>
                 </el-table-column>
-                <el-table-column prop="rowsAffected" label="Row 수" width="90" />
-                <el-table-column prop="message" label="설명" min-width="180" show-overflow-tooltip />
+                <el-table-column prop="rowsAffected" :label="at('rows')" width="90" />
+                <el-table-column prop="message" :label="at('description')" min-width="180" show-overflow-tooltip />
                 <el-table-column prop="createTime" label="Created At" min-width="160" />
-                <el-table-column label="작업" width="120">
+                <el-table-column :label="at('actions')" width="120">
                   <template #default="{ row }">
                     <el-button
                       v-if="row.taskType === 'export' && row.status === 'success'"
@@ -1698,16 +1699,16 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <el-dialog v-model="createDatabaseVisible" :title="`${createDatabaseObjectLabel} 추가`" width="520px" destroy-on-close>
+    <el-dialog v-model="createDatabaseVisible" :title="at('createObjectTitle', { label: createDatabaseObjectLabel })" width="520px" destroy-on-close>
       <el-alert
-        :title="isPostgres ? '현재 연결된 PostgreSQL Database에 Schema를 생성합니다. 생성 후 왼쪽 Structure Tree에 즉시 표시됩니다.' : '현재 MySQL Instance에 Database를 직접 생성합니다. 생성 후 왼쪽 Structure Tree에 즉시 표시됩니다.'"
+        :title="isPostgres ? at('postgresCreateAlert') : at('mysqlCreateAlert')"
         type="info"
         :closable="false"
         show-icon
       />
       <el-form label-width="112px" class="create-database-form">
-        <el-form-item :label="`${createDatabaseObjectLabel} 이름`" required>
-          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit placeholder="예: ops_reporting" @keyup.enter="submitCreateDatabase" />
+        <el-form-item :label="at('objectNameLabel', { label: createDatabaseObjectLabel })" required>
+          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit :placeholder="at('identifierPlaceholder')" @keyup.enter="submitCreateDatabase" />
         </el-form-item>
         <template v-if="!isPostgres">
           <el-form-item label="Character Set">
@@ -1721,26 +1722,26 @@ onBeforeUnmount(() => {
             </el-select>
           </el-form-item>
         </template>
-        <p class="form-help">Letter 또는 underscore로 시작해야 하며 letter, number, underscore만 사용할 수 있습니다.</p>
+        <p class="form-help">{{ at('identifierRuleHint') }}</p>
       </el-form>
       <template #footer>
-        <el-button @click="createDatabaseVisible = false">취소</el-button>
-        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">생성 확인</el-button>
+        <el-button @click="createDatabaseVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">{{ at('confirmCreate') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="sqlConfirmVisible" title="SQL Write 실행 확인" width="780px">
+    <el-dialog v-model="sqlConfirmVisible" :title="at('sqlWriteConfirmTitle')" width="780px">
       <div v-if="sqlAnalysis" class="sql-risk-panel">
         <div class="sql-risk-summary">
           <el-tag :type="riskTagType(sqlAnalysis.riskLevel)" effect="dark">
             {{ sqlAnalysis.riskLevel === 'high' ? 'High Risk' : sqlAnalysis.riskLevel === 'medium' ? 'Medium Risk' : 'Low Risk' }}
           </el-tag>
           <strong>{{ sqlAnalysis.databaseName }} / {{ sqlAnalysis.schema }}</strong>
-          <span>{{ sqlAnalysis.environment || 'Environment 미지정' }}</span>
+          <span>{{ sqlAnalysis.environment || at('environmentUnassigned') }}</span>
         </div>
         <el-descriptions :column="3" border size="small">
           <el-descriptions-item label="SQL Type">{{ sqlAnalysis.sqlType }}</el-descriptions-item>
-          <el-descriptions-item label="Statement 수">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
+          <el-descriptions-item :label="at('statementCount')">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
           <el-descriptions-item label="Access Mode">{{ sqlAnalysis.accessMode === 'readonly' ? 'Read-only' : 'Read / Write' }}</el-descriptions-item>
         </el-descriptions>
         <ul class="risk-reasons">
@@ -1749,40 +1750,40 @@ onBeforeUnmount(() => {
         <pre class="confirm-sql">{{ pendingSQL }}</pre>
         <el-alert
           v-if="sqlAnalysis.accessMode === 'readonly'"
-          title="현재 Database는 Read-only Mode이므로 Backend가 이 SQL 실행을 거부합니다."
+          :title="at('readOnlyRejectAlert')"
           type="error"
           :closable="false"
           show-icon
         />
-        <el-alert v-else title="Target Environment, Database 및 SQL 내용을 확인하십시오. Write 작업은 자동 복구되지 않을 수 있습니다." type="warning" :closable="false" show-icon />
-        <el-form-item class="sql-acknowledgement" :label="`실행을 확인하려면 “${sqlConfirmationText()}”을(를) 입력하십시오.`">
+        <el-alert v-else :title="at('writeConfirmAlert')" type="warning" :closable="false" show-icon />
+        <el-form-item class="sql-acknowledgement" :label="at('enterConfirmationPhrase', { phrase: sqlConfirmationText() })">
           <el-input v-model="sqlAcknowledgement" :placeholder="sqlConfirmationText()" autocomplete="off" />
         </el-form-item>
       </div>
       <template #footer>
-        <el-button @click="sqlConfirmVisible = false">취소</el-button>
+        <el-button @click="sqlConfirmVisible = false">{{ at('cancel') }}</el-button>
         <el-button
           type="danger"
           :loading="sqlRunning"
           :disabled="sqlAnalysis?.accessMode === 'readonly' || sqlAcknowledgement !== sqlConfirmationText()"
           @click="confirmSQLExecution"
         >
-          실행 확인
+          {{ at('execConfirmPhrase') }}
         </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? 'Redis Key 추가' : 'Redis Key 수정'" width="720px">
+    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? at('redisKeyCreateTitle') : at('redisKeyEditTitle')" width="720px">
       <el-alert
         type="warning"
         :closable="false"
         show-icon
-        title="Redis Write는 즉시 적용되며 Execution Audit에 기록됩니다."
+        :title="at('redisWriteAuditAlert')"
         class="redis-key-alert"
       />
       <el-form label-width="112px" class="redis-key-form">
-        <el-form-item label="Key 이름" required>
-          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" placeholder="예: app:config" />
+        <el-form-item :label="at('keyName')" required>
+          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" :placeholder="at('keyNamePlaceholder')" />
         </el-form-item>
         <el-form-item label="Data Type">
           <el-select v-model="redisKeyForm.type" :disabled="redisKeyDialogMode === 'edit'" style="width: 100%">
@@ -1792,41 +1793,41 @@ onBeforeUnmount(() => {
         <el-form-item label="Value" required>
           <el-input v-model="redisKeyForm.value" type="textarea" :rows="8" :placeholder="redisKeyValuePlaceholder" />
         </el-form-item>
-        <el-form-item label="TTL (초)">
+        <el-form-item :label="at('ttl')">
           <el-input-number v-model="redisKeyForm.ttl" :min="-1" :precision="0" controls-position="right" />
-          <span class="redis-key-help">비워두면 TTL을 변경하지 않습니다. -1은 만료 없음입니다.</span>
+          <span class="redis-key-help">{{ at('ttlHelp') }}</span>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="redisKeyDialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">저장 확인</el-button>
+        <el-button @click="redisKeyDialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">{{ at('confirmSave') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? 'Data 추가행' : 'Data Row 수정'" width="720px">
+    <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? at('addRowTitle') : at('editRowTitle')" width="720px">
       <el-form label-width="140px">
         <el-form-item v-for="col in selectedColumns" :key="col.name" :label="`${col.name} (${col.columnType})`">
           <el-input v-model="rowForm[col.name]" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="rowDialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="submitRow">저장</el-button>
+        <el-button @click="rowDialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" @click="submitRow">{{ at('save') }}</el-button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="rollbackDialogVisible" title="Rollback SQL" width="860px">
       <el-alert
-        :title="rollbackConfidence === 'high' ? '높은 신뢰도: Primary Key와 변경 전 Data를 기준으로 생성했습니다. 실행 전에도 반드시 검토하십시오.' : '이 Rollback SQL은 신뢰도가 제한적입니다. 수동 검토 후 사용하십시오.'"
+        :title="rollbackConfidence === 'high' ? at('highConfidenceAlert') : at('limitedConfidenceAlert')"
         :type="rollbackConfidence === 'high' ? 'success' : 'warning'"
         :closable="false"
         show-icon
         class="rollback-alert"
       />
-      <pre class="rollback-box">{{ rollbackSQL || '현재 Record에는 Rollback SQL이 없습니다.' }}</pre>
+      <pre class="rollback-box">{{ rollbackSQL || at('noRollbackSQL') }}</pre>
     </el-dialog>
 
-    <el-dialog v-model="importDialogVisible" title="Import Task 생성" width="680px">
+    <el-dialog v-model="importDialogVisible" :title="at('createImportTaskTitle')" width="680px">
       <el-form label-width="120px">
         <el-form-item label="Source Database">
           <el-select v-model="importForm.sourceDatabaseId" filterable style="width: 100%">
@@ -1851,30 +1852,30 @@ onBeforeUnmount(() => {
         <el-form-item label="Target Table">
           <div>{{ selectedSchema || '-' }} / {{ selectedTable || '-' }}</div>
         </el-form-item>
-        <el-form-item label="Table 자동 생성">
+        <el-form-item :label="at('autoCreateTable')">
           <el-switch v-model="importForm.createIfMissing" />
         </el-form-item>
-        <el-form-item label="Target Table 비우기">
+        <el-form-item :label="at('truncateTargetTable')">
           <el-switch v-model="importForm.truncateTarget" />
         </el-form-item>
         <el-form-item label="Precheck">
-          <el-button :loading="importPrechecking" @click="runImportPrecheck">Column 및 영향 범위 검사</el-button>
+          <el-button :loading="importPrechecking" @click="runImportPrecheck">{{ at('runPrecheck') }}</el-button>
         </el-form-item>
         <div v-if="importPrecheck" class="import-precheck" :class="{ danger: !importPrecheck.ready }">
           <div class="precheck-head">
-            <strong>{{ importPrecheck.ready ? 'Precheck 통과' : 'Precheck 실패' }}</strong>
-            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ importPrecheck.estimatedRows }} 행</el-tag>
+            <strong>{{ importPrecheck.ready ? at('precheckPassed') : at('precheckFailed') }}</strong>
+            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ at('estimatedRowsTag', { count: importPrecheck.estimatedRows }) }}</el-tag>
           </div>
-          <p>Column Mapping: {{ importPrecheck.commonColumns?.length || 0 }}개, 누락 Column: {{ importPrecheck.missingColumns?.length || 0 }}개</p>
-          <p v-if="importPrecheck.missingColumns?.length">누락: {{ importPrecheck.missingColumns.join(', ') }}</p>
+          <p>{{ at('columnMappingSummary', { mapped: importPrecheck.commonColumns?.length || 0, missing: importPrecheck.missingColumns?.length || 0 }) }}</p>
+          <p v-if="importPrecheck.missingColumns?.length">{{ at('missingColumns', { columns: importPrecheck.missingColumns.join(', ') }) }}</p>
           <ul v-if="importPrecheck.warnings?.length">
             <li v-for="item in importPrecheck.warnings" :key="item">{{ item }}</li>
           </ul>
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="importDialogVisible = false">취소</el-button>
-        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">Import 시작</el-button>
+        <el-button @click="importDialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">{{ at('startImport') }}</el-button>
       </template>
     </el-dialog>
   </div>
