@@ -5,15 +5,15 @@ Ops Admin 프런트엔드는 Vue 3, Vite, Vue Router, Element Plus 기반의 SPA
 ## 요구 환경
 
 - Node.js 18+
-- npm 9+
+- bun 1.4.2+ (패키지 매니저)
 - 접근 가능한 Ops Admin Backend. 개발 환경 기본 주소는 `http://127.0.0.1:8082`입니다.
 
 ## 설치 및 실행
 
 ```powershell
 cd web
-npm ci
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
 Vite 개발 Server는 기본적으로 `http://127.0.0.1:8080`에서 실행됩니다. `vite.config.js`는 `/api/v1`과 `/uploads` 요청을 Backend의 `8082` Port로 Proxy합니다.
@@ -22,8 +22,8 @@ Production Build:
 
 ```powershell
 cd web
-npm run build
-npm run preview
+bun run build
+bun run preview
 ```
 
 ## 디렉터리 구성
@@ -59,7 +59,7 @@ npm run preview
 
 ```powershell
 cd web
-npm run build
+bun run build
 ```
 
 ## 관련 문서
