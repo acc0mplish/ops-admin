@@ -52,8 +52,13 @@ var permissionPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*){
 // read-only; the physical order of the underlying tables is not contractual —
 // artifact generators sort their output (determinism contract M-1).
 func All() []Def {
-	defs := make([]Def, 0, len(domainDefs))
+	defs := make([]Def, 0, len(domainDefs)+len(systemDefs)+len(assetDefs)+len(integrationDefs)+len(opsDefs)+len(monitorDefs))
 	defs = append(defs, domainDefs...)
+	defs = append(defs, systemDefs...)
+	defs = append(defs, assetDefs...)
+	defs = append(defs, integrationDefs...)
+	defs = append(defs, opsDefs...)
+	defs = append(defs, monitorDefs...)
 	return defs
 }
 

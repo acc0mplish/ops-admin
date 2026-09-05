@@ -68,6 +68,10 @@ var domainDefSnapshot = []snapshotEntry{
 	{"GET", "/domain/public/certificates/download-private", "single", []string{"domains:ssl:download-key"}},
 }
 
+// minTotalDefs is the lower bound of the sensitive-route table (T1): the
+// 238 non-GET authGroup routes plus the curated sensitive GET reads.
+const minTotalDefs = 255
+
 // defKind reports which of the three permission shapes a definition uses.
 func defKind(d Def) string {
 	switch {
@@ -90,6 +94,49 @@ func TestUniqueMethodPath(t *testing.T) {
 			t.Fatalf("duplicate (Method,Path) %q (first seen as %q)", key, prev)
 		}
 		seen[key] = key
+	}
+}
+
+// TestMinimumTableSize pins the lower bound of the sensitive-route table
+// (T1): the table must cover the full sensitive surface, so an empty or
+// truncated table must fail loudly.
+func TestMinimumTableSize(t *testing.T) {
+	if got := len(All()); got < minTotalDefs {
+		t.Fatalf("operation table holds %d definitions, minimum contract is %d", got, minTotalDefs)
+	}
+}
+
+// TestRedactionMetadata enforces the CR-2 redaction ledger on the routes whose
+// plaintext secret responses were verified in the curation pass: asset host
+// reads, monitor datasource reads, notify channel reads, the k8s cluster
+// reads and the credential reads must each carry redaction field names. The
+// redaction work itself is out of scope for this task — this only records it.
+func TestRedactionMetadata(t *testing.T) {
+	byKey := map[string]Def{}
+	for _, d := range All() {
+		byKey[d.Method+" "+d.Path] = d
+	}
+	for _, key := range []string{
+		"GET /asset/host/list", "GET /asset/host/info",
+		"GET /monitor/datasource/list", "GET /monitor/datasource/options", "GET /monitor/datasource/info",
+		"GET /notify/channel/list", "GET /notify/channel/options", "GET /notify/channel/info",
+		"GET /k8s/cluster/list", "GET /k8s/cluster/info", "GET /k8s/cluster/detail",
+		"GET /asset/credential/list", "GET /asset/credential/options", "GET /asset/credential/info",
+	} {
+		d, ok := byKey[key]
+		if !ok {
+			t.Fatalf("redaction-verified route %s missing from the operation table", key)
+		}
+		if len(d.Redaction) == 0 {
+			t.Fatalf("%s: verified plaintext secret response must record Redaction field names", key)
+		}
+		for _, d := range All() {
+			for _, field := range d.Redaction {
+				if field == "" {
+					t.Fatalf("%s %s: Redaction entries must be non-empty field names", d.Method, d.Path)
+				}
+			}
+		}
 	}
 }
 
