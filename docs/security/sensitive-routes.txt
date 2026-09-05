@@ -1,6 +1,6 @@
 # Sensitive-route classification generated from backend/opdef — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestSensitiveRoutesArtifact -update
-# 283 entries.
+# 285 entries.
 DELETE /admin/delete	permission=system:admin:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/cloudAccount/delete	permission=assets:cloudaccount:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/credential/delete	permission=assets:credential:delete	mutating=true	risk=high	reduction=false
@@ -121,8 +121,10 @@ POST /asset/host/sync	permission=assets:host:sync	mutating=true	risk=medium	redu
 POST /asset/hostGroup/add	permission=assets:hostgroup:add	mutating=true	risk=medium	reduction=false
 POST /asset/service/diagnosis/arthas/download	permission=assets:service:arthas	mutating=true	risk=medium	reduction=false
 POST /asset/service/diagnosis/arthas/upload	permission=assets:service:arthas	mutating=true	risk=medium	reduction=false
+POST /asset/service/diagnosis/run	permission=assets:service:diagnosis	mutating=true	risk=medium	reduction=false
 POST /asset/service/save	permission=assets:service:save	mutating=true	risk=medium	reduction=false
 POST /asset/service/workload/rollback	permission=assets:service:rollback	mutating=true	risk=medium	reduction=false
+POST /console-sessions	permission=assets:host:terminal|assets:k8s:pod:terminal	mutating=true	risk=high	reduction=false
 POST /dbms/backup/import	permission=assets:database:backup:restore	mutating=true	risk=medium	reduction=false
 POST /dbms/backup/manual	permission=assets:database:backup:create	mutating=true	risk=medium	reduction=false
 POST /dbms/backup/plan/run	permission=assets:database:backup:create	mutating=true	risk=medium	reduction=false

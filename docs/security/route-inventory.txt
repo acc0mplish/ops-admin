@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 435 entries.
+# 437 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -85,7 +85,7 @@ GET /api/v1/asset/hostGroup/list -> ops-admin/backend/controller.(*Controller).G
 GET /api/v1/asset/overview -> ops-admin/backend/controller.(*Controller).GetAssetOverview-fm
 GET /api/v1/asset/service/diagnosis/environment -> ops-admin/backend/controller.(*Controller).GetAssetServiceDiagnosisEnvironment-fm
 GET /api/v1/asset/service/diagnosis/processes -> ops-admin/backend/controller.(*Controller).GetAssetServiceDiagnosisProcesses-fm
-GET /api/v1/asset/service/diagnosis/run -> ops-admin/backend/controller.(*Controller).RunAssetServiceDiagnosis-fm
+GET /api/v1/asset/service/diagnosis/run -> ops-admin/backend/controller.(*Controller).AssetServiceDiagnosisRunGone-fm
 GET /api/v1/asset/service/info -> ops-admin/backend/controller.(*Controller).GetAssetServiceInfo-fm
 GET /api/v1/asset/service/k8s/catalog -> ops-admin/backend/controller.(*Controller).GetAssetServiceK8sCatalog-fm
 GET /api/v1/asset/service/list -> ops-admin/backend/controller.(*Controller).GetAssetServiceList-fm
@@ -270,10 +270,12 @@ POST /api/v1/asset/host/sync -> ops-admin/backend/controller.(*Controller).SyncA
 POST /api/v1/asset/hostGroup/add -> ops-admin/backend/controller.(*Controller).CreateAssetHostGroup-fm
 POST /api/v1/asset/service/diagnosis/arthas/download -> ops-admin/backend/controller.(*Controller).DownloadAssetServiceArthas-fm
 POST /api/v1/asset/service/diagnosis/arthas/upload -> ops-admin/backend/controller.(*Controller).UploadAssetServiceArthas-fm
+POST /api/v1/asset/service/diagnosis/run -> ops-admin/backend/controller.(*Controller).RunAssetServiceDiagnosis-fm
 POST /api/v1/asset/service/save -> ops-admin/backend/controller.(*Controller).SaveAssetService-fm
 POST /api/v1/asset/service/workload/rollback -> ops-admin/backend/controller.(*Controller).RollbackAssetServiceWorkload-fm
 POST /api/v1/auth/logout -> ops-admin/backend/controller.(*Controller).Logout-fm
 POST /api/v1/auth/refresh -> ops-admin/backend/controller.(*Controller).RefreshToken-fm
+POST /api/v1/console-sessions -> ops-admin/backend/controller.(*Controller).CreateConsoleSession-fm
 POST /api/v1/dbms/backup/import -> ops-admin/backend/controller.(*Controller).CreateDatabaseBackupImportTask-fm
 POST /api/v1/dbms/backup/manual -> ops-admin/backend/controller.(*Controller).RunManualDatabaseBackup-fm
 POST /api/v1/dbms/backup/plan/run -> ops-admin/backend/controller.(*Controller).RunDatabaseBackupPlan-fm

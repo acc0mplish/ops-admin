@@ -15,7 +15,7 @@ export const rollbackAssetServiceWorkload = (data) => http.post('/api/v1/asset/s
 export const queryAssetServiceWorkloadLogs = (params) => http.get('/api/v1/asset/service/workload/logs', { params })
 export const queryAssetServiceDiagnosisProcesses = (params) => http.get('/api/v1/asset/service/diagnosis/processes', { params, timeout: 30000 })
 export const queryAssetServiceDiagnosisEnvironment = (params) => http.get('/api/v1/asset/service/diagnosis/environment', { params, timeout: 30000 })
-export const queryAssetServiceDiagnosisRun = (params) => http.get('/api/v1/asset/service/diagnosis/run', { params, timeout: 240000 })
+export const queryAssetServiceDiagnosisRun = (params) => http.post('/api/v1/asset/service/diagnosis/run', params, { timeout: 240000 })
 export const downloadAssetServiceArthas = (data) => http.post('/api/v1/asset/service/diagnosis/arthas/download', data, { timeout: 120000 })
 export const uploadAssetServiceArthas = (data) => http.post('/api/v1/asset/service/diagnosis/arthas/upload', data, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
 export const queryAssetChangeLogs = (params) => http.get('/api/v1/asset/change-log/list', { params })

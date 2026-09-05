@@ -42,10 +42,10 @@ var publicRouteKeys = map[string]struct{}{
 	"HEAD /uploads/*filepath": {},
 }
 
-// authGroupRoutes filters the live engine's route table down to the 425
+// authGroupRoutes filters the live engine's route table down to the 427
 // authenticated routes: the api-group routes minus the public set.
 func authGroupRoutes(routes gin.RoutesInfo) []gin.RouteInfo {
-	out := make([]gin.RouteInfo, 0, 425)
+	out := make([]gin.RouteInfo, 0, 427)
 	for _, route := range routes {
 		if !strings.HasPrefix(route.Path, apiPrefix+"/") && route.Path != apiPrefix {
 			continue
@@ -208,8 +208,8 @@ func TestZeroGrantCoverage(t *testing.T) {
 		defKeys[d.Method+" "+d.Path] = struct{}{}
 	}
 	authRoutes := authGroupRoutes(engine.Routes())
-	if len(authRoutes) != 425 {
-		t.Fatalf("authGroup holds %d routes, contract is 425", len(authRoutes))
+	if len(authRoutes) != 427 {
+		t.Fatalf("authGroup holds %d routes, contract is 427", len(authRoutes))
 	}
 	missedDenials := []string{}
 	unexpectedDenials := []string{}
@@ -325,7 +325,7 @@ func TestOperationTableCoversRouter(t *testing.T) {
 	if len(missing) > 0 {
 		t.Fatalf("%d non-GET authGroup routes have no operation definition (must be 0): %v", len(missing), missing)
 	}
-	if count != 238 {
-		t.Fatalf("authGroup non-GET count %d drifted from the 238 baseline", count)
+	if count != 240 {
+		t.Fatalf("authGroup non-GET count %d drifted from the 240 baseline", count)
 	}
 }
