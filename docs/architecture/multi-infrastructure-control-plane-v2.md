@@ -3,8 +3,9 @@
 > Tracking issue: #4
 >
 > Revision: r2. This revision incorporates the findings of a five-lens adversarial review of r1 (4 CRITICAL, 16 HIGH, 15 MEDIUM) plus a code-level cross-check of every claim. Appendix A maps each finding to the section that resolves it.
+> Amendment r2.1 (2026-09-05): Proxmox VE promoted from Milestone 2 conditional to committed Phase 5 — operational need named by the product owner, satisfying the plan's own §5.5 entry test. §1, §5.2, §5.3, §14.3, Phase 5, and the overview diagram updated accordingly.
 >
-> Target platforms: Kubernetes (including K3s), public cloud (Aliyun, Tencent) as the second real provider family, and reserved support for Proxmox VE, VMware vCenter, Apache CloudStack, and OpenStack. r1 treated the reserved platforms as near-term phases; r2 corrects that ordering (Section 14, Section 20).
+> Target platforms: Kubernetes (including K3s), public cloud (Aliyun, Tencent) as the second real provider family, Proxmox VE as the committed third provider family (operational need named by the product owner, 2026-09-05), and reserved support for VMware vCenter, Apache CloudStack, and OpenStack. r1 treated the reserved platforms as near-term phases; r2 corrects that ordering — Proxmox is ordered after the two provider families that exist in code, ahead of the reservations (Section 14, Section 20).
 
 ## 1. Decision
 
@@ -23,7 +24,7 @@ The V2 decision is:
 - Reuse the existing `OpsJob` approval semantics (`ApprovalStatus`/`Approver`) for provider-task approval instead of inventing a parallel approval model.
 - Bound the transformation with a **domain disposition matrix** (Section 3): most of the existing product—DNS, certificates, database workbench, monitoring, CI/CD, notify—remains V1 and is explicitly not absorbed by V2 in Milestone 1.
 - Deliver **Milestone 1 = Phase -1 through Phase 4** (security containment, foundation, Kubernetes/K3s vertical slice, Aliyun/Tencent read-only adapter) as an independently valuable, independently shippable unit. Everything after Milestone 1 is conditional (Section 5).
-- Do not implement Proxmox, vCenter, CloudStack, or OpenStack anything until Milestone 1 is delivered and a real need for that platform exists.
+- Do not implement Proxmox, vCenter, CloudStack, or OpenStack anything until Milestone 1 is delivered. Proxmox is committed as Phase 5 (its operational need is named; a real endpoint to develop against is a Phase 5 entry precondition). vCenter, CloudStack, and OpenStack additionally require a real need for that platform to be named first.
 
 ### Explicit non-goals (r2)
 
@@ -483,8 +484,11 @@ Milestone 1  (committed)   Phase -1  security containment
                            Phase 4   Aliyun/Tencent read-only adapter (Slice B)
                            -> deliver, declare, stabilize. Independently shippable.
 
-Milestone 2  (conditional) triggered by explicit go-decision after M1 soak
-                           Phase 5   Proxmox read-only + guarded operations
+Milestone 2  (committed for Proxmox; cutover still gated by M1 soak)
+                           Phase 5   Proxmox read-only + guarded operations —
+                                     the operational need is named (product
+                                     owner, 2026-09-05); entry precondition:
+                                     a real Proxmox endpoint to develop against
                            Phase 6   legacy cutover (host/cloud-account/k8s) +
                                      God service/router decomposition
                            deferred models re-entry (scope graph, outbox, agents)
@@ -511,8 +515,9 @@ Rough by necessity; stated in focused-work weeks so calendar time can be derived
 | 3 | S/M | 1–1.5 | end-to-end polish: approval, idempotency, audit |
 | 4 | M | 1.5–2 | normalizing existing Aliyun/Tencent payloads |
 | **M1 total** | **XL** | **~9–13 weeks** | calendar 3–5 months part-time |
-| 5 (Proxmox) | M | 2–3 | only if a real Proxmox endpoint exists to develop against |
+| 5 (Proxmox) | M | 2–3 | committed (need named 2026-09-05); requires a real Proxmox endpoint to develop against |
 | 6 (cutover) | L | 3–4 | rollback rehearsal; shadow-read duration |
+| **M2 total (5–6)** | **XL** | **~5–7 weeks** | calendar 2–3 months part-time |
 | 7–9 (each) | M | 2–4 | per platform, after core is proven |
 
 Estimates are planning anchors, not commitments. If a phase exceeds its band by ~2x, the response is to re-scope the phase against §3 (usually: another domain moves to REMAIN), not to silently extend.
@@ -570,7 +575,8 @@ flowchart TB
     subgraph ADAPTERS[Provider Adapter Families — in process]
       K8S[Kubernetes / K3s]
       PUB[Public Cloud: Aliyun · Tencent]
-      RES[Reserved: Proxmox · vCenter · CloudStack · OpenStack]
+      P5[Phase 5: Proxmox — committed]
+      RES[Reserved: vCenter · CloudStack · OpenStack]
     end
 
     CLIENT --> API
@@ -1182,17 +1188,25 @@ FinOps: existing cost record sync keeps its scheduler; the credential and
 
 Success condition (this is Slice B, §25): migrating the existing code behind the contracts requires **no core schema change and no provider-name branch in core**—proving the contract set on a provider that already exists, rather than on one that must be invented.
 
-### 14.3 Proxmox VE (Milestone 2 reservation)
+### 14.3 Proxmox VE (Milestone 2, Phase 5 — committed)
 
-Entered only by the §5.2 go-decision, and only if a real Proxmox endpoint exists to develop against:
+**Status change (r2.1, 2026-09-05):** the product owner has named Proxmox as a critical platform. This satisfies the plan's own falsifiable entry test ("an operational need names the platform", §5.5) — the trigger the reservations still wait on. Proxmox is therefore committed as Phase 5, ordered after M1 (the core must still be proven on the two provider families that exist in code first) and ahead of the M3 reservations. Remaining entry precondition: **a real Proxmox endpoint to develop against** (API token + realm, cluster reachable from the control plane).
 
 ```text
 Scope: cluster, node, QEMU VM, LXC, storage, network; UPID task polling
 Note:  QEMU and LXC are different kinds; cluster quorum/HA health is not
        collapsed into VM health.
+Identity: node name + VMID per cluster; API token with realm and
+       privilege separation (read-only token for discovery, operations
+       token gated by approval)
+Tasks:  Proxmox UPID is an asynchronous handle — maps onto the Phase 1
+       task engine's attempt/poll model directly (poll /cluster/tasks
+       or task status endpoint until exit)
+Console: Phase 5 ships no VNC console (that rides the deferred connector
+       agent + its ADR, §12.2); power/snapshot/config operations only
 ```
 
-Minimum definition: read-only discovery first, then power/snapshot operations through existing task engine and approval. Estimate band in §5.3.
+Sequence: read-only discovery first (same shadow pattern as Phase 2/4), then power, snapshot, and config operations through the existing task engine and approval chain — no new engine concepts. Success bar: Slice B's test repeated on a provider with zero prior code in the tree (no core schema change, no provider-name branch in core — §25). Estimate band in §5.3 (M2 total ~5–7 focused weeks with Phase 6).
 
 ### 14.4–14.6 vCenter, CloudStack, OpenStack (Milestone 3 reservations)
 
@@ -1588,9 +1602,9 @@ Exit gate: Slice B (§25): discovery of a real account with no core schema chang
 
 §5.2's definition of done; tag, changelog, soak period before any M2 decision.
 
-### Phase 5 (M2, conditional): Proxmox read-only + guarded operations
+### Phase 5 (M2, committed): Proxmox read-only + guarded operations
 
-Minimum scope: read-only discovery (cluster/node/QEMU/LXC/storage/network), then power/snapshot ops through the existing engine; UPID polling as attempts. Precondition: go-decision + real endpoint. Gate: Slice B criteria re-proven on Proxmox.
+Full definition in §14.3 — status changed from conditional to committed (r2.1: operational need named by the product owner, 2026-09-05, satisfying the plan's own §5.5 entry test). Scope: read-only discovery (cluster/node/QEMU/LXC/storage/network) in the Phase 2 shadow pattern, then power/snapshot/config operations through the existing task engine and approval chain; UPID polling as attempts. Precondition: a real Proxmox endpoint + API token to develop against (need is named; endpoint is not negotiable — no invented provider contracts). Gate: Slice B criteria re-proven on a provider with zero prior code in the tree.
 
 ### Phase 6 (M2, conditional): Legacy cutover and decomposition
 
