@@ -978,19 +978,22 @@ func (ctl *Controller) BatchSyncAssetHosts(c *gin.Context) {
 }
 
 func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
-	token := c.Query("token")
-	if strings.TrimSpace(token) == "" {
-		httpx.Failed(c, http.StatusUnauthorized, "authentication required")
+	// The canonical binding key is computed before the auth gate: minting and
+	// consumption share the same resource-id normalization (Q1).
+	bindingKey, bindErr := service.CanonicalConsoleResourceID(service.ConsoleResourceAssetHost, c.Query("hostId"))
+	if bindErr != nil {
+		httpx.Failed(c, 400, "invalid hostId")
 		return
 	}
-	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
+	hostID := uint(mustAtoi(bindingKey))
+	rows := mustAtoi(c.DefaultQuery("rows", "30"))
+	cols := mustAtoi(c.DefaultQuery("cols", "120"))
+
+	headers, ok := ctl.authorizeTerminalWS(c, service.ConsoleProtocolAssetTerminal, service.ConsoleResourceAssetHost, bindingKey)
+	if !ok {
 		return
 	}
 
-	hostID := uint(mustAtoi(c.Query("hostId")))
-	rows := mustAtoi(c.DefaultQuery("rows", "30"))
-	cols := mustAtoi(c.DefaultQuery("cols", "120"))
 	terminal, err := ctl.service.OpenAssetTerminal(hostID, rows, cols)
 	if err != nil {
 		httpx.Failed(c, 400, err.Error())
@@ -999,7 +1002,7 @@ func (ctl *Controller) AssetTerminalWS(c *gin.Context) {
 	defer terminal.Session.Close()
 	defer terminal.Client.Close()
 
-	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, headers)
 	if err != nil {
 		return
 	}

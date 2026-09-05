@@ -2,11 +2,12 @@ package controller
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
-	"ops-admin/backend/auth"
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/model"
+	"ops-admin/backend/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -258,16 +259,6 @@ func (ctl *Controller) GetK8sPodContainers(c *gin.Context) {
 }
 
 func (ctl *Controller) K8sPodTerminalWS(c *gin.Context) {
-	token := c.Query("token")
-	if strings.TrimSpace(token) == "" {
-		httpx.Failed(c, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	if _, err := auth.ParseToken(token); err != nil {
-		httpx.Failed(c, http.StatusUnauthorized, auth.TokenErrorMessage(err))
-		return
-	}
-
 	var query struct {
 		ClusterID uint   `form:"clusterId"`
 		Namespace string `form:"namespace"`
@@ -288,7 +279,22 @@ func (ctl *Controller) K8sPodTerminalWS(c *gin.Context) {
 		query.Cols = 120
 	}
 
-	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, nil)
+	// The canonical binding key is computed before the auth gate (same
+	// normalization as the mint side). Container and command are deliberately
+	// unbound — the pod is the authorization boundary.
+	bindingKey, bindErr := service.CanonicalConsoleResourceID(service.ConsoleResourceK8sPod,
+		strconv.FormatUint(uint64(query.ClusterID), 10)+"/"+query.Namespace+"/"+query.PodName)
+	if bindErr != nil {
+		httpx.Failed(c, http.StatusBadRequest, "invalid pod terminal query")
+		return
+	}
+
+	headers, ok := ctl.authorizeTerminalWS(c, service.ConsoleProtocolK8sPodTerminal, service.ConsoleResourceK8sPod, bindingKey)
+	if !ok {
+		return
+	}
+
+	conn, err := terminalUpgrader.Upgrade(c.Writer, c.Request, headers)
 	if err != nil {
 		return
 	}
