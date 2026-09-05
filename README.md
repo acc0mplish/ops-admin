@@ -209,7 +209,13 @@ CREATE DATABASE ops_admin
 
 ### 2. Backend 설정
 
-`backend/config.yaml`을 수정합니다.
+템플릿을 복사해 설정합니다:
+
+```bash
+cp backend/config.example.yaml backend/config.yaml
+```
+
+`backend/config.yaml`은 git 추적 대상이 아닙니다(V2 계획 §4.6). `credential-key`는 `openssl rand -base64 32`로 생성한 값을 사용하고, 실제 값을 커밋하지 마십시오.
 
 ```yaml
 app:

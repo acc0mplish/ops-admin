@@ -9,6 +9,7 @@ backend/runtime.stdout.log
 backend/runtime.stderr.log
 deploy/.env
 deploy/config.yaml
+backend/config.yaml
 .gopath/
 .gomodcache/
 .tmp/

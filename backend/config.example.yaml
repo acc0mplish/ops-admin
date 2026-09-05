@@ -1,0 +1,37 @@
+# ops-admin backend local configuration template.
+# Copy to backend/config.yaml and fill in real values before running:
+#   cp backend/config.example.yaml backend/config.yaml
+#
+# backend/config.yaml is git-ignored — never commit real credentials
+# (see README 로컬 개발 빠른 시작 and V2 plan §4.6).
+
+app:
+  name: ops-admin
+  port: "8082"
+  mode: debug
+
+db:
+  host: 127.0.0.1
+  port: "3306"
+  user: root
+  password: "REPLACE_WITH_DATABASE_PASSWORD"
+  name: ops_admin
+  log-mode: false
+
+security:
+  # Master key for encrypting DNS cloud-account credentials and SSL private
+  # keys (v2 envelopes: util/secretv2.go). Generate with:
+  #   openssl rand -base64 32
+  # Restrict read access to this file. Rotating requires the re-encrypt
+  # migration (V2 plan §4.4) — do not change casually after initial setup.
+  credential-key: "REPLACE_WITH_RANDOM_32BYTE_BASE64_KEY"
+
+ssl:
+  # Production requires a real operations mailbox. It can also be overridden
+  # with OPS_ADMIN_ACME_EMAIL at deployment time.
+  acme-email: ""
+  production-ca: "https://acme-v02.api.letsencrypt.org/directory"
+  staging-ca: "https://acme-staging-v02.api.letsencrypt.org/directory"
+  dns-polling-seconds: 2
+  dns-propagation-seconds: 120
+  expiry-warning-days: 30
