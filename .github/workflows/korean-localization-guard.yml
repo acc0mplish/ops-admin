@@ -73,3 +73,14 @@ jobs:
             exit 1
           fi
           echo 'PASS: no Chinese characters found in product source or documentation.'
+
+  i18n-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check locale dictionary key parity
+        run: node scripts/check-i18n-parity.mjs

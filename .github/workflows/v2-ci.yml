@@ -1,0 +1,154 @@
+name: V2 CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Required checks are registered per job (branch protection, post-merge manual
+# step — docs/security/ci-baseline.md). No path filters: a required check
+# combined with a path filter sticks pending on out-of-scope PRs.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Test all backend packages
+        working-directory: backend
+        run: go test ./... -race -count=1
+      - name: opdef coverage latch (baseline 65.4, gate 60.0)
+        working-directory: backend
+        run: |
+          cov="$(go test ./opdef/ -cover | sed -n 's/.*coverage: \([0-9.]*\)%.*/\1/p')"
+          echo "opdef coverage: ${cov}%"
+          if awk -v c="$cov" 'BEGIN { exit !(c >= 60.0) }'; then
+            echo "PASS: opdef coverage ${cov}% >= 60.0 latch (raise the latch with new coverage — never lower it)"
+          else
+            echo "FAIL: opdef coverage ${cov}% below the 60.0 latch"
+            exit 1
+          fi
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install and build the web console
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+  migration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Reopen the committed baseline fixture and migrate it
+        working-directory: backend
+        run: go test ./store/ -run TestMigrationFixture -count=1 -v
+
+  route-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Route inventory, sensitive-route table, opdef coverage of the live router
+        working-directory: backend
+        run: go test ./router/ -run 'TestRouteInventoryArtifact|TestSensitiveRoutesArtifact|TestOperationTableCoversRouter' -count=1
+
+  route-coverage-canary:
+    # A canary that does not fire fails CI (plan §4.10 / D-5): plant an
+    # unlisted non-GET route in a scratch copy and require
+    # TestOperationTableCoversRouter to reject it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Plant an unlisted POST route in a scratch copy
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary"
+          cd "$RUNNER_TEMP/canary/backend"
+          sed -i 's|authGroup.GET("/profile", ctl.Profile)|authGroup.GET("/profile", ctl.Profile)\n\t\tauthGroup.POST("/canary/unlisted", func(c *gin.Context) {})|' router/router.go
+          grep -q 'authGroup.POST("/canary/unlisted"' router/router.go || {
+            echo "CANARY PLANT FAILED: /profile anchor drifted — the injection silently did nothing"
+            exit 1
+          }
+      - name: The unlisted route must be caught (test failure is required)
+        run: |
+          cd "$RUNNER_TEMP/canary/backend"
+          if go test ./router/ -run TestOperationTableCoversRouter -count=1; then
+            echo "CANARY DID NOT FIRE: TestOperationTableCoversRouter passed with an unlisted POST route planted"
+            exit 1
+          fi
+          echo "CANARY OK: the planted unlisted route was rejected"
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan the tree for secrets and guard the untracked config files
+        run: python3 scripts/secret-scan.py
+
+  secret-scan-canary:
+    # A canary that does not fire fails CI: plant the workflow's own canary
+    # literals at the scratch root — outside the .github/workflows allowlist
+    # scope — and require the scanner to fire AND to attribute the finding to
+    # the planted file (H2: not a scanner self-hit).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plant a canary leak in a scratch copy and require the scanner to fire
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary"
+          printf 'aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\naws_access_key_id = "AKIAIOSFODNN7EXAMPLE"\n' > "$RUNNER_TEMP/canary/canary-leak.txt"
+          if python3 scripts/secret-scan.py "$RUNNER_TEMP/canary" > "$RUNNER_TEMP/canary-output.txt"; then
+            echo "CANARY DID NOT FIRE: scanner exited 0 over a planted secret"
+            exit 1
+          fi
+          grep -q 'canary-leak.txt' "$RUNNER_TEMP/canary-output.txt" || {
+            echo "CANARY ATTRIBUTION FAILED: the firing report does not name the planted file"
+            exit 1
+          }
+          grep 'SECRET:' "$RUNNER_TEMP/canary-output.txt"
+          echo "CANARY OK: the planted file fired with correct attribution"
+
+  arch-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Core provider isolation and opdef purity rules
+        run: bash scripts/check-arch-boundary.sh
