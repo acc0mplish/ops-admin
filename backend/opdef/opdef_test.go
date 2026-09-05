@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"ops-admin/backend/model"

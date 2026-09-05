@@ -102,6 +102,18 @@ func Validate(d Def) error {
 	return nil
 }
 
+// Must returns the operation definition registered for a route. A sensitive
+// route without a definition must fail startup instead of silently passing,
+// so the router attaches lookups through this constructor.
+func Must(method, path string) Def {
+	for _, d := range All() {
+		if d.Method == method && d.Path == path {
+			return d
+		}
+	}
+	panic(fmt.Sprintf("opdef: no operation definition for %s %s", method, path))
+}
+
 // PermissionStrings returns the deduplicated, sorted permission vocabulary of
 // the whole operation table — the grant source for the seeder. The order is
 // deterministic so seed artifacts stay stable.

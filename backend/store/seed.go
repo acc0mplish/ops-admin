@@ -160,10 +160,10 @@ func seedMonitorAlertTemplatesTx(db *gorm.DB) error {
 			ObjectType: spec.objectType, DatasourceType: "prometheus", QueryText: spec.query,
 			Comparator: spec.comparator, Threshold: spec.threshold, ForSeconds: spec.duration,
 			EvalIntervalSeconds: 60, Severity: spec.severity,
-			LabelsJSON: fmt.Sprintf(`{"domain":%q}`, spec.domain),
+			LabelsJSON:      fmt.Sprintf(`{"domain":%q}`, spec.domain),
 			AnnotationsJSON: fmt.Sprintf(`{"summary":%q}`, name),
-			Description: "Built-in platform alert definition. Operational guidance is applied from the canonical alert catalog.",
-			Source: "platform", Status: 1,
+			Description:     "Built-in platform alert definition. Operational guidance is applied from the canonical alert catalog.",
+			Source:          "platform", Status: 1,
 		}
 		var existing model.MonitorAlertTemplate
 		err := db.Where("query_text = ? AND source = ?", spec.query, "platform").First(&existing).Error
@@ -208,21 +208,27 @@ func seedSystemConfig(db *gorm.DB) error {
 func seedDept(db *gorm.DB) error {
 	var count int64
 	db.Model(&model.Dept{}).Count(&count)
-	if count > 0 { return nil }
+	if count > 0 {
+		return nil
+	}
 	return db.Create(&model.Dept{ParentID: 0, DeptType: 1, DeptName: "Headquarters", DeptStatus: 1, CreatedAt: time.Now()}).Error
 }
 
 func seedPost(db *gorm.DB) error {
 	var count int64
 	db.Model(&model.Post{}).Count(&count)
-	if count > 0 { return nil }
+	if count > 0 {
+		return nil
+	}
 	return db.Create(&model.Post{PostCode: "super-admin", PostName: "Super Administrator", PostStatus: 1, Remark: "System bootstrap position", CreatedAt: time.Now()}).Error
 }
 
 func seedRole(db *gorm.DB) error {
 	var count int64
 	db.Model(&model.Role{}).Count(&count)
-	if count > 0 { return nil }
+	if count > 0 {
+		return nil
+	}
 	return db.Create(&model.Role{RoleName: "Super Administrator", RoleKey: "super-admin", Status: 1, Description: "System bootstrap role", CreatedAt: time.Now()}).Error
 }
 
@@ -243,11 +249,17 @@ func seedMenuName(value string) string {
 
 func seedMenus(db *gorm.DB) error {
 	systemRoot, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: seedMenuName("system"), MenuType: 1, URL: "/system", Value: "system", MenuStatus: 1, Sort: 1, Icon: "Setting"})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	businessTopologyMenu, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: seedMenuName("console:business-topology"), MenuType: 2, URL: "/business-topology", Value: "console:business-topology", MenuStatus: 1, Sort: 0, Icon: "Share"})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	logRoot, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: seedMenuName("logs"), MenuType: 1, URL: "/logs", Value: "logs", MenuStatus: 1, Sort: 2, Icon: "Document"})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	items := []model.Menu{
 		{ParentID: systemRoot.ID, MenuName: seedMenuName("system:admin:list"), MenuType: 2, URL: "/system/admin", Value: "system:admin:list", MenuStatus: 1, Sort: 1, Icon: "User"},
@@ -262,7 +274,9 @@ func seedMenus(db *gorm.DB) error {
 	menuByValue := map[string]model.Menu{}
 	for _, item := range items {
 		menu, err := ensureMenu(db, item)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		menuByValue[item.Value] = menu
 	}
 
@@ -280,28 +294,45 @@ func seedMenus(db *gorm.DB) error {
 	menuByValue["console:business-topology"] = businessTopologyMenu
 	for sort, button := range buttons {
 		parent, ok := menuByValue[button.parentValue]
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		name := canonicalPermissionName(button.value)
-		if name == "" { name = "Permission" }
-		if _, err := ensureMenu(db, model.Menu{ParentID: parent.ID, MenuName: name, MenuType: 3, Value: button.value, MenuStatus: 1, Sort: sort + 1}); err != nil { return err }
+		if name == "" {
+			name = "Permission"
+		}
+		if _, err := ensureMenu(db, model.Menu{ParentID: parent.ID, MenuName: name, MenuType: 3, Value: button.value, MenuStatus: 1, Sort: sort + 1}); err != nil {
+			return err
+		}
 	}
 	return seedApplicationMenus(db)
 }
 
 func seedApplicationMenus(db *gorm.DB) error {
 	type menuSeed struct{ url, value, icon string }
-	type appSeed struct{ url, value, icon string; children []menuSeed }
+	type appSeed struct {
+		url, value, icon string
+		children         []menuSeed
+	}
 	type buttonSeed struct{ parentValue, value string }
 
 	var retiredMenus []model.Menu
-	if err := db.Where("value = ? OR url = ?", "applications:topology", "/applications/topology").Find(&retiredMenus).Error; err != nil { return err }
+	if err := db.Where("value = ? OR url = ?", "applications:topology", "/applications/topology").Find(&retiredMenus).Error; err != nil {
+		return err
+	}
 	if len(retiredMenus) > 0 {
 		ids := make([]uint, 0, len(retiredMenus))
-		for _, menu := range retiredMenus { ids = append(ids, menu.ID) }
+		for _, menu := range retiredMenus {
+			ids = append(ids, menu.ID)
+		}
 		if err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Where("menu_id IN ?", ids).Delete(&model.RoleMenu{}).Error; err != nil { return err }
+			if err := tx.Where("menu_id IN ?", ids).Delete(&model.RoleMenu{}).Error; err != nil {
+				return err
+			}
 			return tx.Where("id IN ?", ids).Delete(&model.Menu{}).Error
-		}); err != nil { return err }
+		}); err != nil {
+			return err
+		}
 	}
 
 	applications := []appSeed{
@@ -323,10 +354,14 @@ func seedApplicationMenus(db *gorm.DB) error {
 	menuByValue := make(map[string]model.Menu)
 	for appIndex, application := range applications {
 		root, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: seedMenuName(application.value), MenuType: 1, URL: application.url, Value: application.value, MenuStatus: 1, Sort: 10 + appIndex, Icon: application.icon})
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		for childIndex, child := range application.children {
 			menu, err := ensureMenu(db, model.Menu{ParentID: root.ID, MenuName: seedMenuName(child.value), MenuType: 2, URL: child.url, Value: child.value, MenuStatus: 1, Sort: childIndex + 1, Icon: child.icon})
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			menuByValue[child.value] = menu
 		}
 	}
@@ -368,10 +403,16 @@ func seedApplicationMenus(db *gorm.DB) error {
 	}
 	for sort, button := range buttons {
 		parent, found := menuByValue[button.parentValue]
-		if !found { continue }
+		if !found {
+			continue
+		}
 		name := canonicalPermissionName(button.value)
-		if name == "" { name = "Permission" }
-		if _, err := ensureMenu(db, model.Menu{ParentID: parent.ID, MenuName: name, MenuType: 3, Value: button.value, MenuStatus: 1, Sort: sort + 1}); err != nil { return err }
+		if name == "" {
+			name = "Permission"
+		}
+		if _, err := ensureMenu(db, model.Menu{ParentID: parent.ID, MenuName: name, MenuType: 3, Value: button.value, MenuStatus: 1, Sort: sort + 1}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -379,32 +420,56 @@ func seedApplicationMenus(db *gorm.DB) error {
 func seedAdmin(db *gorm.DB) error {
 	var count int64
 	db.Model(&model.Admin{}).Count(&count)
-	if count > 0 { return nil }
+	if count > 0 {
+		return nil
+	}
 	initialPassword := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_PASSWORD"))
-	if initialPassword == "" { return errors.New("OPS_ADMIN_INITIAL_PASSWORD must be set before initializing the first administrator") }
+	if initialPassword == "" {
+		return errors.New("OPS_ADMIN_INITIAL_PASSWORD must be set before initializing the first administrator")
+	}
 	username := strings.TrimSpace(os.Getenv("OPS_ADMIN_INITIAL_USERNAME"))
-	if username == "" { username = "admin" }
+	if username == "" {
+		username = "admin"
+	}
 	var dept model.Dept
 	var post model.Post
 	var role model.Role
-	if err := db.First(&dept).Error; err != nil { return err }
-	if err := db.First(&post).Error; err != nil { return err }
-	if err := db.First(&role).Error; err != nil { return err }
+	if err := db.First(&dept).Error; err != nil {
+		return err
+	}
+	if err := db.First(&post).Error; err != nil {
+		return err
+	}
+	if err := db.First(&role).Error; err != nil {
+		return err
+	}
 	admin := model.Admin{PostID: post.ID, DeptID: dept.ID, Username: username, Password: util.HashPassword(initialPassword), Nickname: "System Administrator", Status: 1, Email: "admin@example.com", Phone: "13800000000", Note: "Bootstrap administrator", CreatedAt: time.Now()}
-	if err := db.Create(&admin).Error; err != nil { return err }
+	if err := db.Create(&admin).Error; err != nil {
+		return err
+	}
 	return db.Create(&model.AdminRole{AdminID: admin.ID, RoleID: role.ID}).Error
 }
 
 func seedSuperRolePermissions(db *gorm.DB) error {
 	var role model.Role
-	if err := db.Where("role_key = ?", "super-admin").First(&role).Error; err != nil { return err }
+	if err := db.Where("role_key = ?", "super-admin").First(&role).Error; err != nil {
+		return err
+	}
 	var menus []model.Menu
-	if err := db.Find(&menus).Error; err != nil { return err }
+	if err := db.Find(&menus).Error; err != nil {
+		return err
+	}
 	for _, menu := range menus {
 		var count int64
-		if err := db.Model(&model.RoleMenu{}).Where("role_id = ? and menu_id = ?", role.ID, menu.ID).Count(&count).Error; err != nil { return err }
-		if count > 0 { continue }
-		if err := db.Create(&model.RoleMenu{RoleID: role.ID, MenuID: menu.ID}).Error; err != nil { return err }
+		if err := db.Model(&model.RoleMenu{}).Where("role_id = ? and menu_id = ?", role.ID, menu.ID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if err := db.Create(&model.RoleMenu{RoleID: role.ID, MenuID: menu.ID}).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -518,11 +583,17 @@ func ensureMenu(db *gorm.DB, menu model.Menu) (model.Menu, error) {
 	err := db.Where("value = ? AND value <> ''", menu.Value).First(&existing).Error
 	if err == nil {
 		updates := map[string]any{"parent_id": menu.ParentID, "menu_name": menu.MenuName, "menu_type": menu.MenuType, "url": menu.URL, "menu_status": menu.MenuStatus, "sort": menu.Sort, "icon": menu.Icon}
-		if updateErr := db.Model(&existing).Updates(updates).Error; updateErr != nil { return existing, updateErr }
+		if updateErr := db.Model(&existing).Updates(updates).Error; updateErr != nil {
+			return existing, updateErr
+		}
 		return existing, nil
 	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) { return existing, err }
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return existing, err
+	}
 	menu.CreatedAt = time.Now()
-	if err := db.Create(&menu).Error; err != nil { return existing, err }
+	if err := db.Create(&menu).Error; err != nil {
+		return existing, err
+	}
 	return menu, nil
 }
