@@ -16,6 +16,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.Menu{},
 		&model.Admin{},
 		&model.AuthSession{},
+		&model.ConsoleTicket{},
 		&model.PublicDNSAccount{},
 		&model.PublicDomainSnapshot{},
 		&model.InternalDNSSetting{},
