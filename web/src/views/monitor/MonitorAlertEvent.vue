@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { batchUpdateMonitorAlertEvents, claimMonitorAlertEvent, queryMonitorAlertEventDetail, queryMonitorAlertEventList, resolveMonitorAlertEvent, triggerMonitorAlertAction } from '../../api/monitor'
 import { queryOpsJobList, queryOpsScriptList } from '../../api/ops'
+import { mt } from '../../utils/monitor-i18n'
 
 const loading = ref(false)
 const route = useRoute()
@@ -18,7 +19,7 @@ const detail = ref({ event: {}, timelines: [], actions: [], notifyLogs: [], noti
 const current = ref({})
 const selectedEventIds = ref([])
 const query = reactive({ pageNum: 1, pageSize: 20, keyword: '', status: '', severity: '' })
-const actionForm = reactive({ actionType: 'job', targetId: undefined, operator: '시스템 관리자', summary: '' })
+const actionForm = reactive({ actionType: 'job', targetId: undefined, operator: mt('systemAdmin'), summary: '' })
 
 function statusType(status) {
   if (status === 'pending') return 'warning'
@@ -30,7 +31,7 @@ function statusType(status) {
 }
 
 function statusText(status) {
-  return ({ pending: '대기 중', firing: '트리거 중', claimed: '인계됨', silenced: '차단됨', recovered: '복구됨', resolved: '종료됨' }[status] || status)
+  return ({ pending: mt('evPending'), firing: mt('evFiring'), claimed: mt('evClaimed'), silenced: mt('evSilenced'), recovered: mt('evRecovered'), resolved: mt('evResolved') }[status] || status)
 }
 
 function formatTime(value) {
@@ -77,16 +78,16 @@ async function loadActionOptions() {
 }
 
 async function handleClaim(row) {
-  const { value } = await ElMessageBox.prompt('인계자 또는 처리 설명을 입력하십시오.', 'Alert 인계', { inputPlaceholder: '예: 홍길동 조사 중' })
+  const { value } = await ElMessageBox.prompt(mt('enterClaimNote'), mt('claimAlertTitle'), { inputPlaceholder: mt('claimPlaceholder') })
   await claimMonitorAlertEvent({ id: row.id, claimedBy: value, handleNote: value })
-  ElMessage.success('인계했습니다.')
+  ElMessage.success(mt('claimedMsg'))
   await loadData()
 }
 
 async function handleResolve(row) {
-  const { value } = await ElMessageBox.prompt('처리 설명을 입력하십시오.', 'Alert 종료', { inputPlaceholder: '예: 서비스가 복구되었습니다.' })
+  const { value } = await ElMessageBox.prompt(mt('enterResolveNote'), mt('resolveAlertTitle'), { inputPlaceholder: mt('resolvePlaceholder') })
   await resolveMonitorAlertEvent({ id: row.id, handleNote: value })
-  ElMessage.success('종료했습니다.')
+  ElMessage.success(mt('resolvedMsg'))
   await loadData()
 }
 
@@ -97,16 +98,16 @@ function handleSelectionChange(selection) {
 async function handleBatchAction(action) {
   if (!selectedEventIds.value.length) return
   if (action === 'delete') {
-    await ElMessageBox.confirm(`선택한 ${selectedEventIds.value.length}건의 Alert Event 기록을 삭제하시겠습니까? 이 작업은 Alert Rule을 삭제하지 않습니다.`, '일괄 삭제 확인', { type: 'warning' })
+    await ElMessageBox.confirm(mt('evBatchDeleteConfirm', { count: selectedEventIds.value.length }), mt('evBatchDeleteTitle'), { type: 'warning' })
     await batchUpdateMonitorAlertEvents({ ids: selectedEventIds.value, action: 'delete' })
-    ElMessage.success('Alert Event를 일괄 삭제했습니다.')
+    ElMessage.success(mt('evBatchDeleted'))
     selectedEventIds.value = []
     await loadData()
     return
   }
   const isClaim = action === 'claim'
-  const { value } = await ElMessageBox.prompt(isClaim ? '인계자 또는 처리 설명을 입력하십시오.' : '일괄 처리 설명을 입력하십시오.', isClaim ? 'Alert 일괄 인계' : 'Alert 일괄 종료', {
-    inputPlaceholder: isClaim ? '예: 홍길동 조사 중' : '예: 문제를 처리했으며 서비스가 복구되었습니다.'
+  const { value } = await ElMessageBox.prompt(isClaim ? mt('enterClaimNote') : mt('enterBatchNote'), isClaim ? mt('batchClaimTitle') : mt('batchResolveTitle'), {
+    inputPlaceholder: isClaim ? mt('claimPlaceholder') : mt('batchResolvePlaceholder')
   })
   await batchUpdateMonitorAlertEvents({
     ids: selectedEventIds.value,
@@ -114,14 +115,14 @@ async function handleBatchAction(action) {
     claimedBy: isClaim ? value : '',
     handleNote: value
   })
-  ElMessage.success(isClaim ? '인계 가능한 Alert을 일괄 인계했습니다.' : '종료되지 않은 Alert을 일괄 종료했습니다.')
+  ElMessage.success(isClaim ? mt('batchClaimedDone') : mt('batchResolvedDone'))
   selectedEventIds.value = []
   await loadData()
 }
 
 async function openAction(row) {
   current.value = row
-  Object.assign(actionForm, { actionType: 'job', targetId: undefined, operator: '시스템 관리자', summary: `Alert 처리: ${row.ruleName}` })
+  Object.assign(actionForm, { actionType: 'job', targetId: undefined, operator: mt('systemAdmin'), summary: mt('alertProcessSummary', { name: row.ruleName }) })
   await loadActionOptions()
   actionVisible.value = true
 }
@@ -147,7 +148,7 @@ async function submitAction() {
     operator: actionForm.operator,
     summary: actionForm.summary
   })
-  ElMessage.success(actionForm.actionType === 'job' ? 'Job을 트리거했습니다.' : '진단 Script 처리를 기록했습니다.')
+  ElMessage.success(actionForm.actionType === 'job' ? mt('jobTriggered') : mt('scriptRecorded'))
   actionVisible.value = false
   await loadData()
 }
@@ -166,79 +167,79 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h2>Alert Event</h2>
-        <p>트리거, 인계, 차단, 복구, 종료 상태를 한곳에서 확인하고 진단 Script 또는 Job을 바로 트리거할 수 있습니다.</p>
+        <p>{{ mt('eventPageDesc') }}</p>
       </div>
-      <el-button @click="loadData">새로 고침</el-button>
+      <el-button @click="loadData">{{ mt('refreshSpaced') }}</el-button>
     </div>
 
     <div class="toolbar">
-      <el-input v-model="query.keyword" clearable placeholder="Rule / Metric 검색" style="width: 280px" @keyup.enter="loadData" />
-      <el-select v-model="query.status" clearable placeholder="상태" style="width: 140px">
-        <el-option label="인계 안 됨" value="unclaimed" />
-        <el-option label="대기 중" value="pending" />
-        <el-option label="트리거 중" value="firing" />
-        <el-option label="인계됨" value="claimed" />
-        <el-option label="차단됨" value="silenced" />
-        <el-option label="복구됨" value="recovered" />
-        <el-option label="종료됨" value="resolved" />
+      <el-input v-model="query.keyword" clearable :placeholder="mt('eventSearchPlaceholder')" style="width: 280px" @keyup.enter="loadData" />
+      <el-select v-model="query.status" clearable :placeholder="mt('status')" style="width: 140px">
+        <el-option :label="mt('unclaimedLabel')" value="unclaimed" />
+        <el-option :label="mt('evPending')" value="pending" />
+        <el-option :label="mt('evFiring')" value="firing" />
+        <el-option :label="mt('evClaimed')" value="claimed" />
+        <el-option :label="mt('evSilenced')" value="silenced" />
+        <el-option :label="mt('evRecovered')" value="recovered" />
+        <el-option :label="mt('evResolved')" value="resolved" />
       </el-select>
       <el-select v-model="query.severity" clearable placeholder="Severity" style="width: 120px">
         <el-option label="P0 / P1" value="critical" />
         <el-option v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" :value="item" />
       </el-select>
-      <el-button type="primary" @click="loadData">검색</el-button>
+      <el-button type="primary" @click="loadData">{{ mt('searchLabel') }}</el-button>
     </div>
 
     <div v-if="selectedEventIds.length" class="batch-toolbar">
-      <span>Alert Event <b>{{ selectedEventIds.length }}</b>건을 선택했습니다</span>
-      <el-button size="small" type="primary" @click="handleBatchAction('claim')">일괄 인계</el-button>
-      <el-button size="small" type="warning" @click="handleBatchAction('resolve')">일괄 종료</el-button>
-      <el-button size="small" type="danger" plain @click="handleBatchAction('delete')">일괄 삭제</el-button>
+      <span>{{ mt('selectedEvents', { count: selectedEventIds.length }) }}</span>
+      <el-button size="small" type="primary" @click="handleBatchAction('claim')">{{ mt('batchClaim') }}</el-button>
+      <el-button size="small" type="warning" @click="handleBatchAction('resolve')">{{ mt('batchResolve') }}</el-button>
+      <el-button size="small" type="danger" plain @click="handleBatchAction('delete')">{{ mt('batchDelete') }}</el-button>
     </div>
 
     <el-table v-loading="loading" :data="rows" border @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="52" fixed="left" />
       <el-table-column prop="ruleName" label="Rule" min-width="170" />
       <el-table-column prop="severity" label="Severity" width="90" />
-      <el-table-column label="상태" width="110">
+      <el-table-column :label="mt('status')" width="110">
         <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="인계 정보" min-width="220" show-overflow-tooltip>
+      <el-table-column :label="mt('claimInfoCol')" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">
           <div v-if="row.claimedBy" class="claim-info">
             <strong>{{ row.claimedBy }}</strong>
-            <span>인계: {{ row.handleNote || '인계 설명 미입력' }}</span>
-            <span v-if="row.status === 'resolved'">종료: {{ row.resolveNote || '종료 설명 미입력' }}</span>
+            <span>{{ mt('claimColon', { note: row.handleNote || mt('noClaimNote') }) }}</span>
+            <span v-if="row.status === 'resolved'">{{ mt('resolveColon', { note: row.resolveNote || mt('noResolveNote') }) }}</span>
             <small>{{ row.updateTime || '-' }}</small>
           </div>
           <div v-else-if="row.status === 'resolved'" class="claim-info claim-none">
-            <strong>인계 안 됨 / 종료됨</strong>
-            <span>종료: {{ row.resolveNote || '종료 설명 미입력' }}</span>
+            <strong>{{ mt('unclaimedResolved') }}</strong>
+            <span>{{ mt('resolveColon', { note: row.resolveNote || mt('noResolveNote') }) }}</span>
           </div>
-          <span v-else class="claim-empty">인계 안 됨</span>
+          <span v-else class="claim-empty">{{ mt('unclaimedLabel') }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="metric" label="Metric" min-width="170" show-overflow-tooltip />
-      <el-table-column label="노이즈 감소 적중" min-width="180" show-overflow-tooltip>
+      <el-table-column :label="mt('noiseReductionCol')" min-width="180" show-overflow-tooltip>
         <template #default="{ row }">
-          <span v-if="row.silenced">차단: {{ row.silenceRuleName || '-' }}</span>
-          <span v-else-if="row.aggregateRuleName">집계: {{ row.aggregateRuleName }}</span>
+          <span v-if="row.silenced">{{ mt('silencedColon', { rule: row.silenceRuleName || '-' }) }}</span>
+          <span v-else-if="row.aggregateRuleName">{{ mt('aggregatedColon', { rule: row.aggregateRuleName }) }}</span>
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column label="현재 값" width="120">
+      <el-table-column :label="mt('currentValue')" width="120">
         <template #default="{ row }">{{ Number(row.currentValue || 0).toFixed(4) }}</template>
       </el-table-column>
       <el-table-column prop="threshold" label="Threshold" width="100" />
-      <el-table-column label="마지막 트리거 시각" width="156">
+      <el-table-column :label="mt('lastTriggerCol')" width="156">
         <template #default="{ row }"><div class="trigger-time"><span>{{ formatTriggerTime(row.lastTriggerAt).date }}</span><small>{{ formatTriggerTime(row.lastTriggerAt).time }}</small></div></template>
       </el-table-column>
-      <el-table-column label="작업" width="280" fixed="right">
+      <el-table-column :label="mt('actions')" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">상세</el-button>
-          <el-button link type="primary" @click="openAction(row)">연동 처리</el-button>
-          <el-button v-if="row.status === 'firing'" link type="primary" @click="handleClaim(row)">인계</el-button>
-          <el-button v-if="row.status === 'firing' || row.status === 'claimed' || row.status === 'silenced'" link type="warning" @click="handleResolve(row)">종료</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ mt('detail') }}</el-button>
+          <el-button link type="primary" @click="openAction(row)">{{ mt('linkedAction') }}</el-button>
+          <el-button v-if="row.status === 'firing'" link type="primary" @click="handleClaim(row)">{{ mt('claimShort') }}</el-button>
+          <el-button v-if="row.status === 'firing' || row.status === 'claimed' || row.status === 'silenced'" link type="warning" @click="handleResolve(row)">{{ mt('resolveShort') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -247,7 +248,7 @@ onMounted(async () => {
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" />
     </div>
 
-    <el-drawer v-model="detailVisible" title="Alert Event 상세" size="72%" destroy-on-close>
+    <el-drawer v-model="detailVisible" :title="mt('eventDetailTitle')" size="72%" destroy-on-close>
       <div v-loading="detailLoading" class="event-detail">
         <section class="detail-summary">
           <div class="detail-title">
@@ -259,67 +260,67 @@ onMounted(async () => {
           </div>
           <el-descriptions :column="4" border>
             <el-descriptions-item label="Datasource">{{ detail.event?.datasourceName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="현재 값">{{ Number(detail.event?.currentValue || 0).toFixed(4) }}</el-descriptions-item>
+            <el-descriptions-item :label="mt('currentValue')">{{ Number(detail.event?.currentValue || 0).toFixed(4) }}</el-descriptions-item>
             <el-descriptions-item label="Threshold">{{ detail.event?.threshold ?? '-' }}</el-descriptions-item>
-            <el-descriptions-item label="첫 트리거">{{ formatTime(detail.event?.firstTriggerAt) }}</el-descriptions-item>
+            <el-descriptions-item :label="mt('firstTrigger')">{{ formatTime(detail.event?.firstTriggerAt) }}</el-descriptions-item>
           </el-descriptions>
         </section>
 
         <section class="notification-state">
           <div>
-            <span>Notification 판단</span>
-            <strong>{{ detail.notificationState?.reason || 'Notification 판단 없음' }}</strong>
+            <span>{{ mt('notifyDecision') }}</span>
+            <strong>{{ detail.notificationState?.reason || mt('noNotifyDecision') }}</strong>
           </div>
-          <div><span>전송됨</span><strong>{{ detail.notificationState?.notifyCount || 0 }}회</strong></div>
-          <div><span>다음 전송 가능 시각</span><strong>{{ formatTime(detail.notificationState?.nextNotifyAt) }}</strong></div>
-          <div><span>집계 Rule</span><strong>{{ detail.notificationState?.aggregationRule || '-' }}</strong></div>
+          <div><span>{{ mt('sentLabel') }}</span><strong>{{ mt('timesCount', { count: detail.notificationState?.notifyCount || 0 }) }}</strong></div>
+          <div><span>{{ mt('nextNotifyAt') }}</span><strong>{{ formatTime(detail.notificationState?.nextNotifyAt) }}</strong></div>
+          <div><span>{{ mt('aggregationRuleLabel') }}</span><strong>{{ detail.notificationState?.aggregationRule || '-' }}</strong></div>
         </section>
 
         <section class="detail-grid">
           <div class="detail-panel">
-            <div class="detail-panel-head"><h4>Event Timeline</h4><span>트리거, Notification, 인계와 복구 전 과정</span></div>
-            <el-empty v-if="!detail.timelines?.length" description="이 History Event에는 Timeline 기록이 없습니다" :image-size="70" />
+            <div class="detail-panel-head"><h4>Event Timeline</h4><span>{{ mt('timelineDesc') }}</span></div>
+            <el-empty v-if="!detail.timelines?.length" :description="mt('noTimelineRecords')" :image-size="70" />
             <el-timeline v-else>
               <el-timeline-item v-for="item in detail.timelines" :key="`${item.id}-${item.eventType}-${item.createTime}`" :timestamp="formatTime(item.createTime)" placement="top">
                 <strong>{{ item.title }}</strong>
                 <p>{{ item.detail || '-' }}</p>
-                <small v-if="item.operator">처리자: {{ item.operator }}</small>
+                <small v-if="item.operator">{{ mt('handlerColon', { name: item.operator }) }}</small>
               </el-timeline-item>
             </el-timeline>
           </div>
           <div class="detail-panel">
-            <div class="detail-panel-head"><h4>Event Label</h4><span>지문(Fingerprint), Routing, 집계 판단에 사용</span></div>
+            <div class="detail-panel-head"><h4>Event Label</h4><span>{{ mt('eventLabelDesc') }}</span></div>
             <pre>{{ prettyJSON(detail.event?.labelsJson) }}</pre>
           </div>
         </section>
 
         <section class="detail-panel">
-          <div class="detail-panel-head"><h4>Notification 전송 기록</h4><span>최근 20회 Channel 전송 결과</span></div>
-          <el-table :data="detail.notifyLogs || []" border empty-text="Notification을 전송하지 않았습니다">
+          <div class="detail-panel-head"><h4>{{ mt('notifyLogTitle') }}</h4><span>{{ mt('notifyLogDesc') }}</span></div>
+          <el-table :data="detail.notifyLogs || []" border :empty-text="mt('noNotifyLogs')">
             <el-table-column prop="channelName" label="Notification Channel" min-width="150" />
             <el-table-column prop="event" label="Event" width="100" />
-            <el-table-column prop="status" label="상태" width="100" />
-            <el-table-column prop="attemptCount" label="시도 횟수" width="100" />
-            <el-table-column prop="durationMs" label="소요 시간(ms)" width="100" />
-            <el-table-column prop="errorText" label="실패 원인" min-width="220" show-overflow-tooltip />
-            <el-table-column label="시각" width="180"><template #default="{ row }">{{ formatTime(row.createTime) }}</template></el-table-column>
+            <el-table-column prop="status" :label="mt('status')" width="100" />
+            <el-table-column prop="attemptCount" :label="mt('attemptCountCol')" width="100" />
+            <el-table-column prop="durationMs" :label="mt('durationMsCol')" width="100" />
+            <el-table-column prop="errorText" :label="mt('failureReasonCol')" min-width="220" show-overflow-tooltip />
+            <el-table-column :label="mt('timeCol')" width="180"><template #default="{ row }">{{ formatTime(row.createTime) }}</template></el-table-column>
           </el-table>
         </section>
       </div>
     </el-drawer>
 
-    <el-dialog v-model="actionVisible" title="Alert 연동 처리" width="620px">
+    <el-dialog v-model="actionVisible" :title="mt('linkedActionTitle')" width="620px">
       <el-form :model="actionForm" label-width="100px">
         <el-form-item label="Alert Rule">
           <el-input :model-value="current.ruleName" disabled />
         </el-form-item>
-        <el-form-item label="처리 유형">
+        <el-form-item :label="mt('actionTypeLabel')">
           <el-radio-group v-model="actionForm.actionType">
-            <el-radio value="job">Job 트리거</el-radio>
-            <el-radio value="script">진단 Script</el-radio>
+            <el-radio value="job">{{ mt('triggerJob') }}</el-radio>
+            <el-radio value="script">{{ mt('diagnosticScript') }}</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="actionForm.actionType === 'job' ? 'Job 선택' : 'Script 선택'" required>
+        <el-form-item :label="actionForm.actionType === 'job' ? mt('selectJob') : mt('selectScript')" required>
           <el-select v-model="actionForm.targetId" filterable clearable style="width: 100%">
             <el-option
               v-for="item in actionForm.actionType === 'job' ? jobs : scripts"
@@ -329,16 +330,16 @@ onMounted(async () => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="처리자">
+        <el-form-item :label="mt('handlerLabel')">
           <el-input v-model="actionForm.operator" />
         </el-form-item>
-        <el-form-item label="설명">
+        <el-form-item :label="mt('descriptionLabel')">
           <el-input v-model="actionForm.summary" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="actionVisible = false">취소</el-button>
-        <el-button type="primary" @click="submitAction">처리 확인</el-button>
+        <el-button @click="actionVisible = false">{{ mt('cancel') }}</el-button>
+        <el-button type="primary" @click="submitAction">{{ mt('confirmAction') }}</el-button>
       </template>
     </el-dialog>
   </div>

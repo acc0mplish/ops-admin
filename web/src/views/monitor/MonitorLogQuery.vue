@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { mt } from '../../utils/monitor-i18n'
 import {
   deleteMonitorLogShortcut,
   queryMonitorDatasourceOptions,
@@ -58,7 +59,7 @@ const elasticsearchFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 
 const victoriaLogsFields = ['kubernetes.pod_namespace', 'kubernetes.pod_name', 'kubernetes.container_name', 'kafka_topic', 'level']
 const activeDatasource = computed(() => datasources.value.find((item) => item.id === datasourceId.value))
 const isVictoriaLogs = computed(() => activeDatasource.value?.type === 'victorialogs')
-const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: '자주 사용' })))
+const fallbackFields = computed(() => (isVictoriaLogs.value ? victoriaLogsFields : elasticsearchFields).map((name) => ({ name, type: mt('frequentUse') })))
 const opLogIgnoredFields = new Set(['@timestamp', 'kafka_topic', 'source_type', 'timestamp', 'ts'])
 const hasSelectedOpLogStream = computed(() => isVictoriaLogs.value && selectedTopics.value.some((topic) => String(topic).toLowerCase().includes('op.log')))
 const isContextlessLogSelection = computed(() => isVictoriaLogs.value && selectedTopics.value.length > 0 && selectedTopics.value.every((topic) => /(?:op|err)\.log/i.test(String(topic))))
@@ -73,7 +74,7 @@ const opLogFields = computed(() => {
     }
   }
   return [...counts.entries()]
-    .map(([name, hits]) => ({ name: `op.${name}`, queryName: name, type: 'OP 로그', hits }))
+    .map(([name, hits]) => ({ name: `op.${name}`, queryName: name, type: mt('opLogType'), hits }))
     .sort((left, right) => right.hits - left.hits || left.name.localeCompare(right.name))
 })
 const fields = computed(() => {
@@ -129,7 +130,7 @@ function histogramAxisTime(bucket) {
 
 function selectHistogramBucket(bucket) {
   selectedHistogramBucket.value = bucket
-  ElMessage.info(`${formatTime(bucket.key_as_string || bucket.key)}: 로그 ${Number(bucket.doc_count || 0).toLocaleString()}건`)
+  ElMessage.info(mt('logCountAtTime', { time: formatTime(bucket.key_as_string || bucket.key), count: Number(bucket.doc_count || 0).toLocaleString() }))
 }
 
 function levelClass(level) {
@@ -228,8 +229,8 @@ async function refreshAll() {
 }
 
 async function search(targetPage = 1) {
-  if (!datasourceId.value) return ElMessage.warning('먼저 로그 Datasource를 구성하고 선택하십시오.')
-  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning('시작 및 종료 일시를 모두 선택하십시오.')
+  if (!datasourceId.value) return ElMessage.warning(mt('configureLogDatasourceFirst'))
+  if (timeRange.value === 'custom' && customDateRange.value?.length !== 2) return ElMessage.warning(mt('selectStartEndBoth'))
   loading.value = true
   try {
     const parsedPage = Number(targetPage)
@@ -257,15 +258,15 @@ async function search(targetPage = 1) {
 function drillDownOpLogFields() {
   if (!hasSelectedOpLogStream.value) return
   if (!items.value.length) {
-    ElMessage.warning('먼저 op.log가 포함된 로그를 조회한 뒤 Field 드릴다운을 수행하십시오.')
+    ElMessage.warning(mt('queryOpLogFirst'))
     return
   }
   opLogFieldDrilldownEnabled.value = true
   if (!opLogFields.value.length) {
-    ElMessage.info('현재 결과에서 필터링에 사용할 수 있는 OP 로그 Field를 찾지 못했습니다.')
+    ElMessage.info(mt('noOpLogFields'))
     return
   }
-  ElMessage.success(`OP 로그 Field ${opLogFields.value.length}개를 드릴다운했습니다.`)
+  ElMessage.success(mt('opLogFieldsDrilled', { count: opLogFields.value.length }))
 }
 
 function showDetail(row) {
@@ -278,7 +279,7 @@ function insertField(field) {
 }
 
 async function openFieldValues(field) {
-  if (!datasourceId.value) return ElMessage.warning('먼저 로그 Datasource를 선택하십시오.')
+  if (!datasourceId.value) return ElMessage.warning(mt('selectLogDatasourceFirst'))
   selectedField.value = field.name || field
   selectedFieldQuery.value = field.queryName || field.name || field
   fieldValueKeyword.value = ''
@@ -322,12 +323,12 @@ function openShortcutDialog(item) {
 }
 
 async function submitShortcut() {
-  if (!shortcutForm.name.trim()) return ElMessage.warning('Shortcut Query 이름을 입력하십시오.')
+  if (!shortcutForm.name.trim()) return ElMessage.warning(mt('enterShortcutName'))
   shortcutSaving.value = true
   try {
     await saveMonitorLogShortcut({ ...shortcutForm, datasourceType: isVictoriaLogs.value ? 'victorialogs' : 'elasticsearch' })
     shortcutDialogVisible.value = false
-    ElMessage.success('Shortcut Query를 저장했습니다.')
+    ElMessage.success(mt('shortcutSaved'))
     await loadShortcuts()
   } finally {
     shortcutSaving.value = false
@@ -335,9 +336,9 @@ async function submitShortcut() {
 }
 
 async function removeShortcut(item) {
-  await ElMessageBox.confirm(`Shortcut Query “${item.name}”을(를) 삭제하시겠습니까?`, '삭제 확인', { type: 'warning' })
+  await ElMessageBox.confirm(mt('deleteShortcutConfirm', { name: item.name }), mt('deleteConfirmTitle'), { type: 'warning' })
   await deleteMonitorLogShortcut(item.id)
-  ElMessage.success('Shortcut Query를 삭제했습니다.')
+  ElMessage.success(mt('shortcutDeleted'))
   await loadShortcuts()
 }
 
@@ -386,43 +387,43 @@ onBeforeUnmount(() => {
     <section class="log-search-panel">
       <div class="source-line">
         <label>Datasource</label>
-        <el-select v-model="datasourceId" filterable placeholder="로그 Datasource 선택" style="width: 290px">
+        <el-select v-model="datasourceId" filterable :placeholder="mt('selectLogDatasource')" style="width: 290px">
           <el-option v-for="item in datasources" :key="item.id" :label="`${item.name} (${item.type} / ${item.env || '-'})`" :value="item.id" />
         </el-select>
         <template v-if="isVictoriaLogs">
           <label>Stream</label>
-          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" placeholder="Topic 선택" style="width: 340px" @change="handleTopicChange">
+          <el-select v-model="selectedTopics" multiple collapse-tags collapse-tags-tooltip filterable clearable :loading="streamLoading" :placeholder="mt('selectTopic')" style="width: 340px" @change="handleTopicChange">
             <el-option v-for="stream in streamOptions" :key="stream.value" :label="stream.value" :value="stream.value">
-              <div class="stream-option"><span>{{ stream.value }}</span><small>{{ Number(stream.hits || 0).toLocaleString() }}건</small></div>
+              <div class="stream-option"><span>{{ stream.value }}</span><small>{{ mt('hitsCount', { count: Number(stream.hits || 0).toLocaleString() }) }}</small></div>
             </el-option>
           </el-select>
         </template>
         <template v-if="!isVictoriaLogs">
           <label>Index</label>
-          <el-select v-model="index" :loading="indexLoading" filterable allow-create default-first-option placeholder="Index 선택 또는 와일드카드 입력" style="width: 310px" @change="search">
-            <el-option label="전체 Index (_all)" value="_all" />
+          <el-select v-model="index" :loading="indexLoading" filterable allow-create default-first-option :placeholder="mt('indexPlaceholder')" style="width: 310px" @change="search">
+            <el-option :label="mt('allIndices')" value="_all" />
             <el-option v-for="item in indexOptions" :key="item.name" :label="item.name" :value="item.name">
               <div class="index-option"><span>{{ item.name }}</span><small>{{ item.docsCount || 0 }} docs / {{ item.storeSize || '-' }}</small></div>
             </el-option>
           </el-select>
         </template>
         <el-tag v-else effect="plain" type="success">LogsQL</el-tag>
-        <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">OP 로그 드릴다운</el-button>
-        <span class="source-status">{{ activeDatasource?.url || 'Datasource 미선택' }}</span>
-        <div class="search-actions"><el-switch v-model="autoRefresh" active-text="자동 새로고침" /><el-button :loading="loading || streamLoading" @click="refreshAll">새로고침</el-button></div>
+        <el-button v-if="hasSelectedOpLogStream" type="primary" plain @click="drillDownOpLogFields">{{ mt('opLogDrilldown') }}</el-button>
+        <span class="source-status">{{ activeDatasource?.url || mt('datasourceNotSelected') }}</span>
+        <div class="search-actions"><el-switch v-model="autoRefresh" :active-text="mt('autoRefreshLabel')" /><el-button :loading="loading || streamLoading" @click="refreshAll">{{ mt('refreshCompact') }}</el-button></div>
       </div>
       <div class="query-line">
-        <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? 'LogsQL 지원, 예: kubernetes.pod_namespace:default AND _msg:error' : 'Lucene query_string 지원, 예: kubernetes.pod_namespace:default AND (ERROR OR WARN)'" @keyup.enter="search" />
-        <el-select v-model="timeRange" style="width: 140px"><el-option label="최근 30분" value="30m" /><el-option label="최근 1시간" value="1h" /><el-option label="최근 6시간" value="6h" /><el-option label="최근 24시간" value="24h" /><el-option label="최근 3일" value="3d" /><el-option label="최근 7일" value="7d" /><el-option label="날짜 지정" value="custom" /></el-select>
-        <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="시작 일시" end-placeholder="종료 일시" style="width: 360px" @change="search" />
-        <el-button type="primary" :loading="loading" @click="search">검색</el-button>
+        <el-input v-model="keyword" class="query-input" clearable :placeholder="isVictoriaLogs ? mt('logsqlPlaceholder') : mt('lucenePlaceholder')" @keyup.enter="search" />
+        <el-select v-model="timeRange" style="width: 140px"><el-option :label="mt('last30m')" value="30m" /><el-option :label="mt('lastHour')" value="1h" /><el-option :label="mt('last6Hours')" value="6h" /><el-option :label="mt('last24Hours')" value="24h" /><el-option :label="mt('last3d')" value="3d" /><el-option :label="mt('last7Days')" value="7d" /><el-option :label="mt('customDateLabel')" value="custom" /></el-select>
+        <el-date-picker v-if="timeRange === 'custom'" v-model="customDateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" :start-placeholder="mt('startDateTime')" :end-placeholder="mt('endDateTime')" style="width: 360px" @change="search" />
+        <el-button type="primary" :loading="loading" @click="search">{{ mt('searchLabel') }}</el-button>
       </div>
       <div class="shortcut-line">
         <span>Shortcut Query</span>
-        <el-button size="small" type="primary" plain @click="openShortcutDialog()">Shortcut Query 추가</el-button>
+        <el-button size="small" type="primary" plain @click="openShortcutDialog()">{{ mt('addShortcut') }}</el-button>
         <el-dropdown v-for="item in shortcuts" :key="item.id" trigger="click">
           <el-button size="small" class="shortcut-button" @click="applyShortcut(item)">{{ item.name }}</el-button>
-          <template #dropdown><el-dropdown-menu><el-dropdown-item @click="openShortcutDialog(item)">수정</el-dropdown-item><el-dropdown-item divided @click="removeShortcut(item)">삭제</el-dropdown-item></el-dropdown-menu></template>
+          <template #dropdown><el-dropdown-menu><el-dropdown-item @click="openShortcutDialog(item)">{{ mt('edit') }}</el-dropdown-item><el-dropdown-item divided @click="removeShortcut(item)">{{ mt('delete') }}</el-dropdown-item></el-dropdown-menu></template>
         </el-dropdown>
       </div>
     </section>
@@ -430,28 +431,28 @@ onBeforeUnmount(() => {
     <section class="log-workspace" :class="{ 'fields-collapsed': fieldsCollapsed }">
       <aside class="field-panel">
         <div class="panel-title">
-          <strong v-if="!fieldsCollapsed">Field 목록</strong><span v-if="!fieldsCollapsed">{{ fields.length }}</span>
-          <el-button link class="collapse-button" :title="fieldsCollapsed ? 'Field 목록 펼치기' : 'Field 목록 접기'" @click="fieldsCollapsed = !fieldsCollapsed">{{ fieldsCollapsed ? '»' : '«' }}</el-button>
+          <strong v-if="!fieldsCollapsed">{{ mt('fieldList') }}</strong><span v-if="!fieldsCollapsed">{{ fields.length }}</span>
+          <el-button link class="collapse-button" :title="fieldsCollapsed ? mt('expandFieldList') : mt('collapseFieldList')" @click="fieldsCollapsed = !fieldsCollapsed">{{ fieldsCollapsed ? '»' : '«' }}</el-button>
         </div>
         <template v-if="!fieldsCollapsed">
-          <el-input v-model="fieldKeyword" size="small" clearable placeholder="Field 검색" />
+          <el-input v-model="fieldKeyword" size="small" clearable :placeholder="mt('searchField')" />
           <div class="field-list">
-            <button v-for="field in visibleFields" :key="field.name" class="field-item" :title="`${field.name}의 선택 가능한 값 조회`" @click="openFieldValues(field)">
+            <button v-for="field in visibleFields" :key="field.name" class="field-item" :title="mt('fieldValueLookupTip', { name: field.name })" @click="openFieldValues(field)">
               <span>{{ field.name }}</span><b>›</b>
             </button>
-            <p v-if="hiddenFieldCount" class="field-limit-tip">처음 {{ maxVisibleFields }}개 Field를 표시했습니다. 검색으로 나머지 {{ hiddenFieldCount }}개 Field를 계속 필터링할 수 있습니다</p>
+            <p v-if="hiddenFieldCount" class="field-limit-tip">{{ mt('fieldLimitTip', { visible: maxVisibleFields, hidden: hiddenFieldCount }) }}</p>
           </div>
         </template>
       </aside>
       <main class="log-main">
-        <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">테이블 로그</el-radio-button><el-radio-button value="raw">원시 로그</el-radio-button></el-radio-group><span>{{ total }}건 매칭</span><span>소요 {{ took }} ms</span></div>
+        <div class="result-summary"><el-radio-group v-model="logView" size="small"><el-radio-button value="table">{{ mt('tableLogView') }}</el-radio-button><el-radio-button value="raw">{{ mt('rawLogView') }}</el-radio-button></el-radio-group><span>{{ mt('matchedCount', { count: total }) }}</span><span>{{ mt('tookMs', { count: took }) }}</span></div>
         <div v-if="histogram.length" class="histogram-panel">
-          <div class="histogram-head"><span>로그 분포</span><small>막대에 커서를 올리거나 클릭하면 건수를 확인할 수 있습니다</small><strong v-if="selectedHistogramBucket">{{ formatTime(selectedHistogramBucket.key_as_string || selectedHistogramBucket.key) }} · {{ Number(selectedHistogramBucket.doc_count || 0).toLocaleString() }}건</strong></div>
+          <div class="histogram-head"><span>{{ mt('logDistribution') }}</span><small>{{ mt('histogramHint') }}</small><strong v-if="selectedHistogramBucket">{{ mt('bucketSummary', { time: formatTime(selectedHistogramBucket.key_as_string || selectedHistogramBucket.key), count: Number(selectedHistogramBucket.doc_count || 0).toLocaleString() }) }}</strong></div>
           <div class="histogram">
             <div class="histogram-bars">
               <el-tooltip v-for="bucket in histogram" :key="bucket.key" placement="top" :show-after="100">
-                <template #content><div class="histogram-tooltip"><b>{{ formatTime(bucket.key_as_string || bucket.key) }}</b><span>로그 {{ Number(bucket.doc_count || 0).toLocaleString() }}건</span></div></template>
-                <button type="button" :class="['histogram-bar-wrap', { selected: selectedHistogramBucket?.key === bucket.key }]" :aria-label="`${formatTime(bucket.key_as_string || bucket.key)}: 로그 ${bucket.doc_count || 0}건`" @click="selectHistogramBucket(bucket)"><span class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></button>
+                <template #content><div class="histogram-tooltip"><b>{{ formatTime(bucket.key_as_string || bucket.key) }}</b><span>{{ mt('logCount', { count: Number(bucket.doc_count || 0).toLocaleString() }) }}</span></div></template>
+                <button type="button" :class="['histogram-bar-wrap', { selected: selectedHistogramBucket?.key === bucket.key }]" :aria-label="mt('logCountAtTime', { time: formatTime(bucket.key_as_string || bucket.key), count: bucket.doc_count || 0 })" @click="selectHistogramBucket(bucket)"><span class="histogram-bar" :style="{ height: `${Math.max(2, Number(bucket.doc_count || 0) / maxBucketCount * 100)}%` }" /></button>
               </el-tooltip>
             </div>
             <div class="histogram-axis"><span v-for="tick in histogramTicks" :key="tick.bucket.key" :style="{ left: `${tick.position}%` }">{{ histogramAxisTime(tick.bucket) }}</span></div>
@@ -459,61 +460,61 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="logView === 'table'" class="log-table-wrap">
           <el-table v-loading="loading" :data="items" height="520" @row-click="showDetail">
-            <el-table-column label="시각" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
-            <el-table-column label="레벨" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
+            <el-table-column :label="mt('timeCol')" width="148"><template #default="{ row }">{{ formatTime(row.timestamp) }}</template></el-table-column>
+            <el-table-column :label="mt('levelCol')" width="64"><template #default="{ row }"><span class="level" :class="levelClass(row.level)">{{ row.level || '-' }}</span></template></el-table-column>
             <el-table-column v-if="!isContextlessLogSelection" prop="namespace" label="Namespace" width="126" show-overflow-tooltip />
             <el-table-column v-if="!isContextlessLogSelection" prop="container" label="Container" width="108" show-overflow-tooltip />
-            <el-table-column prop="message" label="로그 내용" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
-            <el-table-column label="작업" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">상세</el-button></template></el-table-column>
+            <el-table-column prop="message" :label="mt('logContentCol')" min-width="620" show-overflow-tooltip><template #default="{ row }"><span class="log-message">{{ displayLogContent(row) }}</span></template></el-table-column>
+            <el-table-column :label="mt('actions')" width="64" fixed="right"><template #default="{ row }"><el-button link type="primary" @click.stop="showDetail(row)">{{ mt('detail') }}</el-button></template></el-table-column>
           </el-table>
-          <div class="log-pagination"><span>페이지당 {{ pageSize }}건</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
+          <div class="log-pagination"><span>{{ mt('pageSize', { count: pageSize }) }}</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </div>
         <template v-else>
           <div v-loading="loading" :class="['raw-log-view', { 'op-log-selection': isContextlessLogSelection }]">
-            <div v-if="!items.length" class="raw-log-empty">현재 Query 조건에는 로그가 없습니다</div>
+            <div v-if="!items.length" class="raw-log-empty">{{ mt('noLogsForQuery') }}</div>
             <button v-for="(row, index) in items" :key="`${row.timestamp}-${index}`" type="button" :class="['raw-log-item', levelClass(row.level)]" @click="showDetail(row)">
               <time>{{ formatRawLogTime(row.logTime || row.timestamp) }}</time>
               <span class="raw-log-level">{{ String(row.level || 'INFO').toUpperCase() }}</span>
               <span v-if="!isContextlessLogSelection" class="raw-log-source" :title="row.logger || row.thread || row.container || row.pod || '-'">{{ row.logger || row.thread || row.container || row.pod || '-' }}</span>
               <code>{{ displayLogContent(row) }}</code>
-              <span class="raw-log-open">상세</span>
+              <span class="raw-log-open">{{ mt('detail') }}</span>
             </button>
           </div>
-          <div class="log-pagination"><span>페이지당 {{ pageSize }}건</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
+          <div class="log-pagination"><span>{{ mt('pageSize', { count: pageSize }) }}</span><el-pagination v-model:current-page="pageNum" :page-size="pageSize" :total="total" layout="total, prev, pager, next, jumper" @current-change="search" /></div>
         </template>
       </main>
     </section>
 
-    <el-drawer v-model="detailVisible" title="로그 상세" size="min(760px, 90vw)">
+    <el-drawer v-model="detailVisible" :title="mt('logDetailTitle')" size="min(760px, 90vw)">
       <template v-if="activeLog">
         <div class="detail-meta"><span>{{ formatTime(activeLog.timestamp) }}</span><span>{{ activeLog.namespace || '-' }}</span><span>{{ activeLog.pod || '-' }}</span><span>{{ activeLog.container || '-' }}</span></div>
-        <div class="message-fields"><div><small>로그 시각</small><strong>{{ activeLog.logTime || formatTime(activeLog.timestamp) }}</strong></div><div><small>레벨</small><strong :class="levelClass(activeLog.level)">{{ activeLog.level || '-' }}</strong></div><div><small>Process ID</small><strong>{{ activeLog.processId || '-' }}</strong></div></div>
-        <h4>로그 본문</h4><pre class="detail-message">{{ displayLogContent(activeLog) }}</pre>
-        <details v-if="activeLog.messageRaw && activeLog.messageRaw !== activeLog.message" class="raw-log-line"><summary>원시 로그 줄 보기</summary><pre>{{ activeLog.messageRaw }}</pre></details>
-        <h4>원본 Document</h4><pre class="detail-json">{{ JSON.stringify(activeLog.source || {}, null, 2) }}</pre>
+        <div class="message-fields"><div><small>{{ mt('logTime') }}</small><strong>{{ activeLog.logTime || formatTime(activeLog.timestamp) }}</strong></div><div><small>{{ mt('levelCol') }}</small><strong :class="levelClass(activeLog.level)">{{ activeLog.level || '-' }}</strong></div><div><small>Process ID</small><strong>{{ activeLog.processId || '-' }}</strong></div></div>
+        <h4>{{ mt('logBody') }}</h4><pre class="detail-message">{{ displayLogContent(activeLog) }}</pre>
+        <details v-if="activeLog.messageRaw && activeLog.messageRaw !== activeLog.message" class="raw-log-line"><summary>{{ mt('viewRawLogLine') }}</summary><pre>{{ activeLog.messageRaw }}</pre></details>
+        <h4>{{ mt('originalDocument') }}</h4><pre class="detail-json">{{ JSON.stringify(activeLog.source || {}, null, 2) }}</pre>
       </template>
     </el-drawer>
 
-    <el-dialog v-model="fieldValueVisible" :title="`Field 필터: ${selectedField}`" width="min(640px, 92vw)" destroy-on-close>
-      <p class="field-value-tip">현재 시간 범위, Datasource, Query 조건에서 가장 많이 매칭된 상위 {{ fieldValueLimit }}개 Field 값을 표시합니다. 값을 클릭하면 필터 조건을 추가할 수 있습니다.</p>
-      <el-input v-model="fieldValueKeyword" clearable placeholder="Field 값 검색" />
+    <el-dialog v-model="fieldValueVisible" :title="mt('fieldFilterTitle', { field: selectedField })" width="min(640px, 92vw)" destroy-on-close>
+      <p class="field-value-tip">{{ mt('fieldValueTipDesc', { limit: fieldValueLimit }) }}</p>
+      <el-input v-model="fieldValueKeyword" clearable :placeholder="mt('searchFieldValue')" />
       <div v-loading="fieldValueLoading" class="field-value-list">
-        <el-empty v-if="!fieldValueLoading && !fieldValues.length" description="현재 조건에는 선택 가능한 값이 없습니다" :image-size="72" />
+        <el-empty v-if="!fieldValueLoading && !fieldValues.length" :description="mt('noSelectableValues')" :image-size="72" />
         <button v-for="item in fieldValues.filter((value) => !fieldValueKeyword || String(value.value).toLowerCase().includes(fieldValueKeyword.toLowerCase()))" :key="item.value" class="field-value-item" @click="applyFieldValue(item.value)">
           <span :title="item.value">{{ item.value }}</span>
-          <small>{{ item.hits }}건</small>
+          <small>{{ mt('hitsCount', { count: item.hits }) }}</small>
         </button>
       </div>
     </el-dialog>
 
-    <el-dialog v-model="shortcutDialogVisible" :title="shortcutForm.id ? 'Shortcut Query 수정' : 'Shortcut Query 추가'" width="min(620px, 92vw)">
+    <el-dialog v-model="shortcutDialogVisible" :title="shortcutForm.id ? mt('editShortcut') : mt('addShortcut')" width="min(620px, 92vw)">
       <el-form label-width="105px">
-        <el-form-item label="이름" required><el-input v-model="shortcutForm.name" placeholder="예: 오류 로그" /></el-form-item>
-        <el-form-item label="Query 문"><el-input v-model="shortcutForm.query" type="textarea" :rows="3" :placeholder="isVictoriaLogs ? 'LogsQL, 비워두면 전체 로그' : 'Lucene query_string, 비워두면 전체 로그'" /></el-form-item>
-        <el-form-item v-if="!isVictoriaLogs" label="Index"><el-input v-model="shortcutForm.indexName" placeholder="_all 또는 logs-*" /></el-form-item>
-        <el-form-item label="시간 범위"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option label="최근 30분" value="30m" /><el-option label="최근 1시간" value="1h" /><el-option label="최근 6시간" value="6h" /><el-option label="최근 24시간" value="24h" /><el-option label="최근 3일" value="3d" /><el-option label="최근 7일" value="7d" /></el-select></el-form-item>
+        <el-form-item :label="mt('nameLabel')" required><el-input v-model="shortcutForm.name" :placeholder="mt('shortcutNamePlaceholder')" /></el-form-item>
+        <el-form-item :label="mt('queryStatement')"><el-input v-model="shortcutForm.query" type="textarea" :rows="3" :placeholder="isVictoriaLogs ? mt('logsqlEmptyHint') : mt('luceneEmptyHint')" /></el-form-item>
+        <el-form-item v-if="!isVictoriaLogs" label="Index"><el-input v-model="shortcutForm.indexName" :placeholder="mt('indexHint')" /></el-form-item>
+        <el-form-item :label="mt('timeRangeLabel')"><el-select v-model="shortcutForm.timeRange" style="width: 100%"><el-option :label="mt('last30m')" value="30m" /><el-option :label="mt('lastHour')" value="1h" /><el-option :label="mt('last6Hours')" value="6h" /><el-option :label="mt('last24Hours')" value="24h" /><el-option :label="mt('last3d')" value="3d" /><el-option :label="mt('last7Days')" value="7d" /></el-select></el-form-item>
       </el-form>
-      <template #footer><el-button @click="shortcutDialogVisible = false">취소</el-button><el-button type="primary" :loading="shortcutSaving" @click="submitShortcut">저장</el-button></template>
+      <template #footer><el-button @click="shortcutDialogVisible = false">{{ mt('cancel') }}</el-button><el-button type="primary" :loading="shortcutSaving" @click="submitShortcut">{{ mt('save') }}</el-button></template>
     </el-dialog>
   </div>
 </template>
