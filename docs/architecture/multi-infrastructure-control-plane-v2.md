@@ -4,6 +4,7 @@
 >
 > Revision: r2. This revision incorporates the findings of a five-lens adversarial review of r1 (4 CRITICAL, 16 HIGH, 15 MEDIUM) plus a code-level cross-check of every claim. Appendix A maps each finding to the section that resolves it.
 > Amendment r2.1 (2026-09-05): Proxmox VE promoted from Milestone 2 conditional to committed Phase 5 — operational need named by the product owner, satisfying the plan's own §5.5 entry test. §1, §5.2, §5.3, §14.3, Phase 5, and the overview diagram updated accordingly.
+> Amendment r2.2 (2026-09-05): §14.3 gains an implementation-reference block distilled from ProxCenter (AGPL-3.0 community core) — UPID dual-mode, token auth, failover evidence asymmetry, offline-node IP retention, reverse-proxy pinning.
 >
 > Target platforms: Kubernetes (including K3s), public cloud (Aliyun, Tencent) as the second real provider family, Proxmox VE as the committed third provider family (operational need named by the product owner, 2026-09-05), and reserved support for VMware vCenter, Apache CloudStack, and OpenStack. r1 treated the reserved platforms as near-term phases; r2 corrects that ordering — Proxmox is ordered after the two provider families that exist in code, ahead of the reservations (Section 14, Section 20).
 
@@ -1207,6 +1208,15 @@ Console: Phase 5 ships no VNC console (that rides the deferred connector
 ```
 
 Sequence: read-only discovery first (same shadow pattern as Phase 2/4), then power, snapshot, and config operations through the existing task engine and approval chain — no new engine concepts. Success bar: Slice B's test repeated on a provider with zero prior code in the tree (no core schema change, no provider-name branch in core — §25). Estimate band in §5.3 (M2 total ~5–7 focused weeks with Phase 6).
+
+**Implementation reference — behavior knowledge distilled from ProxCenter (r2.2).**
+[github.com/adminsyspro/proxcenter-ui](https://github.com/adminsyspro/proxcenter-ui) — a production-hardened, test-first (678 test files) Proxmox management platform. License: Community core is AGPL-3.0; ops-admin is GPL-3.0, so AGPL→GPL one-way relicensing is permitted if code is ever lifted, and the Enterprise edition files (separate EULA, no derivative works) are off-limits entirely. Default posture for Phase 5: **distill behavior, don't copy code** (they are TypeScript; we are Go). The contract knowledge to carry into the adapter:
+
+1. **UPID dual-mode — the task engine must handle both shapes.** PVE's async handler takes `background_delay` (1–30s); when the task finishes inside that window PVE returns **null instead of a UPID** with the error reported synchronously. Only genuinely slow writes come back as a task to follow. Our attempt model encodes this as: response-null-with-exit-status → single-attempt success/failure; response-UPID → poll attempt. UPID shape: `UPID:<node>:<pid>:<pstart>:<starttime>:<type>:<id>:<user>:` (node extracted for targeted polling).
+2. **Auth: `Authorization: PVEAPIToken=<user>@<realm>!<tokenid>=<secret>`** — token-based from day one (matches our §4.1 secret handling); no ticket/TOTP flow in scope.
+3. **Failover evidence is read/write asymmetric.** A timed-out *write* is never failover evidence (the write may have landed; retry idempotency governs); only read failures and connection-class failures count toward the failover threshold. Our ProviderContext connection-pool semantics copy this rule.
+4. **`/cluster/status` is the only surface that reports an offline member's IP** — node IP discovery must read it as the fallback source, or the failover candidate list sheds members exactly as the cluster degrades.
+5. **Reverse-proxy deployments pin node addressing** ("behind reverse proxy" mode) — connection metadata needs a mode flag so failover doesn't switch to internal node IPs.
 
 ### 14.4–14.6 vCenter, CloudStack, OpenStack (Milestone 3 reservations)
 
