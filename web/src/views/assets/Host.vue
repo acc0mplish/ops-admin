@@ -582,7 +582,7 @@ watch(
           @command="handleMoreCommand"
         >
           <el-button class="more-action-trigger" :disabled="!selectedRows.length">
-            더 보기
+            더보기
             <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
