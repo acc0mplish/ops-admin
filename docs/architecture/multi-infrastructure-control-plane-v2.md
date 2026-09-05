@@ -299,8 +299,9 @@ The complete list of secret-bearing persisted fields, with today's storage forma
 | 12 | IntegrationAIModel (integration_ai.go:10) | APIKey | **plaintext** | P |
 | 13 | LDAPConfig (ldap_config.go:14) | BindPassword | **plaintext** | P |
 | 14 | NotifyChannel (ops.go:599) | Secret (and WebhookURL when it embeds a path token) | **plaintext** | P |
+| 15 | AssetDatabase (asset.go:178) | Password | **plaintext** | P |
 
-The r2 review cross-check caught rows 12–14 missing from the first cut of this table; the count is now 14 and G-1 (§4.10) gates over all of them.
+The r2 review cross-check caught rows 12–14 missing from the first cut of this table, and the Phase -1 Task 1 plan cross-check caught row 15; the count is now 15 and G-1 (§4.10) gates over all of them.
 
 Two defects beyond field classification:
 
