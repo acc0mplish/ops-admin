@@ -299,7 +299,7 @@ onMounted(() => {
           </el-col>
           <el-col :span="12">
             <el-form-item label="소속 Environment" required>
-              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오:">
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오.">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
@@ -352,7 +352,7 @@ onMounted(() => {
           </el-col>
           <el-col v-if="form.connectionMode === 'gateway'" :span="12">
             <el-form-item label="접속 Gateway" required>
-              <el-select v-model="form.gatewayId" filterable placeholder="Gateway를 선택하십시오:" style="width: 100%">
+              <el-select v-model="form.gatewayId" filterable placeholder="Gateway를 선택하십시오." style="width: 100%">
                 <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>

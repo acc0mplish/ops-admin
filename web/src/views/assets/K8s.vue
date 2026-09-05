@@ -1460,9 +1460,9 @@ async function submitServiceEdit() {
 async function copyServiceName(row) {
   try {
     await navigator.clipboard.writeText(row.name)
-    ElMessage.success(`Service 이름을 복제했습니다: ${row.name}`)
+    ElMessage.success(`Service 이름을 복사했습니다: ${row.name}`)
   } catch (error) {
-    ElMessage.warning('Clipboard에 접근할 수 없습니다. Service 이름을 직접 복제하십시오.')
+    ElMessage.warning('Clipboard에 접근할 수 없습니다. Service 이름을 직접 복사하십시오.')
   }
 }
 

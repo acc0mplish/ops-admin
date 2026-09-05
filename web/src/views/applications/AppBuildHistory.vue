@@ -97,7 +97,7 @@ async function retry(row) {
   ElMessage.success('새 Build Task를 생성했습니다')
   await loadData()
 }
-async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('Log를 복제했습니다') }
+async function copyLog() { await navigator.clipboard.writeText(detailLogs.value || ''); ElMessage.success('Log를 복사했습니다') }
 function downloadLog() { const blob = new Blob([detailLogs.value || ''], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = logFileName.value; link.click(); URL.revokeObjectURL(url) }
 watch(detailVisible, (visible) => { if (!visible) stopDetailPolling() })
 onBeforeUnmount(stopDetailPolling)
@@ -134,7 +134,7 @@ onMounted(async () => { if (route.query.appId) query.appId = Number(route.query.
         <div class="detail-top"><el-tag :type="statusType(currentDetail.status)">{{ statusText(currentDetail.status) }}</el-tag><span>{{ currentDetail.summary || '-' }}</span><strong>소요 시간 {{ durationText(currentDetail.durationMs) }}</strong></div>
         <div class="detail-meta"><span>Application<b>{{ currentDetail.appName || '-' }}</b></span><span>Environment<b>{{ currentDetail.env || '-' }}</b></span><span>Code Version<b>{{ currentDetail.repoType === 'svn' ? 'SVN ' : 'Git ' }}{{ versionText(currentDetail) }}</b></span><span>Commit Version<b>{{ currentDetail.commitId || '-' }}</b></span><span>실행 Path<b>{{ currentDetail.workspace || '-' }}</b></span><span>시작 시각<b>{{ currentDetail.createTime || '-' }}</b></span></div>
         <section class="detail-section"><div class="section-head"><strong>Build Stage</strong><span>현재: {{ stageText(currentDetail.stage) }}</span></div><div class="stage-track"><div v-for="stage in stages(currentDetail)" :key="stage.key" class="stage-node" :class="stage.status"><i></i><strong>{{ stage.name }}</strong><span>{{ statusText(stage.status) }}</span></div></div></section>
-        <section class="detail-section"><div class="section-head"><strong>전체 Log</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="Log 검색" /><el-button link type="primary" @click="copyLog">복제</el-button><el-button link type="primary" @click="downloadLog">Download</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || 'Log 출력 없음' }}</pre></section>
+        <section class="detail-section"><div class="section-head"><strong>전체 Log</strong><div><el-input v-model="logKeyword" clearable size="small" placeholder="Log 검색" /><el-button link type="primary" @click="copyLog">복사</el-button><el-button link type="primary" @click="downloadLog">Download</el-button></div></div><pre ref="logBodyRef" class="log-body">{{ detailLogs || 'Log 출력 없음' }}</pre></section>
         <div class="detail-actions"><el-button v-if="currentDetail.status === 'failed' && currentDetail.buildTaskId" type="danger" plain @click="retry(currentDetail)">원본 구성으로 재시도</el-button></div>
       </template></div>
     </el-drawer>
