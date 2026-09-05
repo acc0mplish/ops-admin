@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -99,6 +100,24 @@ func Validate(d Def) error {
 		return fmt.Errorf("risk %q must be one of low|medium|high", d.Risk)
 	}
 	return nil
+}
+
+// PermissionStrings returns the deduplicated, sorted permission vocabulary of
+// the whole operation table — the grant source for the seeder. The order is
+// deterministic so seed artifacts stay stable.
+func PermissionStrings() []string {
+	seen := make(map[string]struct{})
+	for _, d := range All() {
+		for _, permission := range permissionStrings(d) {
+			seen[permission] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for permission := range seen {
+		out = append(out, permission)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // permissionStrings flattens whichever permission shape the definition uses.
