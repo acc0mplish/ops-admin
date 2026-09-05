@@ -340,8 +340,11 @@ classify(value, field):
 Rules:
 
 - UNKNOWN never falls through to plaintext. A value that claims neither format halts the run and is reported (model, row ID, field) for manual repair. This is the structural fix for the `err == nil` fallback: ambiguity is an incident, not a parsing strategy.
-- Classification is a pure function of (registry, value); the Phase -1 migration tool and the runtime decrypt path share one implementation so they cannot disagree.
-- A one-off inventory command emits the classification counts (per field: v2/legacy/plaintext/unknown) as the migration's pre-flight artifact.
+- Classification is a pure function of (registry, value) — except **mixed-declaration columns** (§4.1 row 4: schedule variables), where secretness lives in per-row script metadata, not the column. For those, classify takes a caller-supplied declared-secret gate per value; the registry alone must never decide. A non-declared value in a mixed column is NOT_SECRET-by-declaration even when it carries no envelope, and the Step 3 "zero PLAINTEXT" gate counts only declared values.
+- The Phase -1 migration tool and the runtime decrypt path share one implementation so they cannot disagree.
+- A one-off inventory command emits the classification counts (per field: v2/legacy/plaintext/unknown) as the migration's pre-flight artifact. E-class fields with historical plaintext data reporting mass UNKNOWN is an *expected* pre-migration state, not an incident; the report exists to size exactly that.
+
+**P-class ordering rule (amendment r2.4).** The P-class writer conversion task must complete **before Step 2's P-class pass** — the Step 3 gate ("every §4.1 field is V2, zero PLAINTEXT") is unpassable while any P-class writer still emits plaintext, and Step 2 rewriting a P-class column to v2 breaks the plaintext readers (157 reference sites bypass ReadSecretField today). Runtime dual-reading is orthogonal; the *gate* is order-dependent.
 
 ### 4.4 Re-encrypt → verify → retire: the order contract
 
@@ -351,7 +354,12 @@ Key rotation touches four running domains (DNS accounts, SSL private keys, ACME,
 Step 1  SHIP WRITER + READER (dual-key)
         - v2 envelope writer active for all new writes in E-class fields
         - reader accepts v2 (by key_id) and legacy (by legacy key) for E-class
-        - P-class fields: writer starts emitting v2 into their columns
+        - P-class fields: writer conversion is its own prerequisite task (see the
+          P-class ordering rule below) — NOT switched in Step 1, because several
+          P-class values round-trip through the UI as plaintext
+          (K8sCluster.KubeConfig json-exposed and resaved verbatim at
+          service/k8s.go:728; NotifyChannel.Secret echoed in service/notify.go:205):
+          a writer-only switch re-encrypts its own envelope on resubmit
         - NO data is rewritten yet; NO key is removed
         - deploy; system runs normally on mixed data
 
