@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { at } from '../../utils/asset-i18n'
 import { useRouter } from 'vue-router'
 import { assetServiceInfo, deleteAssetService, queryAssetServiceK8sCatalog, queryAssetServiceList, saveAssetService } from '../../api/asset'
 import { queryK8sClusterList } from '../../api/k8s'
@@ -69,23 +70,23 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name || !form.k8sClusterId || !form.namespace) {
-    ElMessage.warning('Service 이름을 입력하고 Kubernetes Cluster와 Namespace를 선택하십시오.')
+    ElMessage.warning(at('enterServiceNameAndCluster'))
     return
   }
-  if (!form.workloads.length) { ElMessage.warning('Workload를 하나 이상 선택하십시오.'); return }
+  if (!form.workloads.length) { ElMessage.warning(at('selectWorkloadFirst')); return }
   saving.value = true
   try {
     await saveAssetService(form)
-    ElMessage.success('Service를 저장했습니다.')
+    ElMessage.success(at('serviceSaved'))
     dialogVisible.value = false
     await loadData()
   } finally { saving.value = false }
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`Service “${row.name}”을(를) 삭제하시겠습니까? 연관된 Workload 관계도 함께 삭제됩니다.`, 'Service 삭제', { type: 'warning' })
+  await ElMessageBox.confirm(at('deleteServiceConfirm', { name: row.name }), at('deleteServiceTitle'), { type: 'warning' })
   await deleteAssetService(row.id)
-  ElMessage.success('Service를 삭제했습니다.')
+  ElMessage.success(at('serviceDeleted'))
   await loadData()
 }
 
@@ -100,35 +101,35 @@ onMounted(async () => {
 <template>
   <div class="asset-app-page" v-loading="loading">
     <section class="app-hero">
-      <div><p class="eyebrow">SERVICE ASSET</p><h1>Service 관리</h1><p>Kubernetes Namespace에서 Workload를 발견하고, 여러 Workload를 추적 가능한 하나의 비즈니스 Service로 묶습니다.</p></div>
-      <el-button type="primary" @click="openCreate">Service 추가</el-button>
+      <div><p class="eyebrow">SERVICE ASSET</p><h1>{{ at('serviceManageTitle') }}</h1><p>{{ at('serviceManageDesc') }}</p></div>
+      <el-button type="primary" @click="openCreate">{{ at('addServiceButton') }}</el-button>
     </section>
 
     <section class="filter-card">
-      <el-input v-model="query.keyword" clearable placeholder="Service 이름, 고유 ID 또는 Namespace 검색" @keyup.enter="loadData" />
-      <el-button type="primary" @click="loadData">검색</el-button><el-button @click="query.keyword = ''; loadData()">초기화</el-button>
+      <el-input v-model="query.keyword" clearable :placeholder="at('serviceSearchPlaceholder')" @keyup.enter="loadData" />
+      <el-button type="primary" @click="loadData">{{ at('search') }}</el-button><el-button @click="query.keyword = ''; loadData()">{{ at('reset') }}</el-button>
     </section>
 
     <section class="table-card">
-      <el-table :data="rows" row-key="id" empty-text="Service가 없습니다. Kubernetes Namespace에서 생성하십시오">
-        <el-table-column label="Service" min-width="170"><template #default="{ row }"><b>{{ row.name }}</b><small>{{ row.serviceType || '비즈니스 서비스' }}</small></template></el-table-column>
-        <el-table-column prop="serviceUid" label="고유 ID" min-width="280"><template #default="{ row }"><code>{{ row.serviceUid }}</code></template></el-table-column>
-        <el-table-column label="Kubernetes 범위" min-width="220"><template #default="{ row }"><span>{{ clusterName(row.k8sClusterId) }}</span><small>{{ row.namespace || '-' }}</small></template></el-table-column>
-        <el-table-column prop="description" label="설명" min-width="180" show-overflow-tooltip />
-        <el-table-column label="상태" width="90"><template #default="{ row }"><el-tag :type="Number(row.status) === 1 ? 'success' : 'info'">{{ Number(row.status) === 1 ? '활성화' : '비활성화' }}</el-tag></template></el-table-column>
-        <el-table-column label="작업" width="210" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openTopology(row)">Topology 보기</el-button><el-button link type="primary" @click="openEdit(row)">수정</el-button><el-button link type="danger" @click="remove(row)">삭제</el-button></template></el-table-column>
+      <el-table :data="rows" row-key="id" :empty-text="at('noServiceEmpty')">
+        <el-table-column label="Service" min-width="170"><template #default="{ row }"><b>{{ row.name }}</b><small>{{ row.serviceType || at('defaultServiceType') }}</small></template></el-table-column>
+        <el-table-column prop="serviceUid" :label="at('serviceUidColumn')" min-width="280"><template #default="{ row }"><code>{{ row.serviceUid }}</code></template></el-table-column>
+        <el-table-column :label="at('k8sScopeColumn')" min-width="220"><template #default="{ row }"><span>{{ clusterName(row.k8sClusterId) }}</span><small>{{ row.namespace || '-' }}</small></template></el-table-column>
+        <el-table-column prop="description" :label="at('description')" min-width="180" show-overflow-tooltip />
+        <el-table-column :label="at('status')" width="90"><template #default="{ row }"><el-tag :type="Number(row.status) === 1 ? 'success' : 'info'">{{ Number(row.status) === 1 ? at('enabled') : at('disabled') }}</el-tag></template></el-table-column>
+        <el-table-column :label="at('actions')" width="210" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openTopology(row)">{{ at('viewTopology') }}</el-button><el-button link type="primary" @click="openEdit(row)">{{ at('edit') }}</el-button><el-button link type="danger" @click="remove(row)">{{ at('delete') }}</el-button></template></el-table-column>
       </el-table>
     </section>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? 'Service 수정' : 'Service 추가'" width="min(960px, 94vw)" destroy-on-close>
-      <el-alert type="info" :closable="false" show-icon title="고유 ID는 자동 생성됩니다: Cluster 주소 - Namespace - Service 이름. 예: 192.168.171.51-demo-order-service." />
+    <el-dialog v-model="dialogVisible" :title="form.id ? at('editServiceTitle') : at('addServiceButton')" width="min(960px, 94vw)" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon :title="at('serviceUidHint')" />
       <el-form label-width="110px" class="app-form">
-        <el-row :gutter="18"><el-col :span="12"><el-form-item label="Service 이름" required><el-input v-model="form.name" placeholder="예: 51 Service" /></el-form-item></el-col><el-col :span="12"><el-form-item label="Service 유형"><el-input v-model="form.serviceType" placeholder="예: 게임 서비스" /></el-form-item></el-col></el-row>
-        <el-row :gutter="18"><el-col :span="12"><el-form-item label="K8s Cluster" required><el-select v-model="form.k8sClusterId" filterable style="width:100%" placeholder="Cluster 선택" @change="onClusterChange"><el-option v-for="item in clusters" :key="item.id" :label="`${item.name} · ${item.apiServer}`" :value="item.id" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="Namespace" required><el-select v-model="form.namespace" filterable style="width:100%" :disabled="!form.k8sClusterId" placeholder="Namespace 선택" @change="onNamespaceChange"><el-option v-for="item in catalog.namespaces || []" :key="item.name" :label="item.name" :value="item.name" /></el-select></el-form-item></el-col></el-row>
-        <el-form-item label="Workload" required><div class="workload-picker"><div class="workload-toolbar"><span>Namespace 내 {{ catalog.workloads?.length || 0 }}개 Workload</span><el-button link type="primary" :disabled="!catalog.workloads?.length" @click="selectedWorkloadKeys = catalog.workloads.map(workloadKey)">전체 선택</el-button></div><el-checkbox-group v-model="selectedWorkloadKeys"><el-checkbox v-for="item in catalog.workloads || []" :key="workloadKey(item)" :label="workloadKey(item)" border><b>{{ item.name }}</b><span>{{ item.type }} · Ready {{ item.ready || '0/0' }}</span></el-checkbox></el-checkbox-group><el-empty v-if="form.namespace && !catalog.workloads?.length" description="이 Namespace에서 발견된 Workload가 없습니다" :image-size="56" /></div></el-form-item>
-        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="선택: Service 역할, 입구 Protocol 또는 담당자를 기록합니다" /></el-form-item>
+        <el-row :gutter="18"><el-col :span="12"><el-form-item :label="at('serviceNameField')" required><el-input v-model="form.name" :placeholder="at('serviceNamePlaceholder')" /></el-form-item></el-col><el-col :span="12"><el-form-item :label="at('serviceTypeLabel')"><el-input v-model="form.serviceType" :placeholder="at('serviceTypePlaceholder')" /></el-form-item></el-col></el-row>
+        <el-row :gutter="18"><el-col :span="12"><el-form-item :label="at('k8sClusterField')" required><el-select v-model="form.k8sClusterId" filterable style="width:100%" :placeholder="at('selectCluster')" @change="onClusterChange"><el-option v-for="item in clusters" :key="item.id" :label="`${item.name} · ${item.apiServer}`" :value="item.id" /></el-select></el-form-item></el-col><el-col :span="12"><el-form-item label="Namespace" required><el-select v-model="form.namespace" filterable style="width:100%" :disabled="!form.k8sClusterId" :placeholder="at('selectNamespace')" @change="onNamespaceChange"><el-option v-for="item in catalog.namespaces || []" :key="item.name" :label="item.name" :value="item.name" /></el-select></el-form-item></el-col></el-row>
+        <el-form-item label="Workload" required><div class="workload-picker"><div class="workload-toolbar"><span>{{ at('namespaceWorkloadCount', { count: catalog.workloads?.length || 0 }) }}</span><el-button link type="primary" :disabled="!catalog.workloads?.length" @click="selectedWorkloadKeys = catalog.workloads.map(workloadKey)">{{ at('selectAll') }}</el-button></div><el-checkbox-group v-model="selectedWorkloadKeys"><el-checkbox v-for="item in catalog.workloads || []" :key="workloadKey(item)" :label="workloadKey(item)" border><b>{{ item.name }}</b><span>{{ item.type }} · Ready {{ item.ready || '0/0' }}</span></el-checkbox></el-checkbox-group><el-empty v-if="form.namespace && !catalog.workloads?.length" :description="at('noWorkloadsInNamespace')" :image-size="56" /></div></el-form-item>
+        <el-form-item :label="at('description')"><el-input v-model="form.description" type="textarea" :rows="3" :placeholder="at('descriptionPlaceholder')" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="dialogVisible = false">취소</el-button><el-button type="primary" :loading="saving" @click="submit">Service 저장</el-button></template>
+      <template #footer><el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button><el-button type="primary" :loading="saving" @click="submit">{{ at('saveService') }}</el-button></template>
     </el-dialog>
   </div>
 </template>

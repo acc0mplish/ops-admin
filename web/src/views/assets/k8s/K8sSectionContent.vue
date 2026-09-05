@@ -1,4 +1,5 @@
 <script setup>
+import { kt } from '../../../utils/k8s-extra-i18n'
 import K8sNamespaceBoard from './K8sNamespaceBoard.vue'
 import K8sWorkloadBoard from './K8sWorkloadBoard.vue'
 import { Connection, CopyDocument } from '@element-plus/icons-vue'
@@ -102,8 +103,8 @@ defineProps({
   <section v-if="page.hasCluster && page.currentTab === 'nodes'" class="section-body node-workspace">
     <div v-if="page.hasItems(page.nodes)" class="node-management-card">
       <div class="node-management-intro">
-        <div><strong>Node 운영 Overview</strong><span>Node Role, Capacity 및 Pod 할당을 확인합니다. Label 관리는 Kubernetes Node에 직접 기록됩니다.</span></div>
-        <el-tag type="info" effect="plain">Node {{ page.nodes.length }}개</el-tag>
+        <div><strong>{{ kt('nodeOpsTitle') }}</strong><span>{{ kt('nodeOpsDesc') }}</span></div>
+        <el-tag type="info" effect="plain">{{ kt('nodeCountTag', { count: page.nodes.length }) }}</el-tag>
       </div>
       <el-table :data="page.nodes" class="data-table node-table">
       <el-table-column :label="page.t('k8sName')" min-width="210">
@@ -118,7 +119,7 @@ defineProps({
       <el-table-column :label="page.t('k8sPodAllocation')" width="138"><template #default="{ row }"><div class="pod-allocation"><b>{{ row.pods }}</b><el-progress :percentage="page.nodePodPercent(row.pods)" :show-text="false" :stroke-width="5" /></div></template></el-table-column>
       <el-table-column :label="page.t('k8sActions')" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="page.openNodeLabels(row)">Label 관리</el-button>
+          <el-button link type="primary" @click="page.openNodeLabels(row)">{{ kt('manageLabels') }}</el-button>
           <el-button link type="primary" @click="page.openNodeDetail(row)">{{ page.t('k8sDetail') }}</el-button>
         </template>
       </el-table-column>
@@ -138,7 +139,7 @@ defineProps({
           <div v-if="row.workloadName" class="pod-workload-cell">
             <el-tag size="small" effect="plain" class="pod-workload-type">{{ row.workloadName }}</el-tag>
           </div>
-          <span v-else class="pod-workload-empty">독립 Pod</span>
+          <span v-else class="pod-workload-empty">{{ kt('standalonePod') }}</span>
         </template>
       </el-table-column>
       <el-table-column :label="page.t('k8sStatus')" width="110">
@@ -195,8 +196,8 @@ defineProps({
           <div class="service-name-cell">
             <span class="service-name-icon"><el-icon><Connection /></el-icon></span>
             <el-button link class="service-name-link" @click="page.openServiceDetail(row)">{{ row.name }}</el-button>
-            <el-tooltip content="Service 이름 복사" placement="top">
-              <el-button link class="service-copy-button" aria-label="Service 이름 복사" @click="page.copyServiceName(row)">
+            <el-tooltip :content="kt('copyServiceName')" placement="top">
+              <el-button link class="service-copy-button" :aria-label="kt('copyServiceName')" @click="page.copyServiceName(row)">
                 <el-icon><CopyDocument /></el-icon>
               </el-button>
             </el-tooltip>
@@ -228,7 +229,7 @@ defineProps({
       <el-table-column :label="page.t('k8sActions')" width="210" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="page.openServiceDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-          <el-button link type="primary" @click="page.openServiceEdit(row)">수정</el-button>
+          <el-button link type="primary" @click="page.openServiceEdit(row)">{{ kt('k8sEdit') }}</el-button>
           <el-button link @click="page.openServiceYAML(row)">{{ page.t('k8sYaml') }}</el-button>
         </template>
       </el-table-column>
@@ -312,10 +313,10 @@ defineProps({
     <div class="config-storage-tabs">
       <div class="config-storage-create-action">
         <el-button v-if="page.configStorageTab === 'storage-classes'" type="primary" @click="page.openStorageClassCreate">
-          새 StorageClass
+          {{ kt('newStorageClass') }}
         </el-button>
         <el-button v-else type="primary" @click="page.openConfigStorageCreate">
-          {{ page.configStorageTab === 'configmaps' ? '새 ConfigMap' : page.configStorageTab === 'secrets' ? '새 Secret' : '새 Storage' }}
+          {{ page.configStorageTab === 'configmaps' ? kt('newConfigMap') : page.configStorageTab === 'secrets' ? kt('newSecret') : kt('newStorage') }}
         </el-button>
       </div>
       <el-tabs v-model="page.configStorageTab">
@@ -328,9 +329,9 @@ defineProps({
             <el-table-column :label="page.t('k8sActions')" width="260">
               <template #default="{ row }">
                 <el-button link type="primary" @click="page.openConfigMapDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-                <el-button link type="primary" @click="page.openConfigMapEdit(row)">수정</el-button>
+                <el-button link type="primary" @click="page.openConfigMapEdit(row)">{{ kt('k8sEdit') }}</el-button>
                 <el-button link type="primary" @click="page.openConfigMapYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-                <el-button link type="danger" @click="page.deleteConfigMap(row)">삭제</el-button>
+                <el-button link type="danger" @click="page.deleteConfigMap(row)">{{ kt('delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -346,9 +347,9 @@ defineProps({
             <el-table-column :label="page.t('k8sActions')" width="260">
               <template #default="{ row }">
                 <el-button link type="primary" @click="page.openSecretDetail(row)">{{ page.t('k8sDetail') }}</el-button>
-                <el-button link type="primary" @click="page.openSecretEdit(row)">수정</el-button>
+                <el-button link type="primary" @click="page.openSecretEdit(row)">{{ kt('k8sEdit') }}</el-button>
                 <el-button link type="primary" @click="page.openSecretYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-                <el-button link type="danger" @click="page.deleteSecret(row)">삭제</el-button>
+                <el-button link type="danger" @click="page.deleteSecret(row)">{{ kt('delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -358,22 +359,22 @@ defineProps({
         <el-tab-pane label="StorageClass" name="storage-classes">
           <el-table v-if="page.hasItems(page.filteredStorageClasses)" :data="page.filteredStorageClasses" class="data-table">
             <el-table-column prop="name" :label="page.t('k8sName')" min-width="200" />
-            <el-table-column prop="namespaceScope" label="Namespace 제한" min-width="140" />
+            <el-table-column prop="namespaceScope" :label="kt('namespaceRestrictedColumn')" min-width="140" />
             <el-table-column prop="status" :label="page.t('k8sStatus')" width="120" />
             <el-table-column prop="capacity" :label="page.t('k8sCapacity')" width="120" />
-            <el-table-column prop="sourceType" label="Storage 소스" width="110" />
-            <el-table-column prop="path" label="경로" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="sourceType" :label="kt('storageSourceLabel')" width="110" />
+            <el-table-column prop="path" :label="kt('pathLabel')" min-width="180" show-overflow-tooltip />
             <el-table-column prop="accessModes" label="Access Mode" min-width="160" />
             <el-table-column prop="reclaimPolicy" label="Reclaim Policy" width="120" />
             <el-table-column :label="page.t('k8sActions')" width="240">
               <template #default="{ row }">
                 <el-button link type="primary" @click="page.openStorageDetail(row)">{{ page.t('k8sDetail') }}</el-button>
                 <el-button link type="primary" @click="page.openStorageYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-                <el-button link type="danger" @click="page.deleteStorageClass(row)">삭제</el-button>
+                <el-button link type="danger" @click="page.deleteStorageClass(row)">{{ kt('delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="StorageClass가 없습니다. hostPath 또는 NFS StorageClass를 생성하십시오." />
+          <el-empty v-else :description="kt('noStorageClassEmpty')" />
         </el-tab-pane>
 
         <el-tab-pane label="Storage" name="storage-volumes">
@@ -388,11 +389,11 @@ defineProps({
               <template #default="{ row }">
                 <el-button link type="primary" @click="page.openStorageDetail(row)">{{ page.t('k8sDetail') }}</el-button>
                 <el-button link type="primary" @click="page.openStorageYAML(row)">{{ page.t('k8sYaml') }}</el-button>
-                <el-button link type="danger" @click="page.deleteStorageVolume(row)">삭제</el-button>
+                <el-button link type="danger" @click="page.deleteStorageVolume(row)">{{ kt('delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="Storage가 없습니다. PersistentVolumeClaim을 생성하십시오." />
+          <el-empty v-else :description="kt('noStorageEmpty')" />
         </el-tab-pane>
       </el-tabs>
     </div>
