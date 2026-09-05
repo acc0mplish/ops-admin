@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryAssetDatabaseList } from '../../api/asset'
+import { at } from '../../utils/asset-i18n'
 import {
   analyzeDBMSSQL,
   createDBMSBackupImportTask,
@@ -74,7 +75,7 @@ function databaseLabel(item, withAccess = false) {
 	const type = String(item.dbType || '').toUpperCase()
 	const address = `${item.host || '-'}:${item.port || '-'}`
 	return withAccess
-		? `${item.name} / ${type} / ${item.accessMode === 'readonly' ? '읽기 전용' : '읽기/쓰기'}`
+		? `${item.name} / ${type} / ${item.accessMode === 'readonly' ? at('readOnly') : at('readWrite')}`
 		: `${item.name} (${type} · ${address})`
 }
 
@@ -135,13 +136,13 @@ async function runPrecheck() {
 
 async function createImport() {
   if (!precheck.value?.ready) {
-    ElMessage.warning('먼저 Import Precheck을 완료하고 통과하십시오.')
+    ElMessage.warning(at('completePrecheckFirst'))
     return
   }
   submitting.value = true
   try {
     await createDBMSImportTask({ ...importForm })
-    ElMessage.success('Data Import Task를 생성했습니다.')
+    ElMessage.success(at('dataImportTaskCreated'))
     activeTab.value = 'history'
     await loadHistory()
   } finally {
@@ -153,7 +154,7 @@ async function readSQLFile(event) {
   const file = event.target.files?.[0]
   if (!file) return
   if (file.size > 10 * 1024 * 1024) {
-    ElMessage.warning('SQL 파일은 10MB를 초과할 수 없습니다.')
+    ElMessage.warning(at('sqlSizeLimit'))
     event.target.value = ''
     return
   }
@@ -165,12 +166,12 @@ async function readBackupFile(event) {
   const file = event.target.files?.[0]
   if (!file) return
   if (!file.name.toLowerCase().endsWith('.sql')) {
-    ElMessage.warning('Backup Import는 .sql 파일만 지원합니다.')
+    ElMessage.warning(at('backupSqlOnly'))
     event.target.value = ''
     return
   }
   if (file.size > 50 * 1024 * 1024) {
-    ElMessage.warning('Backup 파일은 50MB를 초과할 수 없습니다.')
+    ElMessage.warning(at('backupSizeLimit'))
     event.target.value = ''
     return
   }
@@ -181,20 +182,20 @@ async function readBackupFile(event) {
 async function createBackupImport() {
   const hasSource = backupForm.sourceType === 'record' ? backupForm.backupRecordId : backupForm.fileContent
   if (!hasSource || !backupForm.databaseId || !backupForm.schemaName) {
-    ElMessage.warning('Backup Source, Target Database와 Schema를 선택하십시오.')
+    ElMessage.warning(at('selectBackupSource'))
     return
   }
   if (selectedBackupDatabase.value?.accessMode === 'readonly') {
-    ElMessage.error('Target Database가 읽기 전용 Mode이므로 Backup을 복원할 수 없습니다.')
+    ElMessage.error(at('readonlyRestoreError'))
     return
   }
   const sourceName = backupForm.sourceType === 'record'
     ? selectedBackupRecord.value?.fileName
     : backupForm.fileName
   await ElMessageBox.confirm(
-    `“${sourceName || 'SQL Backup'}”을(를) ${selectedBackupDatabase.value?.name}/${backupForm.schemaName}에 복원합니다. Backup 내 동일 이름 Object가 덮어써질 수 있으니 Target이 올바른지 확인하십시오.`,
-    'Database Backup 복원 확인',
-    { type: 'warning', confirmButtonText: '확인 후 복원 Task 생성', cancelButtonText: '취소' }
+    at('restoreConfirm', { source: sourceName || 'SQL Backup', target: `${selectedBackupDatabase.value?.name}/${backupForm.schemaName}` }),
+    at('restoreConfirmTitle'),
+    { type: 'warning', confirmButtonText: at('confirmRestoreTask'), cancelButtonText: at('cancel') }
   )
   submitting.value = true
   try {
@@ -206,7 +207,7 @@ async function createBackupImport() {
       fileContent: backupForm.sourceType === 'file' ? backupForm.fileContent : '',
       confirmed: true
     })
-    ElMessage.success('Backup 복원 Task를 생성했습니다.')
+    ElMessage.success(at('restoreTaskCreated'))
     activeTab.value = 'history'
     await loadHistory()
   } finally {
@@ -216,7 +217,7 @@ async function createBackupImport() {
 
 async function createBatchTask() {
   if (!batchForm.databaseId || !batchForm.schema || !batchForm.sqlText.trim()) {
-    ElMessage.warning('Database와 Schema를 선택하고 SQL 내용을 입력하십시오.')
+    ElMessage.warning(at('selectDbSchemaSql'))
     return
   }
   const analysis = await analyzeDBMSSQL({
@@ -225,18 +226,18 @@ async function createBatchTask() {
     sqlText: batchForm.sqlText
   })
   if (analysis.accessMode === 'readonly' && analysis.writeOperation) {
-    ElMessage.error('Target Database가 읽기 전용 Mode이므로 일괄 쓰기를 실행할 수 없습니다.')
+    ElMessage.error(at('readonlyBatchError'))
     return
   }
   await ElMessageBox.confirm(
-    `Target: ${analysis.databaseName}/${analysis.schema}, 총 ${analysis.statementCount}건 SQL, 위험 등급: ${analysis.riskLevel}`,
-    '일괄 SQL 실행 확인',
-    { type: analysis.riskLevel === 'high' ? 'error' : 'warning', confirmButtonText: '확인 후 Task 생성' }
+    at('batchConfirm', { target: `${analysis.databaseName}/${analysis.schema}`, count: analysis.statementCount, risk: analysis.riskLevel }),
+    at('batchConfirmTitle'),
+    { type: analysis.riskLevel === 'high' ? 'error' : 'warning', confirmButtonText: at('confirmTask') }
   )
   submitting.value = true
   try {
     await createDBMSBatchSQLTask({ ...batchForm, confirmed: true })
-    ElMessage.success('일괄 SQL Task를 생성했습니다.')
+    ElMessage.success(at('batchTaskCreated'))
     activeTab.value = 'history'
     await loadHistory()
   } finally {
@@ -256,7 +257,7 @@ async function loadHistory() {
 }
 
 function taskTypeText(type) {
-  if (type === 'batch_sql') return '일괄 SQL'
+  if (type === 'batch_sql') return at('batchSQLLabel')
   if (type === 'backup_import') return 'Backup Import'
   return 'Data Import'
 }
@@ -296,7 +297,7 @@ onMounted(async () => {
     <header class="tool-header">
       <div>
         <h1>Data Import</h1>
-        <p>Cross-DB Data Migration, Database Backup 복원, 일괄 SQL 실행과 Task 추적을 통합 수행합니다.</p>
+        <p>{{ at('toolDesc') }}</p>
       </div>
     </header>
 
@@ -321,7 +322,7 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
 
-            <div class="section-title">Target 위치</div>
+            <div class="section-title">{{ at('targetLocationTitle') }}</div>
             <el-form-item label="Target Database" required>
               <el-select v-model="importForm.targetDatabaseId" filterable>
                 <el-option v-for="item in relationalDatabases" :key="item.id" :label="databaseLabel(item, true)" :value="item.id" />
@@ -332,19 +333,19 @@ onMounted(async () => {
                 <el-option v-for="item in targetSchemas" :key="item.name" :label="item.name" :value="item.name" />
               </el-select>
             </el-form-item>
-            <el-form-item label="Target Table" required><el-input v-model="importForm.targetTable" placeholder="기본값은 Source Table 이름" /></el-form-item>
-            <el-form-item label="Import 정책">
-              <el-checkbox v-model="importForm.createIfMissing">Target Table이 없으면 자동 생성</el-checkbox>
-              <el-checkbox v-model="importForm.truncateTarget">Import 전 Target Table 비우기</el-checkbox>
+            <el-form-item label="Target Table" required><el-input v-model="importForm.targetTable" :placeholder="at('targetTablePlaceholder')" /></el-form-item>
+            <el-form-item :label="at('importPolicyLabel')">
+              <el-checkbox v-model="importForm.createIfMissing">{{ at('autoCreateTarget') }}</el-checkbox>
+              <el-checkbox v-model="importForm.truncateTarget">{{ at('truncateBeforeImport') }}</el-checkbox>
             </el-form-item>
             <el-form-item>
-              <el-button :loading="checking" @click="runPrecheck">Precheck 실행</el-button>
-              <el-button type="primary" :loading="submitting" :disabled="!precheck?.ready" @click="createImport">Import Task 생성</el-button>
+              <el-button :loading="checking" @click="runPrecheck">{{ at('runPrecheckShort') }}</el-button>
+              <el-button type="primary" :loading="submitting" :disabled="!precheck?.ready" @click="createImport">{{ at('createImportTaskTitle') }}</el-button>
             </el-form-item>
           </el-form>
           <div v-if="precheck" class="precheck-panel" :class="{ danger: !precheck.ready }">
-            <div><strong>{{ precheck.ready ? 'Precheck 통과' : 'Precheck 미통과' }}</strong><el-tag :type="precheck.ready ? 'success' : 'danger'">{{ precheck.estimatedRows }} 행</el-tag></div>
-            <p>매핑 가능한 Field {{ precheck.commonColumns?.length || 0 }}개, 누락 Field {{ precheck.missingColumns?.length || 0 }}개.</p>
+            <div><strong>{{ precheck.ready ? at('precheckPassed') : at('precheckNotPassed') }}</strong><el-tag :type="precheck.ready ? 'success' : 'danger'">{{ at('estimatedRowsTag', { count: precheck.estimatedRows }) }}</el-tag></div>
+            <p>{{ at('fieldMappingSummary', { mapped: precheck.commonColumns?.length || 0, missing: precheck.missingColumns?.length || 0 }) }}</p>
             <ul v-if="precheck.warnings?.length"><li v-for="item in precheck.warnings" :key="item">{{ item }}</li></ul>
           </div>
         </el-tab-pane>
@@ -352,15 +353,15 @@ onMounted(async () => {
         <el-tab-pane label="Backup Import" name="backup">
           <div class="backup-import-layout">
             <el-form label-width="112px" class="operation-form backup-import-form">
-              <div class="section-title">Backup Source 선택</div>
+              <div class="section-title">{{ at('selectBackupSourceTitle') }}</div>
               <el-form-item label="Backup Source" required>
                 <el-radio-group v-model="backupForm.sourceType">
                   <el-radio-button value="record">Platform Backup</el-radio-button>
-                  <el-radio-button value="file">로컬 SQL 파일</el-radio-button>
+                  <el-radio-button value="file">{{ at('localSqlFile') }}</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="backupForm.sourceType === 'record'" label="Backup Record" required>
-                <el-select v-model="backupForm.backupRecordId" filterable :loading="backupRecordsLoading" placeholder="Backup 관리의 성공 Record 선택">
+                <el-select v-model="backupForm.backupRecordId" filterable :loading="backupRecordsLoading" :placeholder="at('selectSuccessBackupRecord')">
                   <el-option
                     v-for="item in backupRecords"
                     :key="item.id"
@@ -373,49 +374,49 @@ onMounted(async () => {
                     </div>
                   </el-option>
                 </el-select>
-                <el-button class="inline-refresh" @click="loadBackupRecords">새로 고침</el-button>
+                <el-button class="inline-refresh" @click="loadBackupRecords">{{ at('reloadList') }}</el-button>
               </el-form-item>
-              <el-form-item v-else label="Backup 파일" required>
+              <el-form-item v-else :label="at('backupFileLabel')" required>
                 <label class="file-picker">
                   <input type="file" accept=".sql,text/plain" @change="readBackupFile" />
-                  <span>{{ backupForm.fileName || 'SQL Backup 파일 선택' }}</span>
+                  <span>{{ backupForm.fileName || at('chooseSqlBackupFile') }}</span>
                 </label>
-                <span class="field-hint">Platform 내장 MySQL / PostgreSQL Logical Backup과 해당 SQL 파일을 지원하며 최대 50MB입니다.</span>
+                <span class="field-hint">{{ at('backupFileHint') }}</span>
               </el-form-item>
 
-              <div class="section-title target-title">복원 Target 선택</div>
+              <div class="section-title target-title">{{ at('selectRestoreTargetTitle') }}</div>
               <el-form-item label="Target Database" required>
-                <el-select v-model="backupForm.databaseId" filterable placeholder="쓰기 가능한 MySQL 또는 PostgreSQL 연결 선택">
+                <el-select v-model="backupForm.databaseId" filterable :placeholder="at('selectWritableConnection')">
                   <el-option
                     v-for="item in relationalDatabases"
                     :key="item.id"
-                    :label="`${item.name} / ${item.env || '-'} / ${item.accessMode === 'readonly' ? '읽기 전용' : '읽기/쓰기'}`"
+                    :label="`${item.name} / ${item.env || '-'} / ${item.accessMode === 'readonly' ? at('readOnly') : at('readWrite')}`"
                     :value="item.id"
                     :disabled="item.accessMode === 'readonly'"
                   />
                 </el-select>
               </el-form-item>
               <el-form-item label="Target Schema" required>
-                <el-select v-model="backupForm.schemaName" filterable placeholder="복원할 Business DB 선택">
+                <el-select v-model="backupForm.schemaName" filterable :placeholder="at('selectRestoreDb')">
                   <el-option v-for="item in backupTargetSchemas" :key="item.name" :label="item.name" :value="item.name" />
                 </el-select>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" :loading="submitting" @click="createBackupImport">복원 전 확인</el-button>
+                <el-button type="primary" :loading="submitting" @click="createBackupImport">{{ at('preRestoreCheck') }}</el-button>
               </el-form-item>
             </el-form>
 
             <aside class="restore-guide">
-              <div class="restore-guide-title">복원 안내</div>
-              <div class="restore-step"><span>1</span><div><strong>Source 검증</strong><p>성공한 Platform Backup 또는 `.sql` 파일만 허용합니다.</p></div></div>
-              <div class="restore-step"><span>2</span><div><strong>Target 고정</strong><p>복원은 항상 현재 선택한 연결과 Schema에 기록합니다.</p></div></div>
-              <div class="restore-step"><span>3</span><div><strong>비동기 실행</strong><p>Page를 닫아도 중단되지 않으며 Import History에서 진행 상황을 확인할 수 있습니다.</p></div></div>
-              <el-alert title="복원은 동일 이름 Table, View, Routine을 덮어쓸 수 있습니다. Production DB 작업 전 사용 가능한 Backup이 있는지 확인하십시오." type="warning" :closable="false" show-icon />
+              <div class="restore-guide-title">{{ at('restoreGuideTitle') }}</div>
+              <div class="restore-step"><span>1</span><div><strong>{{ at('restoreStep1Title') }}</strong><p>{{ at('restoreStep1Desc') }}</p></div></div>
+              <div class="restore-step"><span>2</span><div><strong>{{ at('restoreStep2Title') }}</strong><p>{{ at('restoreStep2Desc') }}</p></div></div>
+              <div class="restore-step"><span>3</span><div><strong>{{ at('restoreStep3Title') }}</strong><p>{{ at('restoreStep3Desc') }}</p></div></div>
+              <el-alert :title="at('restoreOverwriteAlert')" type="warning" :closable="false" show-icon />
             </aside>
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="일괄 SQL" name="batch">
+        <el-tab-pane :label="at('batchSQLLabel')" name="batch">
           <el-form label-width="110px" class="operation-form">
             <el-form-item label="Target Database" required>
               <el-select v-model="batchForm.databaseId" filterable>
@@ -427,38 +428,38 @@ onMounted(async () => {
                 <el-option v-for="item in targetSchemas" :key="item.name" :label="item.name" :value="item.name" />
               </el-select>
             </el-form-item>
-            <el-form-item label="SQL 파일">
+            <el-form-item :label="at('sqlFileLabel')">
               <input type="file" accept=".sql,text/plain" @change="readSQLFile" />
-              <span class="field-hint">.sql 텍스트 파일 지원, 최대 10MB</span>
+              <span class="field-hint">{{ at('sqlFileHint') }}</span>
             </el-form-item>
-            <el-form-item label="SQL 내용" required>
-              <el-input v-model="batchForm.sqlText" type="textarea" :rows="14" placeholder="SQL을 붙여넣거나 위에서 SQL 파일 선택" />
+            <el-form-item :label="at('sqlContentLabel')" required>
+              <el-input v-model="batchForm.sqlText" type="textarea" :rows="14" :placeholder="at('sqlPastePlaceholder')" />
             </el-form-item>
-            <el-form-item label="실행 방식">
+            <el-form-item :label="at('executionModeLabel')">
               <el-radio-group v-model="batchForm.executionMode">
-                <el-radio value="sequential">순차 실행, 실패 시 중지</el-radio>
-                <el-radio value="transaction">Transaction 실행, 실패 시 전체 Rollback</el-radio>
+                <el-radio value="sequential">{{ at('sequentialMode') }}</el-radio>
+                <el-radio value="transaction">{{ at('transactionMode') }}</el-radio>
               </el-radio-group>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :loading="submitting" @click="createBatchTask">위험 검사 후 실행</el-button>
+              <el-button type="primary" :loading="submitting" @click="createBatchTask">{{ at('runAfterRiskCheck') }}</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
 
         <el-tab-pane label="Import History" name="history">
-          <div class="history-toolbar"><el-button @click="loadHistory">새로 고침</el-button></div>
+          <div class="history-toolbar"><el-button @click="loadHistory">{{ at('reloadList') }}</el-button></div>
           <el-table v-loading="historyLoading" :data="history" border>
             <el-table-column label="Type" width="110"><template #default="{ row }">{{ taskTypeText(row.taskType) }}</template></el-table-column>
             <el-table-column prop="databaseName" label="Target Database" min-width="150" />
             <el-table-column prop="schemaName" label="Schema" width="130" />
-            <el-table-column prop="fileName" label="파일" min-width="160" />
-            <el-table-column prop="executionMode" label="실행 방식" width="110" />
-            <el-table-column label="진행률" width="150"><template #default="{ row }"><el-progress :percentage="row.progress || 0" :stroke-width="8" /></template></el-table-column>
-            <el-table-column label="상태" width="100"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
-            <el-table-column prop="rowsAffected" label="영향 행 수" width="110" />
-            <el-table-column prop="message" label="결과" min-width="260" show-overflow-tooltip />
-            <el-table-column prop="createTime" label="생성 시각" width="180" />
+            <el-table-column prop="fileName" :label="at('fileColumn')" min-width="160" />
+            <el-table-column prop="executionMode" :label="at('executionModeLabel')" width="110" />
+            <el-table-column :label="at('progress')" width="150"><template #default="{ row }"><el-progress :percentage="row.progress || 0" :stroke-width="8" /></template></el-table-column>
+            <el-table-column :label="at('status')" width="100"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
+            <el-table-column prop="rowsAffected" :label="at('affectedRowsColumn')" width="110" />
+            <el-table-column prop="message" :label="at('resultColumn')" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="createTime" :label="at('createdAtColumn')" width="180" />
           </el-table>
           <div class="pager"><el-pagination v-model:current-page="historyQuery.pageNum" :total="historyTotal" layout="total, prev, pager, next" @current-change="loadHistory" /></div>
         </el-tab-pane>

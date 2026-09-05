@@ -1,5 +1,6 @@
 <script setup>
 import { uiT } from '../../utils/english-hardcoding-i18n'
+import { at } from '../../utils/asset-i18n'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Connection, FolderOpened, Key, Monitor, Coin, Warning, Grid } from '@element-plus/icons-vue'
@@ -22,9 +23,9 @@ const summaryCards = computed(() => {
   return [
     {
       key: 'hosts',
-      title: 'Host 자산',
+      title: at('hostsCardTitle'),
       value: summary.hostTotal || 0,
-      note: `온라인 ${summary.hostOnline || 0} / 오프라인 ${summary.hostOffline || 0}`,
+      note: at('hostsCardNote', { online: summary.hostOnline || 0, offline: summary.hostOffline || 0 }),
       icon: Monitor,
       action: () => router.push('/assets/server/hosts')
     },
@@ -32,7 +33,7 @@ const summaryCards = computed(() => {
       key: 'groups',
       title: 'Host Group',
       value: summary.groupTotal || 0,
-      note: '자산 소속과 일괄 작업 경계를 관리합니다',
+      note: at('groupsCardNote'),
       icon: FolderOpened,
       action: () => router.push('/assets/server/groups')
     },
@@ -40,7 +41,7 @@ const summaryCards = computed(() => {
       key: 'credentials',
       title: 'Credential',
       value: summary.credentialTotal || 0,
-      note: `활성화 ${summary.credentialEnabled || 0}`,
+      note: at('enabledCount', { count: summary.credentialEnabled || 0 }),
       icon: Key,
       action: () => router.push('/assets/server/credentials')
     },
@@ -48,7 +49,7 @@ const summaryCards = computed(() => {
       key: 'cloudAccounts',
       title: 'Cloud Account',
       value: summary.cloudAccountTotal || 0,
-      note: `사용 가능 ${summary.cloudAccountEnabled || 0}`,
+      note: at('availableCount', { count: summary.cloudAccountEnabled || 0 }),
       icon: Connection,
       action: () => router.push('/assets/server/cloud-accounts')
     },
@@ -56,7 +57,7 @@ const summaryCards = computed(() => {
       key: 'databases',
       title: 'Database',
       value: summary.databaseTotal || 0,
-      note: `연결 정상 ${summary.databaseHealthy || 0}`,
+      note: at('healthyCount', { count: summary.databaseHealthy || 0 }),
       icon: Coin,
       action: () => router.push('/assets/databases')
     },
@@ -64,7 +65,7 @@ const summaryCards = computed(() => {
       key: 'k8s',
       title: 'K8s Cluster',
       value: summary.k8sClusterTotal || 0,
-      note: `실행 중 ${summary.k8sClusterOnline || 0} / Node ${summary.k8sNodeTotal || 0}`,
+      note: at('k8sCardNote', { online: summary.k8sClusterOnline || 0, nodes: summary.k8sNodeTotal || 0 }),
       icon: Grid,
       action: () => router.push('/containers/k8s/clusters')
     }
@@ -75,28 +76,28 @@ const healthCards = computed(() => {
   const health = overview.value.health || {}
   return [
     {
-      title: '오프라인 Host',
+      title: at('healthOfflineTitle'),
       value: health.offlineHosts || 0,
       tone: health.offlineHosts ? 'danger' : 'normal',
-      desc: '연결 상태와 최근 Heartbeat을 확인하십시오'
+      desc: at('healthOfflineDesc')
     },
     {
-      title: '인증 실패',
+      title: at('healthAuthTitle'),
       value: health.authFailedHosts || 0,
       tone: health.authFailedHosts ? 'warning' : 'normal',
-      desc: 'Credential 상태와 SSH Config를 점검하십시오'
+      desc: at('healthAuthDesc')
     },
     {
-      title: '이상 Database',
+      title: at('healthDbTitle'),
       value: health.abnormalDatabases || 0,
       tone: health.abnormalDatabases ? 'danger' : 'normal',
-      desc: '연결 실패 또는 사용 불가 Instance를 우선 처리하십시오'
+      desc: at('healthDbDesc')
     },
     {
-      title: '이상 Cluster',
+      title: at('healthClusterTitle'),
       value: health.abnormalClusters || 0,
       tone: health.abnormalClusters ? 'warning' : 'normal',
-      desc: 'kubeconfig와 Cluster 상태를 점검하십시오'
+      desc: at('healthClusterDesc')
     }
   ]
 })
@@ -118,15 +119,15 @@ function hostStatusType(value) {
 }
 
 function hostStatusText(value) {
-  if (value === 1) return '온라인'
-  if (value === 2) return '오프라인'
-  return '알 수 없음'
+  if (value === 1) return at('online')
+  if (value === 2) return at('offline')
+  return at('unknownStatus')
 }
 
 function authStatusText(value) {
-  if (value === 1) return '인증 성공'
-  if (value === 2) return '인증 실패'
-  return '검증 대기'
+  if (value === 1) return at('authSuccess')
+  if (value === 2) return at('authFailed')
+  return at('verificationPending')
 }
 
 function databaseStatusType(value) {
@@ -136,9 +137,9 @@ function databaseStatusType(value) {
 }
 
 function databaseStatusText(value) {
-  if (value === 1) return '연결 정상'
-  if (value === 2) return '연결 실패'
-  return '미검사'
+  if (value === 1) return at('dbHealthy')
+  if (value === 2) return at('dbUnhealthy')
+  return at('notInspected')
 }
 
 function clusterStatusType(value) {
@@ -149,10 +150,10 @@ function clusterStatusType(value) {
 }
 
 function clusterStatusText(value) {
-  if (value === 'running') return '실행 중'
-  if (value === 'warning') return '주의'
-  if (value === 'error') return '사용 불가'
-  return '알 수 없음'
+  if (value === 'running') return at('statusRunning')
+  if (value === 'warning') return at('attentionStatus')
+  if (value === 'error') return at('unusableStatus')
+  return at('unknownStatus')
 }
 
 function formatTime(value) {
@@ -203,16 +204,16 @@ onMounted(loadOverview)
         <p class="hero-kicker">{{ uiT('assetControl') }}</p>
         <h1>Asset Overview</h1>
         <p class="hero-text">
-          Host, Host Group, Credential, Cloud Account, Database와 K8s Cluster 상태를 한곳에서 확인하고, 오프라인 Host, 인증 실패, 연결 이상 자산을 우선 처리하십시오.
+          {{ at('heroText') }}
         </p>
       </div>
       <div class="hero-side">
         <article class="hero-side-card">
-          <span>온라인 Host</span>
+          <span>{{ at('heroOnlineHosts') }}</span>
           <strong>{{ overview.summary?.hostOnline || 0 }}</strong>
         </article>
         <article class="hero-side-card">
-          <span>Database 사용 가능</span>
+          <span>{{ at('heroDbAvailable') }}</span>
           <strong>{{ overview.summary?.databaseHealthy || 0 }}</strong>
         </article>
         <article class="hero-side-card">
@@ -220,7 +221,7 @@ onMounted(loadOverview)
           <strong>{{ overview.summary?.k8sNodeTotal || 0 }}</strong>
         </article>
         <article class="hero-side-card" :class="{ attention: overview.health?.incompleteAssets }">
-          <span>정보 보완 대기</span>
+          <span>{{ at('heroInfoPending') }}</span>
           <strong>{{ overview.health?.incompleteAssets || 0 }}</strong>
         </article>
       </div>
@@ -237,7 +238,7 @@ onMounted(loadOverview)
           <div class="summary-icon">
             <component :is="item.icon" />
           </div>
-          <el-button link type="primary">이동</el-button>
+          <el-button link type="primary">{{ at('go') }}</el-button>
         </div>
         <span>{{ item.title }}</span>
         <strong>{{ item.value }}</strong>
@@ -250,12 +251,12 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>Health 알림</h3>
-              <p>일상 운영에 영향을 주는 이상 항목을 우선 처리하십시오.</p>
+              <h3>{{ at('healthAlertTitle') }}</h3>
+              <p>{{ at('healthAlertDesc') }}</p>
             </div>
             <div class="panel-status-chip">
               <Warning />
-              <span>자산 Health</span>
+              <span>{{ at('assetHealthChip') }}</span>
             </div>
           </div>
           <div class="health-grid">
@@ -270,10 +271,10 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>Host Group 분포</h3>
-              <p>Group 이름을 클릭하면 해당 Group의 서버 목록으로 바로 이동합니다.</p>
+              <h3>{{ at('groupDistTitle') }}</h3>
+              <p>{{ at('groupDistDesc') }}</p>
             </div>
-            <el-button link type="primary" @click="router.push('/assets/server/groups')">전체 보기</el-button>
+            <el-button link type="primary" @click="router.push('/assets/server/groups')">{{ at('viewAll') }}</el-button>
           </div>
           <div v-if="overview.topGroups?.length" class="group-list">
             <button
@@ -284,17 +285,17 @@ onMounted(loadOverview)
             >
               <div>
                 <strong>{{ item.name }}</strong>
-                <small>{{ item.code || '코드 미구성' }}</small>
+                <small>{{ item.code || at('noCode') }}</small>
               </div>
               <div class="group-meta">
-                <span>{{ item.hostCount }}대 Host</span>
+                <span>{{ at('hostCountSuffix', { count: item.hostCount }) }}</span>
                 <el-tag :type="item.status === 1 ? 'success' : 'info'" effect="light">
-                  {{ item.status === 1 ? '정상' : '비활성화' }}
+                  {{ item.status === 1 ? at('groupNormal') : at('groupDisabled') }}
                 </el-tag>
               </div>
             </button>
           </div>
-          <el-empty v-else description="Host Group 데이터가 없습니다" />
+          <el-empty v-else :description="at('noGroupData')" />
         </article>
       </div>
 
@@ -302,14 +303,14 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>Resource 분포</h3>
-              <p>Host 출처와 Environment 차원으로 현재 자산 구성을 확인합니다.</p>
+              <h3>{{ at('distTitle') }}</h3>
+              <p>{{ at('distDesc') }}</p>
             </div>
           </div>
           <div class="distribution-grid">
             <section class="distribution-card">
               <header>
-                <strong>Host 출처</strong>
+                <strong>{{ at('hostSourceTitle') }}</strong>
               </header>
               <div v-if="providerDistribution.length" class="distribution-list">
                 <div v-for="item in providerDistribution" :key="item.name" class="distribution-row">
@@ -322,12 +323,12 @@ onMounted(loadOverview)
                   </div>
                 </div>
               </div>
-              <el-empty v-else description="Host 출처 데이터가 없습니다" :image-size="72" />
+              <el-empty v-else :description="at('noProviderData')" :image-size="72" />
             </section>
 
             <section class="distribution-card">
               <header>
-                <strong>Environment 분포</strong>
+                <strong>{{ at('envDistTitle') }}</strong>
               </header>
               <div v-if="hasEnvironmentDistribution" class="distribution-list">
                 <div v-for="item in environmentDistribution" :key="item.name" class="distribution-row">
@@ -341,7 +342,7 @@ onMounted(loadOverview)
                 </div>
               </div>
               <div v-else class="distribution-placeholder">
-                현재 Host에는 Environment 구분이 없습니다. Host 관리에서 Environment 필드를 보완한 뒤 다시 확인하십시오.
+                {{ at('noEnvDistText') }}
               </div>
             </section>
           </div>
@@ -350,10 +351,10 @@ onMounted(loadOverview)
         <article class="page-card panel-card">
           <div class="panel-header">
             <div>
-              <h3>K8s Cluster 상태</h3>
-              <p>현재 관리 중인 Cluster, Node 수와 기본 연결 상태를 모아 보여 줍니다.</p>
+              <h3>{{ at('clusterStatusTitle') }}</h3>
+              <p>{{ at('clusterStatusDesc') }}</p>
             </div>
-            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">Cluster 관리</el-button>
+            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">{{ at('clusterManageLink') }}</el-button>
           </div>
 
           <el-table :data="overview.recentClusters || []" size="small" class="compact-table">
@@ -363,13 +364,13 @@ onMounted(loadOverview)
                 <small class="sub-line">{{ row.apiServer || '-' }}</small>
               </template>
             </el-table-column>
-            <el-table-column label="버전" width="110">
+            <el-table-column :label="at('versionColumn')" width="110">
               <template #default="{ row }">{{ row.version || '-' }}</template>
             </el-table-column>
-            <el-table-column label="Node 수" width="90">
+            <el-table-column :label="at('nodeCountColumn')" width="90">
               <template #default="{ row }">{{ row.nodeCount || 0 }}</template>
             </el-table-column>
-            <el-table-column label="상태" width="110">
+            <el-table-column :label="at('status')" width="110">
               <template #default="{ row }">
                 <el-tag :type="clusterStatusType(row.status)" effect="light">
                   {{ clusterStatusText(row.status) }}
@@ -385,10 +386,10 @@ onMounted(loadOverview)
       <article class="page-card detail-card">
         <div class="panel-header">
           <div>
-            <h3>최근 업데이트된 Host</h3>
-            <p>최근에 수정, 동기화 또는 상태가 변경된 Host 자산에 집중합니다.</p>
+            <h3>{{ at('recentHostsTitle') }}</h3>
+            <p>{{ at('recentHostsDesc') }}</p>
           </div>
-          <el-button link type="primary" @click="router.push('/assets/server/hosts')">Host 관리</el-button>
+          <el-button link type="primary" @click="router.push('/assets/server/hosts')">{{ at('hostManageLink') }}</el-button>
         </div>
 
         <el-table :data="overview.recentHosts || []" size="small" class="compact-table">
@@ -405,19 +406,19 @@ onMounted(loadOverview)
               {{ row.groupNames?.length ? row.groupNames.join(' / ') : '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="상태" width="110">
+          <el-table-column :label="at('status')" width="110">
             <template #default="{ row }">
               <el-tag :type="hostStatusType(row.aliveStatus)" effect="light">
                 {{ hostStatusText(row.aliveStatus) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="인증" width="110">
+          <el-table-column :label="at('authColumn')" width="110">
             <template #default="{ row }">
               {{ authStatusText(row.authStatus) }}
             </template>
           </el-table-column>
-          <el-table-column label="수정 시간" min-width="140">
+          <el-table-column :label="at('updatedAtColumn')" min-width="140">
             <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
           </el-table-column>
         </el-table>
@@ -426,10 +427,10 @@ onMounted(loadOverview)
       <article class="page-card detail-card">
         <div class="panel-header">
           <div>
-            <h3>최근 업데이트된 Database</h3>
-            <p>Database 이름을 클릭하면 SQL Workbench로 바로 이동합니다.</p>
+            <h3>{{ at('recentDbsTitle') }}</h3>
+            <p>{{ at('recentDbsDesc') }}</p>
           </div>
-          <el-button link type="primary" @click="router.push('/assets/databases')">Database 관리</el-button>
+          <el-button link type="primary" @click="router.push('/assets/databases')">{{ at('dbManageLink') }}</el-button>
         </div>
 
         <el-table :data="overview.recentDatabases || []" size="small" class="compact-table">
@@ -439,20 +440,20 @@ onMounted(loadOverview)
               <small class="sub-line">{{ row.dbName || '-' }}</small>
             </template>
           </el-table-column>
-          <el-table-column label="주소" min-width="180">
+          <el-table-column :label="at('addressColumn')" min-width="180">
             <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
           </el-table-column>
-          <el-table-column label="유형" width="90">
+          <el-table-column :label="at('typeColumn')" width="90">
             <template #default="{ row }">{{ (row.dbType || '').toUpperCase() || '-' }}</template>
           </el-table-column>
-          <el-table-column label="연결 상태" width="120">
+          <el-table-column :label="at('connStatusColumn')" width="120">
             <template #default="{ row }">
               <el-tag :type="databaseStatusType(row.connectStatus)" effect="light">
                 {{ databaseStatusText(row.connectStatus) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="수정 시간" min-width="140">
+          <el-table-column :label="at('updatedAtColumn')" min-width="140">
             <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
           </el-table-column>
         </el-table>
