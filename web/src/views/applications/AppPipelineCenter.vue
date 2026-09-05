@@ -1,5 +1,6 @@
 <script setup>
 import { uiT } from '../../utils/english-hardcoding-i18n'
+import { apt } from '../../utils/application-i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -39,14 +40,14 @@ const runVisible = ref(false)
 const runDetailVisible = ref(false)
 const runRows = ref([])
 const runTotal = ref(0)
-const selectedCategory = ref('전체 Template')
+const selectedCategory = ref('all')
 const selectedTemplate = ref(null)
 const activeTab = ref('pipelines')
 const activeRunStageId = ref('')
 const logBodyRef = ref()
 const runRefreshTimer = ref()
 
-const categories = ['전체 Template', 'Java', 'Node.js', 'Go', 'Python', 'Vue', '빈 Template']
+const categories = ['all', 'Java', 'Node.js', 'Go', 'Python', 'Vue', 'blank']
 
 const query = reactive({
   pageNum: 1,
@@ -95,10 +96,14 @@ const currentRun = ref({ run: {}, stages: [] })
 
 const currentApp = computed(() => appOptions.value.find((item) => Number(item.id) === Number(form.appId)))
 const filteredTemplates = computed(() => {
-  if (selectedCategory.value === '전체 Template') return templates.value
-  if (selectedCategory.value === '빈 Template') return []
+  if (selectedCategory.value === 'all') return templates.value
+  if (selectedCategory.value === 'blank') return []
   return templates.value.filter((item) => item.category === selectedCategory.value || item.techStack === selectedCategory.value)
 })
+
+function categoryLabel(category) {
+  return { all: apt('categoryAll'), blank: apt('categoryBlank') }[category] || category
+}
 
 function resetForm() {
   Object.assign(form, {
@@ -167,16 +172,16 @@ function defaultStage(type = 'command') {
 
 function stageHint(type) {
   return {
-    checkout: 'Application의 Git / SVN Repository와 실행 Branch를 사용해 Source를 Checkout합니다.',
-    command: '실행 Node의 Workspace에서 사용자 정의 Shell Command를 실행합니다.',
-    test: '자동화 Test를 실행하며 실패 시 Policy에 따라 중지하거나 계속합니다.',
-    build: 'Compile, Package 등 Build Command 실행',
-    dockerBuild: 'Target Image를 정의하고 실행 Node에서 docker build를 실행합니다.',
-    dockerPush: '앞 Stage에서 Build한 동일한 Image와 Version을 Push합니다.',
-    k8sDeploy: '실행 Node의 kubectl로 Target Workload를 업데이트합니다.',
-    manual: 'Pipeline을 일시 중지하고 Manual Approval 후 계속합니다.',
-    notify: 'Notification Rule을 호출해 Delivery Task를 생성합니다.'
-  }[type] || '현재 Stage 구성'
+    checkout: apt('hintCheckout'),
+    command: apt('hintCommand'),
+    test: apt('hintTest'),
+    build: apt('hintBuild'),
+    dockerBuild: apt('hintDockerBuild'),
+    dockerPush: apt('hintDockerPush'),
+    k8sDeploy: apt('hintK8sDeploy'),
+    manual: apt('hintManual'),
+    notify: apt('hintNotify')
+  }[type] || apt('hintDefault')
 }
 
 function stageTone(type) {
@@ -217,7 +222,7 @@ function dockerBuildStages(excludeId) {
 
 function registryName(id) {
   const registry = imageRegistryOptions.value.find((item) => Number(item.id) === Number(id))
-  return registry ? `${registry.name} · ${registry.address}${registry.namespace ? `/${registry.namespace}` : ''}` : 'Image Registry를 선택하십시오.'
+  return registry ? `${registry.name} · ${registry.address}${registry.namespace ? `/${registry.namespace}` : ''}` : apt('selectRegistryPrompt')
 }
 
 async function loadApps() {
@@ -252,7 +257,7 @@ function executorHostLabel(host) {
 
 function executorHostName(id) {
   const host = executorHostOptions.value.find((item) => Number(item.id) === Number(id))
-  return host ? executorHostLabel(host) : (id ? `Asset Host #${id}` : '미구성')
+  return host ? executorHostLabel(host) : (id ? `Asset Host #${id}` : apt('hostNotConfigured'))
 }
 
 
@@ -280,7 +285,7 @@ async function loadRuns() {
 }
 
 function openTemplateDialog() {
-  selectedCategory.value = '전체 Template'
+  selectedCategory.value = 'all'
   selectedTemplate.value = null
   templateVisible.value = true
 }
@@ -298,7 +303,7 @@ function useTemplate(template) {
 
 function confirmTemplate() {
   if (!selectedTemplate.value) {
-    ElMessage.warning('Pipeline Template을 선택하거나 빈 Pipeline을 사용하십시오.')
+    ElMessage.warning(apt('selectTemplateWarning'))
     return
   }
   resetForm()
@@ -352,23 +357,23 @@ function moveStage(index, direction) {
 }
 
 function validateStages(stages = form.stages, executorHostId = form.executorHostId) {
-  if (!stages.length) return '실행 Stage를 하나 이상 구성하십시오.'
+  if (!stages.length) return apt('stageRequired')
   const ids = new Set()
   for (let index = 0; index < stages.length; index += 1) {
     const stage = stages[index]
-    if (!stage.id || ids.has(stage.id)) return `Stage ${index + 1}의 ID가 중복되었습니다. 해당 Stage를 삭제한 뒤 다시 추가하십시오.`
+    if (!stage.id || ids.has(stage.id)) return apt('stageIdDuplicate', { index: index + 1 })
     ids.add(stage.id)
-    if (!String(stage.name || '').trim()) return `${index + 1}번째 Stage 이름을 입력하십시오.`
-    if (['command', 'test', 'build'].includes(stage.type) && !String(stage.config?.script || '').trim()) return `${stage.name} Stage의 실행 Command를 입력하십시오.`
-    if (stage.type === 'notify' && !stage.config?.notifyRuleId) return `${stage.name} Stage에서 사용할 Notification Rule을 선택하십시오.`
+    if (!String(stage.name || '').trim()) return apt('stageNameRequired', { index: index + 1 })
+    if (['command', 'test', 'build'].includes(stage.type) && !String(stage.config?.script || '').trim()) return apt('stageCommandRequired', { name: stage.name })
+    if (stage.type === 'notify' && !stage.config?.notifyRuleId) return apt('stageNotifyRequired', { name: stage.name })
   }
-  if (!executorHostId) return 'Pipeline 실행 Node를 선택하십시오. Source, Build, Image, Deploy 작업은 Ops Admin Container에서 실행되지 않습니다.'
+  if (!executorHostId) return apt('executorHostRequired')
   return ''
 }
 
 async function submitPipeline() {
   if (!form.name || !form.appId) {
-    ElMessage.warning('Pipeline 이름을 입력하고 Application을 선택하십시오.')
+    ElMessage.warning(apt('nameAndAppRequired'))
     return
   }
   const stageError = validateStages()
@@ -388,7 +393,7 @@ async function submitPipeline() {
       description: form.description,
       definitionJson: stringifyDefinition()
     })
-    ElMessage.success('저장 성공')
+    ElMessage.success(apt('saveSuccess'))
     editorVisible.value = false
     await loadData()
   } finally {
@@ -399,7 +404,7 @@ async function submitPipeline() {
 async function openRun(row) {
   const detail = await opsAppPipelineInfo(row.id)
   const stageError = validateStages(detail.stages || [], detail.pipeline?.executorHostId || row.executorHostId)
-  if (stageError) return ElMessage.warning(`실행할 수 없음: ${stageError}`)
+  if (stageError) return ElMessage.warning(apt('cannotRun', { message: stageError }))
   Object.assign(runForm, {
     pipelineId: row.id,
     pipelineName: row.name,
@@ -417,7 +422,7 @@ async function submitRun() {
     try {
       params = JSON.parse(runForm.paramsText)
     } catch {
-      ElMessage.warning('Custom Parameter는 JSON Object여야 합니다.')
+      ElMessage.warning(apt('paramsJsonRequired'))
       return
     }
   }
@@ -428,24 +433,24 @@ async function submitRun() {
     imageTag: runForm.imageTag,
     params
   })
-  ElMessage.success(`Pipeline 실행 시작: #${data.runId}`)
+  ElMessage.success(apt('runStarted', { runId: data.runId }))
   runVisible.value = false
   await loadData()
   await openRunDetail(data.runId)
 }
 
 async function approveCurrentRun(decision) {
-  const action = decision === 'approve' ? '승인' : '거부'
-  const { value } = await ElMessageBox.prompt(`Approval 설명을 입력하고 현재 Deploy의 ${action}을(를) 확인하십시오.`, `Manual Approval ${action}`, { inputType: 'textarea', confirmButtonText: action })
+  const action = decision === 'approve' ? apt('approveAction') : apt('rejectAction')
+  const { value } = await ElMessageBox.prompt(apt('approvalPrompt', { action }), apt('approvalTitle', { action }), { inputType: 'textarea', confirmButtonText: action })
   await approveOpsAppPipelineRun({ runId: currentRun.value.run.id, decision, note: value || '' })
-  ElMessage.success(`${action}`)
+  ElMessage.success(action)
   await openRunDetail(currentRun.value.run.id)
 }
 
 async function rollbackCurrentRun() {
-  await ElMessageBox.confirm('마지막 성공 Run의 Image Version으로 Kubernetes Deploy Stage를 다시 실행하시겠습니까?', 'Rollback 확인', { type: 'warning' })
+  await ElMessageBox.confirm(apt('rollbackConfirm'), apt('rollbackConfirmTitle'), { type: 'warning' })
   const data = await rollbackOpsAppPipelineRun(currentRun.value.run.id)
-  ElMessage.success(`Rollback Task를 생성했습니다: #${data.runId}`)
+  ElMessage.success(apt('rollbackStarted', { runId: data.runId }))
   await openRunDetail(data.runId)
 }
 
@@ -485,20 +490,20 @@ function stopRunRefresh() {
 async function toggleStatus(row) {
   const next = Number(row.status) === 1 ? 2 : 1
   await updateOpsAppPipelineStatus({ id: row.id, status: next })
-  ElMessage.success(next === 1 ? '활성화됨' : '비활성화됨')
+  ElMessage.success(next === 1 ? apt('enabledMessage') : apt('disabledMessage'))
   await loadData()
 }
 
 async function copyPipeline(row) {
   await copyOpsAppPipeline(row.id)
-  ElMessage.success('복제 성공')
+  ElMessage.success(apt('duplicateSuccess'))
   await loadData()
 }
 
 async function removePipeline(row) {
-  await ElMessageBox.confirm(`Pipeline “${row.name}”과 해당 Run History를 삭제하시겠습니까?`, 'Pipeline 삭제', { type: 'warning' })
+  await ElMessageBox.confirm(apt('pipelineDeleteConfirm', { name: row.name }), apt('pipelineDeleteTitle'), { type: 'warning' })
   await deleteOpsAppPipeline(row.id)
-  ElMessage.success('삭제 성공')
+  ElMessage.success(apt('deleteSuccess'))
   await loadData()
 }
 
@@ -510,14 +515,14 @@ function statusType(status) {
 }
 
 function statusText(status) {
-  return { success: '성공', running: '실행 중', failed: '실패', waiting: '대기 중', waiting_approval: 'Manual Approval 대기', 1: '활성화', 2: '비활성화' }[status] || status || '-'
+  return { success: apt('statusSuccess'), running: apt('statusRunning'), failed: apt('statusFailed'), waiting: apt('statusWaiting'), waiting_approval: apt('statusApprovalWaiting'), 1: apt('activate'), 2: apt('deactivate') }[status] || status || '-'
 }
 
 function durationText(ms) {
   if (!ms) return '-'
   const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds} 초`
-  return `${Math.floor(seconds / 60)} 분 ${seconds % 60} 초`
+  if (seconds < 60) return apt('durationSeconds', { seconds })
+  return apt('durationMinutes', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 })
 }
 
 function stageTypeText(type) {
@@ -545,7 +550,7 @@ const activeRunStage = computed(() => {
   return stages.find((stage) => String(stage.id) === String(activeRunStageId.value)) || stages[0] || {}
 })
 
-const activeRunLog = computed(() => activeRunStage.value.log || activeRunStage.value.summary || '이 Stage에는 아직 실행 Log가 없습니다.')
+const activeRunLog = computed(() => activeRunStage.value.log || activeRunStage.value.summary || apt('noStageLog'))
 
 function selectRunStage(stage) {
   activeRunStageId.value = stage.id
@@ -583,26 +588,26 @@ onBeforeUnmount(stopRunRefresh)
       <div>
         <span class="eyebrow">{{ uiT('cloudNativeDelivery') }}</span>
         <h1>{{ uiT('cicdPipeline') }}</h1>
-        <p>Source Checkout부터 Build, Test, Artifact, Deploy, Notification까지 Application Delivery Flow를 통합 Orchestration합니다.</p>
+        <p>{{ apt('heroDesc') }}</p>
       </div>
       <div class="hero-stats">
-        <div><strong>{{ stats.total || 0 }}</strong><span>전체 Pipeline</span></div>
-        <div><strong>{{ stats.enabled || 0 }}</strong><span>활성</span></div>
-        <div><strong>{{ stats.failed || 0 }}</strong><span>최근 실패</span></div>
+        <div><strong>{{ stats.total || 0 }}</strong><span>{{ apt('statTotalPipelines') }}</span></div>
+        <div><strong>{{ stats.enabled || 0 }}</strong><span>{{ apt('statEnabled') }}</span></div>
+        <div><strong>{{ stats.failed || 0 }}</strong><span>{{ apt('statRecentFailed') }}</span></div>
       </div>
     </div>
 
     <el-tabs v-model="activeTab" class="pipeline-tabs" @tab-change="activeTab === 'runs' && loadRuns()">
-      <el-tab-pane label="Pipeline 목록" name="pipelines">
+      <el-tab-pane :label="apt('tabPipelineList')" name="pipelines">
         <div class="filter-panel">
           <el-form inline>
             <el-form-item :label="uiT('application')">
-              <el-select v-model="query.appId" clearable filterable placeholder="전체 Application">
+              <el-select v-model="query.appId" clearable filterable :placeholder="apt('allApplicationsPlaceholder')">
                 <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
             <el-form-item :label="uiT('environment')">
-              <el-select v-model="query.env" clearable placeholder="전체 Environment">
+              <el-select v-model="query.env" clearable :placeholder="apt('allEnvironmentsPlaceholder')">
                 <el-option label="dev" value="dev" />
                 <el-option label="test" value="test" />
                 <el-option label="staging" value="staging" />
@@ -610,22 +615,22 @@ onBeforeUnmount(stopRunRefresh)
               </el-select>
             </el-form-item>
             <el-form-item :label="uiT('techStack')">
-              <el-select v-model="query.techStack" clearable placeholder="전체 Tech Stack">
+              <el-select v-model="query.techStack" clearable :placeholder="apt('allTechStacksPlaceholder')">
                 <el-option label="Go" value="go" />
                 <el-option label="Maven Java" value="maven" />
                 <el-option label="Vue" value="vue" />
-                <el-option label="사용자 정의" value="custom" />
+                <el-option :label="apt('customTechStack')" value="custom" />
               </el-select>
             </el-form-item>
             <el-form-item :label="uiT('keyword')">
-              <el-input v-model="query.keyword" clearable placeholder="Pipeline / Application / Repository 검색" @keyup.enter="loadData" />
+              <el-input v-model="query.keyword" clearable :placeholder="apt('pipelineSearchPlaceholder')" @keyup.enter="loadData" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="loadData">검색</el-button>
-              <el-button @click="Object.assign(query, { pageNum: 1, keyword: '', appId: undefined, env: '', status: '', techStack: '' }); loadData()">초기화</el-button>
+              <el-button type="primary" @click="loadData">{{ apt('search') }}</el-button>
+              <el-button @click="Object.assign(query, { pageNum: 1, keyword: '', appId: undefined, env: '', status: '', techStack: '' }); loadData()">{{ apt('reset') }}</el-button>
             </el-form-item>
           </el-form>
-          <el-button type="primary" @click="openTemplateDialog">새 Pipeline</el-button>
+          <el-button type="primary" @click="openTemplateDialog">{{ apt('newPipeline') }}</el-button>
         </div>
 
         <el-table v-loading="loading" :data="rows" class="pipeline-table">
@@ -640,27 +645,27 @@ onBeforeUnmount(stopRunRefresh)
           <el-table-column prop="repoUrl" label="Repository Address" min-width="260" show-overflow-tooltip />
           <el-table-column prop="env" :label="uiT('environment')" width="100" />
           <el-table-column prop="techStack" :label="uiT('techStack')" width="120" />
-          <el-table-column label="실행 Node" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ executorHostName(row.executorHostId) }}</template></el-table-column>
-          <el-table-column prop="stageCount" label="Stage 수" width="90" />
-          <el-table-column label="상태" width="100">
+          <el-table-column :label="apt('executionNode')" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ executorHostName(row.executorHostId) }}</template></el-table-column>
+          <el-table-column prop="stageCount" :label="apt('stageCountCol')" width="90" />
+          <el-table-column :label="apt('status')" width="100">
             <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="최근 실행" min-width="160">
+          <el-table-column :label="apt('lastRun')" min-width="160">
             <template #default="{ row }">
               <el-tag v-if="row.lastStatus" :type="statusType(row.lastStatus)" size="small">{{ statusText(row.lastStatus) }}</el-tag>
               <span class="muted">{{ row.lastRunAt || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="작업" width="330" fixed="right">
+          <el-table-column :label="apt('actions')" width="330" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openRun(row)">즉시 실행</el-button>
-              <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-              <el-button link type="primary" @click="copyPipeline(row)">복제</el-button>
+              <el-button link type="primary" @click="openRun(row)">{{ apt('runNow') }}</el-button>
+              <el-button link type="primary" @click="openEdit(row)">{{ apt('edit') }}</el-button>
+              <el-button link type="primary" @click="copyPipeline(row)">{{ apt('duplicate') }}</el-button>
               <el-button link type="primary" @click="Object.assign(runQuery, { pipelineId: row.id }); activeTab = 'runs'; loadRuns()">History</el-button>
               <el-button link :type="Number(row.status) === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
-                {{ Number(row.status) === 1 ? '비활성화' : '활성화' }}
+                {{ Number(row.status) === 1 ? apt('deactivate') : apt('activate') }}
               </el-button>
-              <el-button link type="danger" @click="removePipeline(row)">삭제</el-button>
+              <el-button link type="danger" @click="removePipeline(row)">{{ apt('delete') }}</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -669,37 +674,37 @@ onBeforeUnmount(stopRunRefresh)
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="Pipeline Template" name="templates">
+      <el-tab-pane :label="apt('tabPipelineTemplate')" name="templates">
         <div class="template-grid static">
           <div v-for="item in templates" :key="item.id" class="template-card">
             <strong>{{ item.name }}</strong>
             <p>{{ item.description }}</p>
-            <span>{{ item.techStack }} / {{ item.stageCount }}개 Stage</span>
+            <span>{{ apt('stageCountSuffix', { techStack: item.techStack, count: item.stageCount }) }}</span>
           </div>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="Run History" name="runs">
+      <el-tab-pane :label="apt('tabRunHistory')" name="runs">
         <div class="filter-panel">
           <el-form inline>
             <el-form-item :label="uiT('application')">
-              <el-select v-model="runQuery.appId" clearable filterable placeholder="전체 Application">
+              <el-select v-model="runQuery.appId" clearable filterable :placeholder="apt('allApplicationsPlaceholder')">
                 <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="상태">
-              <el-select v-model="runQuery.status" clearable placeholder="전체 상태">
-                <el-option label="성공" value="success" />
-                <el-option label="실행 중" value="running" />
-                <el-option label="실패" value="failed" />
+            <el-form-item :label="apt('status')">
+              <el-select v-model="runQuery.status" clearable :placeholder="apt('allStatusesPlaceholder')">
+                <el-option :label="apt('statusSuccess')" value="success" />
+                <el-option :label="apt('statusRunning')" value="running" />
+                <el-option :label="apt('statusFailed')" value="failed" />
               </el-select>
             </el-form-item>
             <el-form-item :label="uiT('keyword')">
-              <el-input v-model="runQuery.keyword" clearable placeholder="Pipeline / Application / Image Tag" @keyup.enter="loadRuns" />
+              <el-input v-model="runQuery.keyword" clearable :placeholder="apt('runSearchPlaceholder')" @keyup.enter="loadRuns" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="loadRuns">검색</el-button>
-              <el-button @click="Object.assign(runQuery, { pageNum: 1, keyword: '', appId: undefined, pipelineId: undefined, env: '', status: '' }); loadRuns()">초기화</el-button>
+              <el-button type="primary" @click="loadRuns">{{ apt('search') }}</el-button>
+              <el-button @click="Object.assign(runQuery, { pageNum: 1, keyword: '', appId: undefined, pipelineId: undefined, env: '', status: '' }); loadRuns()">{{ apt('reset') }}</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -710,15 +715,15 @@ onBeforeUnmount(stopRunRefresh)
           <el-table-column prop="env" :label="uiT('environment')" width="90" />
           <el-table-column prop="branch" label="Branch" width="130" />
           <el-table-column prop="imageTag" label="Image Tag" min-width="150" />
-          <el-table-column label="상태" width="100">
+          <el-table-column :label="apt('status')" width="100">
             <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="Duration" width="120">
             <template #default="{ row }">{{ durationText(row.durationMs) }}</template>
           </el-table-column>
           <el-table-column prop="createTime" label="Start Time" min-width="180" />
-          <el-table-column label="작업" width="110" fixed="right">
-            <template #default="{ row }"><el-button link type="primary" @click="openRunDetail(row.id)">상세 / Log</el-button></template>
+          <el-table-column :label="apt('actions')" width="110" fixed="right">
+            <template #default="{ row }"><el-button link type="primary" @click="openRunDetail(row.id)">{{ apt('detailLog') }}</el-button></template>
           </el-table-column>
         </el-table>
         <div class="pager">
@@ -733,44 +738,44 @@ onBeforeUnmount(stopRunRefresh)
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="templateVisible" title="Pipeline Template 선택" width="980px" class="template-dialog">
+    <el-dialog v-model="templateVisible" :title="apt('selectTemplateTitle')" width="980px" class="template-dialog">
       <div class="template-picker">
         <aside>
           <button v-for="item in categories" :key="item" :class="{ active: selectedCategory === item }" @click="selectedCategory = item">
-            {{ item }}
+            {{ categoryLabel(item) }}
           </button>
         </aside>
         <main>
-          <div v-if="selectedCategory === '빈 Template'" class="blank-template" @click="createBlankPipeline">
-            <strong>빈 Pipeline</strong>
-            <p>빈 Canvas에서 시작해 모든 Stage를 사용자 정의합니다.</p>
+          <div v-if="selectedCategory === 'blank'" class="blank-template" @click="createBlankPipeline">
+            <strong>{{ apt('blankPipeline') }}</strong>
+            <p>{{ apt('blankPipelineDesc') }}</p>
           </div>
           <div v-else class="template-grid">
             <div v-for="item in filteredTemplates" :key="item.id" class="template-card" :class="{ selected: selectedTemplate?.id === item.id }" @click="useTemplate(item)">
               <strong>{{ item.name }}</strong>
               <p>{{ item.description }}</p>
-              <span>{{ item.techStack }} / {{ item.stageCount }}개 Stage</span>
+              <span>{{ apt('stageCountSuffix', { techStack: item.techStack, count: item.stageCount }) }}</span>
             </div>
           </div>
         </main>
       </div>
       <template #footer>
-        <el-button @click="templateVisible = false">취소</el-button>
-        <el-button @click="createBlankPipeline">빈 Pipeline</el-button>
-        <el-button type="primary" @click="confirmTemplate">선택한 Template 사용</el-button>
+        <el-button @click="templateVisible = false">{{ apt('cancel') }}</el-button>
+        <el-button @click="createBlankPipeline">{{ apt('blankPipeline') }}</el-button>
+        <el-button type="primary" @click="confirmTemplate">{{ apt('useSelectedTemplate') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editorVisible" :title="form.id ? 'Pipeline 수정' : '새 Pipeline'" width="1180px" class="pipeline-editor">
+    <el-dialog v-model="editorVisible" :title="form.id ? apt('editPipelineTitle') : apt('newPipeline')" width="1180px" class="pipeline-editor">
       <el-form label-width="100px">
         <div class="form-grid">
-          <el-form-item label="Pipeline 이름" required><el-input v-model="form.name" placeholder="입력하십시오: Pipeline 이름" /></el-form-item>
+          <el-form-item :label="apt('pipelineNameLabel')" required><el-input v-model="form.name" :placeholder="apt('pipelineNamePlaceholder')" /></el-form-item>
           <el-form-item :label="uiT('application')" required>
-            <el-select v-model="form.appId" filterable placeholder="선택하십시오: Application" @change="fillFromApp">
+            <el-select v-model="form.appId" filterable :placeholder="apt('applicationPlaceholder')" @change="fillFromApp">
               <el-option v-for="item in appOptions" :key="item.id" :label="item.name" :value="item.id" />
             </el-select>
           </el-form-item>
-          <el-form-item label="Default Branch"><el-input v-model="form.defaultBranch" placeholder="기본값은 Application Branch" /></el-form-item>
+          <el-form-item label="Default Branch"><el-input v-model="form.defaultBranch" :placeholder="apt('defaultBranchPlaceholder')" /></el-form-item>
           <el-form-item label="Default Environment">
             <el-select v-model="form.env">
               <el-option label="dev" value="dev" />
@@ -784,23 +789,23 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="Go" value="go" />
               <el-option label="Maven Java" value="maven" />
               <el-option label="Vue" value="vue" />
-              <el-option label="사용자 정의" value="custom" />
+              <el-option :label="apt('customTechStack')" value="custom" />
             </el-select>
           </el-form-item>
-          <el-form-item label="실행 Node" required>
-            <el-select v-model="form.executorHostId" filterable placeholder="Source, Build, Image, Deploy를 실행할 Host를 선택하십시오.">
+          <el-form-item :label="apt('executionNode')" required>
+            <el-select v-model="form.executorHostId" filterable :placeholder="apt('executorHostPlaceholder')">
               <el-option v-for="host in executorHostOptions" :key="host.id" :label="executorHostLabel(host)" :value="host.id" />
             </el-select>
           </el-form-item>
-          <el-form-item label="상태">
+          <el-form-item :label="apt('status')">
             <el-radio-group v-model="form.status">
-              <el-radio :value="1">활성화</el-radio>
-              <el-radio :value="2">비활성화</el-radio>
+              <el-radio :value="1">{{ apt('activate') }}</el-radio>
+              <el-radio :value="2">{{ apt('deactivate') }}</el-radio>
             </el-radio-group>
           </el-form-item>
         </div>
-        <el-alert type="warning" :closable="false" show-icon title="Pipeline Stage는 선택한 Asset Host에서 SSH로 실행됩니다. 해당 Host에 인증 Credential을 구성하고 Git/SVN, Docker, kubectl 등 필요한 Tool을 설치하십시오." />
-        <el-form-item label="설명"><el-input v-model="form.description" type="textarea" :rows="2" placeholder="Pipeline 용도, Environment 및 Risk를 설명하십시오." /></el-form-item>
+        <el-alert type="warning" :closable="false" show-icon :title="apt('sshAlert')" />
+        <el-form-item :label="apt('description')"><el-input v-model="form.description" type="textarea" :rows="2" :placeholder="apt('pipelineDescPlaceholder')" /></el-form-item>
       </el-form>
 
       <div class="stage-toolbar">
@@ -818,7 +823,7 @@ onBeforeUnmount(stopRunRefresh)
         </div>
       </div>
       <div class="stage-editor">
-        <el-empty v-if="!form.stages.length" description="현재 빈 Pipeline입니다. Stage를 추가하십시오." />
+        <el-empty v-if="!form.stages.length" :description="apt('emptyPipelineDesc')" />
         <div v-for="(stage, index) in form.stages" :key="stage.id" class="stage-config-card">
           <div class="stage-card-heading">
             <span class="stage-type-badge" :class="stageTone(stage.type)">{{ String(index + 1).padStart(2, '0') }}</span>
@@ -828,11 +833,11 @@ onBeforeUnmount(stopRunRefresh)
             </div>
           </div>
           <div class="stage-order-actions">
-            <el-tooltip content="Stage 위로 이동"><el-button circle size="small" :disabled="index === 0" @click="moveStage(index, -1)">↑</el-button></el-tooltip>
-            <el-tooltip content="Stage 아래로 이동"><el-button circle size="small" :disabled="index === form.stages.length - 1" @click="moveStage(index, 1)">↓</el-button></el-tooltip>
+            <el-tooltip :content="apt('moveStageUp')"><el-button circle size="small" :disabled="index === 0" @click="moveStage(index, -1)">↑</el-button></el-tooltip>
+            <el-tooltip :content="apt('moveStageDown')"><el-button circle size="small" :disabled="index === form.stages.length - 1" @click="moveStage(index, 1)">↓</el-button></el-tooltip>
           </div>
           <div class="stage-fields stage-main-fields">
-            <label><span>Stage 이름</span><el-input v-model="stage.name" placeholder="예: Application Image Build" /></label>
+            <label><span>{{ apt('stageNameLabel') }}</span><el-input v-model="stage.name" :placeholder="apt('stageNamePlaceholder')" /></label>
             <label><span>Stage Type</span><el-select v-model="stage.type" @change="normalizeStageConfig(stage)">
               <el-option label="Source Checkout" value="checkout" />
               <el-option label="Command" value="command" />
@@ -844,37 +849,37 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="Manual Approval" value="manual" />
               <el-option label="Notification" value="notify" />
             </el-select></label>
-            <label><span>Timeout</span><div class="stage-timeout"><el-input-number v-model="stage.timeoutSeconds" :min="10" :max="7200" controls-position="right" /><em>초</em></div></label>
+            <label><span>Timeout</span><div class="stage-timeout"><el-input-number v-model="stage.timeoutSeconds" :min="10" :max="7200" controls-position="right" /><em>{{ apt('secondsUnit') }}</em></div></label>
             <label><span>Failure Policy</span><el-select v-model="stage.failurePolicy">
-              <el-option label="실패 시 중지" value="stop" />
-              <el-option label="무시하고 계속" value="ignore" />
+              <el-option :label="apt('failureStop')" value="stop" />
+              <el-option :label="apt('failureIgnore')" value="ignore" />
             </el-select></label>
           </div>
           <div v-if="['command', 'test', 'build'].includes(stage.type)" class="script-stage-config">
-            <div class="script-stage-title"><b>실행 Script</b><span>실행 Node의 Workspace에서 Shell 방식으로 실행합니다.</span></div>
-            <el-input v-model="stage.config.script" type="textarea" :rows="5" placeholder="실행할 Shell Command를 입력하십시오. 예: npm run build / go test ./..." />
+            <div class="script-stage-title"><b>{{ apt('scriptSectionTitle') }}</b><span>{{ apt('scriptSectionDesc') }}</span></div>
+            <el-input v-model="stage.config.script" type="textarea" :rows="5" :placeholder="apt('scriptPlaceholder')" />
           </div>
           <div v-else-if="stage.type === 'dockerBuild'" class="image-stage-config">
-            <div class="image-stage-title"><span class="image-stage-badge build">01</span><div><strong>Image Artifact 정의</strong><small>Build Image Tag는 Registry Address / Namespace / Application Code : Branch-Time 형식으로 자동 생성됩니다.</small></div></div>
+            <div class="image-stage-title"><span class="image-stage-badge build">01</span><div><strong>{{ apt('imageArtifactTitle') }}</strong><small>{{ apt('imageArtifactDesc') }}</small></div></div>
             <div class="image-stage-fields build-fields">
-              <label><span>Target Image Registry</span><el-select v-model="stage.config.registryId" filterable placeholder="Build 후 사용할 Image Registry 선택"><el-option v-for="registry in imageRegistryOptions" :key="registry.id" :label="`${registry.name} (${registry.address}${registry.namespace ? '/' + registry.namespace : ''})`" :value="registry.id" /></el-select></label>
+              <label><span>Target Image Registry</span><el-select v-model="stage.config.registryId" filterable :placeholder="apt('registrySelectPlaceholder')"><el-option v-for="registry in imageRegistryOptions" :key="registry.id" :label="`${registry.name} (${registry.address}${registry.namespace ? '/' + registry.namespace : ''})`" :value="registry.id" /></el-select></label>
               <label><span>Dockerfile</span><el-input v-model="stage.config.dockerfile" placeholder="Dockerfile" /></label>
               <label><span>Build Context</span><el-input v-model="stage.config.context" placeholder="." /></label>
             </div>
-            <div class="image-stage-preview"><span>Build 결과</span><code>{{ registryName(stage.config.registryId) }} / {{ currentApp?.code || '<Application Code>' }} : {{ form.defaultBranch || '<Branch>' }}-{{ '{Time}' }}</code></div>
+            <div class="image-stage-preview"><span>{{ apt('buildResult') }}</span><code>{{ registryName(stage.config.registryId) }} / {{ currentApp?.code || '<Application Code>' }} : {{ form.defaultBranch || '<Branch>' }}-{{ '{Time}' }}</code></div>
           </div>
           <div v-else-if="stage.type === 'dockerPush'" class="image-stage-config">
-            <div class="image-stage-title"><span class="image-stage-badge push">02</span><div><strong>Build Image Push</strong><small>Image Build Stage를 참조해 Image Address와 Version을 동일하게 유지합니다.</small></div></div>
+            <div class="image-stage-title"><span class="image-stage-badge push">02</span><div><strong>Build Image Push</strong><small>{{ apt('imagePushDesc') }}</small></div></div>
             <div class="image-stage-fields push-fields">
-              <label><span>Image Source</span><el-select v-model="stage.config.sourceStageId" filterable placeholder="이전 Image Build Stage 선택"><el-option v-for="buildStage in dockerBuildStages(stage.id)" :key="buildStage.id" :label="`${buildStage.name} · ${registryName(buildStage.config.registryId)}`" :value="buildStage.id" /></el-select></label>
-              <label><span>Login 방식</span><el-radio-group v-model="stage.config.loginMode" class="login-mode-group"><el-radio-button value="registry">Image Registry Credential</el-radio-button><el-radio-button value="executor">실행 Node Login 사용</el-radio-button></el-radio-group></label>
+              <label><span>Image Source</span><el-select v-model="stage.config.sourceStageId" filterable :placeholder="apt('sourceStagePlaceholder')"><el-option v-for="buildStage in dockerBuildStages(stage.id)" :key="buildStage.id" :label="`${buildStage.name} · ${registryName(buildStage.config.registryId)}`" :value="buildStage.id" /></el-select></label>
+              <label><span>{{ apt('loginModeLabel') }}</span><el-radio-group v-model="stage.config.loginMode" class="login-mode-group"><el-radio-button value="registry">Image Registry Credential</el-radio-button><el-radio-button value="executor">{{ apt('executorLoginOption') }}</el-radio-button></el-radio-group></label>
             </div>
-            <div class="image-stage-tip"><span>✓</span><p><b>Image Registry Credential 사용 권장</b>: Image Registry Page에서 Account와 Password를 읽습니다. “실행 Node Login 사용”을 선택하면 Platform은 docker login을 실행하지 않습니다.</p></div>
+            <div class="image-stage-tip"><span>✓</span><p><b>{{ apt('credentialTipTitle') }}</b>: {{ apt('credentialTipBody') }}</p></div>
           </div>
           <div v-else-if="stage.type === 'k8sDeploy'" class="delivery-stage-config">
-            <div class="delivery-stage-title"><b>Deploy Target</b><span>실행 Node의 kubectl로 Workload Image Update와 Health Check를 수행합니다.</span></div>
+            <div class="delivery-stage-title"><b>Deploy Target</b><span>{{ apt('deployTargetDesc') }}</span></div>
             <div class="stage-config-grid">
-            <label><span>Kubernetes Cluster</span><el-select v-model="stage.config.clusterId" filterable placeholder="Kubernetes Cluster 선택">
+            <label><span>Kubernetes Cluster</span><el-select v-model="stage.config.clusterId" filterable :placeholder="apt('clusterSelectPlaceholder')">
               <el-option
                 v-for="cluster in k8sClusterOptions"
                 :key="cluster.id"
@@ -887,37 +892,37 @@ onBeforeUnmount(stopRunRefresh)
               <el-option label="StatefulSet" value="statefulset" />
               <el-option label="DaemonSet" value="daemonset" />
             </el-select></label>
-            <label><span>Namespace</span><el-input v-model="stage.config.namespace" placeholder="예 default" /></label>
-            <label><span>Workload 이름</span><el-input v-model="stage.config.workload" placeholder="기본값은 Application Code" /></label>
-            <label><span>Container 이름</span><el-input v-model="stage.config.container" placeholder="Image를 교체할 Container" /></label>
-            <label><span>Image Registry Address</span><el-input v-model="stage.config.repository" placeholder="예 registry.example.com/app/{{appCode}}" /></label>
-            <label class="wide"><span>Health Check URL (선택)</span><el-input v-model="stage.config.healthUrl" placeholder="예 https://service/health" /></label>
+            <label><span>Namespace</span><el-input v-model="stage.config.namespace" :placeholder="apt('namespacePlaceholder')" /></label>
+            <label><span>{{ apt('workloadNameLabel') }}</span><el-input v-model="stage.config.workload" :placeholder="apt('workloadPlaceholder')" /></label>
+            <label><span>{{ apt('containerNameLabel') }}</span><el-input v-model="stage.config.container" :placeholder="apt('containerPlaceholder')" /></label>
+            <label><span>Image Registry Address</span><el-input v-model="stage.config.repository" :placeholder="apt('repositoryPlaceholder')" /></label>
+            <label class="wide"><span>{{ apt('healthUrlLabel') }}</span><el-input v-model="stage.config.healthUrl" :placeholder="apt('healthUrlPlaceholder')" /></label>
             </div>
           </div>
-          <div v-else-if="stage.type === 'checkout'" class="stage-note source-note"><b>Source</b><p>Application에 구성된 Git / SVN Repository를 사용하고 이번 Run에서 선택한 Branch 또는 Tag로 Source를 Checkout합니다.</p></div>
-          <div v-else-if="stage.type === 'manual'" class="stage-note manual-note"><b>Manual Approval Gate</b><p>Pipeline은 중지된 뒤 Approver의 승인 또는 거부를 기다립니다. 승인된 경우에만 다음 Stage를 실행합니다.</p></div>
+          <div v-else-if="stage.type === 'checkout'" class="stage-note source-note"><b>Source</b><p>{{ apt('sourceNoteBody') }}</p></div>
+          <div v-else-if="stage.type === 'manual'" class="stage-note manual-note"><b>Manual Approval Gate</b><p>{{ apt('manualNoteBody') }}</p></div>
           <div v-else-if="stage.type === 'notify'" class="stage-notify-config">
-            <div class="stage-note notify-note"><b>Pipeline Notification 전송</b><p>선택한 Rule로 Delivery Task를 생성하며 결과는 Notification / Send Log에서 확인할 수 있습니다.</p></div>
-            <label><span>Notification Rule</span><el-select v-model="stage.config.notifyRuleId" filterable placeholder="CI/CD Pipeline Notification Rule 선택">
-              <el-option v-for="rule in notifyRuleOptions" :key="rule.id" :label="`${rule.name} (${rule.channelIds?.length || 0}개 Channel)`" :value="rule.id" />
+            <div class="stage-note notify-note"><b>{{ apt('notifyNoteTitle') }}</b><p>{{ apt('notifyNoteBody') }}</p></div>
+            <label><span>Notification Rule</span><el-select v-model="stage.config.notifyRuleId" filterable :placeholder="apt('notifyRulePlaceholder')">
+              <el-option v-for="rule in notifyRuleOptions" :key="rule.id" :label="apt('channelCount', { name: rule.name, count: rule.channelIds?.length || 0 })" :value="rule.id" />
             </el-select></label>
           </div>
           <div class="stage-card-footer">
-            <span>순서 {{ index + 1 }} / {{ form.stages.length }}</span>
-            <el-button link type="danger" @click="removeStage(index)">Stage 삭제</el-button>
+            <span>{{ apt('stageOrder', { current: index + 1, total: form.stages.length }) }}</span>
+            <el-button link type="danger" @click="removeStage(index)">{{ apt('deleteStage') }}</el-button>
           </div>
         </div>
       </div>
       <template #footer>
-        <el-button @click="editorVisible = false">취소</el-button>
-        <el-button type="primary" :loading="saving" @click="submitPipeline">저장</el-button>
+        <el-button @click="editorVisible = false">{{ apt('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="submitPipeline">{{ apt('save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="runVisible" title="Pipeline 즉시 실행" width="680px">
+    <el-dialog v-model="runVisible" :title="apt('runPipelineTitle')" width="680px">
       <el-form label-width="100px">
         <el-form-item :label="uiT('pipeline')"><el-input v-model="runForm.pipelineName" disabled /></el-form-item>
-        <el-form-item label="실행 Environment">
+        <el-form-item :label="apt('runEnvLabel')">
           <el-select v-model="runForm.env">
             <el-option label="dev" value="dev" />
             <el-option label="test" value="test" />
@@ -926,28 +931,28 @@ onBeforeUnmount(stopRunRefresh)
           </el-select>
         </el-form-item>
         <el-form-item label="Branch/Tag"><el-input v-model="runForm.branch" /></el-form-item>
-        <el-form-item label="Image Version"><el-input :model-value="'자동 생성: ' + (runForm.branch || 'main').replace(/[^a-zA-Z0-9_.-]+/g, '-') + '-YYYYMMDDHHmmss'" disabled /></el-form-item>
-        <el-form-item label="Custom Parameter"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" placeholder='예: {"version":"1.0.0"}' /></el-form-item>
+        <el-form-item label="Image Version"><el-input :model-value="apt('autoTagPrefix', { tag: (runForm.branch || 'main').replace(/[^a-zA-Z0-9_.-]+/g, '-') + '-YYYYMMDDHHmmss' })" disabled /></el-form-item>
+        <el-form-item label="Custom Parameter"><el-input v-model="runForm.paramsText" type="textarea" :rows="4" :placeholder="apt('paramsPlaceholder')" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="runVisible = false">취소</el-button>
-        <el-button type="primary" @click="submitRun">실행 시작</el-button>
+        <el-button @click="runVisible = false">{{ apt('cancel') }}</el-button>
+        <el-button type="primary" @click="submitRun">{{ apt('startRun') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="runDetailVisible" title="Pipeline Run 상세" width="1080px" class="run-detail-dialog">
+    <el-dialog v-model="runDetailVisible" :title="apt('runDetailTitle')" width="1080px" class="run-detail-dialog">
       <div class="run-summary">
         <div><span>{{ uiT('pipeline') }}</span><strong>{{ currentRun.run.pipelineName || '-' }}</strong></div>
-        <div><span>상태</span><el-tag :type="statusType(currentRun.run.status)">{{ statusText(currentRun.run.status) }}</el-tag></div>
+        <div><span>{{ apt('status') }}</span><el-tag :type="statusType(currentRun.run.status)">{{ statusText(currentRun.run.status) }}</el-tag></div>
         <div><span>{{ uiT('environment') }}</span><strong>{{ currentRun.run.env || '-' }}</strong></div>
         <div><span>Duration</span><strong>{{ durationText(currentRun.run.durationMs) }}</strong></div>
       </div>
       <div class="run-detail-actions">
-        <el-button type="primary" link @click="currentRun.run?.id && openRunDetail(currentRun.run.id)">새로고침</el-button>
+        <el-button type="primary" link @click="currentRun.run?.id && openRunDetail(currentRun.run.id)">{{ apt('refresh') }}</el-button>
         <el-button type="primary" link @click="downloadRunLog">Log Download</el-button>
-        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="success" @click="approveCurrentRun('approve')">Approval 승인</el-button>
-        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="danger" @click="approveCurrentRun('reject')">Approval 거부</el-button>
-        <el-button v-if="currentRun.run.status === 'success'" type="warning" @click="rollbackCurrentRun">이전 Version Rollback</el-button>
+        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="success" @click="approveCurrentRun('approve')">{{ apt('approvalApprove') }}</el-button>
+        <el-button v-if="currentRun.run.status === 'waiting_approval'" type="danger" @click="approveCurrentRun('reject')">{{ apt('approvalReject') }}</el-button>
+        <el-button v-if="currentRun.run.status === 'success'" type="warning" @click="rollbackCurrentRun">{{ apt('rollbackPrevious') }}</el-button>
       </div>
       <div class="run-timeline" aria-label="Pipeline Stage Timeline">
         <button
@@ -964,8 +969,8 @@ onBeforeUnmount(stopRunRefresh)
       </div>
       <div class="stage-log-panel">
         <div class="stage-log-heading">
-          <div><span>현재 Stage</span><strong>{{ activeRunStage.stageName || '-' }}</strong><small>{{ stageTypeText(activeRunStage.stageType) }} · {{ statusText(activeRunStage.status) }}</small></div>
-          <el-button type="primary" link @click="downloadRunLog">전체 Log Download</el-button>
+          <div><span>{{ apt('currentStageLabel') }}</span><strong>{{ activeRunStage.stageName || '-' }}</strong><small>{{ stageTypeText(activeRunStage.stageType) }} · {{ statusText(activeRunStage.status) }}</small></div>
+          <el-button type="primary" link @click="downloadRunLog">{{ apt('fullLogDownload') }}</el-button>
         </div>
         <pre ref="logBodyRef" class="run-log">{{ activeRunLog }}</pre>
       </div>
