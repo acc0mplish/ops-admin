@@ -11,6 +11,7 @@ import {
   updateOpsScript,
   updateOpsScriptStatus
 } from '../../api/ops'
+import { ot } from '../../utils/ops-i18n'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -26,11 +27,11 @@ const versionLoading = ref(false)
 const versionList = ref([])
 const versionScript = ref(null)
 const scriptTimeoutPresets = [
-  { label: '30초', value: 30 },
-  { label: '1분', value: 60 },
-  { label: '5분 (추천)', value: 300 },
-  { label: '10분', value: 600 },
-  { label: '30분', value: 1800 }
+  { label: ot('timeoutPreset30s'), value: 30 },
+  { label: ot('timeoutPreset1m'), value: 60 },
+  { label: ot('timeoutPreset5m'), value: 300 },
+  { label: ot('timeoutPreset10m'), value: 600 },
+  { label: ot('timeoutPreset30m'), value: 1800 }
 ]
 
 const query = reactive({
@@ -68,9 +69,9 @@ const timeoutPreset = computed({
 })
 const timeoutDescription = computed(() => {
   const seconds = Number(form.timeoutSeconds) || 0
-  if (seconds < 60) return `${seconds}초`
-  if (seconds % 60 === 0) return `${seconds / 60}분`
-  return `${Math.floor(seconds / 60)}분 ${seconds % 60}초`
+  if (seconds < 60) return ot('durationSecondsShort', { seconds })
+  if (seconds % 60 === 0) return ot('durationMinutesShort', { minutes: seconds / 60 })
+  return ot('durationMinutesSecondsShort', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 })
 })
 
 function resetForm() {
@@ -210,21 +211,21 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning('Script 이름을 입력하십시오.')
+    ElMessage.warning(ot('scriptNameRequired'))
     return
   }
   if (!form.content.trim()) {
-    ElMessage.warning('Script 내용을 입력하십시오.')
+    ElMessage.warning(ot('scriptContentRequired'))
     return
   }
   saving.value = true
   try {
     if (isEdit.value) {
       await updateOpsScript(form)
-      ElMessage.success('Script를 수정했습니다.')
+      ElMessage.success(ot('scriptUpdated'))
     } else {
       await addOpsScript(form)
-      ElMessage.success('Script를 생성했습니다.')
+      ElMessage.success(ot('scriptCreated'))
     }
     dialogVisible.value = false
     await loadData()
@@ -236,14 +237,14 @@ async function submit() {
 async function handleStatusChange(row) {
   const nextStatus = row.status === 1 ? 2 : 1
   await updateOpsScriptStatus({ id: row.id, status: nextStatus })
-  ElMessage.success(nextStatus === 1 ? 'Script를 활성화했습니다.' : 'Script를 비활성화했습니다.')
+  ElMessage.success(nextStatus === 1 ? ot('scriptEnabledMessage') : ot('scriptDisabledMessage'))
   await loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Script “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(ot('deleteScriptConfirm', { name: row.name }), ot('noticeTitle'), { type: 'warning' })
   await deleteOpsScript(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(ot('deleteSuccess'))
   await loadData()
 }
 
@@ -255,9 +256,9 @@ async function openVersions(row) {
 }
 
 async function handleRollback(row) {
-  await ElMessageBox.confirm(`Script를 v${row.version}(으)로 Rollback하시겠습니까? Rollback하면 새 Version이 생성됩니다.`, 'Script Rollback', { type: 'warning' })
+  await ElMessageBox.confirm(ot('rollbackScriptConfirm', { version: row.version }), 'Script Rollback', { type: 'warning' })
   await rollbackOpsScript({ id: versionScript.value.id, version: row.version })
-  ElMessage.success('Script를 Rollback했습니다.')
+  ElMessage.success(ot('scriptRollbackSuccess'))
   versionList.value = await queryOpsScriptVersions(versionScript.value.id)
   await loadData()
 }
@@ -270,47 +271,47 @@ onMounted(loadData)
     <div class="page-header">
       <div>
         <h2 class="page-title">Script Library</h2>
-        <p class="page-desc">자주 사용하는 운영 Script를 통합 관리하며 활성화, 비활성화, 기본 Parameter, Interpreter 설정을 지원합니다.</p>
+        <p class="page-desc">{{ ot('scriptLibraryDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate">신규 Script</el-button>
+      <el-button type="primary" @click="openCreate">{{ ot('newScript') }}</el-button>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input v-model="query.keyword" clearable placeholder="Script 이름 / 설명 검색" style="width: 280px" @keyup.enter="loadData" />
-        <el-select v-model="query.status" clearable placeholder="상태" style="width: 140px">
-          <el-option label="활성화" value="1" />
-          <el-option label="비활성화" value="2" />
+        <el-input v-model="query.keyword" clearable :placeholder="ot('searchScript')" style="width: 280px" @keyup.enter="loadData" />
+        <el-select v-model="query.status" clearable :placeholder="ot('status')" style="width: 140px">
+          <el-option :label="ot('enabled')" value="1" />
+          <el-option :label="ot('disabled')" value="2" />
         </el-select>
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button @click="resetQuery">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+        <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="tableData" border>
-      <el-table-column prop="name" label="Script 이름" min-width="180" />
-      <el-table-column prop="scriptType" label="유형" width="120" />
+      <el-table-column prop="name" :label="ot('scriptName')" min-width="180" />
+      <el-table-column prop="scriptType" :label="ot('type')" width="120" />
       <el-table-column prop="interpreter" label="Interpreter" width="120" />
-      <el-table-column prop="defaultParams" label="기본 Parameter" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="timeoutSeconds" label="Timeout(초)" width="120" />
+      <el-table-column prop="defaultParams" :label="ot('defaultParameters')" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="timeoutSeconds" :label="ot('timeoutSecondsLabel')" width="120" />
       <el-table-column label="Version" width="90"><template #default="{ row }">v{{ row.currentVersion || 1 }}</template></el-table-column>
-      <el-table-column label="상태" width="100" align="center">
+      <el-table-column :label="ot('status')" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'warning'" effect="light" :class="{ 'script-status-disabled': row.status !== 1 }">
-            {{ row.status === 1 ? '활성화' : '비활성화' }}
+            {{ row.status === 1 ? ot('enabled') : ot('disabled') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="설명" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="updateTime" label="수정 시각" min-width="180" />
-      <el-table-column label="작업" width="260" fixed="right">
+      <el-table-column prop="description" :label="ot('description')" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="updateTime" :label="ot('updateTime')" min-width="180" />
+      <el-table-column :label="ot('actions')" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ ot('edit') }}</el-button>
           <el-button link type="primary" @click="openVersions(row)">Version</el-button>
           <el-button link :type="row.status === 1 ? 'warning' : 'success'" :class="{ 'disable-action': row.status === 1 }" @click="handleStatusChange(row)">
-            {{ row.status === 1 ? '비활성화' : '활성화' }}
+            {{ row.status === 1 ? ot('disabled') : ot('enabled') }}
           </el-button>
-          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ ot('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -326,16 +327,16 @@ onMounted(loadData)
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Script 수정' : '신규 Script'" width="980px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? ot('editScript') : ot('newScript')" width="980px">
       <el-form label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Script 이름" required>
-              <el-input v-model="form.name" placeholder="예: nginx 재시작" />
+            <el-form-item :label="ot('scriptName')" required>
+              <el-input v-model="form.name" :placeholder="ot('scriptNameExample')" />
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="Script 유형">
+            <el-form-item :label="ot('scriptTypeLabel')">
               <el-select v-model="form.scriptType" style="width: 100%" @change="handleScriptTypeChange">
                 <el-option label="Shell" value="shell" />
                 <el-option label="Python" value="python" />
@@ -346,11 +347,11 @@ onMounted(loadData)
             <el-form-item label="Interpreter">
               <el-select v-model="form.interpreter" style="width: 100%">
                 <template v-if="form.scriptType === 'python'">
-                  <el-option label="python (기본)" value="python" />
+                  <el-option :label="ot('interpreterDefaultPython')" value="python" />
                   <el-option label="python3" value="python3" />
                 </template>
                 <template v-else>
-                  <el-option label="bash (기본)" value="bash" />
+                  <el-option :label="ot('interpreterDefaultBash')" value="bash" />
                   <el-option label="sh" value="sh" />
                 </template>
               </el-select>
@@ -358,14 +359,14 @@ onMounted(loadData)
           </el-col>
 
           <el-col :span="24">
-            <el-form-item label="Script 내용" required>
+            <el-form-item :label="ot('scriptContent')" required>
               <div class="script-editor-shell">
                 <div class="script-editor-toolbar">
                   <div class="editor-badges">
                     <span class="editor-badge">{{ form.scriptType === 'python' ? 'Python' : 'Shell' }}</span>
                     <span class="editor-badge subtle">{{ form.interpreter }}</span>
                   </div>
-                  <span class="editor-meta">총 {{ scriptLineNumbers.length }}줄</span>
+                  <span class="editor-meta">{{ ot('totalLines', { count: scriptLineNumbers.length }) }}</span>
                 </div>
                 <div class="script-editor-body">
                   <div class="script-gutter">
@@ -380,7 +381,7 @@ onMounted(loadData)
                       v-model="form.content"
                       class="script-editor"
                       spellcheck="false"
-                      placeholder="SSH로 실행 가능한 Script 내용을 입력하십시오"
+                      :placeholder="ot('scriptContentPlaceholder')"
                       @scroll="onEditorScroll"
                     />
                   </div>
@@ -391,63 +392,63 @@ onMounted(loadData)
 
           <el-col :span="24">
             <div class="variables-panel">
-              <div class="variables-heading"><div><h3>Build Parameter</h3><p>Parameter는 Environment Variable로 Script에 주입되며 <code>$VARIABLE_NAME</code> 또는 <code>${VARIABLE_NAME}</code>으로 사용할 수 있습니다.</p></div><el-button type="primary" @click="addVariable">신규 Parameter</el-button></div>
-              <div v-if="!form.variables.length" class="variables-empty">사용자 정의 Parameter가 없습니다. 필요에 따라 Build Variable을 추가할 수 있습니다.</div>
+              <div class="variables-heading"><div><h3>Build Parameter</h3><p>{{ ot('buildParameterHintStart') }}<code>$VARIABLE_NAME</code>{{ ot('buildParameterHintOr') }}<code>${VARIABLE_NAME}</code>{{ ot('buildParameterHintEnd') }}</p></div><el-button type="primary" @click="addVariable">{{ ot('newBuildParameter') }}</el-button></div>
+              <div v-if="!form.variables.length" class="variables-empty">{{ ot('noBuildParameters') }}</div>
               <div v-else class="variables-list">
                 <div v-for="(variable, index) in form.variables" :key="index" class="variable-row">
                   <div class="variable-name"><span>VARIABLE_</span><el-input v-model="variable.name" placeholder="ENV" @input="normalizeVariableName(variable)" /></div>
-                  <el-input v-model="variable.defaultValue" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :disabled="variable.secret" :placeholder="variable.secret ? 'Secret Variable은 기본값을 저장하지 않습니다' : '기본값 (선택)'" />
-                  <el-input v-model="variable.description" placeholder="설명 (선택)" />
-                  <el-checkbox v-model="variable.required">필수</el-checkbox>
+                  <el-input v-model="variable.defaultValue" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :disabled="variable.secret" :placeholder="variable.secret ? ot('secretVariableNoDefault') : ot('defaultValueOptional')" />
+                  <el-input v-model="variable.description" :placeholder="ot('descriptionOptional')" />
+                  <el-checkbox v-model="variable.required">{{ ot('required') }}</el-checkbox>
                   <el-checkbox v-model="variable.secret" @change="variable.secret && (variable.defaultValue = '')">Secret</el-checkbox>
-                  <el-button link type="danger" @click="removeVariable(index)">삭제</el-button>
+                  <el-button link type="danger" @click="removeVariable(index)">{{ ot('delete') }}</el-button>
                 </div>
               </div>
             </div>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="실행 Timeout">
+            <el-form-item :label="ot('executionTimeout')">
               <div class="timeout-control">
-                <el-select v-model="timeoutPreset" class="timeout-preset" aria-label="자주 사용하는 Timeout">
+                <el-select v-model="timeoutPreset" class="timeout-preset" :aria-label="ot('commonTimeouts')">
                   <el-option v-for="item in scriptTimeoutPresets" :key="item.value" :label="item.label" :value="item.value" />
-                  <el-option label="사용자 정의" value="custom" />
+                  <el-option :label="ot('custom')" value="custom" />
                 </el-select>
-                <el-input-number v-model="form.timeoutSeconds" :min="30" :max="3600" :step="30" controls-position="right" aria-label="Timeout(초)" />
+                <el-input-number v-model="form.timeoutSeconds" :min="30" :max="3600" :step="30" controls-position="right" :aria-label="ot('timeoutSecondsLabel')" />
               </div>
-              <div class="timeout-tip">{{ timeoutDescription }} · 최대 60분</div>
+              <div class="timeout-tip">{{ timeoutDescription }} · {{ ot('maxDurationHint') }}</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="상태">
+            <el-form-item :label="ot('status')">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">활성화</el-radio>
-                <el-radio :value="2">비활성화</el-radio>
+                <el-radio :value="1">{{ ot('enabled') }}</el-radio>
+                <el-radio :value="2">{{ ot('disabled') }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="설명">
+            <el-form-item :label="ot('description')">
               <el-input v-model="form.description" type="textarea" :rows="3" />
             </el-form-item>
           </el-col>
           <el-col v-if="isEdit" :span="24">
-            <el-form-item label="변경 설명"><el-input v-model="form.changeSummary" placeholder="이번 Script 변경을 간략히 설명하십시오" /></el-form-item>
+            <el-form-item :label="ot('changeSummaryLabel')"><el-input v-model="form.changeSummary" :placeholder="ot('changeSummaryPlaceholder')" /></el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ ot('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">{{ ot('save') }}</el-button>
       </template>
     </el-dialog>
     <el-drawer v-model="versionVisible" :title="`${versionScript?.name || ''} - Version History`" size="62%">
       <el-table v-loading="versionLoading" :data="versionList" border>
         <el-table-column label="Version" width="90"><template #default="{ row }">v{{ row.version }}</template></el-table-column>
-        <el-table-column prop="changeSummary" label="변경 설명" min-width="180" />
-        <el-table-column prop="operator" label="작업자" width="130"><template #default="{ row }">{{ row.operator || 'system' }}</template></el-table-column>
-        <el-table-column prop="createTime" label="생성 시각" width="190" />
-        <el-table-column prop="content" label="Script 내용" min-width="300" show-overflow-tooltip />
-        <el-table-column label="작업" width="100"><template #default="{ row }"><el-button link type="primary" @click="handleRollback(row)">Rollback</el-button></template></el-table-column>
+        <el-table-column prop="changeSummary" :label="ot('changeSummaryLabel')" min-width="180" />
+        <el-table-column prop="operator" :label="ot('operator')" width="130"><template #default="{ row }">{{ row.operator || 'system' }}</template></el-table-column>
+        <el-table-column prop="createTime" :label="ot('createdAt')" width="190" />
+        <el-table-column prop="content" :label="ot('scriptContent')" min-width="300" show-overflow-tooltip />
+        <el-table-column :label="ot('actions')" width="100"><template #default="{ row }"><el-button link type="primary" @click="handleRollback(row)">Rollback</el-button></template></el-table-column>
       </el-table>
     </el-drawer>
   </div>

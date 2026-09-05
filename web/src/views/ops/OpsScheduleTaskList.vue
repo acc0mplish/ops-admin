@@ -18,6 +18,7 @@ import {
 } from '../../api/ops'
 import OpsTargetSelector from './components/OpsTargetSelector.vue'
 import OpsCronEditor from './components/OpsCronEditor.vue'
+import { ot } from '../../utils/ops-i18n'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -288,21 +289,21 @@ function buildPayload() {
 
 async function submit() {
   if (!form.name.trim()) {
-    ElMessage.warning('Task 이름을 입력하십시오.')
+    ElMessage.warning(ot('taskNameRequired'))
     return
   }
   if (form.notifyEnabled && !form.notifyRuleId) {
-    ElMessage.warning('Notification Rule을 선택하십시오.')
+    ElMessage.warning(ot('selectNotificationRuleRequired'))
     return
   }
   saving.value = true
   try {
     if (isEdit.value) {
       await updateOpsScheduleTask(buildPayload())
-      ElMessage.success('Task를 수정했습니다.')
+      ElMessage.success(ot('taskUpdated'))
     } else {
       await addOpsScheduleTask(buildPayload())
-      ElMessage.success('Task를 생성했습니다.')
+      ElMessage.success(ot('taskCreated'))
     }
     dialogVisible.value = false
     await loadData()
@@ -313,40 +314,40 @@ async function submit() {
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Task “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(ot('deleteTaskConfirm', { name: row.name }), ot('noticeTitle'), { type: 'warning' })
   await deleteOpsScheduleTask(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(ot('deleteSuccess'))
   await loadData()
 }
 
 async function handleRun(row) {
-  await ElMessageBox.confirm(`Task “${row.name}”을(를) 즉시 실행하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(ot('runTaskConfirm', { name: row.name }), ot('noticeTitle'), { type: 'warning' })
   await runOpsScheduleTask(row.id)
-  ElMessage.success('Task를 트리거했습니다. Task Log에서 실행 결과를 확인하십시오.')
+  ElMessage.success(ot('taskTriggered'))
   await loadData()
 }
 
 async function batchDelete() {
   if (!selectedRows.value.length) {
-    ElMessage.warning('먼저 Task를 선택하십시오.')
+    ElMessage.warning(ot('selectTaskFirst'))
     return
   }
-  await ElMessageBox.confirm(`선택한 ${selectedRows.value.length}개 Task를 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(ot('batchDeleteTaskConfirm', { count: selectedRows.value.length }), ot('noticeTitle'), { type: 'warning' })
   await batchDeleteOpsScheduleTask(selectedRows.value.map((item) => item.id))
-  ElMessage.success('일괄 삭제했습니다.')
+  ElMessage.success(ot('batchDeleteSuccess'))
   await loadData()
 }
 
 async function batchUpdateStatus(status) {
   if (!selectedRows.value.length) {
-    ElMessage.warning('먼저 Task를 선택하십시오.')
+    ElMessage.warning(ot('selectTaskFirst'))
     return
   }
   await updateOpsScheduleTaskStatus({
     ids: selectedRows.value.map((item) => item.id),
     status
   })
-  ElMessage.success(status === 1 ? '일괄 활성화했습니다.' : '일괄 비활성화했습니다.')
+  ElMessage.success(status === 1 ? ot('batchEnableSuccess') : ot('batchDisableSuccess'))
   await loadData()
 }
 
@@ -355,7 +356,7 @@ async function toggleRowStatus(row) {
     ids: [row.id],
     status: row.status === 1 ? 2 : 1
   })
-  ElMessage.success(row.status === 1 ? 'Task를 비활성화했습니다.' : 'Task를 활성화했습니다.')
+  ElMessage.success(row.status === 1 ? ot('taskDisabledMessage') : ot('taskEnabledMessage'))
   await loadData()
 }
 
@@ -364,7 +365,7 @@ function handleSelectionChange(value) {
 }
 
 function statusLabel(value) {
-  return value === 1 ? '활성화' : '비활성화'
+  return value === 1 ? ot('enabled') : ot('disabled')
 }
 
 function taskTypeLabel(value) {
@@ -381,64 +382,64 @@ onMounted(async () => {
   <div class="page-card ops-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">Task 목록</h2>
-        <p class="page-desc">Script Task와 HTTP Probe Task를 통합 관리하며 일괄 활성화, 비활성화, 삭제 및 즉시 실행을 지원합니다.</p>
+        <h2 class="page-title">{{ ot('taskList') }}</h2>
+        <p class="page-desc">{{ ot('taskListDesc') }}</p>
       </div>
       <div class="header-actions">
-        <el-button @click="openCreateFromTemplate">Template 기반 신규</el-button>
-        <el-button type="primary" @click="openCreate">새 Task</el-button>
+        <el-button @click="openCreateFromTemplate">{{ ot('newFromTemplate') }}</el-button>
+        <el-button type="primary" @click="openCreate">{{ ot('newTask') }}</el-button>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input v-model="query.keyword" clearable placeholder="Task 이름 / 설명 / 주소 검색" style="width: 280px" @keyup.enter="loadData" />
-        <el-select v-model="query.taskType" clearable placeholder="Task 유형" style="width: 140px">
+        <el-input v-model="query.keyword" clearable :placeholder="ot('searchTask')" style="width: 280px" @keyup.enter="loadData" />
+        <el-select v-model="query.taskType" clearable :placeholder="ot('taskTypeLabel')" style="width: 140px">
           <el-option label="Script Task" value="script" />
           <el-option label="HTTP Probe" value="http" />
         </el-select>
-        <el-select v-model="query.status" clearable placeholder="상태" style="width: 120px">
-          <el-option label="활성화" value="1" />
-          <el-option label="비활성화" value="2" />
+        <el-select v-model="query.status" clearable :placeholder="ot('status')" style="width: 120px">
+          <el-option :label="ot('enabled')" value="1" />
+          <el-option :label="ot('disabled')" value="2" />
         </el-select>
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button @click="resetQuery">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+        <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
       </div>
       <div class="toolbar-right">
-        <el-button @click="batchUpdateStatus(1)">일괄 활성화</el-button>
-        <el-button @click="batchUpdateStatus(2)">일괄 비활성화</el-button>
-        <el-button type="danger" plain @click="batchDelete">일괄 삭제</el-button>
+        <el-button @click="batchUpdateStatus(1)">{{ ot('batchEnable') }}</el-button>
+        <el-button @click="batchUpdateStatus(2)">{{ ot('batchDisable') }}</el-button>
+        <el-button type="danger" plain @click="batchDelete">{{ ot('batchDelete') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="rows" border @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="48" />
-      <el-table-column prop="name" label="Task 이름" min-width="180" />
-      <el-table-column label="Task 유형" width="120">
+      <el-table-column prop="name" :label="ot('taskName')" min-width="180" />
+      <el-table-column :label="ot('taskTypeLabel')" width="120">
         <template #default="{ row }">{{ taskTypeLabel(row.taskType) }}</template>
       </el-table-column>
       <el-table-column prop="cronExpr" label="Cron Expression" min-width="160" />
-      <el-table-column prop="scriptName" label="Script / 주소" min-width="240" show-overflow-tooltip>
+      <el-table-column prop="scriptName" :label="ot('scriptOrAddress')" min-width="240" show-overflow-tooltip>
         <template #default="{ row }">{{ row.taskType === 'http' ? row.url : row.scriptName }}</template>
       </el-table-column>
-      <el-table-column label="상태" width="100" align="center">
+      <el-table-column :label="ot('status')" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light">{{ statusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="lastStatus" label="최근 결과" width="110" />
-      <el-table-column prop="lastSummary" label="최근 요약" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="lastRunAt" label="최근 실행" width="180" />
-      <el-table-column prop="nextRunAt" label="다음 실행" width="180" />
-      <el-table-column label="작업" width="350" fixed="right">
+      <el-table-column prop="lastStatus" :label="ot('lastResult')" width="110" />
+      <el-table-column prop="lastSummary" :label="ot('lastSummaryLabel')" min-width="220" show-overflow-tooltip />
+      <el-table-column prop="lastRunAt" :label="ot('lastRun')" width="180" />
+      <el-table-column prop="nextRunAt" :label="ot('nextRun')" width="180" />
+      <el-table-column :label="ot('actions')" width="350" fixed="right">
         <template #default="{ row }">
-          <el-button link type="success" @click="handleRun(row)">즉시 실행</el-button>
-          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-          <el-button link @click="handleCopy(row)">복제</el-button>
+          <el-button link type="success" @click="handleRun(row)">{{ ot('runNow') }}</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ ot('edit') }}</el-button>
+          <el-button link @click="handleCopy(row)">{{ ot('duplicate') }}</el-button>
           <el-button link :class="row.status === 1 ? 'schedule-action-disable' : 'schedule-action-enable'" @click="toggleRowStatus(row)">
-            {{ row.status === 1 ? '비활성화' : '활성화' }}
+            {{ row.status === 1 ? ot('disabled') : ot('enabled') }}
           </el-button>
-          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ ot('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -454,23 +455,23 @@ onMounted(async () => {
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Task 수정' : '새 Task'" width="min(1080px, 92vw)">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? ot('editTask') : ot('newTask')" width="min(1080px, 92vw)">
       <el-form label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Task 이름" required>
-              <el-input v-model="form.name" placeholder="예: Production Environment Nginx 점검" />
+            <el-form-item :label="ot('taskName')" required>
+              <el-input v-model="form.name" :placeholder="ot('taskNameExample')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Task Template">
-              <el-select v-model="form.templateId" clearable filterable placeholder="선택 사항. 선택하면 Template 내용을 자동으로 가져옵니다" style="width: 100%" @change="applyTemplate">
+              <el-select v-model="form.templateId" clearable filterable :placeholder="ot('templateLoadHint')" style="width: 100%" @change="applyTemplate">
                 <el-option v-for="item in templateOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Task 유형">
+            <el-form-item :label="ot('taskTypeLabel')">
               <el-radio-group v-model="form.taskType">
                 <el-radio value="script">Script Task</el-radio>
                 <el-radio value="http">HTTP Probe</el-radio>
@@ -478,10 +479,10 @@ onMounted(async () => {
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="상태">
+            <el-form-item :label="ot('status')">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">활성화</el-radio>
-                <el-radio :value="2">비활성화</el-radio>
+                <el-radio :value="1">{{ ot('enabled') }}</el-radio>
+                <el-radio :value="2">{{ ot('disabled') }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -498,33 +499,33 @@ onMounted(async () => {
           </el-col>
           <el-col v-if="form.notifyEnabled" :span="16">
             <el-form-item label="Notification Rule" required>
-              <el-select v-model="form.notifyRuleId" filterable placeholder="Notification Rule 선택" style="width: 100%">
+              <el-select v-model="form.notifyRuleId" filterable :placeholder="ot('selectNotificationRulePlaceholder')" style="width: 100%">
                 <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col v-if="form.notifyEnabled" :span="24">
-            <el-form-item label="Notification 정책">
-              <el-switch v-model="form.notifyOnFailureOnly" active-text="실패 시에만 알림" inactive-text="매 실행 후 알림" />
-              <span class="form-tip">활성화하면 실행이 실패하거나 HTTP 상태 코드가 예상과 다를 때에만 알림을 보냅니다.</span>
+            <el-form-item :label="ot('notificationPolicy')">
+              <el-switch v-model="form.notifyOnFailureOnly" :active-text="ot('notifyOnFailureOnlyLabel')" :inactive-text="ot('notifyEveryRunLabel')" />
+              <span class="form-tip">{{ ot('notifyOnFailureOnlyHint') }}</span>
             </el-form-item>
           </el-col>
 
           <template v-if="form.taskType === 'script'">
             <el-col :span="12">
               <el-form-item label="Script" required>
-                <el-select v-model="form.scriptId" filterable placeholder="Script Library에서 Script 선택" style="width: 100%">
+                <el-select v-model="form.scriptId" filterable :placeholder="ot('selectLibraryScript')" style="width: 100%">
                   <el-option v-for="item in scriptOptions" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="동시 실행 수">
+              <el-form-item :label="ot('concurrencyCount')">
                 <el-input-number v-model="form.concurrency" :min="1" :max="10" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="Timeout(초)">
+              <el-form-item :label="ot('timeoutSecondsLabel')">
                 <el-input :model-value="selectedScriptTimeout" disabled>
                   <template #append>s</template>
                 </el-input>
@@ -534,15 +535,15 @@ onMounted(async () => {
               <div class="variable-panel">
                 <div class="variable-panel__header">
                   <div>
-                    <div class="variable-panel__title">실행 Variable</div>
-                    <div class="variable-panel__hint">Variable은 <code>VARIABLE_변수명</code> 형태로 Script에 주입되며 Secret은 다시 표시되지 않습니다.</div>
+                    <div class="variable-panel__title">{{ ot('executionVariables') }}</div>
+                    <div class="variable-panel__hint">{{ ot('taskVariableHintStart') }}<code>VARIABLE_{{ ot('variableNameWord') }}</code>{{ ot('taskVariableHintEnd') }}</div>
                   </div>
                 </div>
-                <div v-if="!selectedScriptVariables.length" class="variable-panel__empty">이 Script는 Variable을 선언하지 않아 추가 구성이 필요하지 않습니다.</div>
+                <div v-if="!selectedScriptVariables.length" class="variable-panel__empty">{{ ot('scriptNoVariablesNeeded') }}</div>
                 <div v-else class="variable-grid">
                   <div v-for="variable in selectedScriptVariables" :key="variable.name" class="variable-field">
-                    <div class="variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">필수</el-tag></div>
-                    <el-input v-model="form.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? '구성된 경우 비워 두면 기존 값을 유지' : (variable.defaultValue || 'Variable 값을 입력하십시오')" />
+                    <div class="variable-field__label"><code>VARIABLE_{{ variable.name }}</code><el-tag v-if="variable.required" size="small" type="danger" effect="plain">{{ ot('required') }}</el-tag></div>
+                    <el-input v-model="form.variables[variable.name]" :type="variable.secret ? 'password' : 'text'" :show-password="variable.secret" :placeholder="variable.secret ? ot('variableKeepExistingHint') : (variable.defaultValue || ot('enterVariableValue'))" />
                     <div v-if="variable.description" class="variable-field__desc">{{ variable.description }}</div>
                   </div>
                 </div>
@@ -574,16 +575,16 @@ onMounted(async () => {
             </el-col>
             <el-col :span="12">
               <el-form-item label="Probe URL" required>
-                <el-input v-model="form.url" placeholder="예: https://example.com/healthz" />
+                <el-input v-model="form.url" :placeholder="ot('probeUrlExample')" />
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="Timeout(초)">
+              <el-form-item :label="ot('timeoutSecondsLabel')">
                 <el-input-number v-model="form.timeoutSeconds" :min="10" :max="3600" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="예상 상태 코드">
+              <el-form-item :label="ot('expectedStatusCode')">
                 <el-input-number v-model="form.expectedStatus" :min="100" :max="599" style="width: 100%" />
               </el-form-item>
             </el-col>
@@ -600,15 +601,15 @@ onMounted(async () => {
           </template>
 
           <el-col :span="24">
-            <el-form-item label="설명">
+            <el-form-item :label="ot('description')">
               <el-input v-model="form.description" type="textarea" :rows="3" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ ot('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">{{ ot('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
