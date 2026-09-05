@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
+import { at } from '../../utils/asset-i18n'
 import {
   addAssetHost,
   assetHostInfo,
@@ -202,7 +203,7 @@ function openCloudSyncDialog() {
 
 function openBatchCredentialDialog() {
   if (!selectedRows.value.length) {
-    ElMessage.warning('먼저 Host를 선택하십시오.')
+    ElMessage.warning(at('selectHostFirst'))
     return
   }
   resetBatchCredentialForm()
@@ -257,21 +258,21 @@ async function openCopy(row) {
 
 async function submit() {
   if (!form.hostName || !form.groupIds.length || !form.environment || !form.sshUser || !form.sshIp || !form.credentialId) {
-    ElMessage.warning('Host 이름, Host Group, SSH 연결과 Credential을 입력하십시오.')
+    ElMessage.warning(at('enterHostRequiredFields'))
     return
   }
   if (form.connectionMode === 'gateway' && !form.gatewayId) {
-    ElMessage.warning('접속 Gateway를 선택하십시오.')
+    ElMessage.warning(at('selectGatewayWarning'))
     return
   }
   form.groupId = form.groupIds[0]
 
   if (isEdit.value) {
     await updateAssetHost(form)
-    ElMessage.success('Host를 수정했습니다.')
+    ElMessage.success(at('hostUpdated'))
   } else {
     await addAssetHost(form)
-    ElMessage.success(isCopy.value ? 'Host를 복제했습니다. Public 주소와 Config 정보는 필요에 따라 동기화로 수집하십시오.' : 'Host를 생성했습니다. 동기화를 클릭해 Public 주소와 Config 정보를 수집할 수 있습니다.')
+    ElMessage.success(isCopy.value ? at('hostCopied') : at('hostCreated'))
   }
   isCopy.value = false
   dialogVisible.value = false
@@ -282,7 +283,7 @@ async function handleSync(row) {
   syncingId.value = row.id
   try {
     await syncAssetHost(row.id)
-    ElMessage.success('동기화했습니다.')
+    ElMessage.success(at('synced'))
     await loadData()
   } finally {
     syncingId.value = undefined
@@ -294,16 +295,16 @@ async function handleDelete(row) {
     await handleRemoveFromGroup(row)
     return
   }
-  await ElMessageBox.confirm(`Host ${row.hostName}을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(at('deleteHostConfirm', { name: row.hostName }), at('notice'), { type: 'warning' })
   await deleteAssetHost(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(at('rowDeleted'))
   await loadData()
 }
 
 async function handleRemoveFromGroup(row) {
-  await ElMessageBox.confirm(`Host ${row.hostName}을(를) 현재 Host Group에서 제외하시겠습니까? Host Asset은 삭제되지 않습니다.`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(at('removeFromGroupConfirm', { name: row.hostName }), at('notice'), { type: 'warning' })
   await removeAssetHostsFromGroup({ groupId: query.groupId, hostId: row.id })
-  ElMessage.success('현재 Host Group에서 제외했습니다.')
+  ElMessage.success(at('removedFromGroup'))
   await loadData()
 }
 
@@ -319,13 +320,13 @@ async function handleBatchSync() {
 	if (batchSyncSubmitting.value) return
   const ids = selectedIds()
   if (!ids.length) {
-    ElMessage.warning('먼저 Host를 선택하십시오.')
+    ElMessage.warning(at('selectHostFirst'))
     return
   }
 	batchSyncSubmitting.value = true
 	try {
 		const data = await batchSyncAssetHosts(ids)
-		ElMessage.success(`일괄 동기화 완료: 성공 ${data.success}대, 실패 ${data.fail}대`)
+		ElMessage.success(at('batchSyncDone', { success: data.success, fail: data.fail }))
 		await loadData()
 	} finally {
 		batchSyncSubmitting.value = false
@@ -335,20 +336,20 @@ async function handleBatchSync() {
 async function handleBatchDelete() {
   const ids = selectedIds()
   if (!ids.length) {
-    ElMessage.warning('먼저 Host를 선택하십시오.')
+    ElMessage.warning(at('selectHostFirst'))
     return
   }
   if (isGroupView.value) {
-    await ElMessageBox.confirm(`선택한 ${ids.length}대 Host를 현재 Host Group에서 제외하시겠습니까? Host Asset은 삭제되지 않습니다.`, '알림', { type: 'warning' })
+    await ElMessageBox.confirm(at('batchRemoveFromGroupConfirm', { count: ids.length }), at('notice'), { type: 'warning' })
     await removeAssetHostsFromGroup({ groupId: query.groupId, hostIds: ids })
-    ElMessage.success('현재 Host Group에서 일괄 제외했습니다.')
+    ElMessage.success(at('batchRemovedFromGroup'))
     selectedRows.value = []
     await loadData()
     return
   }
-  await ElMessageBox.confirm(`선택한 ${ids.length}대 Host를 일괄 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(at('batchDeleteConfirm', { count: ids.length }), at('notice'), { type: 'warning' })
   await batchDeleteAssetHosts(ids)
-  ElMessage.success('일괄 삭제했습니다.')
+  ElMessage.success(at('batchDeleted'))
   selectedRows.value = []
   await loadData()
 }
@@ -356,11 +357,11 @@ async function handleBatchDelete() {
 async function submitBatchCredential() {
   const ids = selectedIds()
   if (!ids.length) {
-    ElMessage.warning('먼저 Host를 선택하십시오.')
+    ElMessage.warning(at('selectHostFirst'))
     return
   }
   if (!batchCredentialForm.credentialId) {
-    ElMessage.warning('Credential을 선택하십시오.')
+    ElMessage.warning(at('selectCredentialWarning'))
     return
   }
   batchCredentialSubmitting.value = true
@@ -369,7 +370,7 @@ async function submitBatchCredential() {
       ids,
       credentialId: batchCredentialForm.credentialId
     })
-    ElMessage.success('Credential을 일괄 교체했습니다.')
+    ElMessage.success(at('credentialReplaced'))
     batchCredentialDialogVisible.value = false
     await loadData()
   } finally {
@@ -398,7 +399,7 @@ function clearImportFile() {
 
 async function submitImport() {
   if (!importForm.groupId || !importForm.file) {
-    ElMessage.warning('Group을 선택하고 Excel 파일을 업로드하십시오.')
+    ElMessage.warning(at('selectGroupAndExcel'))
     return
   }
   importSubmitting.value = true
@@ -408,7 +409,7 @@ async function submitImport() {
     formData.append('file', importForm.file)
     const data = await importAssetHosts(formData)
     const failedPreview = (data.failedHosts || []).slice(0, 3).join('; ')
-    ElMessage.success(`Import 완료: 성공 ${data.success}대, 실패 ${data.fail}대${failedPreview ? `(${failedPreview})` : ''}`)
+    ElMessage.success(at('importDone', { success: data.success, fail: data.fail, failedSuffix: failedPreview ? `(${failedPreview})` : '' }))
     importDialogVisible.value = false
     await loadData()
   } finally {
@@ -418,27 +419,27 @@ async function submitImport() {
 
 async function submitCloudSync() {
   if (!cloudSyncForm.groupId || !cloudSyncForm.provider) {
-    ElMessage.warning('Group과 Cloud Provider를 선택하십시오.')
+    ElMessage.warning(at('selectGroupAndProvider'))
     return
   }
   if (cloudSyncForm.useExistingAccount && !cloudSyncForm.cloudAccountId) {
-    ElMessage.warning('기존 Cloud Account를 선택하십시오.')
+    ElMessage.warning(at('selectExistingCloudAccount'))
     return
   }
 	if (!cloudSyncForm.credentialId) {
-		ElMessage.warning('Credential을 선택하십시오.')
+		ElMessage.warning(at('selectCredentialWarning'))
 		return
 	}
   if (!cloudSyncForm.environment) {
-		ElMessage.warning('소속 Environment를 선택하십시오.')
+		ElMessage.warning(at('selectEnvironmentWarning'))
 		return
 	}
 	if (cloudSyncForm.connectionMode === 'gateway' && !cloudSyncForm.gatewayId) {
-		ElMessage.warning('접속 Gateway를 선택하십시오.')
+		ElMessage.warning(at('selectGatewayWarning'))
 		return
 	}
   if (!cloudSyncForm.useExistingAccount && (!cloudSyncForm.accessKey || !cloudSyncForm.secretKey)) {
-    ElMessage.warning('AccessKey와 SecretKey를 입력하십시오.')
+    ElMessage.warning(at('enterAccessKeys'))
     return
   }
   cloudSyncSubmitting.value = true
@@ -447,11 +448,11 @@ async function submitCloudSync() {
     const addedNames = (data.addedHosts || []).slice(0, 3).join(', ')
     const updatedNames = (data.updatedHosts || []).slice(0, 3).join(', ')
     const details = [
-      addedNames ? `추가: ${addedNames}` : '',
-      updatedNames ? `업데이트: ${updatedNames}` : '',
-      Object.keys(data.regionCounts || {}).length ? `Region: ${Object.entries(data.regionCounts).map(([region, count]) => `${region} ${count}대`).join(', ')}` : ''
+      addedNames ? at('cloudAddedNames', { names: addedNames }) : '',
+      updatedNames ? at('cloudUpdatedNames', { names: updatedNames }) : '',
+      Object.keys(data.regionCounts || {}).length ? at('regionCountsSummary', { counts: Object.entries(data.regionCounts).map(([region, count]) => at('regionCountItem', { region, count })).join(', ') }) : ''
     ].filter(Boolean).join('; ')
-    ElMessage.success(`Cloud에서 ${data.total || 0}대 발견: 추가 ${data.added}대, 업데이트 ${data.updated}대, 건너뜀 ${data.skipped}대${details ? ` (${details})` : ''}`)
+    ElMessage.success(at('cloudSyncResult', { total: data.total || 0, added: data.added, updated: data.updated, skipped: data.skipped, detailsSuffix: details ? ` (${details})` : '' }))
     cloudSyncDialogVisible.value = false
     await loadData()
   } finally {
@@ -467,7 +468,7 @@ function groupName(row) {
   return row.group?.name || '-'
 }
 
-function statusText(value, onlineText, offlineText, unknownText = '미점검') {
+function statusText(value, onlineText, offlineText, unknownText = at('notChecked')) {
   if (value === 1) return onlineText
   if (value === 2) return offlineText
   return unknownText
@@ -481,7 +482,7 @@ function statusType(value) {
 
 function configText(row) {
   const parts = [row.cpu, row.memory, row.disk].filter(Boolean)
-  return parts.length ? parts.join(' / ') : '동기화 대기'
+  return parts.length ? parts.join(' / ') : at('syncPending')
 }
 
 function goCredential() {
@@ -528,49 +529,49 @@ watch(
     <header class="host-page-header">
       <div>
         <p class="host-page-kicker">ASSET INVENTORY</p>
-        <h2>Host 관리</h2>
-        <p>Host 연결 상태, 인증 상태와 용량 Metric을 통합 조회하고 Offline 및 인증 이상 Resource를 우선 처리합니다.</p>
+        <h2>{{ at('hostManageTitle') }}</h2>
+        <p>{{ at('hostManageDesc') }}</p>
       </div>
       <div class="host-page-summary">
         <span>Resource Workbench</span>
-        <small>일괄 동기화와 Credential 교체 지원</small>
+        <small>{{ at('batchSyncSummary') }}</small>
       </div>
     </header>
     <section class="query-panel">
       <el-form inline>
-        <el-form-item label="Host 이름">
-          <el-input v-model="query.keyword" clearable placeholder="Host 이름을 입력하십시오." style="width: 160px" @keyup.enter="loadData" />
+        <el-form-item :label="at('hostNameLabel')">
+          <el-input v-model="query.keyword" clearable :placeholder="at('enterHostName')" style="width: 160px" @keyup.enter="loadData" />
         </el-form-item>
-        <el-form-item label="IP 주소">
-          <el-input v-model="query.ipKeyword" clearable placeholder="IP 주소를 입력하십시오." style="width: 160px" @keyup.enter="loadData" />
+        <el-form-item :label="at('ipLabel')">
+          <el-input v-model="query.ipKeyword" clearable :placeholder="at('enterIp')" style="width: 160px" @keyup.enter="loadData" />
         </el-form-item>
-        <el-form-item label="Host 상태">
-          <el-select v-model="query.status" clearable placeholder="상태 선택" style="width: 140px">
-            <el-option label="온라인" value="1" />
-            <el-option label="오프라인" value="2" />
+        <el-form-item :label="at('hostStatusLabel')">
+          <el-select v-model="query.status" clearable :placeholder="at('selectStatus')" style="width: 140px">
+            <el-option :label="at('online')" value="1" />
+            <el-option :label="at('offline')" value="2" />
           </el-select>
         </el-form-item>
         <el-form-item label="Host Group">
-          <el-select v-model="query.groupId" clearable filterable placeholder="Host Group 선택" style="width: 180px">
+          <el-select v-model="query.groupId" clearable filterable :placeholder="at('selectGroup')" style="width: 180px">
             <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
         <el-form-item label="Environment">
-          <el-select v-model="query.environment" clearable placeholder="전체 Environment" style="width: 150px">
+          <el-select v-model="query.environment" clearable :placeholder="at('allEnvironments')" style="width: 150px">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
       </el-form>
       <div class="query-actions">
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button color="#f0a43a" @click="resetQuery">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ at('search') }}</el-button>
+        <el-button color="#f0a43a" @click="resetQuery">{{ at('reset') }}</el-button>
         <el-dropdown split-button type="success" @click="openCreate" @command="handleCreateCommand">
-          추가
+          {{ at('addAction') }}
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="create">Host Import</el-dropdown-item>
               <el-dropdown-item command="excel">Excel Import</el-dropdown-item>
-              <el-dropdown-item command="cloud">Cloud Host 동기화</el-dropdown-item>
+              <el-dropdown-item command="cloud">{{ at('syncCloudHosts') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -582,17 +583,17 @@ watch(
           @command="handleMoreCommand"
         >
           <el-button class="more-action-trigger" :disabled="!selectedRows.length">
-            더보기
+            {{ at('more') }}
             <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
 			  <el-dropdown-item command="batch-sync" :disabled="batchSyncSubmitting">
 				<el-icon v-if="batchSyncSubmitting" class="is-loading"><Loading /></el-icon>
-				{{ batchSyncSubmitting ? '동기화 중' : '일괄 동기화' }}
+				{{ batchSyncSubmitting ? at('syncing') : at('batchSync') }}
 			  </el-dropdown-item>
-              <el-dropdown-item command="batch-delete">{{ isGroupView ? '현재 Group에서 일괄 제외' : '일괄 삭제' }}</el-dropdown-item>
-              <el-dropdown-item command="batch-credential">Credential 일괄 교체</el-dropdown-item>
+              <el-dropdown-item command="batch-delete">{{ isGroupView ? at('batchRemoveFromGroup') : at('batchDelete') }}</el-dropdown-item>
+              <el-dropdown-item command="batch-credential">{{ at('batchReplaceCredential') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -601,7 +602,7 @@ watch(
 
     <el-table v-loading="loading" :data="tableData" class="host-table" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="52" />
-      <el-table-column label="Host 이름" min-width="180">
+      <el-table-column :label="at('hostNameLabel')" min-width="180">
         <template #default="{ row }">
           <div class="host-name">
             <span class="linux-icon">L</span>
@@ -609,25 +610,25 @@ watch(
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="IP 주소" min-width="170">
+      <el-table-column :label="at('ipLabel')" min-width="170">
         <template #default="{ row }">
           <div class="ip-list">
-            <span v-if="row.publicIp" class="ip public">공인 {{ row.publicIp }}</span>
-            <span v-if="row.privateIp || row.sshIp" class="ip private">내부 {{ row.privateIp || row.sshIp }}</span>
+            <span v-if="row.publicIp" class="ip public">{{ at('publicIpLabel', { ip: row.publicIp }) }}</span>
+            <span v-if="row.privateIp || row.sshIp" class="ip private">{{ at('privateIpLabel', { ip: row.privateIp || row.sshIp }) }}</span>
             <span v-if="!row.publicIp && !row.privateIp && !row.sshIp">-</span>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="CPU 사용" width="110">
-        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.cpuUsage }" :title="row.metricsStatus === 'not_configured' ? 'Prometheus/VictoriaMetrics Datasource 미구성' : '로컬 Monitoring Datasource 기준'">{{ row.cpuUsage || '-' }}</span></template>
+      <el-table-column :label="at('cpuUsageLabel')" width="110">
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.cpuUsage }" :title="row.metricsStatus === 'not_configured' ? at('metricsNotConfigured') : at('localMetricsBasis')">{{ row.cpuUsage || '-' }}</span></template>
       </el-table-column>
-      <el-table-column label="메모리 사용" width="120">
-        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.memoryUsage }" :title="row.metricsStatus === 'not_configured' ? 'Prometheus/VictoriaMetrics Datasource 미구성' : '로컬 Monitoring Datasource 기준'">{{ row.memoryUsage || '-' }}</span></template>
+      <el-table-column :label="at('memoryUsageLabel')" width="120">
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.memoryUsage }" :title="row.metricsStatus === 'not_configured' ? at('metricsNotConfigured') : at('localMetricsBasis')">{{ row.memoryUsage || '-' }}</span></template>
       </el-table-column>
-      <el-table-column label="디스크 사용" width="120">
-        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.diskUsage }" :title="row.metricsStatus === 'not_configured' ? 'Prometheus/VictoriaMetrics Datasource 미구성' : '로컬 Monitoring Datasource 기준'">{{ row.diskUsage || '-' }}</span></template>
+      <el-table-column :label="at('diskUsageLabel')" width="120">
+        <template #default="{ row }"><span :class="{ 'metric-unavailable': !row.diskUsage }" :title="row.metricsStatus === 'not_configured' ? at('metricsNotConfigured') : at('localMetricsBasis')">{{ row.diskUsage || '-' }}</span></template>
       </el-table-column>
-      <el-table-column label="Config 정보" min-width="170">
+      <el-table-column :label="at('configInfoLabel')" min-width="170">
         <template #default="{ row }">
           <div class="config-info">
             <span>{{ configText(row) }}</span>
@@ -635,41 +636,41 @@ watch(
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="온라인 상태" width="110">
+      <el-table-column :label="at('onlineStatusLabel')" width="110">
         <template #default="{ row }">
           <el-tag :type="statusType(row.aliveStatus)" effect="light">
-            {{ statusText(row.aliveStatus, '온라인', '오프라인') }}
+            {{ statusText(row.aliveStatus, at('online'), at('offline')) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="인증 상태" width="120">
+      <el-table-column :label="at('authStatusLabel')" width="120">
         <template #default="{ row }">
           <el-tag :type="statusType(row.authStatus)" effect="light">
-            {{ statusText(row.authStatus, '인증 성공', '인증 실패') }}
+            {{ statusText(row.authStatus, at('authSuccess'), at('authFailed')) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="접속 방식" min-width="140">
+      <el-table-column :label="at('accessModeLabel')" min-width="140">
         <template #default="{ row }">
           <span v-if="row.connectionMode === 'gateway'">Gateway: {{ row.gateway?.name || '-' }}</span>
-          <span v-else>직접 연결</span>
+          <span v-else>{{ at('directConnection') }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="Host 유형" width="100">
-        <template #default="{ row }">{{ row.provider || '자체 구축' }}</template>
+      <el-table-column :label="at('hostTypeLabel')" width="100">
+        <template #default="{ row }">{{ row.provider || at('selfHosted') }}</template>
       </el-table-column>
       <el-table-column label="Environment" width="110">
         <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.environment) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="소속 Group" min-width="120">
+      <el-table-column :label="at('groupColumnLabel')" min-width="120">
         <template #default="{ row }">{{ groupName(row) }}</template>
       </el-table-column>
-      <el-table-column label="작업" width="230" fixed="right">
+      <el-table-column :label="at('actions')" width="230" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-          <el-button link type="primary" @click="openCopy(row)">복제</el-button>
-          <el-button link type="success" :loading="syncingId === row.id" @click="handleSync(row)">동기화</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">{{ isGroupView ? 'Group에서 제외' : '삭제' }}</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ at('edit') }}</el-button>
+          <el-button link type="primary" @click="openCopy(row)">{{ at('clone') }}</el-button>
+          <el-button link type="success" :loading="syncingId === row.id" @click="handleSync(row)">{{ at('sync') }}</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ isGroupView ? at('removeFromGroup') : at('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -685,84 +686,84 @@ watch(
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Host 수정' : (isCopy ? 'Host 복제' : 'Host 추가')" width="640px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? at('hostEditTitle') : (isCopy ? at('hostCloneTitle') : at('hostAddTitle'))" width="640px">
       <el-form label-width="96px">
         <el-row :gutter="18">
           <el-col :span="12">
-            <el-form-item label="Host 이름" required>
-              <el-input v-model="form.hostName" placeholder="Host 이름을 입력하십시오." />
+            <el-form-item :label="at('hostNameLabel')" required>
+              <el-input v-model="form.hostName" :placeholder="at('enterHostName')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="소속 Host Group" required>
-              <el-select v-model="form.groupIds" multiple collapse-tags collapse-tags-tooltip filterable placeholder="Host Group 선택" style="width: 100%">
+            <el-form-item :label="at('hostGroupLabel')" required>
+              <el-select v-model="form.groupIds" multiple collapse-tags collapse-tags-tooltip filterable :placeholder="at('selectGroup')" style="width: 100%">
                 <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="SSH 연결" required>
+            <el-form-item :label="at('sshConnectionLabel')" required>
               <div class="ssh-line">
-                <el-input v-model="form.sshUser" placeholder="사용자명" />
+                <el-input v-model="form.sshUser" :placeholder="at('usernamePlaceholder')" />
                 <span>@</span>
-                <el-input v-model="form.sshIp" placeholder="Host 주소" />
+                <el-input v-model="form.sshIp" :placeholder="at('hostAddressPlaceholder')" />
                 <span>-p</span>
                 <el-input-number v-model="form.sshPort" :min="1" :max="65535" controls-position="right" />
               </div>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="인증 Credential" required>
+            <el-form-item :label="at('authCredentialLabel')" required>
               <div class="credential-line">
-                <el-select v-model="form.credentialId" clearable filterable placeholder="Credential 선택">
+                <el-select v-model="form.credentialId" clearable filterable :placeholder="at('selectCredential')">
                   <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
                 </el-select>
-                <el-button color="#f59e0b" @click="goCredential">+ Credential 생성</el-button>
+                <el-button color="#f59e0b" @click="goCredential">{{ at('createCredential') }}</el-button>
               </div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="소속 Environment" required>
-              <el-select v-model="form.environment" :loading="environmentLoading" placeholder="Environment 선택" style="width: 100%">
+            <el-form-item :label="at('environmentLabel')" required>
+              <el-select v-model="form.environment" :loading="environmentLoading" :placeholder="at('selectEnvironment')" style="width: 100%">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="연결 방식">
+            <el-form-item :label="at('connectionModeLabel')">
               <el-radio-group v-model="form.connectionMode">
-                <el-radio-button label="direct">직접 연결</el-radio-button>
-                <el-radio-button label="gateway">Gateway 경유</el-radio-button>
+                <el-radio-button label="direct">{{ at('directConnection') }}</el-radio-button>
+                <el-radio-button label="gateway">{{ at('viaGateway') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col v-if="form.connectionMode === 'gateway'" :span="12">
-            <el-form-item label="접속 Gateway" required>
-              <el-select v-model="form.gatewayId" filterable placeholder="Gateway 선택" style="width: 100%">
+            <el-form-item :label="at('accessGatewayLabel')" required>
+              <el-select v-model="form.gatewayId" filterable :placeholder="at('selectGateway')" style="width: 100%">
                 <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="비고">
-              <el-input v-model="form.description" type="textarea" :rows="3" placeholder="비고를 입력하십시오." />
+            <el-form-item :label="at('noteLabel')">
+              <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="at('enterNote')" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" @click="submit">확인</el-button>
+        <el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" @click="submit">{{ at('confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="importDialogVisible" title="Excel Import" width="520px">
       <el-form label-width="92px">
         <el-form-item label="Template Download">
-          <el-button type="primary" @click="handleTemplateDownload">Template 다운로드</el-button>
+          <el-button type="primary" @click="handleTemplateDownload">{{ at('downloadTemplate') }}</el-button>
         </el-form-item>
-        <el-form-item label="Group 선택">
-          <el-select v-model="importForm.groupId" filterable placeholder="Group 선택" style="width: 100%">
+        <el-form-item :label="at('selectGroupLabel')">
+          <el-select v-model="importForm.groupId" filterable :placeholder="at('selectGroupLabel')" style="width: 100%">
             <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
@@ -775,32 +776,32 @@ watch(
             :on-change="handleFileChange"
             :on-remove="clearImportFile"
           >
-            <el-button type="primary">파일 선택</el-button>
+            <el-button type="primary">{{ at('chooseFile') }}</el-button>
           </el-upload>
         </el-form-item>
-        <div class="dialog-tip">Target Group은 이 대화상자에서 일괄 지정합니다. Template 필수 열: Host 이름, SSH 주소, SSH 사용자, 인증 Credential, 연결 방식, 소속 Environment. Gateway 모드는 접속 Gateway 이름도 입력해야 합니다. SSH 주소는 내부 IP 입력을 권장합니다.</div>
+        <div class="dialog-tip">{{ at('excelImportTip') }}</div>
       </el-form>
       <template #footer>
-        <el-button @click="importDialogVisible = false">취소</el-button>
+        <el-button @click="importDialogVisible = false">{{ at('cancel') }}</el-button>
         <el-button type="primary" :loading="importSubmitting" @click="submitImport">Host Import</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="cloudSyncDialogVisible" title="Cloud Host 동기화" width="620px">
+    <el-dialog v-model="cloudSyncDialogVisible" :title="at('syncCloudHosts')" width="620px">
       <el-form label-width="108px">
         <el-form-item label="Target Group">
-          <el-select v-model="cloudSyncForm.groupId" filterable placeholder="동기화 Group 선택" style="width: 100%">
+          <el-select v-model="cloudSyncForm.groupId" filterable :placeholder="at('selectSyncGroup')" style="width: 100%">
             <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
         <el-form-item label="Cloud Provider">
-          <el-select v-model="cloudSyncForm.provider" placeholder="Cloud Provider 선택" style="width: 100%">
+          <el-select v-model="cloudSyncForm.provider" :placeholder="at('selectCloudProvider')" style="width: 100%">
             <el-option label="Tencent Cloud" value="tencent" />
             <el-option label="Alibaba Cloud" value="aliyun" />
           </el-select>
         </el-form-item>
         <el-form-item label="Cloud Account">
-          <el-select v-model="cloudSyncForm.cloudAccountId" filterable clearable placeholder="Cloud Account 선택" style="width: 100%">
+          <el-select v-model="cloudSyncForm.cloudAccountId" filterable clearable :placeholder="at('selectCloudAccount')" style="width: 100%">
             <el-option
               v-for="item in filteredCloudAccounts"
               :key="item.id"
@@ -809,52 +810,52 @@ watch(
             />
           </el-select>
         </el-form-item>
-		<el-form-item label="인증 Credential" required>
+		<el-form-item :label="at('authCredentialLabel')" required>
 		  <div class="credential-line">
-			<el-select v-model="cloudSyncForm.credentialId" clearable filterable placeholder="Credential 선택">
+			<el-select v-model="cloudSyncForm.credentialId" clearable filterable :placeholder="at('selectCredential')">
 			  <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
 			</el-select>
-			<el-button color="#f59e0b" @click="goCredential">+ Credential 생성</el-button>
+			<el-button color="#f59e0b" @click="goCredential">{{ at('createCredential') }}</el-button>
 		  </div>
 		</el-form-item>
-        <el-form-item label="연결 방식">
+        <el-form-item :label="at('connectionModeLabel')">
 		  <el-radio-group v-model="cloudSyncForm.connectionMode">
-			<el-radio value="direct">직접 연결</el-radio>
-			<el-radio value="gateway">Gateway 경유</el-radio>
+			<el-radio value="direct">{{ at('directConnection') }}</el-radio>
+			<el-radio value="gateway">{{ at('viaGateway') }}</el-radio>
 		  </el-radio-group>
 		</el-form-item>
-		<el-form-item v-if="cloudSyncForm.connectionMode === 'gateway'" label="접속 Gateway">
-		  <el-select v-model="cloudSyncForm.gatewayId" filterable placeholder="Gateway 선택" style="width: 100%">
+		<el-form-item v-if="cloudSyncForm.connectionMode === 'gateway'" :label="at('accessGatewayLabel')">
+		  <el-select v-model="cloudSyncForm.gatewayId" filterable :placeholder="at('selectGateway')" style="width: 100%">
 			<el-option v-for="item in gatewayOptions" :key="item.id" :value="item.id" :label="item.name" />
 		  </el-select>
 		</el-form-item>
-		<el-form-item label="소속 Environment">
-		  <el-select v-model="cloudSyncForm.environment" filterable placeholder="소속 Environment 선택" :loading="environmentLoading" style="width: 100%">
+		<el-form-item :label="at('environmentLabel')">
+		  <el-select v-model="cloudSyncForm.environment" filterable :placeholder="at('selectEnvironment')" :loading="environmentLoading" style="width: 100%">
 			<el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
 		  </el-select>
 		</el-form-item>
-        <div class="dialog-tip">동기화는 Cloud Account 관리에서 구성한 Region을 엄격히 사용합니다. 먼저 Cloud Account 관리에서 Region을 하나 이상 등록하십시오. Alibaba Cloud와 Tencent Cloud 모두 다중 Region Cloud Host 동기화를 지원합니다.</div>
+        <div class="dialog-tip">{{ at('cloudSyncTip') }}</div>
       </el-form>
       <template #footer>
-        <el-button @click="cloudSyncDialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="cloudSyncSubmitting" @click="submitCloudSync">동기화 시작</el-button>
+        <el-button @click="cloudSyncDialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" :loading="cloudSyncSubmitting" @click="submitCloudSync">{{ at('startSync') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="batchCredentialDialogVisible" title="인증 Credential 일괄 교체" width="480px">
+    <el-dialog v-model="batchCredentialDialogVisible" :title="at('batchReplaceCredentialTitle')" width="480px">
       <el-form label-width="96px">
-        <el-form-item label="선택된 Host">
-          <span>{{ selectedRows.length }}대</span>
+        <el-form-item :label="at('selectedHostsLabel')">
+          <span>{{ at('hostCountUnit', { count: selectedRows.length }) }}</span>
         </el-form-item>
-        <el-form-item label="인증 Credential">
-          <el-select v-model="batchCredentialForm.credentialId" filterable placeholder="Credential 선택" style="width: 100%">
+        <el-form-item :label="at('authCredentialLabel')">
+          <el-select v-model="batchCredentialForm.credentialId" filterable :placeholder="at('selectCredential')" style="width: 100%">
             <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="batchCredentialDialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="batchCredentialSubmitting" @click="submitBatchCredential">교체 확인</el-button>
+        <el-button @click="batchCredentialDialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button type="primary" :loading="batchCredentialSubmitting" @click="submitBatchCredential">{{ at('confirmReplace') }}</el-button>
       </template>
     </el-dialog>
   </div>
