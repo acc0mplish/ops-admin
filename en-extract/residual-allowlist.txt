@@ -1554,9 +1554,9 @@ web/src/views/monitor/MonitorTraceDetail.vue:113: 표시 문자열(마이그레�
 web/src/views/monitor/MonitorTraceDetail.vue:125: 표시 문자열(마이그레이션 대상)
 web/src/views/monitor/MonitorTraceDetail.vue:127: 표시 문자열(마이그레이션 대상)
 web/src/views/monitor/MonitorTraceDetail.vue:128: 표시 문자열(마이그레이션 대상)
-web/src/views/ops/OpsCommandExecute.vue:54: 표시 문자열(마이그레이션 대상)
-web/src/views/ops/OpsFileDispatch.vue:71: 표시 문자열(마이그레이션 대상)
-web/src/views/ops/OpsScriptExecute.vue:82: 표시 문자열(마이그레이션 대상)
+web/src/views/ops/OpsCommandExecute.vue:54: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
+web/src/views/ops/OpsFileDispatch.vue:71: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
+web/src/views/ops/OpsScriptExecute.vue:82: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
 web/src/layouts/MainLayout.vue:218: 비교·송신값 후보(§3-1 검증 필요)
 web/src/views/monitor/MonitorDashboard.vue:87: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
 web/src/views/monitor/MonitorDashboard.vue:88: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
