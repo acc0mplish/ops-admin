@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { queryMonitorDatasourceOptions, queryMonitorTraceDetail } from '../../api/monitor'
+import { mt } from '../../utils/monitor-i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -64,7 +65,7 @@ const ticks = computed(() => [0, 25, 50, 75, 100].map((position) => ({ position,
 async function load() {
   const datasourceID = Number(route.query.datasourceId)
   if (!datasourceID || !route.params.traceId) {
-    ElMessage.warning('Jaeger Datasource 또는 Trace ID가 없습니다')
+    ElMessage.warning(mt('noTraceParams'))
     router.replace('/monitor/traces')
     return
   }
@@ -77,7 +78,7 @@ async function load() {
   } finally { loading.value = false }
 }
 async function copyTraceID() {
-  try { await navigator.clipboard.writeText(trace.value?.traceID || route.params.traceId); ElMessage.success('Trace ID를 복사했습니다.') } catch { ElMessage.info('Trace ID를 직접 복사하십시오.') }
+  try { await navigator.clipboard.writeText(trace.value?.traceID || route.params.traceId); ElMessage.success(mt('traceIdCopied')) } catch { ElMessage.info(mt('copyTraceIdManually')) }
 }
 function back() { router.back() }
 
@@ -87,30 +88,30 @@ onMounted(load)
 <template>
   <div v-loading="loading" class="trace-detail-page">
     <div class="detail-topbar">
-      <el-button text class="back-button" @click="back">‹ Trace로 돌아가기</el-button>
-      <div class="title-wrap"><h2>{{ selectedSpan?.operationName || 'Trace 상세' }}</h2><span class="source-name">{{ datasource?.name || 'Jaeger' }}</span></div>
-      <el-button plain @click="copyTraceID">Trace ID 복사</el-button>
+      <el-button text class="back-button" @click="back">‹ {{ mt('backToTrace') }}</el-button>
+      <div class="title-wrap"><h2>{{ selectedSpan?.operationName || mt('traceDetail') }}</h2><span class="source-name">{{ datasource?.name || 'Jaeger' }}</span></div>
+      <el-button plain @click="copyTraceID">{{ mt('copyTraceId') }}</el-button>
     </div>
 
     <template v-if="trace">
       <div class="trace-ident"><span>Trace ID</span><code>{{ trace.traceID }}</code></div>
       <section class="summary-grid">
-        <div class="summary-card start-card"><i class="summary-icon">◷</i><span>시작 시각</span><strong>{{ formatTime(traceStart) }}</strong></div>
-        <div class="summary-card duration-card"><i class="summary-icon">⌁</i><span>총 소요 시간</span><strong>{{ formatDuration(traceDuration) }}</strong><small>End-to-End 호출 시간</small></div>
+        <div class="summary-card start-card"><i class="summary-icon">◷</i><span>{{ mt('startAtLabel') }}</span><strong>{{ formatTime(traceStart) }}</strong></div>
+        <div class="summary-card duration-card"><i class="summary-icon">⌁</i><span>{{ mt('totalDurationLabel') }}</span><strong>{{ formatDuration(traceDuration) }}</strong><small>{{ mt('endToEnd') }}</small></div>
         <div class="summary-card service-card"><i class="summary-icon">⌘</i><span>Service</span><strong>{{ services.length }}</strong><small>{{ services.join(' · ') }}</small></div>
-        <div class="summary-card span-card"><i class="summary-icon">◎</i><span>Span</span><strong>{{ spanRows.length }}</strong><small>최대 깊이 {{ Math.max(0, ...spanRows.map((item) => item.depth)) + 1 }}</small></div>
-        <div class="summary-card" :class="{ danger: errorCount }"><i class="summary-icon">!</i><span>오류</span><strong>{{ errorCount }}</strong><small>{{ errorCount ? '빨간색 표시 Span을 확인하십시오.' : '오류 표시 없음' }}</small></div>
+        <div class="summary-card span-card"><i class="summary-icon">◎</i><span>Span</span><strong>{{ spanRows.length }}</strong><small>{{ mt('maxDepth', { count: Math.max(0, ...spanRows.map((item) => item.depth)) + 1 }) }}</small></div>
+        <div class="summary-card" :class="{ danger: errorCount }"><i class="summary-icon">!</i><span>{{ mt('abnormal') }}</span><strong>{{ errorCount }}</strong><small>{{ errorCount ? mt('errorHint') : mt('noErrors') }}</small></div>
       </section>
 
       <section class="waterfall-card">
-        <div class="section-head"><div><h3>호출 Timeline</h3><p>Span을 클릭하면 Label, Process와 Log 상세를 확인할 수 있습니다.</p></div><div class="legend"><i class="normal"></i>정상 <i class="error"></i>오류</div></div>
+        <div class="section-head"><div><h3>{{ mt('callTimeline') }}</h3><p>{{ mt('timelineHint') }}</p></div><div class="legend"><i class="normal"></i>{{ mt('healthOk') }} <i class="error"></i>{{ mt('abnormal') }}</div></div>
         <div class="timeline-scroll">
           <div class="timeline-grid">
             <div class="tree-head">Service / Operation</div>
             <div class="ruler"><span v-for="tick in ticks" :key="tick.position" :style="{ left: `${tick.position}%` }">{{ tick.value }}</span></div>
             <template v-for="span in spanRows" :key="span.spanID">
               <button class="span-name" :class="{ selected: selectedSpan?.spanID === span.spanID, error: span.error }" :style="{ '--depth': span.depth }" @click="selectedSpanId = span.spanID">
-                <b>{{ span.service }}</b><span>{{ span.operationName }}</span><em>{{ span.error ? '오류' : '성공' }}</em>
+                <b>{{ span.service }}</b><span>{{ span.operationName }}</span><em>{{ span.error ? mt('abnormal') : mt('success') }}</em>
               </button>
               <button class="span-track" :class="{ selected: selectedSpan?.spanID === span.spanID }" @click="selectedSpanId = span.spanID">
                 <i v-for="tick in ticks.slice(1, -1)" :key="tick.position" class="guide" :style="{ left: `${tick.position}%` }"></i>
@@ -122,10 +123,10 @@ onMounted(load)
       </section>
 
       <section v-if="selectedSpan" class="inspector-card">
-        <div class="inspector-title"><div><span class="eyebrow">선택한 Span</span><h3>{{ selectedSpan.operationName }}</h3><p>{{ selectedSpan.service }} · {{ formatDuration(selectedSpan.duration) }} · {{ formatTime(selectedSpan.startTime) }}</p></div><div class="selection-actions"><span class="span-id">{{ selectedSpan.spanID }}</span><el-tag :type="selectedSpan.error ? 'danger' : 'success'">{{ selectedSpan.error ? '오류' : '성공' }}</el-tag></div></div>
+        <div class="inspector-title"><div><span class="eyebrow">{{ mt('selectedSpan') }}</span><h3>{{ selectedSpan.operationName }}</h3><p>{{ selectedSpan.service }} · {{ formatDuration(selectedSpan.duration) }} · {{ formatTime(selectedSpan.startTime) }}</p></div><div class="selection-actions"><span class="span-id">{{ selectedSpan.spanID }}</span><el-tag :type="selectedSpan.error ? 'danger' : 'success'">{{ selectedSpan.error ? mt('abnormal') : mt('success') }}</el-tag></div></div>
         <div class="info-columns">
-          <div><h4>Label</h4><div v-if="selectedSpan.tags?.length" class="key-values"><div v-for="tag in selectedSpan.tags" :key="tag.key"><span>{{ tag.key }}</span><code>{{ tag.value }}</code></div></div><el-empty v-else description="Label이 없습니다" :image-size="44" /></div>
-          <div><h4>Process</h4><div class="service-box"><b>{{ selectedSpan.process.serviceName || selectedSpan.service }}</b><div v-for="tag in selectedSpan.process.tags || []" :key="tag.key"><span>{{ tag.key }}</span><code>{{ tag.value }}</code></div></div><h4 class="logs-title">Log Event</h4><div v-if="selectedSpan.logs?.length" class="logs"><div v-for="(log, index) in selectedSpan.logs" :key="index"><time>{{ formatTime(log.timestamp) }}</time><span v-for="field in log.fields || []" :key="field.key">{{ field.key }}={{ field.value }}</span></div></div><el-empty v-else description="Log Event가 없습니다" :image-size="44" /></div>
+          <div><h4>Label</h4><div v-if="selectedSpan.tags?.length" class="key-values"><div v-for="tag in selectedSpan.tags" :key="tag.key"><span>{{ tag.key }}</span><code>{{ tag.value }}</code></div></div><el-empty v-else :description="mt('noLabels')" :image-size="44" /></div>
+          <div><h4>Process</h4><div class="service-box"><b>{{ selectedSpan.process.serviceName || selectedSpan.service }}</b><div v-for="tag in selectedSpan.process.tags || []" :key="tag.key"><span>{{ tag.key }}</span><code>{{ tag.value }}</code></div></div><h4 class="logs-title">Log Event</h4><div v-if="selectedSpan.logs?.length" class="logs"><div v-for="(log, index) in selectedSpan.logs" :key="index"><time>{{ formatTime(log.timestamp) }}</time><span v-for="field in log.fields || []" :key="field.key">{{ field.key }}={{ field.value }}</span></div></div><el-empty v-else :description="mt('noLogEvents')" :image-size="44" /></div>
         </div>
       </section>
     </template>
