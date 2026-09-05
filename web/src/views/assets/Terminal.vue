@@ -122,7 +122,7 @@ function connectSocket(id) {
   currentSocket.onopen = () => {
     if (runtime.socket !== currentSocket) return
     updateSession(id, { status: 'connected' })
-    runtime.term.writeln(`\x1b[32mSSH 터미널에 오신 것을 환영합니다. ${session.host.sshIp || session.host.hostName} 에 연결 중 ...\x1b[0m`)
+    runtime.term.writeln(`\x1b[32mSSH 터미널에 오신 것을 환영합니다. ${session.host.sshIp || session.host.hostName}에 연결 중 ...\x1b[0m`)
     if (activeSessionId.value === id) {
       scheduleTerminalSizeSync()
       runtime.term.focus()

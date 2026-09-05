@@ -356,7 +356,7 @@ function validateStages(stages = form.stages, executorHostId = form.executorHost
   const ids = new Set()
   for (let index = 0; index < stages.length; index += 1) {
     const stage = stages[index]
-    if (!stage.id || ids.has(stage.id)) return `Stage ${index + 1} 의 ID가 중복되었습니다. 해당 Stage를 삭제한 뒤 다시 추가하십시오.`
+    if (!stage.id || ids.has(stage.id)) return `Stage ${index + 1}의 ID가 중복되었습니다. 해당 Stage를 삭제한 뒤 다시 추가하십시오.`
     ids.add(stage.id)
     if (!String(stage.name || '').trim()) return `${index + 1}번째 Stage 이름을 입력하십시오.`
     if (['command', 'test', 'build'].includes(stage.type) && !String(stage.config?.script || '').trim()) return `${stage.name} Stage의 실행 Command를 입력하십시오.`

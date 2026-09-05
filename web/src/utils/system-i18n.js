@@ -1,7 +1,7 @@
 import { currentLocale } from './i18n-runtime'
 
 const ko = {
-  userManagement: '사용자 관리', searchUsername: '사용자명으로 검색', query: '조회', syncFromLdap: 'LDAP에서 동기화', addUser: '사용자 추가',
+  userManagement: '사용자 관리', searchUsername: '사용자명으로 검색', query: '검색', syncFromLdap: 'LDAP에서 동기화', addUser: '사용자 추가',
   account: '계정', displayName: '표시 이름', role: 'Role', department: '부서', position: '직무', email: '이메일', phone: '휴대전화', status: '상태', active: '활성', inactive: '비활성', actions: '작업',
   edit: '수정', deactivate: '비활성화', activate: '활성화', resetPassword: '비밀번호 초기화', delete: '삭제', cancel: '취소', save: '저장', create: '생성', password: '비밀번호', note: '비고', reset: '초기화', detail: '상세',
   editUser: '사용자 수정', passwordKeep: '변경하지 않으려면 비워 두십시오.', passwordInput: '비밀번호를 입력하십시오.', ldapSyncTitle: 'LDAP 사용자 동기화',
