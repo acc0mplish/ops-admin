@@ -1,11 +1,12 @@
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20-alpine AS builder
+COPY --from=oven/bun:1.4.2-alpine /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 COPY . ./
-RUN npm run build
+RUN bun run build
 
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:1.27-alpine
 
