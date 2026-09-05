@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { opsScheduleLogInfo, queryOpsScheduleLogList } from '../../api/ops'
+import { ot } from '../../utils/ops-i18n'
 
 const router = useRouter()
 const loading = ref(false)
@@ -53,11 +54,11 @@ async function openDetail(row) {
 }
 
 function taskTypeLabel(value) {
-  return value === 'http' ? 'HTTP 프로브' : 'Script Task'
+  return value === 'http' ? ot('httpProbe') : 'Script Task'
 }
 
 function triggerLabel(value) {
-  return value === 'manual' ? '수동 트리거' : '스케줄 실행'
+  return value === 'manual' ? ot('manualTrigger') : ot('scheduledRun')
 }
 
 function statusTagType(value) {
@@ -72,7 +73,7 @@ async function copyText(value, message) {
     await navigator.clipboard.writeText(value || '')
     ElMessage.success(message)
   } catch {
-    ElMessage.error('복사에 실패했습니다.')
+    ElMessage.error(ot('copyFailed'))
   }
 }
 
@@ -89,48 +90,48 @@ onMounted(loadData)
     <div class="page-header">
       <div>
         <h2 class="page-title">Task Log</h2>
-        <p class="page-desc">정기 Task의 각 스케줄 실행 결과, 요약, 상세 출력을 확인합니다.</p>
+        <p class="page-desc">{{ ot('scheduleLogDesc') }}</p>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-input v-model="query.keyword" clearable placeholder="Task 이름 / 요약 검색" style="width: 280px" @keyup.enter="loadData" />
-        <el-select v-model="query.taskType" clearable placeholder="Task 유형" style="width: 140px">
+        <el-input v-model="query.keyword" clearable :placeholder="ot('searchScheduleLog')" style="width: 280px" @keyup.enter="loadData" />
+        <el-select v-model="query.taskType" clearable :placeholder="ot('taskTypeLabel')" style="width: 140px">
           <el-option label="Script Task" value="script" />
-          <el-option label="HTTP 프로브" value="http" />
+          <el-option :label="ot('httpProbe')" value="http" />
         </el-select>
-        <el-select v-model="query.status" clearable placeholder="실행 상태" style="width: 120px">
-          <el-option label="성공" value="success" />
-          <el-option label="실패" value="failed" />
-          <el-option label="부분 성공" value="partial" />
-          <el-option label="실행 중" value="running" />
+        <el-select v-model="query.status" clearable :placeholder="ot('executionStatus')" style="width: 120px">
+          <el-option :label="ot('success')" value="success" />
+          <el-option :label="ot('failure')" value="failed" />
+          <el-option :label="ot('partialSuccess')" value="partial" />
+          <el-option :label="ot('running')" value="running" />
         </el-select>
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button @click="resetQuery">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ ot('search') }}</el-button>
+        <el-button @click="resetQuery">{{ ot('reset') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="rows" border>
-      <el-table-column prop="taskName" label="Task 이름" min-width="180" />
-      <el-table-column label="Task 유형" width="120">
+      <el-table-column prop="taskName" :label="ot('taskName')" min-width="180" />
+      <el-table-column :label="ot('taskTypeLabel')" width="120">
         <template #default="{ row }">{{ taskTypeLabel(row.taskType) }}</template>
       </el-table-column>
-      <el-table-column label="트리거 방식" width="110">
+      <el-table-column :label="ot('triggerType')" width="110">
         <template #default="{ row }">{{ triggerLabel(row.triggerType) }}</template>
       </el-table-column>
-      <el-table-column label="실행 상태" width="110" align="center">
+      <el-table-column :label="ot('executionStatus')" width="110" align="center">
         <template #default="{ row }">
           <el-tag :type="statusTagType(row.status)" effect="light">{{ row.status }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="summary" label="실행 요약" min-width="260" show-overflow-tooltip />
-      <el-table-column prop="durationMs" label="소요 시간(ms)" width="100" />
-      <el-table-column prop="startedAt" label="시작 시각" width="180" />
-      <el-table-column prop="finishedAt" label="종료 시각" width="180" />
-      <el-table-column label="작업" width="100" fixed="right">
+      <el-table-column prop="summary" :label="ot('executionSummaryLabel')" min-width="260" show-overflow-tooltip />
+      <el-table-column prop="durationMs" :label="ot('durationMsLabel')" width="100" />
+      <el-table-column prop="startedAt" :label="ot('startTime')" width="180" />
+      <el-table-column prop="finishedAt" :label="ot('endTime')" width="180" />
+      <el-table-column :label="ot('actions')" width="100" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">상세</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ ot('detail') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -146,36 +147,36 @@ onMounted(loadData)
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="Task Log 상세" width="960px">
+    <el-dialog v-model="detailVisible" :title="ot('taskLogDetail')" width="960px">
       <div v-loading="detailLoading" class="log-detail">
         <template v-if="detail">
           <div class="detail-grid">
-            <div><span>Task 이름</span><strong>{{ detail.taskName }}</strong></div>
-            <div><span>Task 유형</span><strong>{{ taskTypeLabel(detail.taskType) }}</strong></div>
-            <div><span>실행 상태</span><strong>{{ detail.status }}</strong></div>
-            <div><span>트리거 방식</span><strong>{{ triggerLabel(detail.triggerType) }}</strong></div>
-            <div><span>시작 시각</span><strong>{{ detail.startedAt || '-' }}</strong></div>
-            <div><span>종료 시각</span><strong>{{ detail.finishedAt || '-' }}</strong></div>
-            <div><span>소요 시간</span><strong>{{ detail.durationMs }} ms</strong></div>
-            <div><span>관련 실행 Task</span><strong>{{ detail.execTaskId || '-' }}</strong></div>
-            <div><span>예상 Status Code</span><strong>{{ detail.expectedStatus || '-' }}</strong></div>
-            <div><span>실제 Status Code</span><strong>{{ detail.actualStatus || '-' }}</strong></div>
+            <div><span>{{ ot('taskName') }}</span><strong>{{ detail.taskName }}</strong></div>
+            <div><span>{{ ot('taskTypeLabel') }}</span><strong>{{ taskTypeLabel(detail.taskType) }}</strong></div>
+            <div><span>{{ ot('executionStatus') }}</span><strong>{{ detail.status }}</strong></div>
+            <div><span>{{ ot('triggerType') }}</span><strong>{{ triggerLabel(detail.triggerType) }}</strong></div>
+            <div><span>{{ ot('startTime') }}</span><strong>{{ detail.startedAt || '-' }}</strong></div>
+            <div><span>{{ ot('endTime') }}</span><strong>{{ detail.finishedAt || '-' }}</strong></div>
+            <div><span>{{ ot('durationWord') }}</span><strong>{{ detail.durationMs }} ms</strong></div>
+            <div><span>{{ ot('relatedExecTask') }}</span><strong>{{ detail.execTaskId || '-' }}</strong></div>
+            <div><span>{{ ot('expectedStatusCodeLabel') }}</span><strong>{{ detail.expectedStatus || '-' }}</strong></div>
+            <div><span>{{ ot('actualStatusCode') }}</span><strong>{{ detail.actualStatus || '-' }}</strong></div>
           </div>
 
-          <el-alert :title="detail.summary || '요약 없음'" type="info" :closable="false" />
+          <el-alert :title="detail.summary || ot('noSummary')" type="info" :closable="false" />
 
           <div class="detail-actions">
-            <el-button v-if="detail.execTaskId" type="primary" link @click="openExecHistory(detail.execTaskId)">Quick Execution 상세로 이동</el-button>
-            <el-button link @click="copyText(detail.detail || '', '상세 출력을 복사했습니다.')">상세 출력 복사</el-button>
-            <el-button link @click="copyText(detail.responseBody || '', 'HTTP 응답을 복사했습니다.')">HTTP 응답 복사</el-button>
+            <el-button v-if="detail.execTaskId" type="primary" link @click="openExecHistory(detail.execTaskId)">{{ ot('goToExecDetail') }}</el-button>
+            <el-button link @click="copyText(detail.detail || '', ot('detailOutputCopied'))">{{ ot('detailOutputCopy') }}</el-button>
+            <el-button link @click="copyText(detail.responseBody || '', ot('httpResponseCopied'))">{{ ot('httpResponseCopy') }}</el-button>
           </div>
 
           <div class="detail-section">
-            <h4>상세 출력</h4>
+            <h4>{{ ot('detailOutput') }}</h4>
             <pre>{{ detail.detail || '-' }}</pre>
           </div>
           <div class="detail-section">
-            <h4>HTTP 응답</h4>
+            <h4>{{ ot('httpResponse') }}</h4>
             <pre>{{ detail.responseBody || '-' }}</pre>
           </div>
         </template>
