@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { queryMonitorOverview } from '../../api/monitor'
+import { mt } from '../../utils/monitor-i18n'
 
 const router = useRouter()
 const loading = ref(false)
@@ -27,23 +28,23 @@ function resolveRange() {
   return { startDate: formatDate(start), endDate: formatDate(end) }
 }
 
-const rangeLabel = computed(() => ({ today: '오늘', '3d': '최근 3일', '7d': '최근 7일', custom: '사용자 정의 기간' }[rangeType.value] || '오늘'))
+const rangeLabel = computed(() => ({ today: mt('todayLabel'), '3d': mt('last3d'), '7d': mt('last7Days'), custom: mt('customRangeLabel') }[rangeType.value] || mt('todayLabel')))
 const monitorAbnormalCount = computed(() => Number(overview.value.unhealthyDatasourceCount || 0) + Number(overview.value.evalFailedRuleCount || 0))
 const trendMax = computed(() => Math.max(1, ...(overview.value.trend || []).flatMap(item => [Number(item.triggered || 0), Number(item.recovered || 0)])))
 const totalSeverity = computed(() => (overview.value.severity || []).reduce((sum, item) => sum + Number(item.count || 0), 0))
 
 const riskCards = computed(() => [
-  { label: '활성 Alert', value: overview.value.firingCount || 0, hint: '현재 주의가 필요한 Alert', tone: 'danger', query: {} },
-  { label: '미인계', value: overview.value.unclaimedCount || 0, hint: '담당자 인계를 기다리는 중', tone: 'warning', query: { status: 'unclaimed' } },
-  { label: 'P0 / P1', value: overview.value.criticalCount || 0, hint: '높은 우선순위 리스크 Event', tone: 'danger', query: { severity: 'critical' } },
-  { label: '모니터링 오류', value: monitorAbnormalCount.value, hint: `${overview.value.unhealthyDatasourceCount || 0} Datasource · ${overview.value.evalFailedRuleCount || 0} Rule`, tone: 'neutral', path: '/monitor/datasources' }
+  { label: mt('activeAlert'), value: overview.value.firingCount || 0, hint: mt('attentionAlertsHint'), tone: 'danger', query: {} },
+  { label: mt('riskUnclaimed'), value: overview.value.unclaimedCount || 0, hint: mt('awaitingClaimHint'), tone: 'warning', query: { status: 'unclaimed' } },
+  { label: 'P0 / P1', value: overview.value.criticalCount || 0, hint: mt('highRiskEventsHint'), tone: 'danger', query: { severity: 'critical' } },
+  { label: mt('monitoringErrors'), value: monitorAbnormalCount.value, hint: `${overview.value.unhealthyDatasourceCount || 0} Datasource · ${overview.value.evalFailedRuleCount || 0} Rule`, tone: 'neutral', path: '/monitor/datasources' }
 ])
 
 const qualityCards = computed(() => [
-  { label: 'Datasource Health', value: ratio(overview.value.healthyDatasourceCount, overview.value.datasourceCount), detail: `${overview.value.healthyDatasourceCount || 0} / ${overview.value.datasourceCount || 0} 정상` },
-  { label: 'Rule 실행 성공률', value: ratio(overview.value.successfulRuleCount, overview.value.activeRuleCount), detail: `${overview.value.successfulRuleCount || 0} / ${overview.value.activeRuleCount || 0} 정상` },
-  { label: 'Notification 성공률', value: ratio(overview.value.notificationSuccessCount, overview.value.notificationTotalCount), detail: `${overview.value.notificationSuccessCount || 0} / ${overview.value.notificationTotalCount || 0} 성공` },
-  { label: '평균 복구 시간', value: formatDuration(overview.value.mttrSeconds), detail: `평균 인계 ${formatDuration(overview.value.mttaSeconds)}` }
+  { label: 'Datasource Health', value: ratio(overview.value.healthyDatasourceCount, overview.value.datasourceCount), detail: mt('healthyRatio', { a: overview.value.healthyDatasourceCount || 0, b: overview.value.datasourceCount || 0 }) },
+  { label: mt('ruleSuccessRate'), value: ratio(overview.value.successfulRuleCount, overview.value.activeRuleCount), detail: mt('healthyRatio', { a: overview.value.successfulRuleCount || 0, b: overview.value.activeRuleCount || 0 }) },
+  { label: mt('notifySuccessRate'), value: ratio(overview.value.notificationSuccessCount, overview.value.notificationTotalCount), detail: mt('successRatio', { a: overview.value.notificationSuccessCount || 0, b: overview.value.notificationTotalCount || 0 }) },
+  { label: mt('mttrLabel'), value: formatDuration(overview.value.mttrSeconds), detail: mt('avgClaim', { time: formatDuration(overview.value.mttaSeconds) }) }
 ])
 
 function ratio(value, total) {
@@ -58,11 +59,11 @@ function statusType(status) {
 }
 
 function statusText(status) {
-  return ({ pending: '대기 중', firing: '발생', claimed: '인계됨', silenced: '차단', recovered: '복구', resolved: '해결됨' }[status] || status || '-')
+  return ({ pending: mt('evPending'), firing: mt('ovFiring'), claimed: mt('evClaimed'), silenced: mt('ovSilenced'), recovered: mt('ovRecovered'), resolved: mt('ovResolved') }[status] || status || '-')
 }
 
 function activityText(type) {
-  return ({ recovered: 'Alert 복구', datasource: 'Datasource 오류', notification: 'Notification 실패', rule: 'Rule 실행 실패' }[type] || '모니터링 Event')
+  return ({ recovered: mt('actRecovered'), datasource: mt('actDatasource'), notification: mt('actNotification'), rule: mt('actRule') }[type] || mt('monitoringEvent'))
 }
 
 function activityType(type) {
@@ -72,10 +73,10 @@ function activityType(type) {
 function formatDuration(seconds) {
   const value = Number(seconds || 0)
   if (!value) return '-'
-  if (value < 60) return `${value}초`
-  if (value < 3600) return `${Math.round(value / 60)}분`
-  if (value < 86400) return `${(value / 3600).toFixed(1)}시간`
-  return `${(value / 86400).toFixed(1)}일`
+  if (value < 60) return mt('secondsValue', { count: value })
+  if (value < 3600) return mt('minutesValue', { count: Math.round(value / 60) })
+  if (value < 86400) return mt('durHour', { count: (value / 3600).toFixed(1) })
+  return mt('durDay', { count: (value / 86400).toFixed(1) })
 }
 
 function formatLiveDuration(value) {
@@ -130,16 +131,16 @@ onMounted(loadData)
     <section class="overview-header">
       <div>
         <p class="eyebrow">MONITORING OVERVIEW</p>
-        <h1>모니터링 개요</h1>
-        <p class="header-subtitle">현재 시스템 상태, 리스크와 Event 한눈에 보기</p>
+        <h1>{{ mt('overviewTitle') }}</h1>
+        <p class="header-subtitle">{{ mt('headerSubtitle') }}</p>
       </div>
       <div class="header-actions">
-        <span class="refreshed">마지막 새로고침: {{ formatTime(refreshedAt) }}</span>
+        <span class="refreshed">{{ mt('lastRefreshAt', { time: formatTime(refreshedAt) }) }}</span>
         <el-button-group>
-          <el-button :type="rangeType === 'today' ? 'primary' : 'default'" @click="changeRange('today')">오늘</el-button>
-          <el-button :type="rangeType === '3d' ? 'primary' : 'default'" @click="changeRange('3d')">3일</el-button>
-          <el-button :type="rangeType === '7d' ? 'primary' : 'default'" @click="changeRange('7d')">7일</el-button>
-          <el-button :type="rangeType === 'custom' ? 'primary' : 'default'" @click="changeRange('custom')">사용자 정의</el-button>
+          <el-button :type="rangeType === 'today' ? 'primary' : 'default'" @click="changeRange('today')">{{ mt('todayLabel') }}</el-button>
+          <el-button :type="rangeType === '3d' ? 'primary' : 'default'" @click="changeRange('3d')">{{ mt('threeDays') }}</el-button>
+          <el-button :type="rangeType === '7d' ? 'primary' : 'default'" @click="changeRange('7d')">{{ mt('sevenDays') }}</el-button>
+          <el-button :type="rangeType === 'custom' ? 'primary' : 'default'" @click="changeRange('custom')">{{ mt('customSource') }}</el-button>
         </el-button-group>
         <el-date-picker
           v-if="rangeType === 'custom'"
@@ -147,17 +148,17 @@ onMounted(loadData)
           type="daterange"
           value-format="YYYY-MM-DD"
           range-separator="~"
-          start-placeholder="시작일"
-          end-placeholder="종료일"
+          :start-placeholder="mt('startDateLabel')"
+          :end-placeholder="mt('endDateLabel')"
           :clearable="false"
           @change="applyCustomRange"
         />
-        <el-button :loading="loading" @click="loadData">새로고침</el-button>
+        <el-button :loading="loading" @click="loadData">{{ mt('refreshCompact') }}</el-button>
       </div>
     </section>
 
     <section>
-      <div class="section-title"><h2>현재 리스크</h2><span>실시간 리스크는 통계 기간의 영향을 받지 않습니다</span></div>
+      <div class="section-title"><h2>{{ mt('currentRisks') }}</h2><span>{{ mt('realtimeRiskHint') }}</span></div>
       <div class="risk-grid">
         <button v-for="card in riskCards" :key="card.label" type="button" :class="['risk-card', card.tone]" @click="openRisk(card)">
           <span>{{ card.label }}</span><strong>{{ card.value }}</strong><small>{{ card.hint }}</small>
@@ -166,39 +167,39 @@ onMounted(loadData)
     </section>
 
     <section class="top-grid">
-      <article class="panel quality-panel"><div class="panel-head"><div><h2>모니터링 품질</h2><p>데이터 파이프라인, Rule과 Notification의 실행 품질</p></div></div><div class="quality-grid"><div v-for="item in qualityCards" :key="item.label" class="quality-card"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.detail }}</small></div></div></article>
+      <article class="panel quality-panel"><div class="panel-head"><div><h2>{{ mt('monitoringQuality') }}</h2><p>{{ mt('qualityDesc') }}</p></div></div><div class="quality-grid"><div v-for="item in qualityCards" :key="item.label" class="quality-card"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.detail }}</small></div></div></article>
       <article class="panel trend-panel">
-        <div class="panel-head"><div><h2>Alert 추세</h2><p>{{ rangeLabel }} 신규 / 복구 추세</p></div><div class="legend"><i class="new" />신규 <i class="recovered" />복구</div></div>
+        <div class="panel-head"><div><h2>{{ mt('alertTrend') }}</h2><p>{{ mt('trendRangeLabel', { range: rangeLabel }) }}</p></div><div class="legend"><i class="new" />{{ mt('newLabel') }} <i class="recovered" />{{ mt('recoveredLabel') }}</div></div>
         <div class="trend-chart">
           <div v-for="item in overview.trend || []" :key="item.date" class="trend-item">
             <el-tooltip placement="top" :show-after="120" popper-class="trend-tooltip">
               <template #content>
-                <div class="trend-tooltip-content"><b>{{ item.date }}</b><span>신규 {{ item.triggered || 0 }}건</span><span>복구 {{ item.recovered || 0 }}건</span></div>
+                <div class="trend-tooltip-content"><b>{{ item.date }}</b><span>{{ mt('newCount', { count: item.triggered || 0 }) }}</span><span>{{ mt('recoveredCount', { count: item.recovered || 0 }) }}</span></div>
               </template>
-              <div class="bars" tabindex="0" :aria-label="`${item.date}: 신규 ${item.triggered || 0}건, 복구 ${item.recovered || 0}건`"><span class="trend-bar new" :style="{ height: `${Math.max(3, Number(item.triggered || 0) / trendMax * 100)}%` }" /><span class="trend-bar recovered" :style="{ height: `${Math.max(3, Number(item.recovered || 0) / trendMax * 100)}%` }" /></div>
+              <div class="bars" tabindex="0" :aria-label="mt('trendAriaLabel', { date: item.date, newCount: item.triggered || 0, recoveredCount: item.recovered || 0 })"><span class="trend-bar new" :style="{ height: `${Math.max(3, Number(item.triggered || 0) / trendMax * 100)}%` }" /><span class="trend-bar recovered" :style="{ height: `${Math.max(3, Number(item.recovered || 0) / trendMax * 100)}%` }" /></div>
             </el-tooltip>
             <small>{{ item.date }}</small>
           </div>
         </div>
       </article>
-      <article class="panel activities-panel"><div class="panel-head"><div><h2>최근 Event</h2><p>Alert 복구, Datasource 오류, Notification 실패와 Rule 실행 실패</p></div></div><el-empty v-if="!(overview.recentActivities || []).length" description="주의가 필요한 모니터링 Event가 없습니다" :image-size="48" /><div v-else class="activity-list"><div v-for="(item, index) in overview.recentActivities || []" :key="`${item.type}-${index}`" class="activity"><el-tag :type="activityType(item.type)" effect="light">{{ activityText(item.type) }}</el-tag><div><b>{{ item.title || '-' }}</b><p>{{ item.detail || '-' }}</p></div><time>{{ formatTime(item.time) }}</time></div></div></article>
+      <article class="panel activities-panel"><div class="panel-head"><div><h2>{{ mt('recentEventsPanel') }}</h2><p>{{ mt('activitiesDesc') }}</p></div></div><el-empty v-if="!(overview.recentActivities || []).length" :description="mt('noActivities')" :image-size="48" /><div v-else class="activity-list"><div v-for="(item, index) in overview.recentActivities || []" :key="`${item.type}-${index}`" class="activity"><el-tag :type="activityType(item.type)" effect="light">{{ activityText(item.type) }}</el-tag><div><b>{{ item.title || '-' }}</b><p>{{ item.detail || '-' }}</p></div><time>{{ formatTime(item.time) }}</time></div></div></article>
     </section>
 
     <section class="work-grid">
       <article class="panel pending-panel">
-        <div class="panel-head"><div><h2>현재 처리 대기 Alert</h2><p>우선순위, 상태, 담당자와 지속 시간으로 빠르게 찾기</p></div><el-button link type="primary" @click="router.push('/monitor/alert-events')">전체 보기</el-button></div>
-        <el-empty v-if="!(overview.recentEvents || []).length" class="pending-empty" description="현재 처리 대기 Alert가 없으며 시스템이 정상 운영 중입니다" :image-size="48" />
+        <div class="panel-head"><div><h2>{{ mt('pendingAlertsTitle') }}</h2><p>{{ mt('pendingAlertsDesc') }}</p></div><el-button link type="primary" @click="router.push('/monitor/alert-events')">{{ mt('viewAll') }}</el-button></div>
+        <el-empty v-if="!(overview.recentEvents || []).length" class="pending-empty" :description="mt('noPendingAlerts')" :image-size="48" />
         <el-table v-else :data="overview.recentEvents || []" @row-click="openEvent">
-          <el-table-column prop="severity" label="우선순위" width="84"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : row.severity === 'P2' ? 'warning' : 'info'" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
+          <el-table-column prop="severity" :label="mt('priorityLabel')" width="84"><template #default="{ row }"><el-tag :type="row.severity === 'P0' || row.severity === 'P1' ? 'danger' : row.severity === 'P2' ? 'warning' : 'info'" effect="light">{{ row.severity }}</el-tag></template></el-table-column>
           <el-table-column prop="ruleName" label="Alert Rule" min-width="190" />
-          <el-table-column label="상태" width="105"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
-          <el-table-column prop="claimedBy" label="담당자" width="130"><template #default="{ row }">{{ row.claimedBy || '미인계' }}</template></el-table-column>
-          <el-table-column label="지속 시간" width="120"><template #default="{ row }">{{ formatLiveDuration(row.firstTriggerAt) }}</template></el-table-column>
-          <el-table-column prop="summary" label="요약" min-width="280" show-overflow-tooltip />
+          <el-table-column :label="mt('status')" width="105"><template #default="{ row }"><el-tag :type="statusType(row.status)" effect="light">{{ statusText(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column prop="claimedBy" :label="mt('claimedByCol')" width="130"><template #default="{ row }">{{ row.claimedBy || mt('riskUnclaimed') }}</template></el-table-column>
+          <el-table-column :label="mt('durationLabel')" width="120"><template #default="{ row }">{{ formatLiveDuration(row.firstTriggerAt) }}</template></el-table-column>
+          <el-table-column prop="summary" :label="mt('summaryCol')" min-width="280" show-overflow-tooltip />
         </el-table>
       </article>
       <article class="panel severity-panel">
-        <div class="panel-head"><div><h2>Alert Severity 분포</h2><p>현재 처리 대기 Alert를 P0 / P1 / P2 / P3로 표시</p></div></div>
+        <div class="panel-head"><div><h2>{{ mt('severityDistTitle') }}</h2><p>{{ mt('severityDistDesc') }}</p></div></div>
         <div class="severity-list">
           <button v-for="item in overview.severity || []" :key="item.severity" class="severity-row" type="button" @click="router.push({ path: '/monitor/alert-events', query: { severity: item.severity } })">
             <b>{{ item.severity }}</b><div class="severity-track"><span :class="item.severity.toLowerCase()" :style="{ width: `${severityPercent(item.count)}%` }" /></div><strong>{{ item.count || 0 }}</strong>
