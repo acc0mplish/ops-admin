@@ -853,9 +853,15 @@ func (s *Service) certificateCloudProvider(accountID uint) (provider.Certificate
 	if err != nil {
 		return nil, nil, err
 	}
+	if access == "" {
+		return nil, nil, errors.New("certificate DNS account access key is empty")
+	}
 	secret, err := util.ReadSecretField(account.SecretKeyCipher, secretField, false)
 	if err != nil {
 		return nil, nil, err
+	}
+	if secret == "" {
+		return nil, nil, errors.New("certificate DNS account secret key is empty")
 	}
 	cloud, err := provider.NewCertificateCloud(account.Provider, access, secret)
 	return cloud, &account, err

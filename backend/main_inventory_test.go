@@ -147,11 +147,8 @@ func TestScanScheduleTaskVariablesGate(t *testing.T) {
 // with missing=true instead of failing the whole inventory.
 func TestScanSecretColumnMissingColumnIsReported(t *testing.T) {
 	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE asset_gateway (id INTEGER PRIMARY KEY, name TEXT)")
-	field, ok := util.LookupSecretField("asset_gateway", "password")
-	if !ok {
-		t.Fatal("registry lookup failed")
-	}
+	db := newInventoryScanDB(t, "CREATE TABLE drift_probe (id INTEGER PRIMARY KEY, name TEXT)")
+	field := util.SecretField{Row: 99, Model: "DriftProbe", Table: "drift_probe", Column: "password", Class: util.ClassPlaintext, Labels: []string{"drift probe password"}}
 	counts, unknowns, missing, err := scanSecretField(db, field)
 	if err != nil {
 		t.Fatal(err)

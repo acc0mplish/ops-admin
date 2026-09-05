@@ -245,9 +245,15 @@ func (s *Service) publicProvider(accountID uint) (provider.PublicDNSProvider, *m
 	if err != nil {
 		return nil, nil, err
 	}
+	if access == "" {
+		return nil, nil, errors.New("DNS account access key is empty")
+	}
 	secret, err := util.ReadSecretField(account.SecretKeyCipher, secretField, false)
 	if err != nil {
 		return nil, nil, err
+	}
+	if secret == "" {
+		return nil, nil, errors.New("DNS account secret key is empty")
 	}
 	p, err := provider.New(account.Provider, access, secret)
 	return p, &account, err
