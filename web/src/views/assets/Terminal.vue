@@ -4,7 +4,8 @@ import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { ElMessage } from 'element-plus'
 import { queryAssetHostGroupList, queryAssetHostList } from '../../api/asset'
-import { getToken } from '../../utils/auth'
+import { mintAssetHostTerminalTicket } from '../../api/console'
+import { at } from '../../utils/asset-i18n'
 
 const loading = ref(false)
 const treeRef = ref()
@@ -108,15 +109,28 @@ function updateSession(id, patch) {
   if (session) Object.assign(session, patch)
 }
 
-function connectSocket(id) {
+async function connectSocket(id) {
   const session = sessions.value.find((item) => item.id === id)
   const runtime = runtimes.get(id)
   if (!session || !runtime) return
   disconnectSession(id, false)
   updateSession(id, { status: 'connecting' })
+  // One-time console ticket (§4.8): minted per dial, consumed by the WS gate.
+  let ticket
+  try {
+    ticket = (await mintAssetHostTerminalTicket(session.host.id)).ticket
+  } catch {
+    updateSession(id, { status: 'error' })
+    runtime.term.writeln(`\r\n\x1b[31m${at('ticketIssueFailed')}\x1b[0m`)
+    return
+  }
+  // Re-run after the mint await: a reconnect double-click while suspended must
+  // leave exactly one live socket — this resume tears down whatever a previous
+  // resume created before dialing its own.
+  disconnectSession(id, false)
+  updateSession(id, { status: 'connecting' })
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const token = encodeURIComponent(getToken())
-  const url = `${protocol}://${window.location.host}/api/v1/asset/terminal/ws?hostId=${session.host.id}&rows=${runtime.term.rows || 34}&cols=${runtime.term.cols || 150}&token=${token}`
+  const url = `${protocol}://${window.location.host}/api/v1/asset/terminal/ws?hostId=${session.host.id}&rows=${runtime.term.rows || 34}&cols=${runtime.term.cols || 150}&ticket=${encodeURIComponent(ticket)}`
   const currentSocket = new WebSocket(url)
   runtime.socket = currentSocket
   currentSocket.onopen = () => {
