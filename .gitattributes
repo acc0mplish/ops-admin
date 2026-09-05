@@ -2,3 +2,7 @@
 # its bundled web console and remains part of the repository and build, but it
 # is excluded from GitHub Linguist's language-distribution calculation.
 web/** linguist-detectable=false
+
+# The committed migration baseline fixture is a binary sqlite database; keep
+# git from applying EOL conversion to it on WSL/Windows checkouts.
+backend/store/testdata/**/*.sqlite binary
