@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import { queryAssetServiceRuntimeTopology } from '../../api/asset'
+import { at } from '../../utils/asset-i18n'
 import ServiceWorkloadDetail from './ServiceWorkloadDetail.vue'
 import ServiceWorkloadLogs from './ServiceWorkloadLogs.vue'
 import ServicePodMonitor from './ServicePodMonitor.vue'
@@ -52,24 +53,24 @@ function healthy(item) {
 const nodes = computed(() => {
   const add = (id, title, x, y, kind, note, workload = null) => ({ id, title, x, y, kind, note, workload, healthy: healthy(workload) })
   const nginx = find((name) => name.includes('nginx-gm')); const mgr = find((name) => name.includes('mgr')); const gate = find((name) => name.includes('gate')); const login = find((name) => name.includes('login')); const notice = find((name) => name.includes('notice')); const social = find((name) => name.includes('social')); const zk = find((name) => name.includes('zookeeper') || name === 'zk')
-  const result = [add('player', '플레이어 클라이언트', 34, 270, 'external', 'Gate / Notice 통해서만 통신')]
-  if (nginx) result.push(add('nginx', nginx.name, 250, 74, 'management', '독립 GM 진입점', nginx))
-  if (mgr) result.push(add('mgr', mgr.name, 460, 74, 'management', 'GM 백오피스', mgr))
-  if (gate) result.push(add('gate', gate.name, 270, 280, 'public', 'WebSocket · 외부 진입점', gate))
-  if (login) result.push(add('login', login.name, 505, 280, 'service', '로그인 검증', login))
-  result.push(add('zk', zk?.name || 'ZooKeeper', 740, 280, 'dependency', 'Service 등록 / 활성 상태', zk || null))
+  const result = [add('player', at('playerClient'), 34, 270, 'external', at('playerNote'))]
+  if (nginx) result.push(add('nginx', nginx.name, 250, 74, 'management', at('nginxNote'), nginx))
+  if (mgr) result.push(add('mgr', mgr.name, 460, 74, 'management', at('mgrNote'), mgr))
+  if (gate) result.push(add('gate', gate.name, 270, 280, 'public', at('gateNote'), gate))
+  if (login) result.push(add('login', login.name, 505, 280, 'service', at('loginNote'), login))
+  result.push(add('zk', zk?.name || 'ZooKeeper', 740, 280, 'dependency', at('zkNote'), zk || null))
   const addGameGroup = (items, prefix, startY) => items.forEach((item, index) => {
     const column = index % gameColumns.value
     const row = Math.floor(index / gameColumns.value)
-    const node = add(`${prefix}-${index}`, item.name, gameStartX + column * nodeStepX, startY + row * nodeStepY, 'service', '상태 유지 게임 Service', item)
+    const node = add(`${prefix}-${index}`, item.name, gameStartX + column * nodeStepX, startY + row * nodeStepY, 'service', at('statefulServiceNote'), item)
     node.statefulGroup = prefix
     node.instance = index + 1
     result.push(node)
   })
   addGameGroup(homeWorkloads.value, 'home', homeGroupY + statefulGroupPadding)
   addGameGroup(worldWorkloads.value, 'world', worldStartY.value)
-  if (social) result.push(add('social', social.name, 740, Math.max(470, gameBottomY.value + 18), 'service', '소셜 Service · ZooKeeper 경유 탐색', social))
-  if (notice) result.push(add('notice', notice.name, 270, 470, 'public', '로그 업로드 · 외부 진입점', notice))
+  if (social) result.push(add('social', social.name, 740, Math.max(470, gameBottomY.value + 18), 'service', at('socialNote'), social))
+  if (notice) result.push(add('notice', notice.name, 270, 470, 'public', at('noticeNote'), notice))
   const known = new Set([nginx, mgr, gate, login, notice, social, zk, ...homeWorkloads.value, ...worldWorkloads.value].filter(Boolean).map((item) => item.name))
   workloads.value.filter((item) => !known.has(item.name)).forEach((item, index) => result.push(add(`extra-${index}`, item.name, 740 + (index % 1) * 230, 74 + Math.floor(index / 1) * 105, 'service', `${item.type} · Ready ${item.ready || '0/0'}`, item)))
   return result
@@ -77,10 +78,10 @@ const nodes = computed(() => {
 const positions = computed(() => Object.fromEntries(nodes.value.map((item) => [item.id, item])))
 const edges = computed(() => {
   const result = []; const has = (id) => Boolean(positions.value[id]); const add = (from, to, label, tone = 'default') => { if (has(from) && has(to)) result.push({ from, to, label, tone }) }
-  add('player', 'gate', 'WebSocket 로그인', 'public'); add('player', 'notice', '로그 업로드', 'public'); add('gate', 'login', '로그인 요청', 'public'); add('login', 'zk', '활성 Service 조회'); add('zk', 'social', 'Service 등록'); add('mgr', 'zk', '기동/중지 관리', 'management')
-  homeWorkloads.value.forEach((_, index) => { const id = `home-${index}`; add('zk', id, index === 0 ? 'Service 등록' : ''); add('gate', id, index === 0 ? '게임 세션' : ''); add(id, 'social', index === 0 ? '소셜 통신' : ''); add('mgr', id, index === 0 ? '게임 서버 관리' : '', 'management') })
-  worldWorkloads.value.forEach((_, index) => { const id = `world-${index}`; add('zk', id, index === 0 ? 'Service 등록' : ''); add('gate', id, index === 0 ? '게임 세션' : ''); add(id, 'social', index === 0 ? '소셜 통신' : ''); add('mgr', id, index === 0 ? '게임 서버 관리' : '', 'management') })
-  nodes.value.filter((item) => !['player', 'nginx', 'zk'].includes(item.id)).forEach((item) => add(item.id, 'nginx', 'GM 접속', 'management'))
+  add('player', 'gate', at('wsLogin'), 'public'); add('player', 'notice', at('logUpload'), 'public'); add('gate', 'login', at('loginRequest'), 'public'); add('login', 'zk', at('activeServiceLookup')); add('zk', 'social', at('serviceRegister')); add('mgr', 'zk', at('lifecycleManage'), 'management')
+  homeWorkloads.value.forEach((_, index) => { const id = `home-${index}`; add('zk', id, index === 0 ? at('serviceRegister') : ''); add('gate', id, index === 0 ? at('gameSession') : ''); add(id, 'social', index === 0 ? at('socialComm') : ''); add('mgr', id, index === 0 ? at('gameServerManage') : '', 'management') })
+  worldWorkloads.value.forEach((_, index) => { const id = `world-${index}`; add('zk', id, index === 0 ? at('serviceRegister') : ''); add('gate', id, index === 0 ? at('gameSession') : ''); add(id, 'social', index === 0 ? at('socialComm') : ''); add('mgr', id, index === 0 ? at('gameServerManage') : '', 'management') })
+  nodes.value.filter((item) => !['player', 'nginx', 'zk'].includes(item.id)).forEach((item) => add(item.id, 'nginx', at('gmAccess'), 'management'))
   return result
 })
 function nodeWidth(node) { return node?.statefulGroup ? 190 : 174 }
@@ -94,12 +95,12 @@ onMounted(load)
 
 <template>
   <div class="service-topology" v-loading="loading">
-    <section class="topology-header"><div><el-button text :icon="ArrowLeft" @click="router.push('/containers/services')">Service 관리로 돌아가기</el-button><p class="eyebrow">SERVICE RESOURCE TOPOLOGY</p><h1>{{ topology.service?.name || 'Service Resource Topology' }}</h1><p><code>{{ topology.service?.serviceUid }}</code> · {{ topology.cluster?.name || 'Cluster 미연결' }} / {{ topology.namespace || '-' }}</p></div><el-button :icon="Refresh" @click="load">실행 상태 새로고침</el-button></section>
+    <section class="topology-header"><div><el-button text :icon="ArrowLeft" @click="router.push('/containers/services')">{{ at('backToServiceManage') }}</el-button><p class="eyebrow">SERVICE RESOURCE TOPOLOGY</p><h1>{{ topology.service?.name || 'Service Resource Topology' }}</h1><p><code>{{ topology.service?.serviceUid }}</code> · {{ topology.cluster?.name || at('clusterNotLinked') }} / {{ topology.namespace || '-' }}</p></div><el-button :icon="Refresh" @click="load">{{ at('refreshRuntimeStatus') }}</el-button></section>
     <el-alert v-if="topology.refreshError" type="warning" :closable="false" show-icon :title="topology.refreshError" />
-    <section class="topology-card"><header><div><h2>비즈니스 통신 경로</h2><p>녹색 ✓은 정상, 빨간색 !은 이상을 의미합니다. Home / World는 StatefulSet Service Group으로 표시되며 Instance 순서, Ready 상태와 상세 진입점을 유지합니다.</p></div><div class="legend"><span class="public"></span>외부 진입점 <span class="management"></span>GM 관리 <span class="service"></span>내부 Service <i class="legend-health ok">✓</i>정상 <i class="legend-health bad">!</i>이상</div></header><div class="topology-scroll"><div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"><div v-for="group in statefulGroups" :key="group.key" class="stateful-group" :class="group.key" :style="{ left: `${group.x}px`, top: `${group.y}px`, width: `${group.width}px`, height: `${group.height}px` }"></div><svg :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text v-if="edge.label" :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload, 'node-stateful': node.statefulGroup }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><span v-if="node.statefulGroup" class="instance-chip">{{ node.statefulGroup.toUpperCase() }} #{{ node.instance }}</span><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></div></section>
-    <section class="workload-card"><h2>연관 Workload</h2><el-table :data="workloads" size="small"><el-table-column prop="name" label="Workload"/><el-table-column prop="type" label="유형" width="120"/><el-table-column prop="ready" label="Ready" width="100"/><el-table-column label="Health" width="100"><template #default="{ row }"><el-tag :type="healthy(row) ? 'success' : 'danger'">{{ healthy(row) ? '✓ 정상' : '! 이상' }}</el-tag></template></el-table-column><el-table-column label="작업" width="110"><template #default="{ row }"><el-button link type="primary" @click="openDetail({ workload: row })">Service 상세</el-button></template></el-table-column></el-table></section>
+    <section class="topology-card"><header><div><h2>{{ at('businessPathTitle') }}</h2><p>{{ at('businessPathDesc') }}</p></div><div class="legend"><span class="public"></span>{{ at("externalEntry") }} <span class="management"></span>{{ at("gmManage") }} <span class="service"></span>{{ at("internalService") }} <i class="legend-health ok">✓</i>{{ at("groupNormal") }} <i class="legend-health bad">!</i>{{ at("abnormalStatus") }}</div></header><div class="topology-scroll"><div class="canvas" :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"><div v-for="group in statefulGroups" :key="group.key" class="stateful-group" :class="group.key" :style="{ left: `${group.x}px`, top: `${group.y}px`, width: `${group.width}px`, height: `${group.height}px` }"></div><svg :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" :width="canvasWidth" :height="canvasHeight"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8ca1bf" /></marker></defs><g v-for="edge in edges" :key="`${edge.from}-${edge.to}`"><path :d="path(edge)" :class="['edge', edge.tone]" marker-end="url(#arrow)"/><text v-if="edge.label" :x="label(edge).x" :y="label(edge).y" text-anchor="middle">{{ edge.label }}</text></g></svg><button v-for="node in nodes" :key="node.id" class="topology-node" :class="[`node-${node.kind}`, { clickable: node.workload, 'node-stateful': node.statefulGroup }]" :style="{ left: `${node.x}px`, top: `${node.y}px` }" @click="openDetail(node)"><i v-if="node.workload" class="health-badge" :class="node.healthy ? 'is-ok' : 'is-bad'">{{ node.healthy ? '✓' : '!' }}</i><span v-if="node.statefulGroup" class="instance-chip">{{ node.statefulGroup.toUpperCase() }} #{{ node.instance }}</span><b>{{ node.title }}</b><small>{{ node.note }}</small><small v-if="node.workload">{{ node.workload.type }} · Ready {{ node.workload.ready || '0/0' }}</small></button></div></div></section>
+    <section class="workload-card"><h2>{{ at('relatedWorkloads') }}</h2><el-table :data="workloads" size="small"><el-table-column prop="name" label="Workload"/><el-table-column prop="type" :label="at('typeColumn')" width="120"/><el-table-column prop="ready" label="Ready" width="100"/><el-table-column label="Health" width="100"><template #default="{ row }"><el-tag :type="healthy(row) ? 'success' : 'danger'">{{ healthy(row) ? '✓ ' + at('groupNormal') : '! ' + at('abnormalStatus') }}</el-tag></template></el-table-column><el-table-column :label="at('actions')" width="110"><template #default="{ row }"><el-button link type="primary" @click="openDetail({ workload: row })">{{ at('serviceDetail') }}</el-button></template></el-table-column></el-table></section>
     <el-drawer v-model="detailVisible" size="70%" :with-header="false" destroy-on-close>
-      <div v-if="selectedWorkload" class="service-drawer-tabs"><el-button :type="activeDrawerTab === 'detail' ? 'primary' : 'default'" @click="activeDrawerTab = 'detail'">Service 상세</el-button><el-button :type="activeDrawerTab === 'logs' ? 'primary' : 'default'" @click="openLogs()">Service 로그</el-button><el-button :type="activeDrawerTab === 'monitor' ? 'primary' : 'default'" @click="activeDrawerTab = 'monitor'">Pod 모니터링</el-button></div>
+      <div v-if="selectedWorkload" class="service-drawer-tabs"><el-button :type="activeDrawerTab === 'detail' ? 'primary' : 'default'" @click="activeDrawerTab = 'detail'">{{ at('serviceDetail') }}</el-button><el-button :type="activeDrawerTab === 'logs' ? 'primary' : 'default'" @click="openLogs()">{{ at('serviceLogs') }}</el-button><el-button :type="activeDrawerTab === 'monitor' ? 'primary' : 'default'" @click="activeDrawerTab = 'monitor'">{{ at('podMonitoring') }}</el-button></div>
       <ServiceWorkloadDetail v-if="activeDrawerTab === 'detail'" :service-id="serviceId" :workload-type="selectedWorkload.type" :workload-name="selectedWorkload.name" inline @close="detailVisible = false" @show-logs="openLogs" />
       <ServiceWorkloadLogs v-else-if="activeDrawerTab === 'logs'" :key="selectedLog?.podName || 'default'" :service-id="serviceId" :workload-type="selectedWorkload.type" :workload-name="selectedWorkload.name" :pod-name="selectedLog?.podName || ''" inline @close="detailVisible = false" />
       <ServicePodMonitor v-else :service-id="serviceId" :workload-type="selectedWorkload.type" :workload-name="selectedWorkload.name" />

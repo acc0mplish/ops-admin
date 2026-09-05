@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAppByRoute } from '../../utils/apps'
-import { t, translateRoute } from '../../utils/i18n'
+import { t, translateRoute } from '../../utils/i18n-runtime'
 
 const route = useRoute()
 

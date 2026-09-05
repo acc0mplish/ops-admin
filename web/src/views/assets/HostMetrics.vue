@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { queryAssetHostMetrics } from '../../api/asset'
+import { at } from '../../utils/asset-i18n'
 
 const props = defineProps({ hostId: { type: Number, required: true } })
 const activeRange = ref('1h')
@@ -8,12 +9,12 @@ const customRange = ref([])
 const loading = ref(false)
 const data = ref({ metrics: {}, status: 'unavailable' })
 const ranges = [
-  ['1h', '1시간'], ['3h', '3시간'], ['6h', '6시간'], ['12h', '12시간'],
-  ['1d', '1일'], ['3d', '3일'], ['7d', '7일'], ['14d', '14일'], ['custom', '직접 지정']
+  ['1h', at('range1h')], ['3h', at('range3h')], ['6h', at('range6h')], ['12h', at('range12h')],
+  ['1d', at('range1d')], ['3d', at('range3d')], ['7d', at('range7d')], ['14d', at('range14d')], ['custom', at('customRangeLabel')]
 ]
 const metricCards = [
-  ['cpu', 'CPU 사용률', '#4f7cff'], ['memory', '메모리 사용률', '#28b889'],
-  ['disk', '디스크 사용률', '#f0a04a'], ['io', 'IO 부하', '#8c67e8']
+  ['cpu', at('cpuUsageRate'), '#4f7cff'], ['memory', at('memoryUsageRate'), '#28b889'],
+  ['disk', at('diskUsageRate'), '#f0a04a'], ['io', at('ioLoad'), '#8c67e8']
 ]
 const hasMetrics = computed(() => metricCards.some(([key]) => (data.value.metrics?.[key]?.points || []).length))
 const queryError = computed(() => Object.values(data.value.errors || {})[0] || '')
