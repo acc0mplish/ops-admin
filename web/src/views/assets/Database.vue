@@ -12,6 +12,7 @@ import {
   updateAssetDatabase
 } from '../../api/asset'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
+import { at } from '../../utils/asset-i18n'
 
 const router = useRouter()
 
@@ -93,9 +94,9 @@ function onDatabaseTypeChange(value) {
 }
 
 function connectionStatusText(row) {
-  if (row.connectStatus === 1) return '연결됨'
-  if (row.connectStatus === 2) return '연결 오류'
-  return '미검사'
+  if (row.connectStatus === 1) return at('dbConnected')
+  if (row.connectStatus === 2) return at('dbConnectError')
+  return at('notInspected')
 }
 
 function connectionStatusType(row) {
@@ -136,7 +137,7 @@ async function handleTest() {
   testing.value = true
   try {
     const data = await testAssetDatabase(form)
-    ElMessage.success(`연결에 성공했습니다. ${databaseTypeLabel(data.dbType || form.dbType)} 버전 ${data.version || '-'}`)
+    ElMessage.success(at('testSuccess', { type: databaseTypeLabel(data.dbType || form.dbType), version: data.version || '-' }))
   } finally {
     testing.value = false
   }
@@ -144,24 +145,24 @@ async function handleTest() {
 
 async function submit() {
   if (form.connectionMode === 'gateway' && !form.gatewayId) {
-    ElMessage.warning('접속 Gateway를 선택하십시오.')
+    ElMessage.warning(at('selectGatewayWarning'))
     return
   }
   if (isEdit.value) {
     await updateAssetDatabase(form)
-    ElMessage.success('Database Asset을 업데이트했습니다.')
+    ElMessage.success(at('dbAssetUpdated'))
   } else {
     await addAssetDatabase(form)
-    ElMessage.success('Database Asset을 생성했습니다.')
+    ElMessage.success(at('dbAssetCreated'))
   }
   dialogVisible.value = false
   await loadData()
 }
 
 async function handleDelete(row) {
-  await ElMessageBox.confirm(`Database Asset “${row.name}”을(를) 삭제하시겠습니까?`, '알림', { type: 'warning' })
+  await ElMessageBox.confirm(at('deleteDbConfirm', { name: row.name }), at('notice'), { type: 'warning' })
   await deleteAssetDatabase(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(at('rowDeleted'))
   await loadData()
 }
 
@@ -188,10 +189,10 @@ onMounted(() => {
   <div class="database-page page-card asset-card-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">Database 관리</h2>
-        <p class="page-desc">MySQL, PostgreSQL, MongoDB, Redis Asset을 통합 관리하고 Database Type별로 연결, 구조, Workbench 기능을 제공합니다.</p>
+        <h2 class="page-title">{{ at('dbManageTitle') }}</h2>
+        <p class="page-desc">{{ at('dbManageDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate">Database 추가</el-button>
+      <el-button type="primary" @click="openCreate">{{ at('addDbButton') }}</el-button>
     </div>
 
     <div class="toolbar">
@@ -199,31 +200,31 @@ onMounted(() => {
         <el-input
           v-model="query.keyword"
           clearable
-          placeholder="Database 이름 / Host / DB 이름 검색"
+          :placeholder="at('dbSearchPlaceholder')"
           style="width: 260px"
           @keyup.enter="loadData"
         />
         <el-select v-model="query.dbType" clearable style="width: 140px" placeholder="Database Type">
-          <el-option label="전체 Type" value="" />
+          <el-option :label="at('allTypesOption')" value="" />
           <el-option label="MySQL" value="mysql" />
           <el-option label="PostgreSQL" value="postgresql" />
           <el-option label="MongoDB" value="mongodb" />
           <el-option label="Redis" value="redis" />
         </el-select>
-        <el-select v-model="query.status" clearable style="width: 140px" placeholder="상태">
-          <el-option label="활성화" value="1" />
-          <el-option label="비활성화" value="2" />
+        <el-select v-model="query.status" clearable style="width: 140px" :placeholder="at('statusSelect')">
+          <el-option :label="at('enabled')" value="1" />
+          <el-option :label="at('disabled')" value="2" />
         </el-select>
-        <el-select v-model="query.env" clearable style="width: 160px" placeholder="전체 Environment" @change="loadData">
+        <el-select v-model="query.env" clearable style="width: 160px" :placeholder="at('allEnvironments')" @change="loadData">
           <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
         </el-select>
-        <el-button type="primary" @click="loadData">검색</el-button>
-        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: '', status: '', env: '' }); loadData()">초기화</el-button>
+        <el-button type="primary" @click="loadData">{{ at('search') }}</el-button>
+        <el-button @click="Object.assign(query, { pageNum: 1, pageSize: 10, keyword: '', dbType: '', status: '', env: '' }); loadData()">{{ at('reset') }}</el-button>
       </div>
     </div>
 
     <el-table v-loading="loading" :data="tableData" border class="data-table">
-      <el-table-column label="Database 이름" min-width="180">
+      <el-table-column :label="at('dbTableName')" min-width="180">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">{{ row.name }}</el-button>
         </template>
@@ -231,10 +232,10 @@ onMounted(() => {
       <el-table-column label="Type" width="120">
         <template #default="{ row }"><el-tag effect="plain">{{ databaseTypeLabel(row.dbType) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="접속 모드" width="110">
+      <el-table-column :label="at('dbAccessModeColumn')" width="110">
         <template #default="{ row }">
           <el-tag :type="row.accessMode === 'readonly' ? 'warning' : 'success'" effect="plain">
-            {{ row.accessMode === 'readonly' ? '읽기 전용' : '읽기/쓰기' }}
+            {{ row.accessMode === 'readonly' ? at('readOnly') : at('readWrite') }}
           </el-tag>
         </template>
       </el-table-column>
@@ -243,29 +244,29 @@ onMounted(() => {
           <el-tag effect="plain">{{ environmentName(row.env) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="연결 주소" min-width="220">
+      <el-table-column :label="at('connAddrColumn')" min-width="220">
         <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
       </el-table-column>
-      <el-table-column label="접속 방식" min-width="150">
+      <el-table-column :label="at('accessModeLabel')" min-width="150">
         <template #default="{ row }">
           <span v-if="row.connectionMode === 'gateway'">Gateway: {{ row.gateway?.name || '-' }}</span>
-          <span v-else>직접 연결</span>
+          <span v-else>{{ at('directConnection') }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="dbName" label="기본 DB" min-width="140" />
-      <el-table-column prop="username" label="계정" min-width="120" />
-      <el-table-column prop="version" label="버전" min-width="140" />
-      <el-table-column label="연결 상태" width="110">
+      <el-table-column prop="dbName" :label="at('defaultDbColumn')" min-width="140" />
+      <el-table-column prop="username" :label="at('accountColumn')" min-width="120" />
+      <el-table-column prop="version" :label="at('versionColumn')" min-width="140" />
+      <el-table-column :label="at('connStatusColumn')" width="110">
         <template #default="{ row }">
           <el-tag :type="connectionStatusType(row)" effect="light">{{ connectionStatusText(row) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="비고" min-width="180" />
-      <el-table-column label="작업" width="240" fixed="right">
+      <el-table-column prop="description" :label="at('noteLabel')" min-width="180" />
+      <el-table-column :label="at('actions')" width="240" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openWorkbench(row)">Workbench</el-button>
-          <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">삭제</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ at('edit') }}</el-button>
+          <el-button link type="danger" @click="handleDelete(row)">{{ at('delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -281,11 +282,11 @@ onMounted(() => {
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? 'Database Asset 수정' : 'Database Asset 추가'" width="720px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? at('editDbTitle') : at('addDbTitle')" width="720px">
       <el-form label-width="110px">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="Database 이름"><el-input v-model="form.name" placeholder="예: order-prod" /></el-form-item>
+            <el-form-item :label="at('dbTableName')"><el-input v-model="form.name" :placeholder="at('dbNamePlaceholder')" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Database Type">
@@ -298,82 +299,82 @@ onMounted(() => {
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="소속 Environment" required>
-              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오.">
+            <el-form-item :label="at('environmentLabel')" required>
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" :placeholder="at('selectEnvironmentFull')">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="접속 모드" required>
+            <el-form-item :label="at('dbAccessModeColumn')" required>
               <el-radio-group v-model="form.accessMode">
-                <el-radio-button value="readonly">읽기 전용</el-radio-button>
-                <el-radio-button value="readwrite">읽기/쓰기</el-radio-button>
+                <el-radio-button value="readonly">{{ at('readOnly') }}</el-radio-button>
+                <el-radio-button value="readwrite">{{ at('readWrite') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="모니터링 Dashboard">
-              <el-switch v-model="form.monitorEnabled" active-text="활성화" inactive-text="비활성화" />
-              <div class="form-tip">활성화하면 상세 Page에서 Database Native Query로 운영 Metric을 수집합니다.</div>
+            <el-form-item :label="at('monitoringDashboardLabel')">
+              <el-switch v-model="form.monitorEnabled" :active-text="at('enabled')" :inactive-text="at('disabled')" />
+              <div class="form-tip">{{ at('monitorTip') }}</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Host 주소"><el-input v-model="form.host" placeholder="예: 10.0.0.12" /></el-form-item>
+            <el-form-item :label="at('hostAddressPlaceholder')"><el-input v-model="form.host" :placeholder="at('dbHostPlaceholder')" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Port"><el-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item :label="form.dbType === 'redis' || form.dbType === 'mongodb' ? '사용자 이름 (선택)' : '사용자 이름'">
-              <el-input v-model="form.username" :placeholder="form.dbType === 'redis' || form.dbType === 'mongodb' ? '인증을 사용하지 않으면 비워 둘 수 있습니다' : ''" />
+            <el-form-item :label="form.dbType === 'redis' || form.dbType === 'mongodb' ? at('usernameOptionalLabel') : at('usernameLabel')">
+              <el-input v-model="form.username" :placeholder="form.dbType === 'redis' || form.dbType === 'mongodb' ? at('usernameHint') : ''" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="비밀번호"><el-input v-model="form.password" show-password :placeholder="isEdit ? '비워 두면 변경되지 않습니다' : ''" /></el-form-item>
+            <el-form-item :label="at('passwordLabel')"><el-input v-model="form.password" show-password :placeholder="isEdit ? at('passwordPlaceholder') : ''" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item :label="form.dbType === 'redis' ? '논리 DB 번호' : '기본 DB'">
-              <el-input v-model="form.dbName" :placeholder="form.dbType === 'redis' ? '예: 0' : form.dbType === 'mongodb' ? '예: admin' : '예: app_db'" />
+            <el-form-item :label="form.dbType === 'redis' ? at('logicalDbLabel') : at('defaultDbColumn')">
+              <el-input v-model="form.dbName" :placeholder="form.dbType === 'redis' ? at('redisDbPlaceholder') : form.dbType === 'mongodb' ? at('mongoDbPlaceholder') : at('defaultDbPlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Charset">
-              <el-input v-model="form.charset" :disabled="form.dbType === 'mongodb' || form.dbType === 'redis'" placeholder="기본값 utf8mb4" />
+              <el-input v-model="form.charset" :disabled="form.dbType === 'mongodb' || form.dbType === 'redis'" :placeholder="at('charsetPlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="연결 방식">
+            <el-form-item :label="at('connectionModeLabel')">
               <el-radio-group v-model="form.connectionMode">
-                <el-radio-button label="direct">직접 연결</el-radio-button>
-                <el-radio-button label="gateway">Gateway를 통해 연결</el-radio-button>
+                <el-radio-button label="direct">{{ at('directConnection') }}</el-radio-button>
+                <el-radio-button label="gateway">{{ at('viaGatewayLine') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col v-if="form.connectionMode === 'gateway'" :span="12">
-            <el-form-item label="접속 Gateway" required>
-              <el-select v-model="form.gatewayId" filterable placeholder="Gateway를 선택하십시오." style="width: 100%">
+            <el-form-item :label="at('accessGatewayLabel')" required>
+              <el-select v-model="form.gatewayId" filterable :placeholder="at('selectGatewayFull')" style="width: 100%">
                 <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="비고"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
+            <el-form-item :label="at('noteLabel')"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="상태">
+            <el-form-item :label="at('status')">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">활성화</el-radio>
-                <el-radio :value="2">비활성화</el-radio>
+                <el-radio :value="1">{{ at('enabled') }}</el-radio>
+                <el-radio :value="2">{{ at('disabled') }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button :loading="testing" @click="handleTest">연결 테스트</el-button>
-        <el-button type="primary" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button>
+        <el-button :loading="testing" @click="handleTest">{{ at('testConnection') }}</el-button>
+        <el-button type="primary" @click="submit">{{ at('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
