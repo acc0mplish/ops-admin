@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteOpsApplication, queryOpsApplicationList, saveOpsApplication } from '../../api/ops'
 import { queryAssetCredentialOptions } from '../../api/asset'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
+import { apt } from '../../utils/application-i18n'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -98,17 +99,17 @@ async function openEdit(row) {
 
 async function submit() {
   if (!form.name || !form.code || !form.repoUrl) {
-    ElMessage.warning('Application 이름, Application Code와 Repository 주소를 입력하십시오.')
+    ElMessage.warning(apt('projectRequired'))
     return
   }
   if (isSVNRepository() && form.branch && !/^(HEAD|\d+)$/i.test(form.branch.trim())) {
-    ElMessage.warning('SVN Version은 HEAD 또는 숫자 Revision만 지원합니다')
+    ElMessage.warning(apt('svnVersionInvalid'))
     return
   }
   saving.value = true
   try {
     await saveOpsApplication({ ...form })
-    ElMessage.success('저장했습니다.')
+    ElMessage.success(apt('saved'))
     dialogVisible.value = false
     await loadData()
   } finally {
@@ -117,9 +118,9 @@ async function submit() {
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`Application "${row.name}"을(를) 삭제하시겠습니까?`, 'Application 삭제', { type: 'warning' })
+  await ElMessageBox.confirm(apt('projectDeleteConfirm', { name: row.name }), apt('projectDeleteTitle'), { type: 'warning' })
   await deleteOpsApplication(row.id)
-  ElMessage.success('삭제했습니다.')
+  ElMessage.success(apt('deleted'))
   await loadData()
 }
 
@@ -134,39 +135,39 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
   <div class="app-page">
     <div class="app-header">
       <div>
-        <h1>Application 관리</h1>
-        <p>Application Repository를 통합 관리하고 Environment별로 Host, K8s, Database, Gateway, Monitoring Resource를 바인딩합니다.</p>
+        <h1>{{ apt('projectManagementTitle') }}</h1>
+        <p>{{ apt('projectHeroDesc') }}</p>
       </div>
-      <el-button type="primary" @click="openCreate">+ 새 Application</el-button>
+      <el-button type="primary" @click="openCreate">+ {{ apt('newApplication') }}</el-button>
     </div>
 
     <div class="filter-panel">
       <el-form inline>
-        <el-form-item label="Application 이름">
-          <el-input v-model="query.keyword" clearable placeholder="Application 이름 / Repository 주소를 입력하십시오" @keyup.enter="loadData" />
+        <el-form-item :label="apt('applicationNameLabel')">
+          <el-input v-model="query.keyword" clearable :placeholder="apt('projectSearchPlaceholder')" @keyup.enter="loadData" />
         </el-form-item>
-        <el-form-item label="서비스 유형">
-          <el-select v-model="query.serviceType" clearable placeholder="서비스 유형을 선택하십시오">
-            <el-option label="프론트엔드 서비스" value="프론트엔드 서비스" />
-            <el-option label="백엔드 서비스" value="백엔드 서비스" />
-            <el-option label="미들웨어" value="미들웨어" />
+        <el-form-item :label="apt('serviceTypeLabel')">
+          <el-select v-model="query.serviceType" clearable :placeholder="apt('serviceTypePlaceholder')">
+            <el-option :label="apt('serviceTypeFrontend')" value="프론트엔드 서비스" />
+            <el-option :label="apt('serviceTypeBackend')" value="백엔드 서비스" />
+            <el-option :label="apt('serviceTypeMiddleware')" value="미들웨어" />
           </el-select>
         </el-form-item>
         <el-form-item label="Environment">
-          <el-select v-model="query.env" clearable placeholder="전체 Environment" @change="loadData">
+          <el-select v-model="query.env" clearable :placeholder="apt('allEnvironmentsPlaceholder')" @change="loadData">
             <el-option v-for="item in environmentOptions" :key="item.code" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">검색</el-button>
-          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', env: '', pageNum: 1 }); loadData()">초기화</el-button>
+          <el-button type="primary" @click="loadData">{{ apt('search') }}</el-button>
+          <el-button @click="Object.assign(query, { keyword: '', serviceType: '', env: '', pageNum: 1 }); loadData()">{{ apt('reset') }}</el-button>
         </el-form-item>
       </el-form>
     </div>
 
     <el-card shadow="never" class="table-card">
       <el-table v-loading="loading" :data="rows" row-key="id">
-        <el-table-column prop="name" label="Application 이름" min-width="170">
+        <el-table-column prop="name" :label="apt('applicationNameLabel')" min-width="170">
           <template #default="{ row }">
             <div class="name-cell">
               <strong>{{ row.name }}</strong>
@@ -174,31 +175,31 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="비즈니스 기능" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="serviceType" label="서비스 유형" width="120">
+        <el-table-column prop="description" :label="apt('businessCapability')" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="serviceType" :label="apt('serviceTypeLabel')" width="120">
           <template #default="{ row }">{{ row.serviceType || row.env || '-' }}</template>
         </el-table-column>
-        <el-table-column label="기본 Environment" width="120">
+        <el-table-column :label="apt('defaultEnvironmentLabel')" width="120">
           <template #default="{ row }"><el-tag effect="plain">{{ environmentName(row.env) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="repoUrl" label="Repository 주소" min-width="300" show-overflow-tooltip>
+        <el-table-column prop="repoUrl" :label="apt('repositoryAddressLabel')" min-width="300" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ row.repoType || 'git' }}</el-tag>
             <span class="repo-url">{{ row.repoUrl }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="상태" width="90">
+        <el-table-column :label="apt('status')" width="90">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ Number(row.status) === 1 ? '정상' : '비활성화' }}</el-tag>
+            <el-tag :type="statusType(row.status)" size="small">{{ Number(row.status) === 1 ? apt('statusHealthy') : apt('deactivate') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="생성자" width="100">관리자</el-table-column>
-        <el-table-column prop="createTime" label="생성 시각" min-width="170" />
-        <el-table-column label="작업" width="150" fixed="right">
+        <el-table-column :label="apt('creatorLabel')" width="100">{{ apt('creatorAdmin') }}</el-table-column>
+        <el-table-column prop="createTime" :label="apt('createdAtCol')" min-width="170" />
+        <el-table-column :label="apt('actions')" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">조회</el-button>
-            <el-button link type="primary" @click="openEdit(row)">수정</el-button>
-            <el-button link type="danger" @click="remove(row)">삭제</el-button>
+            <el-button link type="primary" @click="openEdit(row)">{{ apt('viewAction') }}</el-button>
+            <el-button link type="primary" @click="openEdit(row)">{{ apt('edit') }}</el-button>
+            <el-button link type="danger" @click="remove(row)">{{ apt('delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -207,20 +208,20 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? 'Application 수정' : '새 Application'" width="min(1280px, 94vw)" top="4vh" class="app-project-dialog">
+    <el-dialog v-model="dialogVisible" :title="form.id ? apt('editApplicationTitle') : apt('newApplication')" width="min(1280px, 94vw)" top="4vh" class="app-project-dialog">
       <el-form :model="form" label-width="96px">
         <el-row :gutter="14">
           <el-col :span="12">
-            <el-form-item label="Application 이름" required><el-input v-model="form.name" /></el-form-item>
+            <el-form-item :label="apt('applicationNameLabel')" required><el-input v-model="form.name" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Application Code" required><el-input v-model="form.code" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="서비스 유형"><el-input v-model="form.serviceType" placeholder="예: 프론트엔드 서비스 / 백엔드 서비스" /></el-form-item>
+            <el-form-item :label="apt('serviceTypeLabel')"><el-input v-model="form.serviceType" :placeholder="apt('serviceTypeExamplePlaceholder')" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="Repository 유형">
+            <el-form-item :label="apt('repositoryTypeLabel')">
               <el-radio-group v-model="form.repoType" @change="handleRepoTypeChange">
                 <el-radio-button label="git">Git</el-radio-button>
                 <el-radio-button label="svn">SVN</el-radio-button>
@@ -228,43 +229,43 @@ onMounted(async () => { await Promise.all([loadCredentialOptions(), loadData()])
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="Repository 주소" required><el-input v-model="form.repoUrl" :placeholder="isSVNRepository() ? 'https://svn.example.com/svn/team/app' : 'https://git.example.com/team/app.git'" /></el-form-item>
+            <el-form-item :label="apt('repositoryAddressLabel')" required><el-input v-model="form.repoUrl" :placeholder="isSVNRepository() ? 'https://svn.example.com/svn/team/app' : 'https://git.example.com/team/app.git'" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="Repository Credential">
-              <el-select v-model="form.repoCredentialId" clearable filterable style="width: 100%" :placeholder="isSVNRepository() ? 'Public SVN은 선택하지 않아도 되며 HTTP(S) 인증을 지원합니다' : 'Public Repository는 선택하지 않아도 됩니다'">
+              <el-select v-model="form.repoCredentialId" clearable filterable style="width: 100%" :placeholder="isSVNRepository() ? apt('credentialSvnPlaceholder') : apt('credentialGitPlaceholder')">
                 <el-option v-for="item in credentialOptions" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item :label="isSVNRepository() ? 'SVN Version' : '기본 Branch'">
-              <el-input v-model="form.branch" :placeholder="isSVNRepository() ? 'HEAD(최신 Version) 또는 숫자 Revision' : '예: main / master / release/1.0'" />
+            <el-form-item :label="isSVNRepository() ? apt('svnVersionLabel') : apt('defaultBranchCol')">
+              <el-input v-model="form.branch" :placeholder="isSVNRepository() ? apt('svnVersionPlaceholder') : apt('branchExamplePlaceholder')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="기본 Environment" required>
-              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" placeholder="Environment를 선택하십시오">
+            <el-form-item :label="apt('defaultEnvironmentLabel')" required>
+              <el-select v-model="form.env" :loading="environmentLoading" style="width: 100%" :placeholder="apt('environmentSelectPlaceholder')">
                 <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="비즈니스 기능"><el-input v-model="form.description" type="textarea" :rows="3" placeholder="예: 사용자 Login, Order 처리 또는 Game Gateway 등 비즈니스 기능 제공" /></el-form-item>
+            <el-form-item :label="apt('businessCapability')"><el-input v-model="form.description" type="textarea" :rows="3" :placeholder="apt('businessCapabilityPlaceholder')" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="상태">
+            <el-form-item :label="apt('status')">
               <el-radio-group v-model="form.status">
-                <el-radio :value="1">활성화</el-radio>
-                <el-radio :value="2">비활성화</el-radio>
+                <el-radio :value="1">{{ apt('activate') }}</el-radio>
+                <el-radio :value="2">{{ apt('deactivate') }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">저장</el-button>
+        <el-button @click="dialogVisible = false">{{ apt('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">{{ apt('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
