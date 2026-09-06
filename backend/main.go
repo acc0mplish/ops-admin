@@ -29,6 +29,11 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "verify-secrets" {
 		os.Exit(runVerifySecrets(os.Args[2:]))
 	}
+	// V2 shadow sync subcommand (Phase 2 PR 21): backfill + one sync run +
+	// the dated report artifact, dispatched before any server startup path.
+	if len(os.Args) >= 2 && os.Args[1] == "sync-inventory" {
+		os.Exit(runSyncInventory(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)

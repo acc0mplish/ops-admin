@@ -411,18 +411,19 @@ func TestMySQLMigrationSuite(t *testing.T) {
 	}
 
 	// PR 19 완성 (plan §6/§7 claim 18): the clean install records EVERY
-	// registered step — the full 0000–0003 set, each non-dirty, in order —
+	// registered step — the full 0000–0004 set, each non-dirty, in order —
 	// and the step0003 guard shape (generated column + composite unique) is
 	// present on MySQL. A step silently absent from the list would otherwise
-	// pass the no-op re-run above.
+	// pass the no-op re-run above. (PR 21 appends 0004 connection_source.)
 	wantSteps := map[int64]string{
 		0: "bootstrap_schema_migration",
 		1: "infra_foundation",
 		2: "tasks",
 		3: "task_guards",
+		4: "connection_source",
 	}
 	if len(after) != len(wantSteps) {
-		t.Errorf("recorded versions on MySQL = %d, want exactly %d (0000–0003)", len(after), len(wantSteps))
+		t.Errorf("recorded versions on MySQL = %d, want exactly %d (0000–0004)", len(after), len(wantSteps))
 	}
 	for version, name := range wantSteps {
 		row, ok := after[version]

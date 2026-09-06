@@ -5,11 +5,13 @@ package model_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
 	"ops-admin/backend/internal/infra/contract"
@@ -79,7 +81,7 @@ func TestInfraModelsMatchSpecVocab(t *testing.T) {
 		"task_event":                  parseColumns(t, &model.TaskEvent{}),
 	}
 	want := map[string][]string{
-		"provider_connection":         {"id", "uid", "provider_type", "name", "endpoint", "gateway_id", "tls_profile", "config_json", "status", "version", "capability_hash", "last_health_at"},
+		"provider_connection":         {"id", "uid", "provider_type", "name", "endpoint", "gateway_id", "tls_profile", "config_json", "status", "version", "capability_hash", "last_health_at", "source_model", "source_id", "source_updated_at", "stale_source"},
 		"provider_context":            {"id", "uid", "connection_id", "kind", "external_id", "name", "status", "metadata_json"},
 		"provider_credential_binding": {"id", "provider_connection_id", "provider_context_id", "purpose", "secret_ref_id", "status", "last_validated_at"},
 		"secret_ref":                  {"id", "uid", "backend", "path", "version", "key_id", "ciphertext", "rotated_at"},
@@ -117,6 +119,64 @@ func TestInfraModelsMatchSpecVocab(t *testing.T) {
 	if len(contract.ProviderContextKinds) == 0 {
 		t.Error("contract.ProviderContextKinds is empty — provider_context.kind has no vocabulary")
 	}
+}
+
+// T-step0004 — TestProviderConnectionSourceColumns (plan §2 PR 21 file 4):
+// after the full step list runs, provider_connection carries the §5.4
+// provenance columns and the composite (source_model, source_id) index —
+// and T41's exact table set above stays untouched (12 tables, additive
+// columns only).
+func TestProviderConnectionSourceColumns(t *testing.T) {
+	db := testutil.OpenMemoryDB(t)
+	if err := migrate.Run(context.Background(), db); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	for _, column := range []string{"source_model", "source_id", "source_updated_at", "stale_source"} {
+		exists, err := columnInTable(db, "provider_connection", column)
+		if err != nil {
+			t.Fatalf("column %q existence: %v", column, err)
+		}
+		if !exists {
+			t.Errorf("provider_connection.%s missing after step 0004", column)
+		}
+	}
+
+	// The composite (source_model, source_id) index must cover both columns.
+	rows, err := db.Raw(`SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'provider_connection' AND sql IS NOT NULL`).Rows()
+	if err != nil {
+		t.Fatalf("read indexes: %v", err)
+	}
+	defer rows.Close()
+	covered := map[string]bool{}
+	for rows.Next() {
+		var sql string
+		if err := rows.Scan(&sql); err != nil {
+			t.Fatalf("scan index sql: %v", err)
+		}
+		for _, column := range []string{"source_model", "source_id"} {
+			if strings.Contains(sql, column) {
+				covered[column] = true
+			}
+		}
+	}
+	for _, column := range []string{"source_model", "source_id"} {
+		if !covered[column] {
+			t.Errorf("no provider_connection index covers %q — §5.4 incremental checkpoint needs the composite (source_model, source_id) index", column)
+		}
+	}
+}
+
+func columnInTable(db *gorm.DB, table, column string) (bool, error) {
+	var count int64
+	// The pragma table-valued function takes its argument in call position —
+	// inline the table name (a test-constant identifier, step0003 관례) rather
+	// than relying on bind support inside pragma calls.
+	if err := db.Raw(
+		fmt.Sprintf(`SELECT COUNT(*) FROM pragma_table_info('%s') WHERE name = ?`, table), column).Scan(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func tableOf(modelType any) string {
