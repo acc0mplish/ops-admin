@@ -20,8 +20,16 @@ type ProviderConnection struct { // §7.2 verbatim
 	Version        string           `json:"version" gorm:"size:64"`
 	CapabilityHash string           `json:"capabilityHash" gorm:"size:128"`
 	LastHealthAt   *time.Time       `json:"lastHealthAt"`
-	CreatedAt      time.Time        `json:"createTime"`
-	UpdatedAt      time.Time        `json:"updateTime"`
+	// Source provenance columns (§5.4 propagation — plan PR 21 / J3, step
+	// 0004). The backfill fills them from the v1 source row; v1 deletion
+	// marks stale_source=true and the V2 read side joins stale rows away
+	// (§5.4c "treats stale_source rows as absent").
+	SourceModel     string     `json:"-" gorm:"size:32;index:idx_provider_connection_source,priority:1"`
+	SourceID        uint       `json:"-" gorm:"index:idx_provider_connection_source,priority:2"`
+	SourceUpdatedAt *time.Time `json:"-"`
+	StaleSource     bool       `json:"-" gorm:"default:false;index"`
+	CreatedAt       time.Time  `json:"createTime"`
+	UpdatedAt       time.Time  `json:"updateTime"`
 }
 
 func (ProviderConnection) TableName() string { return "provider_connection" }
