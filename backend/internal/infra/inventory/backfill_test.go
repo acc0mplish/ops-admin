@@ -81,8 +81,8 @@ func connectionBySource(t *testing.T, db *gorm.DB, id uint) (model.ProviderConne
 
 // T49 — TestBackfillIncrementalAndStaleMarking (§5.4): full propagation on
 // the first run, changed-rows-only on re-runs, v1 deletions marked
-// stale_source, and the kubeconfig envelope copied verbatim (J2 — no
-// re-encryption, no plaintext detour).
+// stale_source, the kubeconfig envelope copied verbatim, and a plaintext
+// (P-class) source kubeconfig encrypted on copy.
 func TestBackfillIncrementalAndStaleMarking(t *testing.T) {
 	db := newInventoryDB(t)
 	if err := db.Exec(k8sClusterDDL).Error; err != nil {
@@ -100,8 +100,11 @@ func TestBackfillIncrementalAndStaleMarking(t *testing.T) {
 	ids := seedClusters(t, db, []k8sClusterSeed{
 		{name: "kind-a", apiServer: "https://a:6443", kubeConfig: envelopeA, gatewayID: &gw},
 		{name: "kind-b", apiServer: "https://b:6443", kubeConfig: envelopeB},
-		{name: "kind-empty", apiServer: "https://c:6443", kubeConfig: ""},                           // defensive skip
-		{name: "kind-legacy", apiServer: "https://d:6443", kubeConfig: "plaintext-not-an-envelope"}, // A6 UNKNOWN halt
+		{name: "kind-empty", apiServer: "https://c:6443", kubeConfig: ""}, // defensive skip
+		// P-class source: §4.4 keeps k8s_cluster.kube_config plaintext until the
+		// Phase 4 cutover, so the backfill must encrypt it on copy (§7.5 —
+		// SecretRef is v2-only) instead of skipping it.
+		{name: "kind-legacy", apiServer: "https://d:6443", kubeConfig: "plaintext-not-an-envelope"},
 	})
 
 	// Run 1 — full propagation.
@@ -109,11 +112,11 @@ func TestBackfillIncrementalAndStaleMarking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("backfill run 1: %v", err)
 	}
-	if report.Created != 2 {
-		t.Errorf("run 1 created = %d, want 2", report.Created)
+	if report.Created != 3 {
+		t.Errorf("run 1 created = %d, want 3", report.Created)
 	}
-	if report.Skipped != 2 {
-		t.Errorf("run 1 skipped = %d, want 2 (empty kubeconfig + non-envelope A6 halt)", report.Skipped)
+	if report.Skipped != 1 {
+		t.Errorf("run 1 skipped = %d, want 1 (empty kubeconfig only)", report.Skipped)
 	}
 
 	// Mapping assertions for the propagated row.
@@ -165,13 +168,46 @@ func TestBackfillIncrementalAndStaleMarking(t *testing.T) {
 		t.Errorf("SecretRef.KeyID = %q not parsed from the envelope", ref.KeyID)
 	}
 
+	// SecretRef for the plaintext P-class source: the copy must be a fresh v2
+	// envelope (§7.5 — SecretRef never holds plaintext) that round-trips to the
+	// original material, while the v1 cell stays plaintext (§4.4 P-class rule —
+	// the v1 reader parses plain YAML until the Phase 4 cutover).
+	connL, ok := connectionBySource(t, db, ids[3])
+	if !ok {
+		t.Fatal("run 1 produced no connection for kind-legacy (plaintext source must not be skipped)")
+	}
+	bindingL := model.ProviderCredentialBinding{}
+	if err := db.Where("provider_connection_id = ?", connL.ID).First(&bindingL).Error; err != nil {
+		t.Fatalf("kind-legacy credential binding: %v", err)
+	}
+	refL := model.SecretRef{}
+	if err := db.First(&refL, bindingL.SecretRefID).Error; err != nil {
+		t.Fatalf("kind-legacy secret ref: %v", err)
+	}
+	if !strings.HasPrefix(refL.Ciphertext, "v2:") {
+		t.Errorf("kind-legacy SecretRef.Ciphertext is not a v2 envelope (plaintext detour into V2): %q", refL.Ciphertext)
+	}
+	if plain, err := util.DecryptSecretV2(refL.Ciphertext); err != nil || plain != "plaintext-not-an-envelope" {
+		t.Errorf("kind-legacy SecretRef does not round-trip: plain=%q err=%v", plain, err)
+	}
+	if refL.KeyID == "" || !strings.HasPrefix(refL.Ciphertext, "v2:"+refL.KeyID+":") {
+		t.Errorf("kind-legacy SecretRef.KeyID = %q not parsed from the sealed envelope", refL.KeyID)
+	}
+	var v1Plain string
+	if err := db.Table("k8s_cluster").Where("id = ?", ids[3]).Select("kube_config").Scan(&v1Plain).Error; err != nil {
+		t.Fatalf("re-read kind-legacy kube_config: %v", err)
+	}
+	if v1Plain != "plaintext-not-an-envelope" {
+		t.Errorf("v1 kube_config rewritten by the backfill: %q (R9 — read-only; §4.4 keeps it plaintext until Phase 4)", v1Plain)
+	}
+
 	// Run 2 — immediate re-run: nothing changed → unchanged everywhere.
 	report2, err := inventory.RunK8sBackfill(context.Background(), db)
 	if err != nil {
 		t.Fatalf("backfill run 2: %v", err)
 	}
-	if report2.Created != 0 || report2.Updated != 0 || report2.Unchanged != 2 {
-		t.Errorf("run 2 report = %+v, want created 0 updated 0 unchanged 2", report2)
+	if report2.Created != 0 || report2.Updated != 0 || report2.Unchanged != 3 {
+		t.Errorf("run 2 report = %+v, want created 0 updated 0 unchanged 3", report2)
 	}
 	// Deterministic UID — the same source row maps to the same connection.
 	connA2, _ := connectionBySource(t, db, ids[0])
@@ -188,7 +224,7 @@ func TestBackfillIncrementalAndStaleMarking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("backfill run 3: %v", err)
 	}
-	if report3.Updated != 1 || report3.Unchanged != 1 || report3.Created != 0 {
+	if report3.Updated != 1 || report3.Unchanged != 2 || report3.Created != 0 {
 		t.Errorf("run 3 report = %+v, want updated 1 unchanged 1 created 0", report3)
 	}
 	connA3, _ := connectionBySource(t, db, ids[0])
