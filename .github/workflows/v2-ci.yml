@@ -152,3 +152,35 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Core provider isolation and opdef purity rules
         run: bash scripts/check-arch-boundary.sh
+
+  arch-boundary-canary:
+    # Standing canary — a canary that does not fire fails CI (spec §4.10).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Plant R1+R2 violations in a scratch copy
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary"
+          cd "$RUNNER_TEMP/canary/backend"
+          # R1 plant: valid blank import, sed-inserted into the existing import
+          # block (an appended `import` after declarations is a syntax error and
+          # would fire for the wrong reason).
+          sed -i 's|^\t"context"$|\t"context"\n\t_ "ops-admin/backend/internal/domain/provider"|' internal/domain/dnsserver/server.go
+          grep -q 'internal/domain/provider' internal/domain/dnsserver/server.go || { echo "CANARY PLANT FAILED: sed anchor drifted"; exit 1; }
+          # R2 plant: a comment is enough — R2 greps source text, so the plant
+          # cannot fail for a syntax reason.
+          printf '\n// canary plant: tencent product identifier\n' >> internal/domain/dnsserver/server.go
+      - name: The planted violations must be caught (failure is required)
+        run: |
+          cd "$RUNNER_TEMP/canary"
+          if bash scripts/check-arch-boundary.sh > out.txt 2>&1; then
+            echo "CANARY DID NOT FIRE: arch-boundary passed with planted violations"; exit 1
+          fi
+          grep -q 'R1 FAIL' out.txt || { echo "CANARY ATTRIBUTION FAILED: no R1 FAIL"; exit 1; }
+          grep -q 'R2 FAIL' out.txt || { echo "CANARY ATTRIBUTION FAILED: no R2 FAIL"; exit 1; }
+          grep -E 'R[12] FAIL' out.txt
