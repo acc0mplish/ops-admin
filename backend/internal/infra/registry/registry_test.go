@@ -272,6 +272,55 @@ func TestOperationDefinitionRoundTripLookup(t *testing.T) {
 	}
 }
 
+// T12 — RegisterCapabilities 원자성: 유효 원소 뒤에 무효 원소가 오는 배치 호출은
+// 전체가 거부되어야 하며, 루프 도중 기입된 유효 원소가 잔류해서는 안 된다
+// ("Registration-time validation is authoritative" 계약). 무효 원소를 제거한
+// 재시도는 성공해야 한다.
+func TestRegisterCapabilitiesAtomicRejectsBatch(t *testing.T) {
+	r := newRegistryWithDiscoverer(t)
+	if err := r.RegisterCapabilities("kubernetes", validCapability()); err != nil {
+		t.Fatalf("seed capability: %v", err)
+	}
+
+	err := r.RegisterCapabilities("kubernetes",
+		contract.Capability{Name: "inventory.incremental", Version: "1"},
+		contract.Capability{Name: "inventory.missing", Version: "1"},
+	)
+	if err == nil {
+		t.Fatal("batch containing an invalid capability accepted")
+	}
+
+	for _, got := range r.Capabilities("kubernetes") {
+		if got.Name == "inventory.incremental" {
+			t.Error("rejected batch partially committed: inventory.incremental leaked into the registry")
+		}
+	}
+
+	if err := r.RegisterCapabilities("kubernetes", contract.Capability{Name: "inventory.incremental", Version: "1"}); err != nil {
+		t.Errorf("retry with the invalid element removed must succeed, got: %v", err)
+	}
+}
+
+// T13 — ResourceKinds()는 전역 어휘 슬라이스 별칭이 아닌 방어 복사를 반환한다:
+// 반환값 제자리 쓰기는 contract.M1ResourceKinds를 오염시켜서는 안 된다.
+func TestResourceKindsDefensiveCopy(t *testing.T) {
+	r := newRegistry(t)
+	got := r.ResourceKinds()
+	if len(got) == 0 {
+		t.Fatal("ResourceKinds() returned empty slice; vocabulary changed?")
+	}
+	want := append([]string(nil), contract.M1ResourceKinds...)
+
+	got[0] = "compute.tampered"
+
+	if after := r.ResourceKinds(); !reflect.DeepEqual(after, want) {
+		t.Errorf("global vocabulary mutated through returned slice: got %v, want %v", after, want)
+	}
+	if !reflect.DeepEqual(contract.M1ResourceKinds, want) {
+		t.Error("contract.M1ResourceKinds was mutated in place")
+	}
+}
+
 // T11 — 미등록 유형/연산 조회는 ok=false·패닉 없음, New() 직후 ProviderTypeNames()는 빈 슬라이스.
 func TestRegistryLookupMissesAndEmptyState(t *testing.T) {
 	empty := registry.New()

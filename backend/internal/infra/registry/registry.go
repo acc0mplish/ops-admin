@@ -132,17 +132,21 @@ func (r *Registry) RegisterCapabilities(providerType string, caps ...contract.Ca
 		vocab[e.Name] = e
 	}
 	existing := r.caps[providerType]
-	if existing == nil {
-		existing = make(map[string]contract.Capability)
-	}
+	// Two-pass: validate every element against the live vocabulary before any
+	// write, so a failing element leaves the registry untouched (atomic batch —
+	// registration-time validation is authoritative, §11).
+	staged := make(map[string]bool, len(caps))
 	for _, c := range caps {
-		_, ok := vocab[c.Name]
-		if !ok {
+		if _, ok := vocab[c.Name]; !ok {
 			return fmt.Errorf("registry: capability %q: unknown name, not in the M1 capability vocabulary (§10.1)", c.Name)
 		}
 		if _, dup := existing[c.Name]; dup {
 			return fmt.Errorf("registry: capability %q already registered for provider type %q", c.Name, providerType)
 		}
+		if staged[c.Name] {
+			return fmt.Errorf("registry: capability %q duplicated within the batch for provider type %q", c.Name, providerType)
+		}
+		staged[c.Name] = true
 		for _, k := range c.ResourceKinds {
 			if !contract.IsKnownResourceKind(k) {
 				return fmt.Errorf("registry: capability %q: unknown resource kind %q (§8.5)", c.Name, k)
@@ -151,6 +155,11 @@ func (r *Registry) RegisterCapabilities(providerType string, caps ...contract.Ca
 		if !servesCapabilities(r.providers[providerType].adapter) {
 			return fmt.Errorf("registry: capability %q declared by provider type %q whose adapter implements no capability-serving interface (Discoverer/OperationExecutor) (§11, V5 guard)", c.Name, providerType)
 		}
+	}
+	if existing == nil {
+		existing = make(map[string]contract.Capability)
+	}
+	for _, c := range caps {
 		existing[c.Name] = c
 	}
 	r.caps[providerType] = existing
@@ -231,7 +240,8 @@ func (r *Registry) Operation(name string) (contract.OperationDefinition, bool) {
 	return def, ok
 }
 
-// ResourceKinds delegates to contract.M1ResourceKinds.
+// ResourceKinds returns a defensive copy of contract.M1ResourceKinds —
+// callers cannot mutate the global vocabulary through the returned slice.
 func (r *Registry) ResourceKinds() []string {
-	return contract.M1ResourceKinds
+	return append([]string(nil), contract.M1ResourceKinds...)
 }
