@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ops-admin/backend/config"
+	"ops-admin/backend/internal/infra/migrate"
 	"ops-admin/backend/router"
 	"ops-admin/backend/store"
 	"ops-admin/backend/util"
@@ -43,6 +44,12 @@ func main() {
 	db, err := store.NewDB(cfg)
 	if err != nil {
 		log.Fatalf("connect db failed: %v", err)
+	}
+
+	// v2 versioned migration runner (PR 15): fail-closed — a runner failure
+	// blocks v1 startup (W-1).
+	if err := migrate.Run(context.Background(), db); err != nil {
+		log.Fatalf("v2 schema migration failed: %v", err)
 	}
 
 	if err := store.AutoMigrate(db); err != nil {
