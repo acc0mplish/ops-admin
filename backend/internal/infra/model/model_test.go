@@ -1,41 +1,51 @@
-package model
+// External test package (model_test): T41 must run the migration runner over
+// the model set, and migrate imports model — an in-package test would form an
+// import cycle. Only exported identifiers are asserted.
+package model_test
 
 import (
+	"context"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
-	"reflect"
-
 	"gorm.io/gorm/schema"
 
 	"ops-admin/backend/internal/infra/contract"
+	"ops-admin/backend/internal/infra/migrate"
+	"ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/internal/testutil"
 )
 
-// specTables is the M1 model set PR 16 delivers (plan §2 PR 16 — §7.2–7.5,
-// §8.1/8.2/8.4/§9.1). T18 asserts every table name verbatim.
+// specTables is the M1 model set PR 16 + PR 17 deliver (plan §2 PR 16 —
+// §7.2–7.5, §8.1/8.2/8.4/§9.1; plan §2 PR 17 — §13.1 task 3종). T18 and the
+// PR 17 task-table assertions both go through this table.
 func specTables(t *testing.T) map[string]any {
 	t.Helper()
 	return map[string]any{
-		"provider_connection":         &ProviderConnection{},
-		"provider_context":            &ProviderContext{},
-		"provider_credential_binding": &ProviderCredentialBinding{},
-		"secret_ref":                  &SecretRef{},
-		"infra_resource":              &InfraResource{},
-		"resource_observation":        &ResourceObservation{},
-		"inventory_sync_run":          &InventorySyncRun{},
-		"infra_relationship":          &InfraRelationship{},
+		"provider_connection":         &model.ProviderConnection{},
+		"provider_context":            &model.ProviderContext{},
+		"provider_credential_binding": &model.ProviderCredentialBinding{},
+		"secret_ref":                  &model.SecretRef{},
+		"infra_resource":              &model.InfraResource{},
+		"resource_observation":        &model.ResourceObservation{},
+		"inventory_sync_run":          &model.InventorySyncRun{},
+		"infra_relationship":          &model.InfraRelationship{},
+		// PR 17 (plan §2 file 14): 태스크 3테이블 존재·TableName 단얫.
+		"provider_task": &model.ProviderTask{},
+		"task_attempt":  &model.TaskAttempt{},
+		"task_event":    &model.TaskEvent{},
 	}
 }
 
 // parseColumns resolves a model's DB column names through the GORM schema
 // parser, so T18 asserts the mapped column set rather than Go field names.
-func parseColumns(t *testing.T, model any) map[string]bool {
+func parseColumns(t *testing.T, modelType any) map[string]bool {
 	t.Helper()
-	s, err := schema.Parse(model, &sync.Map{}, schema.NamingStrategy{})
+	s, err := schema.Parse(modelType, &sync.Map{}, schema.NamingStrategy{})
 	if err != nil {
-		t.Fatalf("schema.Parse(%T): %v", model, err)
+		t.Fatalf("schema.Parse(%T): %v", modelType, err)
 	}
 	cols := make(map[string]bool, len(s.FieldsByDBName))
 	for name := range s.FieldsByDBName {
@@ -44,25 +54,29 @@ func parseColumns(t *testing.T, model any) map[string]bool {
 	return cols
 }
 
-// T18 — TestInfraModelsMatchSpecVocab: table names for all 8 M1 models,
-// spec field presence, and the vocabulary anchors (§7.4 purposes are echoed
-// by the secrets broker, SecretRef backend default, contract resource kinds).
+// T18 — TestInfraModelsMatchSpecVocab: table names for all M1 models, spec
+// field presence, and the vocabulary anchors (§7.4 purposes are echoed by the
+// secrets broker, SecretRef backend default, contract resource kinds).
+// PR 17 extends the same assertions to the task 3-table set (§13.1).
 func TestInfraModelsMatchSpecVocab(t *testing.T) {
-	for table, model := range specTables(t) {
-		if got := tableOf(model); got != table {
-			t.Errorf("%T.TableName() = %q, want %q", model, got, table)
+	for table, modelType := range specTables(t) {
+		if got := tableOf(modelType); got != table {
+			t.Errorf("%T.TableName() = %q, want %q", modelType, got, table)
 		}
 	}
 
 	fieldSets := map[string]map[string]bool{
-		"provider_connection":         parseColumns(t, &ProviderConnection{}),
-		"provider_context":            parseColumns(t, &ProviderContext{}),
-		"provider_credential_binding": parseColumns(t, &ProviderCredentialBinding{}),
-		"secret_ref":                  parseColumns(t, &SecretRef{}),
-		"infra_resource":              parseColumns(t, &InfraResource{}),
-		"resource_observation":        parseColumns(t, &ResourceObservation{}),
-		"inventory_sync_run":          parseColumns(t, &InventorySyncRun{}),
-		"infra_relationship":          parseColumns(t, &InfraRelationship{}),
+		"provider_connection":         parseColumns(t, &model.ProviderConnection{}),
+		"provider_context":            parseColumns(t, &model.ProviderContext{}),
+		"provider_credential_binding": parseColumns(t, &model.ProviderCredentialBinding{}),
+		"secret_ref":                  parseColumns(t, &model.SecretRef{}),
+		"infra_resource":              parseColumns(t, &model.InfraResource{}),
+		"resource_observation":        parseColumns(t, &model.ResourceObservation{}),
+		"inventory_sync_run":          parseColumns(t, &model.InventorySyncRun{}),
+		"infra_relationship":          parseColumns(t, &model.InfraRelationship{}),
+		"provider_task":               parseColumns(t, &model.ProviderTask{}),
+		"task_attempt":                parseColumns(t, &model.TaskAttempt{}),
+		"task_event":                  parseColumns(t, &model.TaskEvent{}),
 	}
 	want := map[string][]string{
 		"provider_connection":         {"id", "uid", "provider_type", "name", "endpoint", "gateway_id", "tls_profile", "config_json", "status", "version", "capability_hash", "last_health_at"},
@@ -73,6 +87,11 @@ func TestInfraModelsMatchSpecVocab(t *testing.T) {
 		"resource_observation":        {"id", "resource_id", "generation_uid", "observation_hash", "normalizer_version", "normalized_json", "raw_json", "observed_at"},
 		"inventory_sync_run":          {"id", "uid", "connection_id", "context_id", "mode", "status", "cursor", "seen_count", "created_count", "updated_count", "missing_count", "error_code", "started_at", "committed_at", "finished_at"},
 		"infra_relationship":          {"id", "from_resource_id", "to_resource_id", "type", "source", "generation_uid", "attributes_json", "last_seen_at"},
+		// §13.1/§13.2/§13.4 조립형 (plan §3.4). step0003 (PR 18) Expand 컬럼
+		// (approval 3종·idempotency_key)은 이 시점의 칼럼 집합에 없다.
+		"provider_task": {"id", "uid", "operation_name", "operation_version", "resource_uid", "payload_json", "status", "attempt_count", "max_attempts", "next_attempt_at", "lease_expires_at", "version", "cancel_requested", "error_code", "error_message", "call_timeout_seconds", "deadline_at", "started_at", "finished_at"},
+		"task_attempt":  {"id", "task_id", "attempt_no", "worker_id", "handle_ref", "started_at", "finished_at", "error_code", "error_message"},
+		"task_event":    {"id", "task_id", "attempt_no", "type", "actor", "data_json", "at"},
 	}
 	for table, fields := range want {
 		for _, col := range fields {
@@ -84,7 +103,7 @@ func TestInfraModelsMatchSpecVocab(t *testing.T) {
 
 	// §7.5 — SecretRef.Backend defaults to the M1 internal backend (read off
 	// the struct's gorm tag — the schema parser normalizes defaults away).
-	secretRefType := reflect.TypeOf(SecretRef{})
+	secretRefType := reflect.TypeOf(model.SecretRef{})
 	backendField, ok := secretRefType.FieldByName("Backend")
 	if !ok || backendField.Tag.Get("gorm") != "size:32;not null;default:internal" {
 		t.Errorf("SecretRef.Backend gorm tag = %q, want the §7.5 default:internal form", backendField.Tag.Get("gorm"))
@@ -100,9 +119,9 @@ func TestInfraModelsMatchSpecVocab(t *testing.T) {
 	}
 }
 
-func tableOf(model any) string {
+func tableOf(modelType any) string {
 	type namer interface{ TableName() string }
-	if n, ok := model.(namer); ok {
+	if n, ok := modelType.(namer); ok {
 		return n.TableName()
 	}
 	return ""
@@ -113,36 +132,36 @@ func tableOf(model any) string {
 // holding after a re-migration.
 func TestResourceIdentityUnique(t *testing.T) {
 	db := testutil.OpenMemoryDB(t)
-	if err := db.AutoMigrate(&InfraResource{}); err != nil {
+	if err := db.AutoMigrate(&model.InfraResource{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 
-	seed := InfraResource{UID: "res-1", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
+	seed := model.InfraResource{UID: "res-1", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
 	if err := db.Create(&seed).Error; err != nil {
 		t.Fatalf("seed insert: %v", err)
 	}
 
-	dup := InfraResource{UID: "res-2", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
+	dup := model.InfraResource{UID: "res-2", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
 	if err := db.Create(&dup).Error; err == nil {
 		t.Fatal("duplicate (context, kind, external_urn) insert was accepted — identity unique missing")
 	}
 
 	// A different urn in the same context is a distinct resource.
-	other := InfraResource{UID: "res-3", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:2"}
+	other := model.InfraResource{UID: "res-3", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:2"}
 	if err := db.Create(&other).Error; err != nil {
 		t.Fatalf("same context, distinct urn insert rejected: %v", err)
 	}
 	// The same urn in another context is a distinct resource too.
-	crossCtx := InfraResource{UID: "res-4", ContextID: 8, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
+	crossCtx := model.InfraResource{UID: "res-4", ContextID: 8, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
 	if err := db.Create(&crossCtx).Error; err != nil {
 		t.Fatalf("distinct context, same urn insert rejected: %v", err)
 	}
 
 	// E-3a — the tag-synthesized unique must survive a re-migration.
-	if err := db.AutoMigrate(&InfraResource{}); err != nil {
+	if err := db.AutoMigrate(&model.InfraResource{}); err != nil {
 		t.Fatalf("re-migrate: %v", err)
 	}
-	dupAgain := InfraResource{UID: "res-5", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
+	dupAgain := model.InfraResource{UID: "res-5", ContextID: 7, Kind: "compute.vm", ExternalURN: "urn:vm:1"}
 	if err := db.Create(&dupAgain).Error; err == nil {
 		t.Fatal("identity unique did not survive re-AutoMigrate (E-3a)")
 	}
@@ -152,7 +171,7 @@ func TestResourceIdentityUnique(t *testing.T) {
 // exist as a composite index (§8.2).
 func TestObservationCompositeIndex(t *testing.T) {
 	db := testutil.OpenMemoryDB(t)
-	if err := db.AutoMigrate(&ResourceObservation{}); err != nil {
+	if err := db.AutoMigrate(&model.ResourceObservation{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 
@@ -187,5 +206,57 @@ func TestObservationCompositeIndex(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToUpper(indexSQL), "DESC") {
 		t.Errorf("idx_obs_res_time DDL %q lacks observed_at DESC ordering", indexSQL)
+	}
+}
+
+// T41 — TestMigrationAppliesExactV2TableSet (r2 H): after the full step list
+// runs, the sqlite_master table set is EXACTLY equal to the spec §3.2 listing
+// under the A1 12-table ruling — no extras, no missing. This replaces the old
+// grep-count check for claim 4.
+func TestMigrationAppliesExactV2TableSet(t *testing.T) {
+	db := testutil.OpenMemoryDB(t)
+	if err := migrate.Run(context.Background(), db); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	rows, err := db.Raw(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).Rows()
+	if err != nil {
+		t.Fatalf("read sqlite_master: %v", err)
+	}
+	defer rows.Close()
+	got := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan sqlite_master row: %v", err)
+		}
+		got[name] = true
+	}
+
+	// 스펙 §3.2 나열 그대로 (A1: 12종이 M1 전부 — "13" 선언 대비 1종 부족은 계획 §0.1 판정).
+	want := map[string]bool{
+		"schema_migration":            true,
+		"provider_connection":         true,
+		"provider_context":            true,
+		"provider_credential_binding": true,
+		"secret_ref":                  true,
+		"infra_resource":              true,
+		"resource_observation":        true,
+		"inventory_sync_run":          true,
+		"infra_relationship":          true,
+		"provider_task":               true,
+		"task_attempt":                true,
+		"task_event":                  true,
+	}
+
+	for name := range got {
+		if !want[name] {
+			t.Errorf("migration created a table outside the §3.2 set: %q", name)
+		}
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("migration is missing a §3.2 table: %q", name)
+		}
 	}
 }

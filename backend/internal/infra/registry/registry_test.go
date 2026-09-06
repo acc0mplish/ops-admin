@@ -42,6 +42,54 @@ func (discoverOnlyAdapter) Discover(_ context.Context, _ contract.DiscoverReques
 	return contract.DiscoverPage{}, nil
 }
 
+// bareAdapter implements BaseAdapter only — the "no capability-serving
+// interface" double for the §3.7 mapping-table validation.
+type bareAdapter struct{}
+
+func (bareAdapter) Descriptor() contract.ProviderTypeDescriptor {
+	return contract.ProviderTypeDescriptor{
+		Type:            "tencent",
+		AdapterVersion:  "1",
+		ProtocolVersion: "1",
+		ConfigSchema:    func() contract.ConfigSpec { return contract.ConfigSpec{} },
+		BuiltIn:         true,
+	}
+}
+
+func (bareAdapter) Validate(_ context.Context, _ contract.ConnectionView) error { return nil }
+func (bareAdapter) Health(_ context.Context, _ contract.ConnectionView) contract.HealthResult {
+	return contract.HealthResult{Healthy: true}
+}
+func (bareAdapter) Close() error { return nil }
+
+// executorOnlyAdapter implements BaseAdapter + OperationExecutor — no
+// Discoverer, deliberately no TaskPoller (optional interface, §3.7).
+type executorOnlyAdapter struct{ bareAdapter }
+
+func (executorOnlyAdapter) Descriptor() contract.ProviderTypeDescriptor {
+	d := bareAdapter{}.Descriptor()
+	d.Type = "aliyun"
+	return d
+}
+
+func (executorOnlyAdapter) Execute(_ context.Context, _ contract.OperationRequest) (contract.OperationHandle, error) {
+	return contract.OperationHandle{}, nil
+}
+
+// registerBare registers one of the mapping-test doubles under its own type
+// name (M1 vocabulary names, one per double).
+func registerDouble(t *testing.T, r *registry.Registry, a contract.BaseAdapter, typeName string) {
+	t.Helper()
+	if err := r.RegisterProviderType(contract.ProviderTypeDescriptor{
+		Type:            typeName,
+		AdapterVersion:  "1",
+		ProtocolVersion: "1",
+		ConfigSchema:    func() contract.ConfigSpec { return contract.ConfigSpec{} },
+	}, a); err != nil {
+		t.Fatalf("RegisterProviderType(%s): %v", typeName, err)
+	}
+}
+
 // newRegistry returns an empty registry with fake registered.
 func newRegistry(t *testing.T) *registry.Registry {
 	t.Helper()
@@ -117,7 +165,7 @@ func TestRegisterProviderRejectsUnknownContextKind(t *testing.T) {
 // T6 — V2: provider 유형 중복 등록 거부.
 func TestRegisterProviderDuplicateRejected(t *testing.T) {
 	r := newRegistry(t)
-	err := r.RegisterProviderType(fake.Adapter{}.Descriptor(), fake.Adapter{})
+	err := r.RegisterProviderType((&fake.Adapter{}).Descriptor(), &fake.Adapter{})
 	if err == nil {
 		t.Fatal("duplicate provider type registered without error")
 	}
@@ -153,14 +201,119 @@ func TestRegisterCapabilityValidation(t *testing.T) {
 	}
 }
 
-// T8 — V5 최소 가드: capability-수용 인터페이스(Discoverer·OperationExecutor)를
-// 하나도 구현하지 않는 어댑터(fake)의 어떤 capability 선언도 거부된다.
-// capability별 인터페이스 매핑 단언은 Phase 1 계획 소관(계획 §13 인계 4).
+// T8 — V5에서 매핑 표 기반 검증으로 강화 (§3.7, r2 D — phase0 "Phase 1 계획 소관"
+// 주석 이행): 선언 capability의 필수 인터페이스를 어댑터가 타입 단언으로
+// 구현했는지 검사한다. cost.read·console.web_terminal의 빈 요구는 검증 제외가
+// 아니라 표의 명시적 값이다(§3.7).
 func TestCapabilityInterfaceMappingRule(t *testing.T) {
-	r := newRegistry(t)
-	err := r.RegisterCapabilities("fake", validCapability())
-	if err == nil {
-		t.Fatal("capability declared by adapter implementing no capability-serving interface was accepted")
+	newWithDoubles := func(t *testing.T) (bare *registry.Registry, discoverer *registry.Registry, executor *registry.Registry) {
+		t.Helper()
+		rBare := registry.New()
+		registerDouble(t, rBare, bareAdapter{}, "tencent")
+		rDiscoverer := registry.New()
+		registerDouble(t, rDiscoverer, discoverOnlyAdapter{}, "kubernetes")
+		rExecutor := registry.New()
+		registerDouble(t, rExecutor, executorOnlyAdapter{}, "aliyun")
+		return rBare, rDiscoverer, rExecutor
+	}
+
+	cap := func(name string) contract.Capability { return contract.Capability{Name: name, Version: "1"} }
+
+	t.Run("bare adapter cannot declare an interface-requiring capability", func(t *testing.T) {
+		rBare, _, _ := newWithDoubles(t)
+		for _, name := range []string{"inventory.full", "inventory.incremental", "orchestration.kubernetes.read", "compute.vm.read", "orchestration.kubernetes.apply"} {
+			err := rBare.RegisterCapabilities("tencent", cap(name))
+			if err == nil {
+				t.Errorf("bare adapter declared %q without the required interface (§3.7 table)", name)
+				continue
+			}
+			wantIface := map[string]string{
+				"inventory.full":                 "Discoverer",
+				"inventory.incremental":          "Discoverer",
+				"orchestration.kubernetes.read":  "Discoverer",
+				"compute.vm.read":                "Discoverer",
+				"orchestration.kubernetes.apply": "OperationExecutor",
+			}[name]
+			if !strings.Contains(err.Error(), wantIface) {
+				t.Errorf("%s rejection must name the required interface %s, got: %v", name, wantIface, err)
+			}
+		}
+	})
+
+	t.Run("empty requirement rows are explicit table values, not exclusions", func(t *testing.T) {
+		rBare, _, _ := newWithDoubles(t)
+		// cost.read — §3.2 row 18 (existing scheduler); console.web_terminal —
+		// ConsoleBroker M2+. Both pass with NO interface check.
+		if err := rBare.RegisterCapabilities("tencent", cap("cost.read")); err != nil {
+			t.Errorf("cost.read on a bare adapter rejected: %v — the empty requirement is a table value (§3.7)", err)
+		}
+		if err := rBare.RegisterCapabilities("tencent", cap("console.web_terminal")); err != nil {
+			t.Errorf("console.web_terminal on a bare adapter rejected: %v — deferred mapping row (§3.7)", err)
+		}
+	})
+
+	t.Run("discoverer-only adapter cannot declare apply", func(t *testing.T) {
+		_, rDiscoverer, _ := newWithDoubles(t)
+		err := rDiscoverer.RegisterCapabilities("kubernetes", cap("orchestration.kubernetes.apply"))
+		if err == nil {
+			t.Fatal("orchestration.kubernetes.apply declared by a Discoverer-only adapter accepted — table requires OperationExecutor")
+		}
+	})
+
+	t.Run("executor-only adapter cannot declare discovery capabilities", func(t *testing.T) {
+		_, _, rExecutor := newWithDoubles(t)
+		if err := rExecutor.RegisterCapabilities("aliyun", cap("inventory.full")); err == nil {
+			t.Fatal("inventory.full declared by an executor-only adapter accepted — table requires Discoverer")
+		}
+	})
+
+	t.Run("optional interfaces stay optional", func(t *testing.T) {
+		// executorOnlyAdapter deliberately lacks TaskPoller/TaskCanceller —
+		// apply must still be declarable (§3.7 선택 인터페이스).
+		_, _, rExecutor := newWithDoubles(t)
+		if err := rExecutor.RegisterCapabilities("aliyun", cap("orchestration.kubernetes.apply")); err != nil {
+			t.Errorf("apply rejected without optional TaskPoller: %v", err)
+		}
+	})
+
+	t.Run("fake declares inventory.full and apply through the table", func(t *testing.T) {
+		r := newRegistry(t) // fake.Register declares both capabilities (§3.7)
+		caps := r.Capabilities("fake")
+		names := map[string]bool{}
+		for _, c := range caps {
+			names[c.Name] = true
+		}
+		if !names["inventory.full"] || !names["orchestration.kubernetes.apply"] {
+			t.Errorf("fake capabilities = %v, want inventory.full + orchestration.kubernetes.apply declared (§3.7)", caps)
+		}
+	})
+}
+
+// T8 보조 — 매핑 표 완결성: 표는 M1 어휘 7종과 정확히 동치(누락·중복·오타 0)여야
+// 하고, 인터페이스 이름은 검증기가 아는 어휘 안에 있어야 한다.
+func TestCapabilityInterfaceTableCoversVocabulary(t *testing.T) {
+	rowCount := map[string]int{}
+	for _, row := range contract.CapabilityInterfaceMap {
+		rowCount[row.Capability]++
+		switch row.RequiredInterface {
+		case "", "Discoverer", "OperationExecutor":
+		default:
+			t.Errorf("capability %q: unknown RequiredInterface %q — the validator cannot assert it", row.Capability, row.RequiredInterface)
+		}
+		for _, opt := range row.OptionalInterfaces {
+			if opt != "TaskPoller" && opt != "TaskCanceller" {
+				t.Errorf("capability %q: unknown optional interface %q", row.Capability, opt)
+			}
+		}
+	}
+	for _, entry := range contract.M1CapabilityVocabulary {
+		if rowCount[entry.Name] != 1 {
+			t.Errorf("capability %q has %d mapping rows, want exactly 1 (§3.7 table ↔ M1 vocabulary 동치)", entry.Name, rowCount[entry.Name])
+		}
+	}
+	if len(contract.CapabilityInterfaceMap) != len(contract.M1CapabilityVocabulary) {
+		t.Errorf("mapping table has %d rows, vocabulary has %d — no extras allowed (§3.7)",
+			len(contract.CapabilityInterfaceMap), len(contract.M1CapabilityVocabulary))
 	}
 }
 
@@ -168,13 +321,20 @@ func TestCapabilityInterfaceMappingRule(t *testing.T) {
 // RequiredCapability·알려지지 않은 종·파손된 권한 문자열(A14 완화 정규식)·
 // Mutating↔ReadOnly 불일치 → 전부 에러. 4세그·하이픈 세그는 수용.
 func TestRegisterOperationValidation(t *testing.T) {
+	// §3.7 매핑 표: inventory.full은 Discoverer 유형에, apply는
+	// OperationExecutor 유형에만 선언 가능 — 시드도 그에 맞게 분배한다.
 	newWithDiscoverer := func(t *testing.T) *registry.Registry {
 		r := newRegistryWithDiscoverer(t)
 		if err := r.RegisterCapabilities("kubernetes",
-			contract.Capability{Name: "orchestration.kubernetes.apply", Version: "1"},
 			contract.Capability{Name: "inventory.full", Version: "1"},
 		); err != nil {
-			t.Fatalf("seed capabilities: %v", err)
+			t.Fatalf("seed inventory.full: %v", err)
+		}
+		registerDouble(t, r, executorOnlyAdapter{}, "aliyun")
+		if err := r.RegisterCapabilities("aliyun",
+			contract.Capability{Name: "orchestration.kubernetes.apply", Version: "1"},
+		); err != nil {
+			t.Fatalf("seed orchestration.kubernetes.apply: %v", err)
 		}
 		return r
 	}

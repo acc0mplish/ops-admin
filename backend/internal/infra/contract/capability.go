@@ -24,7 +24,7 @@ type CapabilityVocabularyEntry struct {
 // ReadOnly is vocabulary metadata only — it is never used to derive a
 // serving interface (r2, V5): console.web_terminal is served by ConsoleBroker
 // (M2+, not declared here) and cost.read is readonly but not a Discoverer.
-// The capability→interface mapping table is owned by the Phase 1 plan.
+// The capability→interface mapping table is CapabilityInterfaceMap below.
 var M1CapabilityVocabulary = []CapabilityVocabularyEntry{
 	{Name: "inventory.full", ReadOnly: true, OwnerPhase: "M1"},
 	{Name: "inventory.incremental", ReadOnly: true, OwnerPhase: "M1"},
@@ -34,3 +34,75 @@ var M1CapabilityVocabulary = []CapabilityVocabularyEntry{
 	{Name: "cost.read", ReadOnly: true, OwnerPhase: "M1"},
 	{Name: "console.web_terminal", ReadOnly: true, OwnerPhase: "M1"},
 }
+
+// InterfaceRequirement is one row of the capability→interface mapping table
+// (plan §3.7 — Phase 0 인계 1 이행). The registry's RegisterCapabilities
+// type-asserts a provider type's adapter against RequiredInterface before
+// accepting a capability declaration. No ReadOnly→interface dichotomy is
+// used (phase0 r2 V5 판정 승계 — cost.read·console.web_terminal 반례).
+type InterfaceRequirement struct {
+	// Capability names the §10.1 vocabulary entry this row governs.
+	Capability string
+	// RequiredInterface names the interface an adapter MUST implement to
+	// declare the capability: "Discoverer", "OperationExecutor", or ""
+	// (none). "" is an explicit table VALUE, not a validation exclusion.
+	RequiredInterface string
+	// OptionalInterfaces names interfaces the execution path MAY use when
+	// present (type-asserted at run time, never required at registration).
+	OptionalInterfaces []string
+	// Reason documents the row's provenance (§3.7 표의 근거·비고 열).
+	Reason string
+}
+
+// CapabilityInterfaceMap — the §3.7 mapping table, 7 rows, one per M1
+// capability name. cost.read (§3.2 row 18 — finops stays on the existing
+// scheduler, no adapter interface) and console.web_terminal (§11 ConsoleBroker
+// M2+) carry an explicit empty requirement.
+var CapabilityInterfaceMap = []InterfaceRequirement{
+	{Capability: "inventory.full", RequiredInterface: "Discoverer",
+		Reason: "§9 동기화가 Discoverer 페이징 소비"},
+	{Capability: "inventory.incremental", RequiredInterface: "Discoverer",
+		Reason: "동일(커서, §9.1)"},
+	{Capability: "orchestration.kubernetes.read", RequiredInterface: "Discoverer",
+		Reason: "Phase 2 k8s read-only 슬라이스 = 디스커버리 (A11)"},
+	{Capability: "orchestration.kubernetes.apply", RequiredInterface: "OperationExecutor",
+		OptionalInterfaces: []string{"TaskPoller", "TaskCanceller"},
+		Reason:             "§14.3 UPID — 핸들 반환 시 폴 시도, 널 핸들은 동기 완료(이중 모드 r2.2)"},
+	{Capability: "compute.vm.read", RequiredInterface: "Discoverer",
+		Reason: "Phase 4 클라우드 인벤토리"},
+	{Capability: "cost.read", RequiredInterface: "",
+		Reason: "§3.2 row 18: finops는 기존 스케줄러 유지 — 어댑터 인터페이스 없음"},
+	{Capability: "console.web_terminal", RequiredInterface: "",
+		Reason: "§11 \"M2+, with the agent ADR\" — 미선언"},
+}
+
+// OperationStatus.State vocabulary (§3.9 — the Phase 0 inheritance
+// "종단 상태는 Phase 1 폴러 설계 시점에 확정", resolved here). Succeeded/Failed
+// are terminal; Running means the provider handle is still in flight and the
+// task stays running — poll cycles are attempts, not a distinct state (§13.5).
+// timed_out is engine-derived (CallTimeout/Deadline) and cancellation is a
+// task-layer concern — neither is an adapter state.
+const (
+	OperationStateRunning   = "running"
+	OperationStateSucceeded = "succeeded"
+	OperationStateFailed    = "failed"
+)
+
+// IsTerminalOperationState reports whether an adapter-reported state ends
+// the operation (§3.9).
+func IsTerminalOperationState(state string) bool {
+	return state == OperationStateSucceeded || state == OperationStateFailed
+}
+
+// §7.4 credential-binding purpose vocabulary, promoted to contract constants
+// by the §3.6 extension (PR 17 — plan §3.5). The secrets package's
+// CredentialPurposes slice stays the broker-side copy until its owning PR
+// syncs it to these constants; the values are identical.
+const (
+	CredentialPurposeInventory  = "inventory"
+	CredentialPurposeOperations = "operations"
+	CredentialPurposeBilling    = "billing"
+	CredentialPurposeConsole    = "console"
+	CredentialPurposeMonitoring = "monitoring"
+	CredentialPurposeBackup     = "backup"
+)
