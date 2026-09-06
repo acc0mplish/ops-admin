@@ -218,6 +218,7 @@ const REPO_DICT_HELPERS = {
   'finops-account-i18n.js': ['fat'],
   'finops-i18n.js': ['ft'],
   'integration-i18n.js': ['it'],
+  'infra-i18n.js': ['inft'],
   'k8s-extra-i18n.js': ['kt'],
   'ldap-i18n.js': ['lt'],
   'monitor-i18n.js': ['mt'],

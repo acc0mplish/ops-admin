@@ -94,6 +94,9 @@ import DNSQueryTest from '../views/domains/DNSQueryTest.vue'
 import DNSAudit from '../views/domains/DNSAudit.vue'
 import SSLCertificates from '../views/domains/SSLCertificates.vue'
 import SSLCertificateDetail from '../views/domains/SSLCertificateDetail.vue'
+import InfraOverview from '../views/infra/InfraOverview.vue'
+import InfraProviders from '../views/infra/InfraProviders.vue'
+import K8sInventory from '../views/infra/K8sInventory.vue'
 import { getToken } from '../utils/auth'
 
 const routes = [
@@ -179,6 +182,9 @@ const routes = [
       { path: '/containers/services/workload', component: AssetServiceWorkloadDetail, meta: { title: 'Service Details', app: 'containers', summary: 'Shows resource relationships among service workloads, Service, Deployment, ReplicaSet, and Pod.' } },
       { path: '/containers/services/logs', component: AssetServiceWorkloadLogs, meta: { title: 'Service Logs', app: 'containers', summary: 'Shows Kubernetes logs for Pods in the selected service workload.' } },
       { path: '/assets/services/:pathMatch(.*)*', redirect: (to) => `/containers/services/${to.params.pathMatch || ''}` },
+      { path: '/infra/overview', component: InfraOverview, meta: { title: 'Infrastructure Overview', app: 'console' } },
+      { path: '/infra/providers', component: InfraProviders, meta: { title: 'Provider Connections', app: 'console' } },
+      { path: '/infra/resources', component: K8sInventory, meta: { title: 'K8s Inventory', app: 'console' } },
       { path: '/containers/k8s', redirect: '/containers/k8s/clusters' },
       { path: '/containers/k8s/clusters', component: K8sClusterManage, meta: { title: 'Cluster Management', app: 'containers' } },
       { path: '/containers/k8s/clusters/:id/detail', name: 'K8sClusterDetail', component: AssetDetail, props: { resourceType: 'k8s' }, meta: { title: 'Cluster Details', app: 'containers' } },
