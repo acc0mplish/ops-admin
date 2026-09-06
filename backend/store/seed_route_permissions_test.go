@@ -87,7 +87,7 @@ func missingRouteGrants(t *testing.T, db *gorm.DB, roleID uint) []string {
 func markerRow(t *testing.T, db *gorm.DB) (model.Menu, bool) {
 	t.Helper()
 	var marker model.Menu
-	err := db.Where("value = ?", routePermissionsMarkerValue).First(&marker).Error
+	err := db.Where("value = ?", RoutePermissionsMarkerValue).First(&marker).Error
 	if err != nil {
 		return marker, false
 	}
@@ -131,7 +131,7 @@ func TestRoutePermissionSeedCreatesMenus(t *testing.T) {
 		}
 	}
 	var root model.Menu
-	if err := db.Where("value = ?", routePermissionsRootValue).First(&root).Error; err != nil {
+	if err := db.Where("value = ?", RoutePermissionsRootValue).First(&root).Error; err != nil {
 		t.Fatal(err)
 	}
 	if root.MenuStatus != 0 {
@@ -198,7 +198,7 @@ func TestSeedIsIdempotent(t *testing.T) {
 		if err := db.Model(&model.RoleMenu{}).Count(&grants).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Model(&model.Menu{}).Where("value = ?", routePermissionsMarkerValue).Count(&markers).Error; err != nil {
+		if err := db.Model(&model.Menu{}).Where("value = ?", RoutePermissionsMarkerValue).Count(&markers).Error; err != nil {
 			t.Fatal(err)
 		}
 		return menus, grants, markers

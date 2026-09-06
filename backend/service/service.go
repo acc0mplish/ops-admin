@@ -21,6 +21,7 @@ import (
 	"ops-admin/backend/auth"
 	"ops-admin/backend/internal/domain/dnsserver"
 	"ops-admin/backend/model"
+	"ops-admin/backend/store"
 	"ops-admin/backend/util"
 )
 
@@ -847,9 +848,58 @@ func (s *Service) RoleMenuIDs(roleID uint) ([]uint, error) {
 	return ids, err
 }
 
+// ErrProtectedSystemMenu marks an operator request that would modify or
+// delete a seeded system menu row: the hidden route-permissions root or the
+// one-shot migration marker. Losing either row makes
+// migrateRoleRoutePermissionsOnce re-run on the next boot and re-grant every
+// existing role its full route vocabulary.
+var ErrProtectedSystemMenu = errors.New("protected system menu: this row is managed by the system and cannot be modified or deleted")
+
+// isProtectedSystemMenu reports whether a sys_menu row belongs to the seeded
+// route-permission infrastructure and must be kept away from operator
+// mutations (value-based; the rows themselves are created by store.Seed).
+func isProtectedSystemMenu(menu model.Menu) bool {
+	return menu.Value == store.RoutePermissionsRootValue || menu.Value == store.RoutePermissionsMarkerValue
+}
+
+// collectHiddenMenuIDs resolves the set of menu IDs that must not reach the
+// menu-management UI: the hidden route-permissions root, the migration marker
+// and every descendant of the root (the route permission leaves). The subtree
+// closure runs to a fixed point so arbitrarily deep nesting under the root is
+// hidden too.
+func collectHiddenMenuIDs(list []model.Menu) map[uint]bool {
+	hidden := make(map[uint]bool, len(list))
+	for _, menu := range list {
+		if isProtectedSystemMenu(menu) {
+			hidden[menu.ID] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, menu := range list {
+			if !hidden[menu.ID] && hidden[menu.ParentID] {
+				hidden[menu.ID] = true
+				changed = true
+			}
+		}
+	}
+	return hidden
+}
+
 func (s *Service) ListMenus() ([]model.Menu, error) {
 	var list []model.Menu
-	return list, s.db.Order("sort asc, id asc").Find(&list).Error
+	if err := s.db.Order("sort asc, id asc").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	hidden := collectHiddenMenuIDs(list)
+	filtered := make([]model.Menu, 0, len(list))
+	for _, menu := range list {
+		if hidden[menu.ID] {
+			continue
+		}
+		filtered = append(filtered, menu)
+	}
+	return filtered, nil
 }
 
 func (s *Service) CreateMenu(payload MenuPayload) error {
@@ -866,6 +916,13 @@ func (s *Service) CreateMenu(payload MenuPayload) error {
 }
 
 func (s *Service) UpdateMenu(payload MenuPayload) error {
+	var existing model.Menu
+	if err := s.db.First(&existing, payload.ID).Error; err != nil {
+		return err
+	}
+	if isProtectedSystemMenu(existing) {
+		return ErrProtectedSystemMenu
+	}
 	return s.db.Model(&model.Menu{}).Where("id = ?", payload.ID).Updates(map[string]any{
 		"parent_id":   payload.ParentID,
 		"menu_name":   payload.MenuName,
@@ -879,6 +936,13 @@ func (s *Service) UpdateMenu(payload MenuPayload) error {
 }
 
 func (s *Service) DeleteMenu(id uint) error {
+	var existing model.Menu
+	if err := s.db.First(&existing, id).Error; err != nil {
+		return err
+	}
+	if isProtectedSystemMenu(existing) {
+		return ErrProtectedSystemMenu
+	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Delete(&model.Menu{}, id).Error; err != nil {
 			return err

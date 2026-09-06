@@ -2,6 +2,7 @@ package opdef
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -259,7 +260,7 @@ func newOpdefTestDB(t *testing.T) *gorm.DB {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.Menu{}, &model.RoleMenu{}, &model.AdminRole{}); err != nil {
+	if err := db.AutoMigrate(&model.Menu{}, &model.Role{}, &model.RoleMenu{}, &model.AdminRole{}); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -277,10 +278,15 @@ func seedGrantMenus(t *testing.T, db *gorm.DB, values ...string) {
 	}
 }
 
-// grantPermissions gives adminID one role holding the menus of the given
-// permission values, mirroring the sys_admin_role / sys_role_menu join.
+// grantPermissions gives adminID one active role holding the menus of the
+// given permission values, mirroring the sys_admin_role / sys_role_menu /
+// sys_role join.
 func grantPermissions(t *testing.T, db *gorm.DB, adminID uint, roleID uint, values ...string) {
 	t.Helper()
+	role := model.Role{ID: roleID, RoleName: "fixture", RoleKey: fmt.Sprintf("fixture-%d", roleID), Status: 1}
+	if err := db.Create(&role).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&model.AdminRole{AdminID: adminID, RoleID: roleID}).Error; err != nil {
 		t.Fatal(err)
 	}

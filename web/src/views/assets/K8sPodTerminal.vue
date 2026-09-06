@@ -41,7 +41,7 @@ async function connectTerminal(){
   // whatever a previous resume created before dialing its own. Liveness
   // guard: dial only while this container selection is still current
   // (④review N-1 — no orphan WS into a disposed terminal).
-  if(container!==selectedContainer.value||!clusterId.value||!namespace.value||!podName.value)return
+  if(container!==selectedContainer.value||!clusterId.value||!namespace.value||!podName.value){connecting.value=false;return}
   disconnectTerminal();connecting.value=true
   const currentSocket=new WebSocket(buildK8sPodTerminalWSUrl({clusterId:clusterId.value,namespace:namespace.value,podName:podName.value,container,rows:term?.rows||32,cols:term?.cols||120,ticket}))
   socket=currentSocket
