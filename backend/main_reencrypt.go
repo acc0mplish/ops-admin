@@ -16,9 +16,12 @@ import (
 	"ops-admin/backend/util"
 )
 
-// secretCheckpointTable is the durable (table, pk) record that makes Step 2
-// resumable: an interrupted run leaves a mixed state the dual-key reader
-// serves, and the next run skips every checkpointed row (§4.4).
+// secretCheckpointTable is the durable (table, column, pk) record that makes
+// Step 2 resumable: an interrupted run leaves a mixed state the dual-key
+// reader serves, and the next run skips every checkpointed cell (§4.4). The
+// column component is load-bearing: a table with several E-class columns
+// reaches the checkpoint per column, so a (table, pk) key would make the
+// first column's resume abandon every later column.
 const secretCheckpointTable = "ops_secret_migration_checkpoint"
 
 // secretMigrationOptions carries the Step 2 operator switches.
@@ -37,12 +40,15 @@ type secretMigrationOptions struct {
 
 // secretMigrationField reports one §4.1 field's Step 2 outcome.
 type secretMigrationField struct {
-	Model   string           `json:"model"`
-	Table   string           `json:"table"`
-	Column  string           `json:"column"`
-	Class   string           `json:"class"`
-	Missing bool             `json:"missing,omitempty"`
-	Counts  util.FieldCounts `json:"counts"`
+	Model  string `json:"model"`
+	Table  string `json:"table"`
+	Column string `json:"column"`
+	Class  string `json:"class"`
+	// Missing marks a registry column absent from this database.
+	Missing bool `json:"missing,omitempty"`
+	// Migrated is the number of rows this run rewrote for the field alone.
+	Migrated int              `json:"migrated"`
+	Counts   util.FieldCounts `json:"counts"`
 }
 
 // secretMigrationReport is the Step 2 artifact.
@@ -159,18 +165,22 @@ func reencryptSecretsInDB(db *gorm.DB, opts secretMigrationOptions) (secretMigra
 			continue
 		}
 		if field.MixedDeclaration {
+			// The field's own migrated count is the delta this sweep adds to
+			// the run total, so each field line reports its own share.
+			migratedBefore := report.Migrated
 			counts, missing, err := reencryptScheduleVariables(db, field, opts, checkpoints, &report)
 			if err != nil {
 				return report, err
 			}
-			report.Fields = append(report.Fields, secretMigrationField{Model: field.Model, Table: field.Table, Column: field.Column, Class: string(field.Class), Missing: missing, Counts: counts})
+			report.Fields = append(report.Fields, secretMigrationField{Model: field.Model, Table: field.Table, Column: field.Column, Class: string(field.Class), Missing: missing, Migrated: report.Migrated - migratedBefore, Counts: counts})
 			continue
 		}
+		migratedBefore := report.Migrated
 		counts, missing, err := reencryptColumnField(db, field, opts, checkpoints, &report)
 		if err != nil {
 			return report, err
 		}
-		report.Fields = append(report.Fields, secretMigrationField{Model: field.Model, Table: field.Table, Column: field.Column, Class: string(field.Class), Missing: missing, Counts: counts})
+		report.Fields = append(report.Fields, secretMigrationField{Model: field.Model, Table: field.Table, Column: field.Column, Class: string(field.Class), Missing: missing, Migrated: report.Migrated - migratedBefore, Counts: counts})
 	}
 	return report, nil
 }
@@ -196,7 +206,7 @@ func reencryptColumnField(db *gorm.DB, field util.SecretField, opts secretMigrat
 		formats := make([]util.SecretFormat, 0, len(rows))
 		for _, row := range rows {
 			lastID = row.ID
-			if checkpoints[secretCheckpointKey(field.Table, row.ID)] {
+			if checkpoints[secretCheckpointKey(field.Table, field.Column, row.ID)] {
 				report.SkippedCheckpoint++
 				continue
 			}
@@ -204,7 +214,7 @@ func reencryptColumnField(db *gorm.DB, field util.SecretField, opts secretMigrat
 			formats = append(formats, format)
 			switch format {
 			case util.FormatV2, util.FormatEmpty, util.FormatNotSecret:
-				if err := markSecretCheckpoint(db, field.Table, row.ID, opts.DryRun); err != nil {
+				if err := markSecretCheckpoint(db, field.Table, field.Column, row.ID, opts.DryRun); err != nil {
 					return counts, false, err
 				}
 			case util.FormatLegacy:
@@ -225,9 +235,25 @@ func reencryptColumnField(db *gorm.DB, field util.SecretField, opts secretMigrat
 	return counts, false, nil
 }
 
+// readPersistedSecret re-reads a freshly written column from the database so
+// the verify step observes the stored bytes (§4.4 write→verify), not the
+// in-memory envelope.
+func readPersistedSecret(db *gorm.DB, table, column string, id uint) (string, error) {
+	var persisted sql.NullString
+	if err := db.Table(table).Select(column).Where("id = ?", id).Scan(&persisted).Error; err != nil {
+		return "", err
+	}
+	return persisted.String, nil
+}
+
+// reencryptPersistedReader is the verify-step read path; the migration test
+// swaps it to prove the verification consumes the database, not memory.
+var reencryptPersistedReader = readPersistedSecret
+
 // reencryptRowValue performs one row's read → write v2 → verify cycle. The
-// verify step decrypts the new envelope and byte-compares it against the
-// in-memory plaintext before any persistence is considered done.
+// write lands first; the verify step then re-reads the persisted column and
+// byte-compares the decrypt-as-v2 result against the in-memory plaintext, so
+// a migration only counts once the database itself round trips.
 func reencryptRowValue(db *gorm.DB, table, column string, id uint, stored string, field util.SecretField, opts secretMigrationOptions, report *secretMigrationReport) error {
 	plaintext, err := util.ReadSecretField(stored, field, true)
 	if err != nil {
@@ -237,19 +263,27 @@ func reencryptRowValue(db *gorm.DB, table, column string, id uint, stored string
 	if err != nil {
 		return fmt.Errorf("seal %s id=%d %s: %w", table, id, column, err)
 	}
-	reopened, err := util.DecryptSecretV2(v2Value)
-	if err != nil || reopened != plaintext {
-		return fmt.Errorf("verify %s id=%d %s failed: decrypt-as-v2 does not equal the in-memory plaintext", table, id, column)
-	}
 	if opts.DryRun {
+		// A dry run writes nothing, so the freshly sealed envelope is the
+		// only artifact to verify; the real run verifies after the write.
+		if reopened, err := util.DecryptSecretV2(v2Value); err != nil || reopened != plaintext {
+			return fmt.Errorf("verify %s id=%d %s failed: decrypt-as-v2 does not equal the in-memory plaintext", table, id, column)
+		}
 		report.PlannedMigrations++
 		return nil
 	}
 	if err := db.Table(table).Where("id = ?", id).Update(column, v2Value).Error; err != nil {
 		return fmt.Errorf("write %s id=%d %s: %w", table, id, column, err)
 	}
+	persisted, err := reencryptPersistedReader(db, table, column, id)
+	if err != nil {
+		return fmt.Errorf("read back %s id=%d %s: %w", table, id, column, err)
+	}
+	if reopened, err := util.DecryptSecretV2(persisted); err != nil || reopened != plaintext {
+		return fmt.Errorf("verify %s id=%d %s failed: the persisted value does not decrypt back to the in-memory plaintext", table, id, column)
+	}
 	report.Migrated++
-	return markSecretCheckpoint(db, table, id, false)
+	return markSecretCheckpoint(db, table, column, id, false)
 }
 
 // reencryptScheduleVariables sweeps the mixed-declaration variables column
@@ -279,7 +313,7 @@ func reencryptScheduleVariables(db *gorm.DB, field util.SecretField, opts secret
 		}
 		for _, task := range tasks {
 			lastID = task.ID
-			if checkpoints[secretCheckpointKey(field.Table, task.ID)] {
+			if checkpoints[secretCheckpointKey(field.Table, field.Column, task.ID)] {
 				report.SkippedCheckpoint++
 				continue
 			}
@@ -288,7 +322,7 @@ func reencryptScheduleVariables(db *gorm.DB, field util.SecretField, opts secret
 				return counts, false, err
 			}
 			counts = addFieldCounts(counts, util.AggregateFormats(taskFormats))
-			if err := markSecretCheckpoint(db, field.Table, task.ID, opts.DryRun); err != nil {
+			if err := markSecretCheckpoint(db, field.Table, field.Column, task.ID, opts.DryRun); err != nil {
 				return counts, false, err
 			}
 			report.Processed++
@@ -394,40 +428,58 @@ func scriptDeclaredSecretNames(db *gorm.DB) (map[uint]map[string]bool, error) {
 	return secretNames, nil
 }
 
-func secretCheckpointKey(table string, pk uint) string {
-	return fmt.Sprintf("%s:%d", table, pk)
+func secretCheckpointKey(table, column string, pk uint) string {
+	return fmt.Sprintf("%s:%s:%d", table, column, pk)
 }
 
 // ensureSecretCheckpointTable creates the checkpoint table with portable SQL
 // (no auto-increment, composite primary key) so both the production MySQL and
-// the test sqlite accept it.
+// the test sqlite accept it. A table left behind by an earlier build with the
+// narrower (table, pk) key is rebuilt: checkpoints are a resume hint, and the
+// sweep of an already migrated cell re-classifies it as v2 and re-checkpoints
+// it under the wider key, so losing the old rows is safe.
 func ensureSecretCheckpointTable(db *gorm.DB) error {
+	if db.Migrator().HasTable(secretCheckpointTable) && !db.Migrator().HasColumn(secretCheckpointTable, "column_name") {
+		if err := db.Exec("DROP TABLE " + secretCheckpointTable).Error; err != nil {
+			return err
+		}
+	}
 	return db.Exec("CREATE TABLE IF NOT EXISTS " + secretCheckpointTable +
-		" (table_name VARCHAR(191) NOT NULL, pk BIGINT NOT NULL, PRIMARY KEY (table_name, pk))").Error
+		" (table_name VARCHAR(191) NOT NULL, column_name VARCHAR(191) NOT NULL, pk BIGINT NOT NULL, PRIMARY KEY (table_name, column_name, pk))").Error
 }
 
 func loadSecretCheckpoints(db *gorm.DB) (map[string]bool, error) {
 	var rows []struct {
-		TableName string
-		PK        uint
+		TableName  string
+		ColumnName string
+		PK         uint
 	}
-	if err := db.Table(secretCheckpointTable).Select("table_name", "pk").Find(&rows).Error; err != nil {
+	if err := db.Table(secretCheckpointTable).Select("table_name", "column_name", "pk").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	checkpoints := make(map[string]bool, len(rows))
 	for _, row := range rows {
-		checkpoints[secretCheckpointKey(row.TableName, row.PK)] = true
+		checkpoints[secretCheckpointKey(row.TableName, row.ColumnName, row.PK)] = true
 	}
 	return checkpoints, nil
 }
 
-// markSecretCheckpoint records a processed row so later runs skip it. Dry
-// runs never write checkpoints.
-func markSecretCheckpoint(db *gorm.DB, table string, pk uint, dryRun bool) error {
+// markSecretCheckpoint records a processed cell so later runs skip it. The
+// insert is idempotent (a cell may be re-classified inside one run and across
+// resumed runs); the portable pre-check keeps sqlite and MySQL in step where
+// neither shares the other's conflict clause. Dry runs never write.
+func markSecretCheckpoint(db *gorm.DB, table, column string, pk uint, dryRun bool) error {
 	if dryRun {
 		return nil
 	}
-	return db.Exec("INSERT INTO "+secretCheckpointTable+" (table_name, pk) VALUES (?, ?)", table, pk).Error
+	var count int64
+	if err := db.Table(secretCheckpointTable).Where("table_name = ? AND column_name = ? AND pk = ?", table, column, pk).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	return db.Exec("INSERT INTO "+secretCheckpointTable+" (table_name, column_name, pk) VALUES (?, ?, ?)", table, column, pk).Error
 }
 
 // renderSecretMigrationText renders the human-readable Step 2 summary.
@@ -450,7 +502,7 @@ func renderSecretMigrationText(report secretMigrationReport) string {
 		}
 		fmt.Fprintf(&buffer, "%s.%s [%s]%s migrated=%d legacy=%d v2=%d empty=%d not-secret=%d\n",
 			field.Model, field.Column, field.Class, missing,
-			report.Migrated, field.Counts.Legacy, field.Counts.V2, field.Counts.Empty, field.Counts.NotSecret)
+			field.Migrated, field.Counts.Legacy, field.Counts.V2, field.Counts.Empty, field.Counts.NotSecret)
 	}
 	if len(report.ExcludedPClass) > 0 {
 		buffer.WriteString(fmt.Sprintf("\nexcluded P-class fields (%d): %s\n", len(report.ExcludedPClass), strings.Join(report.ExcludedPClass, ", ")))

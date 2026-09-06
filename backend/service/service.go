@@ -826,17 +826,57 @@ func (s *Service) UpdateRoleStatus(payload RoleStatusPayload) error {
 	return s.db.Model(&model.Role{}).Where("id = ?", payload.ID).Update("status", payload.Status).Error
 }
 
+// AssignRoleMenus replaces the role's visible menu grants from the payload
+// while preserving the hidden route-permission grants. The role tree payload
+// (Role.vue) only carries what ListMenus showed, so a plain replace would
+// silently erase the hidden grants seeded under the protected root.
 func (s *Service) AssignRoleMenus(payload RoleMenuPayload) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", payload.ID).Delete(&model.RoleMenu{}).Error; err != nil {
+		var list []model.Menu
+		if err := tx.Order("sort asc, id asc").Find(&list).Error; err != nil {
+			return err
+		}
+		hidden := collectHiddenMenuIDs(list)
+		hiddenIDs := make([]uint, 0, len(hidden))
+		for menuID, isHidden := range hidden {
+			if isHidden {
+				hiddenIDs = append(hiddenIDs, menuID)
+			}
+		}
+		// Delete only the visible grants; hidden grants survive the replace.
+		deletions := tx.Where("role_id = ?", payload.ID)
+		if len(hiddenIDs) > 0 {
+			deletions = deletions.Where("menu_id NOT IN ?", hiddenIDs)
+		}
+		if err := deletions.Delete(&model.RoleMenu{}).Error; err != nil {
 			return err
 		}
 		if len(payload.MenuIDs) == 0 {
 			return nil
 		}
+		// Insert every payload id, but skip an id whose preserved hidden grant
+		// already covers it and dedupe the payload itself.
+		preserved := map[uint]bool{}
+		if len(hiddenIDs) > 0 {
+			var existing []uint
+			if err := tx.Model(&model.RoleMenu{}).Where("role_id = ? AND menu_id IN ?", payload.ID, hiddenIDs).Pluck("menu_id", &existing).Error; err != nil {
+				return err
+			}
+			for _, menuID := range existing {
+				preserved[menuID] = true
+			}
+		}
 		items := make([]model.RoleMenu, 0, len(payload.MenuIDs))
+		seen := map[uint]bool{}
 		for _, menuID := range payload.MenuIDs {
+			if seen[menuID] || preserved[menuID] {
+				continue
+			}
+			seen[menuID] = true
 			items = append(items, model.RoleMenu{RoleID: payload.ID, MenuID: menuID})
+		}
+		if len(items) == 0 {
+			return nil
 		}
 		return tx.Create(&items).Error
 	})
@@ -886,6 +926,16 @@ func collectHiddenMenuIDs(list []model.Menu) map[uint]bool {
 	return hidden
 }
 
+// hiddenMenuIDs resolves the protected set against the live table so a
+// mutation observes the subtree as it exists right now.
+func hiddenMenuIDs(db *gorm.DB) (map[uint]bool, error) {
+	var list []model.Menu
+	if err := db.Order("sort asc, id asc").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return collectHiddenMenuIDs(list), nil
+}
+
 func (s *Service) ListMenus() ([]model.Menu, error) {
 	var list []model.Menu
 	if err := s.db.Order("sort asc, id asc").Find(&list).Error; err != nil {
@@ -903,6 +953,11 @@ func (s *Service) ListMenus() ([]model.Menu, error) {
 }
 
 func (s *Service) CreateMenu(payload MenuPayload) error {
+	// A created row must not impersonate the hidden infrastructure values,
+	// or the boot migration would misread the protected rows.
+	if isProtectedSystemMenu(model.Menu{Value: payload.Value}) {
+		return ErrProtectedSystemMenu
+	}
 	return s.db.Create(&model.Menu{
 		ParentID:   payload.ParentID,
 		MenuName:   payload.MenuName,
@@ -920,7 +975,14 @@ func (s *Service) UpdateMenu(payload MenuPayload) error {
 	if err := s.db.First(&existing, payload.ID).Error; err != nil {
 		return err
 	}
-	if isProtectedSystemMenu(existing) {
+	hidden, err := hiddenMenuIDs(s.db)
+	if err != nil {
+		return err
+	}
+	// The whole hidden subtree is protected: rewriting a leaf's route value,
+	// flipping its menu_status or re-parenting it to visibility would corrupt
+	// the seeded route-permission infrastructure just like deleting it.
+	if hidden[existing.ID] {
 		return ErrProtectedSystemMenu
 	}
 	return s.db.Model(&model.Menu{}).Where("id = ?", payload.ID).Updates(map[string]any{
@@ -940,7 +1002,11 @@ func (s *Service) DeleteMenu(id uint) error {
 	if err := s.db.First(&existing, id).Error; err != nil {
 		return err
 	}
-	if isProtectedSystemMenu(existing) {
+	hidden, err := hiddenMenuIDs(s.db)
+	if err != nil {
+		return err
+	}
+	if hidden[existing.ID] {
 		return ErrProtectedSystemMenu
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
@@ -956,7 +1022,17 @@ func (s *Service) DeleteMenu(id uint) error {
 
 func (s *Service) GetMenu(id uint) (*model.Menu, error) {
 	var menu model.Menu
-	return &menu, s.db.First(&menu, id).Error
+	if err := s.db.First(&menu, id).Error; err != nil {
+		return &menu, err
+	}
+	hidden, err := hiddenMenuIDs(s.db)
+	if err != nil {
+		return &menu, err
+	}
+	if hidden[menu.ID] {
+		return &menu, ErrProtectedSystemMenu
+	}
+	return &menu, nil
 }
 
 func (s *Service) ListDepts() ([]model.Dept, error) {

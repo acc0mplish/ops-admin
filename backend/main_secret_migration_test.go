@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"ops-admin/backend/util"
 )
 
@@ -188,7 +190,7 @@ func TestReencryptRejectsPClass(t *testing.T) {
 
 // TestReencryptSkipsPreexistingCheckpoints simulates an interrupted run: a
 // checkpoint row for a still-legacy value must cause the skip, proving the
-// command resumes from (table, pk) rather than rewriting history.
+// command resumes from (table, column, pk) rather than rewriting history.
 func TestReencryptSkipsPreexistingCheckpoints(t *testing.T) {
 	inventoryScanKeys(t)
 	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
@@ -210,7 +212,7 @@ func TestReencryptSkipsPreexistingCheckpoints(t *testing.T) {
 	if err := ensureSecretCheckpointTable(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec("INSERT INTO ops_secret_migration_checkpoint (table_name, pk) VALUES ('ssl_certificates', 2)").Error; err != nil {
+	if err := db.Exec("INSERT INTO ops_secret_migration_checkpoint (table_name, column_name, pk) VALUES ('ssl_certificates', 'private_key_cipher', 2)").Error; err != nil {
 		t.Fatal(err)
 	}
 	report, err := reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true})
@@ -264,6 +266,138 @@ func TestReencryptMigratesDeclaredScheduleVariables(t *testing.T) {
 	}
 	if !strings.Contains(stored, "ENV") {
 		t.Fatalf("undeclared sibling variables must survive: %s", stored)
+	}
+}
+
+// TestReencryptCheckpointsArePerColumn pins the resume contract for tables
+// with several E-class columns (domain_public_dns_account): a checkpoint
+// covers exactly one (table, column, pk) cell, an interrupted run never
+// abandons the remaining columns, and re-recording a cell is idempotent.
+func TestReencryptCheckpointsArePerColumn(t *testing.T) {
+	inventoryScanKeys(t)
+	db := newInventoryScanDB(t, "CREATE TABLE domain_public_dns_account (id INTEGER PRIMARY KEY, access_key_cipher TEXT, secret_key_cipher TEXT)")
+	first, err := util.EncryptSecret("access-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := util.EncryptSecret("access-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := util.EncryptSecret("secret-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fourth, err := util.EncryptSecret("secret-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Row 2's secret key claims nothing: run one must halt in the middle of
+	// the second column, leaving the interrupted mixed state behind.
+	rows := [][2]string{{first, third}, {second, "this-claims-nothing"}}
+	for _, row := range rows {
+		if err := db.Exec("INSERT INTO domain_public_dns_account (access_key_cipher, secret_key_cipher) VALUES (?, ?)", row[0], row[1]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true}); err == nil {
+		t.Fatal("run one must halt on the UNKNOWN row")
+	}
+	// The operator quarantines the row by replacing it with the real legacy
+	// value; run two must then finish exactly the abandoned cell.
+	if err := db.Exec("UPDATE domain_public_dns_account SET secret_key_cipher = ? WHERE id = 2", fourth).Error; err != nil {
+		t.Fatal(err)
+	}
+	resume, err := reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resume.Migrated != 1 {
+		t.Fatalf("run two must migrate exactly the abandoned secret_key_cipher cell, got %d", resume.Migrated)
+	}
+	if resume.SkippedCheckpoint != 3 {
+		t.Fatalf("run two must skip the three checkpointed cells, got %d", resume.SkippedCheckpoint)
+	}
+	var resumed string
+	if err := db.Raw("SELECT secret_key_cipher FROM domain_public_dns_account WHERE id = 2").Scan(&resumed).Error; err != nil {
+		t.Fatal(err)
+	}
+	if plain, err := util.DecryptSecretV2(resumed); err != nil || plain != "secret-two" {
+		t.Fatalf("the abandoned cell did not round trip as v2: %q %v", plain, err)
+	}
+	// A completed re-run must skip every cell without rewriting anything.
+	again, err := reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Migrated != 0 || again.SkippedCheckpoint != 4 {
+		t.Fatalf("completed re-run must skip all four checkpointed cells: migrated=%d skipped=%d", again.Migrated, again.SkippedCheckpoint)
+	}
+}
+
+// TestReencryptVerifiesPersistedBytes pins the §4.4 write→verify order: the
+// verification must consume what the database actually holds after the
+// UPDATE, so a read-back carrying tampered bytes fails the migration instead
+// of an in-memory check passing it.
+func TestReencryptVerifiesPersistedBytes(t *testing.T) {
+	inventoryScanKeys(t)
+	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	legacy, err := util.EncryptSecret("verify-me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO ssl_certificates (private_key_cipher) VALUES (?)", legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	original := reencryptPersistedReader
+	reencryptPersistedReader = func(_ *gorm.DB, _ string, _ string, _ uint) (string, error) {
+		return "v2:tampered-bytes", nil
+	}
+	defer func() { reencryptPersistedReader = original }()
+
+	_, err = reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true})
+	if err == nil {
+		t.Fatal("a tampered read-back must fail the migration")
+	}
+	if !strings.Contains(err.Error(), "verify") {
+		t.Fatalf("failure must name the verify step: %v", err)
+	}
+}
+
+// TestRenderSecretMigrationTextUsesPerFieldMigrated pins the report contract:
+// each field line carries its own migrated count, not the run's global total.
+func TestRenderSecretMigrationTextUsesPerFieldMigrated(t *testing.T) {
+	inventoryScanKeys(t)
+	db := newInventoryScanDB(t,
+		"CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)",
+		"CREATE TABLE ssl_certificate_versions (id INTEGER PRIMARY KEY, private_key_cipher TEXT)",
+	)
+	for _, value := range []string{"first-key", "second-key"} {
+		legacy, err := util.EncryptSecret(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		table := "ssl_certificates"
+		if value == "second-key" {
+			table = "ssl_certificate_versions"
+		}
+		if err := db.Exec("INSERT INTO "+table+" (private_key_cipher) VALUES (?)", legacy).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := reencryptSecretsInDB(db, secretMigrationOptions{BackupAcknowledged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Migrated != 2 {
+		t.Fatalf("run total must count both rows, got %d", report.Migrated)
+	}
+	out := renderSecretMigrationText(report)
+	if !strings.Contains(out, "SSLCertificate.private_key_cipher [E-legacy] migrated=1") {
+		t.Fatalf("SSLCertificate line must report its own single migration:\n%s", out)
+	}
+	if !strings.Contains(out, "SSLCertificateVersion.private_key_cipher [E-legacy] migrated=1") {
+		t.Fatalf("SSLCertificateVersion line must report its own single migration:\n%s", out)
 	}
 }
 

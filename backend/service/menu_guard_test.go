@@ -155,3 +155,101 @@ func TestMenuMutationsStillAllowedForOperatorMenus(t *testing.T) {
 		t.Fatalf("DeleteMenu on an ordinary menu must succeed, got %v", err)
 	}
 }
+
+// seedHiddenLeaf adds one non-marker route-permission leaf under the hidden
+// root — the shape the seed produces for every granted route.
+func seedHiddenLeaf(t *testing.T, db *gorm.DB, rootID uint, value string) uint {
+	t.Helper()
+	leaf := model.Menu{ParentID: rootID, MenuName: "Hidden Leaf", MenuType: 3, Value: value, MenuStatus: 1}
+	if err := db.Create(&leaf).Error; err != nil {
+		t.Fatal(err)
+	}
+	return leaf.ID
+}
+
+// TestUpdateMenuBlocksWholeHiddenSubtree extends the protection to the root's
+// descendants: flipping a leaf's menu_status, rewriting its route value or
+// re-parenting it to ParentID 0 would make the hidden route vocabulary
+// visible or break the grant lookup — every descendant mutation is refused.
+func TestUpdateMenuBlocksWholeHiddenSubtree(t *testing.T) {
+	db := newMenuGuardDB(t)
+	_, rootID, _ := seedMenuGuardRows(t, db)
+	leafID := seedHiddenLeaf(t, db, rootID, "assets:host:terminal")
+	svc := &Service{db: db}
+
+	for _, payload := range []MenuPayload{
+		{ID: leafID, ParentID: rootID, MenuName: "Hidden Leaf", Value: "hijacked:value", MenuType: 3, MenuStatus: 1},
+		{ID: leafID, ParentID: 0, MenuName: "Hidden Leaf", Value: "assets:host:terminal", MenuType: 3, MenuStatus: 1},
+		{ID: leafID, ParentID: rootID, MenuName: "Hidden Leaf", Value: "assets:host:terminal", MenuType: 3, MenuStatus: 0},
+	} {
+		if err := svc.UpdateMenu(payload); !errors.Is(err, ErrProtectedSystemMenu) {
+			t.Fatalf("UpdateMenu on hidden leaf (status=%d parent=%d value=%q) returned %v, want ErrProtectedSystemMenu", payload.MenuStatus, payload.ParentID, payload.Value, err)
+		}
+	}
+	var row model.Menu
+	if err := db.First(&row, leafID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.ParentID != rootID || row.Value != "assets:host:terminal" || row.MenuStatus != 1 {
+		t.Fatalf("hidden leaf was mutated: %+v", row)
+	}
+}
+
+// TestDeleteMenuBlocksHiddenSubtree: deleting a hidden leaf would drop a
+// route permission grant target while the grants themselves survive — refuse
+// the delete and keep the row.
+func TestDeleteMenuBlocksHiddenSubtree(t *testing.T) {
+	db := newMenuGuardDB(t)
+	_, rootID, _ := seedMenuGuardRows(t, db)
+	leafID := seedHiddenLeaf(t, db, rootID, "assets:host:terminal")
+	svc := &Service{db: db}
+
+	if err := svc.DeleteMenu(leafID); !errors.Is(err, ErrProtectedSystemMenu) {
+		t.Fatalf("DeleteMenu on hidden leaf returned %v, want ErrProtectedSystemMenu", err)
+	}
+	var count int64
+	if err := db.Model(&model.Menu{}).Where("id = ?", leafID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("hidden leaf must survive the refused delete, got count=%d", count)
+	}
+}
+
+// TestGetMenuBlocksHiddenRows: the menu/info endpoint must not serve the raw
+// hidden rows even when their ID is known — the management UI contract is
+// that these rows do not exist for operators.
+func TestGetMenuBlocksHiddenRows(t *testing.T) {
+	db := newMenuGuardDB(t)
+	_, rootID, markerID := seedMenuGuardRows(t, db)
+	leafID := seedHiddenLeaf(t, db, rootID, "assets:host:terminal")
+	svc := &Service{db: db}
+
+	for _, id := range []uint{rootID, markerID, leafID} {
+		if _, err := svc.GetMenu(id); !errors.Is(err, ErrProtectedSystemMenu) {
+			t.Fatalf("GetMenu on hidden id=%d returned %v, want ErrProtectedSystemMenu", id, err)
+		}
+	}
+}
+
+// TestCreateMenuRejectsProtectedValues: a created menu must not impersonate
+// the hidden root or the one-shot marker value, or the boot re-migration
+// would misread the infrastructure rows.
+func TestCreateMenuRejectsProtectedValues(t *testing.T) {
+	db := newMenuGuardDB(t)
+	svc := &Service{db: db}
+
+	for _, value := range []string{store.RoutePermissionsRootValue, store.RoutePermissionsMarkerValue} {
+		err := svc.CreateMenu(MenuPayload{ParentID: 0, MenuName: "Impostor", Value: value, MenuType: 1, MenuStatus: 1})
+		if !errors.Is(err, ErrProtectedSystemMenu) {
+			t.Fatalf("CreateMenu with protected value %q returned %v, want ErrProtectedSystemMenu", value, err)
+		}
+	}
+	var count int64
+	if err := db.Model(&model.Menu{}).Where("value IN ?", []string{store.RoutePermissionsRootValue, store.RoutePermissionsMarkerValue}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("no protected-value row may be created, got %d", count)
+	}
+}
