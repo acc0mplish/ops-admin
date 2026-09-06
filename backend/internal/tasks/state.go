@@ -118,9 +118,15 @@ const (
 	TaskEventTimedOut        = "timed_out"
 	TaskEventCancelRequested = "cancel_requested"
 	TaskEventCancelled       = "cancelled"
+	// TaskEventObservationRefreshFailed — Phase 3 J6: the OnTaskTerminal hook
+	// (observation refresh + terminal audit wiring) failed AFTER the terminal
+	// commit. The terminal stands; this event is the failure's record. Emitted
+	// by fireTaskTerminal only.
+	TaskEventObservationRefreshFailed = "observation_refresh_failed"
 )
 
-// TaskEventTypes is the closed event vocabulary (A4).
+// TaskEventTypes is the closed event vocabulary (A4 + Phase 3 J6's
+// observation_refresh_failed).
 var TaskEventTypes = []string{
 	TaskEventCreated,
 	TaskEventApproved,
@@ -133,6 +139,7 @@ var TaskEventTypes = []string{
 	TaskEventTimedOut,
 	TaskEventCancelRequested,
 	TaskEventCancelled,
+	TaskEventObservationRefreshFailed,
 }
 
 // IsTaskEventType reports membership in the closed event vocabulary.

@@ -190,14 +190,14 @@ func TestFakeExecuteAndPoll(t *testing.T) {
 			t.Fatal("async Execute returned a null handle — Poll path not engaged")
 		}
 
-		status, err := a.Poll(context.Background(), handle)
+		status, err := a.Poll(context.Background(), contract.PollRequest{Handle: handle})
 		if err != nil {
 			t.Fatalf("Poll 1: %v", err)
 		}
 		if status.State != contract.OperationStateRunning {
 			t.Errorf("Poll 1 state = %q, want running (polls=2)", status.State)
 		}
-		status, err = a.Poll(context.Background(), handle)
+		status, err = a.Poll(context.Background(), contract.PollRequest{Handle: handle})
 		if err != nil {
 			t.Fatalf("Poll 2: %v", err)
 		}
@@ -217,7 +217,7 @@ func TestFakeExecuteAndPoll(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Execute(async, fail): %v", err)
 		}
-		status, err := a.Poll(context.Background(), handle)
+		status, err := a.Poll(context.Background(), contract.PollRequest{Handle: handle})
 		if err != nil {
 			t.Fatalf("Poll: %v", err)
 		}
@@ -228,12 +228,51 @@ func TestFakeExecuteAndPoll(t *testing.T) {
 
 	t.Run("unknown handle is an error", func(t *testing.T) {
 		a := &Adapter{}
-		if _, err := a.Poll(context.Background(), contract.OperationHandle{ProviderRef: "nope"}); err == nil {
+		if _, err := a.Poll(context.Background(), contract.PollRequest{Handle: contract.OperationHandle{ProviderRef: "nope"}}); err == nil {
 			t.Fatal("Poll with an unknown handle must error")
 		} else if !errors.Is(err, errUnknownHandle) {
 			t.Errorf("Poll unknown-handle error = %v, want errUnknownHandle", err)
 		}
 	})
+}
+
+// M19/J12 — PollRequest 전파: Poll은 PollRequest{Handle, Connection}를 받고
+// LastPoll이 그 요청을 그대로 노출한다 — 엔진 회로 테스트(N11)가 두 폴 조립
+// 지점의 자격 전달을 이 기구로 단얫한다.
+func TestFakePollRequestPropagation(t *testing.T) {
+	a := &Adapter{}
+	handle, err := a.Execute(context.Background(), contract.OperationRequest{
+		Payload: contract.JSONMap{"async": true, "polls": 1},
+	})
+	if err != nil {
+		t.Fatalf("Execute(async): %v", err)
+	}
+	req := contract.PollRequest{
+		Handle: handle,
+		Connection: contract.ConnectionView{
+			UID:          "conn-circuit",
+			ProviderType: "fake",
+			Material:     map[string]string{contract.CredentialPurposeOperations: "material"},
+		},
+	}
+	status, err := a.Poll(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if status.State != contract.OperationStateSucceeded {
+		t.Fatalf("Poll state = %q, want succeeded (polls=1)", status.State)
+	}
+
+	got := a.LastPoll()
+	if got.Handle.ProviderRef != handle.ProviderRef {
+		t.Errorf("LastPoll handle = %q, want %q", got.Handle.ProviderRef, handle.ProviderRef)
+	}
+	if got.Connection.UID != "conn-circuit" {
+		t.Errorf("LastPoll connection UID = %q, want conn-circuit", got.Connection.UID)
+	}
+	if m := got.Connection.Material[contract.CredentialPurposeOperations]; m != "material" {
+		t.Errorf("LastPoll Material[operations] = %q, want the passed-through material", m)
+	}
 }
 
 // T44 — fake passes the contracttest harness: the §23.1 four assertion

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,17 @@ type Engine struct {
 	reg    *registry.Registry
 	cfg    Config
 	broker *secrets.Broker
+
+	// OnTaskTerminal — J6 종단 훅: Complete/Fail 종단 커밋(succeeded/failed/
+	// timed_out — finishAttempt 경유 전부) 이후 발화한다. 감사 종단행의
+	// 인터페이스다: compose가 관찰 갱신(SyncRunner)+§18.1 종단 감사 기록을
+	// 배선한다. 엔진은 inventory·audit을 import하지 않는다(계층 결계).
+	// 호출 규약: 훅은 종단 커밋 이후 실행되므로 훅 실패가 종단을 되돌리는
+	// 일은 없다(실패는 task_event 기록+로그로 처분 — fireTaskTerminal).
+	// cancel/reject 계열 즉시 종단과 리퍼의 lease_expired 종단은 범위 밖
+	// (J6 — 전자는 API 요청 감사 행이 이미 기록한다).
+	// nil 가능(엔진 단독 사용·Phase 1 테스트) — nil이면 아무 일도 없다.
+	OnTaskTerminal func(ctx context.Context, task model.ProviderTask, status string, detail contract.JSONMap) error
 
 	// Loop lifecycle (loops.go): Start/Stop own these; RunOnce/ReapOnce
 	// stay callable directly for deterministic tests.
@@ -529,6 +541,36 @@ func (e *Engine) finishAttempt(ctx context.Context, claim *ClaimedTask, p finish
 	if err != nil {
 		return fmt.Errorf("tasks: complete attempt (task %d, attempt %d): %w", claim.Task.ID, claim.Attempt.AttemptNo, err)
 	}
+	// J6 — 종단 커밋 이후 훅 발화(종단 불변). 훅 실패는 여기서 처분되고
+	// 호출자에게 새어나가지 않는다(Complete/Fail의 반환은 종단 커밋의 진위만
+	// 말한다).
+	return e.fireTaskTerminal(ctx, claim, p)
+}
+
+// fireTaskTerminal invokes OnTaskTerminal after the terminal commit (J6).
+// The hook receives the COMMITTED terminal row — a fresh reload, not the
+// caller's pre-commit snapshot — plus the terminal status and the event-side
+// detail (Complete: the adapter's OperationStatus.Detail; Fail: nil — the
+// error code rides on the task row). A hook failure never rolls the terminal
+// back: it is logged in full and recorded as an observation_refresh_failed
+// task_event (status only — event data carries no free-text error, per the
+// engine's closed-vocabulary event convention and 보존 제약 #7's task_event
+// scan surface). Only infrastructure failures (reload/event write) propagate.
+func (e *Engine) fireTaskTerminal(ctx context.Context, claim *ClaimedTask, p finishParams) error {
+	if e.OnTaskTerminal == nil {
+		return nil
+	}
+	var fresh model.ProviderTask
+	if err := e.db.WithContext(ctx).First(&fresh, claim.Task.ID).Error; err != nil {
+		return fmt.Errorf("tasks: reload terminal task %d for OnTaskTerminal: %w", claim.Task.ID, err)
+	}
+	if err := e.OnTaskTerminal(ctx, fresh, p.status, p.eventData); err != nil {
+		log.Printf("tasks: OnTaskTerminal hook failed on task %s (%s) — the terminal stands: %v", fresh.UID, p.status, err)
+		if err := appendEvent(e.db.WithContext(ctx), claim.Task.ID, claim.Attempt.AttemptNo,
+			TaskEventObservationRefreshFailed, e.cfg.WorkerID, contract.JSONMap{"status": p.status}); err != nil {
+			return fmt.Errorf("tasks: append %s event for task %d: %w", TaskEventObservationRefreshFailed, claim.Task.ID, err)
+		}
+	}
 	return nil
 }
 
@@ -654,6 +696,7 @@ func (e *Engine) connectionView(ctx context.Context, chain executionChain) (cont
 		return contract.ConnectionView{}, fmt.Errorf("tasks: load connection %q: %w", chain.ConnectionUID, err)
 	}
 	view := contract.ConnectionView{
+		UID:          conn.UID,
 		ProviderType: conn.ProviderType,
 		Endpoint:     conn.Endpoint,
 		Config:       conn.ConfigJSON,
@@ -713,7 +756,10 @@ func (e *Engine) executeClaimed(ctx context.Context, claim *ClaimedTask) error {
 		return e.Fail(ctx, claim, ErrorCodeCapabilityNotServed,
 			fmt.Sprintf("provider type %q does not declare capability %q required by %q", chain.ProviderType, def.RequiredCapability, def.Name))
 	}
-	if _, err := e.connectionView(ctx, chain); err != nil {
+	// N-1 이행(M1/M2): 조립한 뷰를 버리지 않고 실행 자격으로 전달한다.
+	// Material 키는 "operations"(§7.4 — Discover의 inventory와 대칭).
+	connView, err := e.connectionView(ctx, chain)
+	if err != nil {
 		return e.Fail(ctx, claim, ErrorCodeCredentialError, err.Error())
 	}
 
@@ -725,11 +771,13 @@ func (e *Engine) executeClaimed(ctx context.Context, claim *ClaimedTask) error {
 	defer cancel()
 
 	// UID→URN 변환은 엔진의 책임 (T-7): OperationRequest.ResourceURN은
-	// infra_resource.external_urn으로 조립된다.
+	// infra_resource.external_urn으로 조립된다. Connection은 브로커
+	// Resolve(operations)로 조립된 실행 자격 — 어댑터는 req만 읽는다.
 	handle, err := executor.Execute(execCtx, contract.OperationRequest{
 		OperationName: claim.Task.OperationName,
 		ResourceURN:   chain.ExternalURN,
 		Payload:       claim.Task.PayloadJSON,
+		Connection:    connView,
 	})
 	if err != nil {
 		if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
@@ -757,7 +805,9 @@ func (e *Engine) executeClaimed(ctx context.Context, claim *ClaimedTask) error {
 		return e.Fail(ctx, claim, ErrorCodeNoExecutor,
 			fmt.Sprintf("adapter for %q returned a provider handle but implements no TaskPoller (§14.3 dual mode)", chain.ProviderType))
 	}
-	status, err := poller.Poll(execCtx, handle)
+	// J12 — 폴 조립 지점 ①(첫 폴): Execute가 받은 것과 동일한 자격으로
+	// PollRequest를 조립한다(조립 단일성).
+	status, err := poller.Poll(execCtx, contract.PollRequest{Handle: handle, Connection: connView})
 	if err != nil {
 		// A transient poll error leaves the attempt open: the next cycle polls
 		// again without re-executing; a genuinely dead worker is the reaper's
@@ -822,8 +872,21 @@ func (e *Engine) pollAsyncAttempts(ctx context.Context) error {
 		if !isPoller {
 			continue
 		}
+		// J12 — 폴 조립 지점 ②(재폴): resolveExecutionChain이 이미 조인한
+		// 체인으로 connectionView를 재조립한다. 이전에는 attempt.HandleRef만으로
+		// handle을 재조립해 폴했다 — 크래시 후 attempt 2가 자격 없이 폴하는
+		// 공백이었다. 자격 재조립 실패는 이 사이클에서 진행 불가: 다음 사이클
+		// 재시도하고 리스/리퍼가 상한(lease_expired 종단)을 지킨다(체인 실패와
+		// 동일 처분).
+		connView, err := e.connectionView(ctx, chain)
+		if err != nil {
+			continue
+		}
 		claim := &ClaimedTask{Task: task, Attempt: attempt}
-		status, err := poller.Poll(ctx, contract.OperationHandle{ProviderRef: attempt.HandleRef})
+		status, err := poller.Poll(ctx, contract.PollRequest{
+			Handle:     contract.OperationHandle{ProviderRef: attempt.HandleRef},
+			Connection: connView,
+		})
 		if err != nil {
 			continue // transient — next cycle
 		}

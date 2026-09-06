@@ -22,7 +22,7 @@ type OperationExecutor interface {
 }
 
 type TaskPoller interface {
-	Poll(ctx context.Context, handle OperationHandle) (OperationStatus, error)
+	Poll(ctx context.Context, req PollRequest) (OperationStatus, error)
 }
 
 type TaskCanceller interface {
@@ -34,6 +34,13 @@ type TaskCanceller interface {
 
 // ConnectionView — §7.2에서 도출 — 시크릿 값 결계: Config에 시크릿 소재 포함 금지.
 type ConnectionView struct {
+	// UID — 연결의 공개 식별자(provider_connection.uid). 실행 경로(엔진)가
+	// 체인 조인 결과로 채운다. Phase 3 J12: 어댑터의 handle ProviderRef가
+	// connUID를 자기서술적으로 인코딩하는 원천이고, PollRequest.Connection.UID
+	// == handle 인코딩 UID의 정합 단얫(N11)이 이 값을 읽는다. 공개 식별자 —
+	// 비밀 아님(보존 제약 #7 무관). 발견(Discover) 경로는 채우지 않아도
+	// 된다(핸들 인코딩은 실행 경로의 필요다).
+	UID          string
 	ProviderType string
 	Endpoint     string
 	Config       JSONMap
@@ -56,7 +63,8 @@ type HealthResult struct {
 // 호출자(compose→SyncRunner)가 브로커 Resolve(ctx, connUID, "inventory") 결과를
 // Connection.Material["inventory"]에 채운 ConnectionView를 구성해 전달한다.
 // 어댑터는 req.Connection만 읽는다 — DB·브로커 무지 유지(arch rule 2).
-// OperationRequest.Connection(실행 자격)은 Phase 3 인계(§13 N-1 잔존분).
+// 실행 자격(OperationRequest.Connection / PollRequest.Connection)은 Phase 3
+// M1이 동일한 형상으로 이행했다(§13 N-1 잔존 해소).
 type DiscoverRequest struct {
 	ContextID  uint
 	Cursor     string
@@ -110,6 +118,21 @@ type OperationRequest struct {
 	OperationName string
 	ResourceURN   string
 	Payload       JSONMap
+	// Connection — §7.2 실행 자격. 엔진이 브로커 Resolve(operations)로 조립한
+	// ConnectionView(Phase 3 M1 — N-1 잔존의 이행). DiscoverRequest.Connection과
+	// 대칭: 어댑터는 req만 읽고 DB·브로커에 무지하다(arch rule 2). Material
+	// 키는 "operations"(§7.4 — Discover의 "inventory"와 대칭).
+	Connection ConnectionView
+}
+
+// PollRequest — TaskPoller.Poll의 요청(J12). 재폴 자격까지 담는다: handle은
+// task_attempt.handle_ref에 지속되는 값이지만 어댑터는 stateless("HTTP
+// clients are per-request")므로, 매 폴마다 엔진이 ConnectionView를 다시
+// 조립해 주입한다(Execute의 Material 대칭). 어댑터가 자격을 스스로
+// 획득하는 경로(DB 주입·ProviderRef 인코딩)는 보존 제약 #10이 금지한다.
+type PollRequest struct {
+	Handle     OperationHandle
+	Connection ConnectionView
 }
 
 type OperationHandle struct {

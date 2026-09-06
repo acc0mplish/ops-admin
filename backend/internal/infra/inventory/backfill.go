@@ -241,6 +241,24 @@ func createClusterChain(db *gorm.DB, row *k8sClusterRow, keyID, secret string) e
 	if err := db.Create(&binding).Error; err != nil {
 		return fmt.Errorf("create provider_credential_binding: %w", err)
 	}
+
+	// §7.4 — kubeconfig는 인벤토리·오케스트레이션이 공유하는 자격: 동일
+	// SecretRef를 향하는 operations 바인딩을 함께 생성한다(J12(1) — "bindings
+	// with purposes inventory and billing pointing at the same SecretRef"의
+	// 전례를 준용). 이 행이 없으면 브로커의 Resolve(operations)가 영구 실패해
+	// Phase 3 실행 회로의 자격 경로가 막힌다. 파급 통제:
+	// refreshClusterSatellites는 purpose="inventory"로 필터 조회하므로 이 행에
+	// 무영향이다.
+	opsBinding := model.ProviderCredentialBinding{
+		ProviderConnectionID: conn.ID,
+		ProviderContextID:    &pctx.ID,
+		Purpose:              contract.CredentialPurposeOperations,
+		SecretRefID:          ref.ID,
+		Status:               "active",
+	}
+	if err := db.Create(&opsBinding).Error; err != nil {
+		return fmt.Errorf("create provider_credential_binding(operations): %w", err)
+	}
 	return nil
 }
 
