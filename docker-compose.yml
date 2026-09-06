@@ -38,6 +38,7 @@ services:
       OPS_ADMIN_INITIAL_USERNAME: ${OPS_ADMIN_INITIAL_USERNAME:-admin}
       OPS_ADMIN_INITIAL_PASSWORD: ${OPS_ADMIN_INITIAL_PASSWORD:?set OPS_ADMIN_INITIAL_PASSWORD in deploy/.env}
       OPS_ADMIN_CORS_ORIGINS: ${OPS_ADMIN_CORS_ORIGINS:-}
+      OPS_SECRET_MASTER_KEYS: ${OPS_SECRET_MASTER_KEYS:?set OPS_SECRET_MASTER_KEYS in deploy/.env (current_key_id:key_material[,old_id:material...])}
     volumes:
       - ./deploy/config.yaml:/app/config.yaml:ro
       - ops-admin-uploads:/app/uploads
