@@ -100,6 +100,12 @@ ALLOWLIST = [
     ("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "v2-phase1/*"),
     ("-----BEGIN PRIVATE KEY-----", "v2-phase1/*"),
     ("REPLACE_WITH_RANDOM_32BYTE_BASE64_KEY", "v2-phase1/*"),
+    # G-5 guard tests pass synthetic keys through the real key-source
+    # resolution; these are fake materials in the test table only.
+    ("config-yaml-credential-key-at-least-32-bytes", "backend/util/secret_guard_test.go"),
+    ("env-credential-key-at-least-32-bytes", "backend/util/secret_guard_test.go"),
+    ("jwt-secret-fallback-at-least-32-bytes", "backend/util/secret_guard_test.go"),
+    ("primary-material-at-least-32-bytes", "backend/util/secret_guard_test.go"),
 ]
 
 # Untracked-and-ignored guard for the previously leaked config files (plan A4).
