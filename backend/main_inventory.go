@@ -167,32 +167,9 @@ func scanSecretField(db *gorm.DB, field util.SecretField) (util.FieldCounts, []s
 func scanScheduleTaskVariables(db *gorm.DB, field util.SecretField) (util.FieldCounts, []secretInventoryUnknown, error) {
 	counts := util.FieldCounts{}
 	unknowns := []secretInventoryUnknown{}
-	secretNames := map[uint]map[string]bool{}
-	var scripts []struct {
-		ID        uint
-		Variables sql.NullString
-	}
-	if err := db.Table("ops_script").Select("id", "variables").Find(&scripts).Error; err != nil {
+	secretNames, err := scriptDeclaredSecretNames(db)
+	if err != nil {
 		return counts, unknowns, err
-	}
-	for _, script := range scripts {
-		names := map[string]bool{}
-		if script.Variables.Valid && script.Variables.String != "" {
-			var declared []struct {
-				Name   string `json:"name"`
-				Secret bool   `json:"secret"`
-			}
-			// Malformed script metadata cannot declare secrets; the values it
-			// would have gated then count as not-secret by declaration.
-			if err := json.Unmarshal([]byte(script.Variables.String), &declared); err == nil {
-				for _, variable := range declared {
-					if variable.Secret {
-						names[variable.Name] = true
-					}
-				}
-			}
-		}
-		secretNames[script.ID] = names
 	}
 	var lastID uint
 	for {
