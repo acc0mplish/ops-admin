@@ -52,7 +52,10 @@ func (ctl *Controller) CreateConsoleSession(c *gin.Context) {
 			httpx.Failed(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		httpx.FailedError(c, http.StatusBadRequest, err)
+		// A mint failure that is not the caller's resource payload is an
+		// internal error — reporting it as 400 would misdirect operators
+		// toward "fix your request" (LOW-1).
+		httpx.FailedError(c, http.StatusInternalServerError, err)
 		return
 	}
 	httpx.Success(c, data)

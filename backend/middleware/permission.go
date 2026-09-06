@@ -53,11 +53,13 @@ func AdminHasPermission(db *gorm.DB, adminID uint, permission string) bool {
 
 // adminHasAnyPermission is the single authorization query: at least one of
 // the given permission strings must be attached, through sys_admin_role and
-// sys_role_menu, to a status-1 sys_menu row.
+// sys_role_menu, to a status-1 sys_menu row on a status-1 sys_role (LOW-6 —
+// a disabled role must not grant anything while its grant rows linger).
 func adminHasAnyPermission(db *gorm.DB, adminID uint, values []string) bool {
 	var count int64
 	err := db.Table("sys_admin_role ar").
 		Joins("JOIN sys_role_menu rm ON rm.role_id=ar.role_id").
+		Joins("JOIN sys_role r ON r.id=ar.role_id AND r.status=1").
 		Joins("JOIN sys_menu m ON m.id=rm.menu_id").
 		Where("ar.admin_id = ? AND m.value IN ? AND m.menu_status = ?", adminID, values, 1).
 		Count(&count).Error

@@ -15,15 +15,19 @@ import (
 )
 
 const (
-	// routePermissionsRootValue is the hidden root menu holding route
+	// RoutePermissionsRootValue is the hidden root menu holding route
 	// permissions that have no seeded page menu. It carries menu_status 0, so
 	// the sidebar export (menu_status = 1 AND menu_type IN (1,2)) never shows
-	// it, while the grant lookup only reads the leaf's status.
-	routePermissionsRootValue = "route-permissions"
-	// routePermissionsMarkerValue is the one-shot migration marker: it exists
+	// it, while the grant lookup only reads the leaf's status. Exported so the
+	// service layer can keep operator mutations away from this system row.
+	RoutePermissionsRootValue = "route-permissions"
+	// RoutePermissionsMarkerValue is the one-shot migration marker: it exists
 	// in sys_menu once every existing role has been granted the route
 	// permissions, and its presence makes the migration a complete no-op.
-	routePermissionsMarkerValue = "route-permissions:granted:v1"
+	// Exported so the service layer can keep operator mutations away from it —
+	// losing the marker would re-run migrateRoleRoutePermissionsOnce and
+	// re-grant every role its full route vocabulary.
+	RoutePermissionsMarkerValue = "route-permissions:granted:v1"
 )
 
 func Seed(db *gorm.DB) error {
@@ -480,7 +484,7 @@ func seedSuperRolePermissions(db *gorm.DB) error {
 // untouched — their row is never modified; values with no seeded row are
 // created as type-3 leaves under the hidden status-0 route-permissions root.
 func seedRoutePermissionMenus(db *gorm.DB) error {
-	root, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: "Route Permissions", MenuType: 1, URL: "", Value: routePermissionsRootValue, MenuStatus: 0, Sort: 99})
+	root, err := ensureMenu(db, model.Menu{ParentID: 0, MenuName: "Route Permissions", MenuType: 1, URL: "", Value: RoutePermissionsRootValue, MenuStatus: 0, Sort: 99})
 	if err != nil {
 		return err
 	}
@@ -553,7 +557,7 @@ func seedSuperAdminRoutePermissions(db *gorm.DB) error {
 // the corresponding grants.
 func migrateRoleRoutePermissionsOnce(db *gorm.DB) error {
 	var marker model.Menu
-	err := db.Where("value = ?", routePermissionsMarkerValue).First(&marker).Error
+	err := db.Where("value = ?", RoutePermissionsMarkerValue).First(&marker).Error
 	if err == nil {
 		return nil
 	}
@@ -571,10 +575,10 @@ func migrateRoleRoutePermissionsOnce(db *gorm.DB) error {
 			}
 		}
 		var root model.Menu
-		if err := tx.Where("value = ?", routePermissionsRootValue).First(&root).Error; err != nil {
+		if err := tx.Where("value = ?", RoutePermissionsRootValue).First(&root).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.Menu{ParentID: root.ID, MenuName: "Route Permissions Granted (v1)", MenuType: 3, Value: routePermissionsMarkerValue, MenuStatus: 1, CreatedAt: time.Now()}).Error
+		return tx.Create(&model.Menu{ParentID: root.ID, MenuName: "Route Permissions Granted (v1)", MenuType: 3, Value: RoutePermissionsMarkerValue, MenuStatus: 1, CreatedAt: time.Now()}).Error
 	})
 }
 

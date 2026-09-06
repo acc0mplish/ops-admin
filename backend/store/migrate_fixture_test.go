@@ -142,7 +142,7 @@ func snapshotFixtureCounts(t *testing.T, db *gorm.DB) fixtureCounts {
 func fixtureMarkerPresent(t *testing.T, db *gorm.DB) bool {
 	t.Helper()
 	var count int64
-	if err := db.Model(&model.Menu{}).Where("value = ?", routePermissionsMarkerValue).Count(&count).Error; err != nil {
+	if err := db.Model(&model.Menu{}).Where("value = ?", RoutePermissionsMarkerValue).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	return count > 0

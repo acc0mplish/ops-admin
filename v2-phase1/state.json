@@ -1,0 +1,164 @@
+{
+  "task": "v2-p1t6-ci-baseline",
+  "tier": "L",
+  "phase": "done",
+  "round": {
+    "adversary": 1,
+    "review": 2
+  },
+  "spawns": 9,
+  "claims": [
+    {
+      "claim": "스캐너·아치 클린·카나리 3종 발화",
+      "status": "verified",
+      "evidence": "메인·리뷰 이중 재실행"
+    },
+    {
+      "claim": "R1-R3 플랜트 발화",
+      "status": "gap→superseded",
+      "evidence": "R3 2종 우회를 리뷰가 실증 → 362581c 수정 후 양 플랜트 발화 재실증"
+    },
+    {
+      "claim": "fixture 지문·go test 13·커버리지 65.4·bun·parity",
+      "status": "verified",
+      "evidence": "리뷰 재실행"
+    },
+    {
+      "claim": "v2-ci 8잡·guard append",
+      "status": "verified",
+      "evidence": "YAML 파싱·삭제 라인 0"
+    },
+    {
+      "claim": "프로덕션·기존 테스트 무변경",
+      "status": "verified",
+      "evidence": "8파일 신규+append 2"
+    },
+    {
+      "claim": "G-5: 프로덕션에서 credential-key 부재 시 기동 실패 (GO_ENV 가드)",
+      "status": "verified",
+      "evidence": "secret_guard_test 7케이스 GREEN·메인 전체 재실행 EXIT 0"
+    },
+    {
+      "claim": "Step 2 재암호화 커맨드 — E-class 필드·체크포인트·멱등·UNKNOWN halt·P-class 거부 가드",
+      "status": "verified",
+      "evidence": "main_secret_migration_test GREEN(왕복·체크포인트 재개·UNKNOWN halt·P거부·백업게이트)·메인 재실행"
+    },
+    {
+      "claim": "Step 3 검증 리포트 — classifier 재실행·카운트·샘플 복호 아티팩트",
+      "status": "verified",
+      "evidence": "verify 게이트 통과/미달·샘플 하한 경계 테스트 GREEN·--out 아티팩트"
+    },
+    {
+      "claim": "N2: ListMenus 은닉 루트 필터·마커/은닉 루트 삭제·수정 보호",
+      "status": "verified",
+      "evidence": "menu_guard_test 4케이스 RED→GREEN·메인 재실행 EXIT 0"
+    },
+    {
+      "claim": "LOW-1: mint 내부 오류 500 분기",
+      "status": "verified",
+      "evidence": "console_mint_status_test(내부 실패 5xx) GREEN·메인 재실행"
+    },
+    {
+      "claim": "LOW-3: K8s liveness guard 조기 return 시 connecting 리셋",
+      "status": "verified",
+      "evidence": "bun run build ✓ 32.78s"
+    },
+    {
+      "claim": "LOW-6: 권한 SQL sys_role.status=1 조인",
+      "status": "verified",
+      "evidence": "permission_test(비활성 role 차단) GREEN·opdef fixture 활성 role 보강"
+    },
+    {
+      "claim": "CRITICAL-1: 체크포인트 키 (table,column,pk)·멱등 INSERT·다중 컬럼 완주",
+      "status": "verified",
+      "evidence": "TestReencryptCheckpointsArePerColumn run1-3 GREEN·리뷰 R2 verified·자기치유 논리검증"
+    },
+    {
+      "claim": "HIGH-1: AssignRoleMenus 은닉 그랜트 보존",
+      "status": "verified",
+      "evidence": "role_menu_grant_test 3종 GREEN·리뷰 R2 verified·fail-closed 확인"
+    },
+    {
+      "claim": "MEDIUM-1/LOW-3/LOW-7: 은닉 서브트리 전면 보호·GetMenu 차단·사칭 생성 거부",
+      "status": "verified",
+      "evidence": "서브트리 4종·과차단 회귀 무테스트 GREEN·리뷰 R2 verified"
+    },
+    {
+      "claim": "LOW-4: Step 2 write 후 DB 재독기 검증",
+      "status": "verified",
+      "evidence": "TestReencryptVerifiesPersistedBytes GREEN·리뷰 R2 verified"
+    },
+    {
+      "claim": "LOW-6: 리포트 필드별 migrated 수",
+      "status": "verified",
+      "evidence": "TestRenderSecretMigrationTextUsesPerFieldMigrated GREEN·리뷰 R2 verified"
+    }
+  ],
+  "bundle": "v2-phase1/task6-plan.md",
+  "next": "user-rotation-handoff",
+  "anchor": "1b7056c",
+  "scope": "V2 Phase -1 T6 — §4.10 CI 베이스라인 7종 + 카나리 자기검증",
+  "loop": "사용자 goal: 계획→적대→구현→적대→수정→커밋push→다음반복",
+  "planR2": "승인 — H4+M2+L2 7건 반영",
+  "gaps": [
+    {
+      "gap": "HIGH-1 R3 하이픈 모듈 우회",
+      "resolution": "superseded(362581c — 접두사 판정·플랜트 발화)"
+    },
+    {
+      "gap": "HIGH-2 go list fail-open",
+      "resolution": "superseded(362581c — exit 캡처)"
+    },
+    {
+      "gap": "M-3 uploads 사각지대",
+      "resolution": "superseded(362581c)"
+    },
+    {
+      "gap": "M-4 permissions 부재",
+      "resolution": "superseded(362581c)"
+    },
+    {
+      "gap": "폐문-CRITICAL §20 G-1/G-2 — Step 2·3 미구현으로 게이트 충족 불가",
+      "resolution": "수정 착수 — 폐문 철회, Step 2·3 구현 claims pending"
+    },
+    {
+      "gap": "위험-CRITICAL 공개 이력 credential-key 노출·회전 부재",
+      "resolution": "Step 2 구현 후 키 회전 실행 예정 — 자격증명 원문 재발급은 사용자 조치"
+    },
+    {
+      "gap": "HIGH branch protection 미등록",
+      "resolution": "superseded(gh api 등록 완료 — 9체크 required·enforce_admins)"
+    },
+    {
+      "gap": "HIGH 원천 스펙 리포 밖",
+      "resolution": "superseded(docs/architecture/multi-infrastructure-control-plane-v2.md 편입 — 커밋 대기)"
+    },
+    {
+      "gap": "R④-CRITICAL-1 체크포인트 키 컬럼 누락 — 다중 컬럼 테이블 완주 불가",
+      "resolution": "superseded(dc82d84 — 리뷰 라운드 2 verified)"
+    },
+    {
+      "gap": "R④-HIGH-1 ListMenus 필터가 AssignRoleMenus 은닉 그랜트 소거 회귀",
+      "resolution": "superseded(dc82d84 — 리뷰 라운드 2 verified)"
+    }
+  ],
+  "lows": "L-5 keyword-entropy 명칭·L-7 cancel-in-progress·INFO-8 allowlist 비용 — 기록. 렌즈2 LOW-2/4/5/7 설계 경계 보류. M-1 pull 지뢰·M-2 이중수용 0+메트릭 부재·M-3 sqlite-only fixture·M-4 fixture 규율 무검증 — followups 이관",
+  "history": "T1 0344ea8·T2 b43aa6d·T3 1e1ec21·T4 3129bdc·T5 1b7056c·폐문철회 적대검토 2026-09-06(3렌즈 병합)",
+  "followups": [
+    "키 회전 운영 실행 — Step 2·3 커맨드 완성 후 신규 키 발급·재암호화·Step 5 백업 파괴 (공개 이력 노출 대응)",
+    "노출 키로 암호화된 자격증명 원문 폐기·재발급 — DNS/SSL/ACME/schedule (사용자 조치)",
+    "P-class writer 전환 (157 라이트 사이트) — Step 2 P-pass 전제 (스펙 r2.4 ordering rule)",
+    "R-6: 비super 역할 그랜트 해소 — legacy DB 마커 소진 시 비super 터미널 잠김 방지",
+    "첫 PR 9잡 그린 관찰 — branch protection 등록 후 미실증",
+    "M-2: WS 게이트 401 카운터 등 최소 메트릭",
+    "M-3: MySQL 기반 마이그레이션 fixture (sqlite-only 한계)",
+    "Step 4/5: legacy 경로 코드 제거·백업 파괴 — Step 3 게이트 통과 후 별도 PR",
+    "MEDIUM-2: verify-secrets 표본 스트리밍(메모리 상한) — 대량 v2 행 편입 시",
+    "LOW-5: stride 표본의 스펙 \"random\" 편차 문서화",
+    "LOW-R2-1: 구형 2열 체크포인트 스키마 재생성 분기 무테스트 — fixture 테스트 추가",
+    "LOW-R2-2: 가시 메뉴 ParentID 은닉 root 재부여·생성 차단 — 비가역 봉쇄 방지",
+    "LOW-R2-3: assignPermissions payload 은닉 leaf 신규 부여 필터 — 방어 심층",
+    "INFO: dry-run 체크포인트 미로드 — 부분 실배포 후 planned 과대 보고"
+  ],
+  "phase1Complete": null
+}

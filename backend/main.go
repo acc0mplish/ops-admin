@@ -20,11 +20,25 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "inventory-secrets" {
 		os.Exit(runSecretInventory(os.Args[2:]))
 	}
+	// Offline secret-migration subcommands (§4.4 Steps 2-3), dispatched
+	// before any server startup path.
+	if len(os.Args) >= 2 && os.Args[1] == "reencrypt-secrets" {
+		os.Exit(runReencryptSecrets(os.Args[2:]))
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "verify-secrets" {
+		os.Exit(runVerifySecrets(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)
 	}
 	util.ConfigureCredentialKey(cfg.Security.CredentialKey)
+	// G-5 gate: a production startup without any secret key source fails;
+	// the development fallback is permitted only when GO_ENV=development is
+	// explicit.
+	if err := util.EnsureSecretKeySource(cfg.Security.CredentialKey); err != nil {
+		log.Fatalf("secret key source missing: %v", err)
+	}
 
 	db, err := store.NewDB(cfg)
 	if err != nil {
