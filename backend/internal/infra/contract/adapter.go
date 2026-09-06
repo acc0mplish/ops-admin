@@ -33,11 +33,14 @@ type TaskCanceller interface {
 // 확장 시점 명시). ---
 
 // ConnectionView — §7.2에서 도출 — 시크릿 값 결계: Config에 시크릿 소재 포함 금지.
-// ConnectionView 필드 확장(브로커 목적 자격증명 등)은 Phase 1 PR 16.
 type ConnectionView struct {
 	ProviderType string
 	Endpoint     string
 	Config       JSONMap
+	// Material — 브로커가 해석한 목적 스코프 자재. 키는 §7.4 목적 어휘(M1은
+	// "operations" 1건). 평문이므로 로그·직렬화 금지. contract stdlib 순수성
+	// 유지를 위해 타입은 map[string]string이다(secrets 패키지 import 불가).
+	Material map[string]string
 }
 
 type HealthResult struct {
