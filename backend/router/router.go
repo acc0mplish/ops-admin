@@ -3,6 +3,7 @@ package router
 import (
 	"ops-admin/backend/config"
 	"ops-admin/backend/controller"
+	"ops-admin/backend/internal/api/v2"
 	"ops-admin/backend/middleware"
 	"ops-admin/backend/opdef"
 	"ops-admin/backend/service"
@@ -493,6 +494,14 @@ func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 		authGroup.PUT("/k8s/resource/yaml", opdef.Middleware(db, opdef.Must("PUT", "/k8s/resource/yaml")), ctl.UpdateK8sResourceYAML)
 		authGroup.DELETE("/k8s/resource/delete", opdef.Middleware(db, opdef.Must("DELETE", "/k8s/resource/delete")), ctl.DeleteK8sResource)
 	}
+
+	// V2 infra read API (plan PR 23 — spec §16.1 GET subset, J7): additive
+	// group, the /api/v1 tree above stays untouched. GET-only non-sensitive
+	// reads — Auth + OperationLog reuse, no opdef grant (sensitive-routes
+	// golden stays unchanged).
+	v2Group := engine.Group("/api/v2/infra")
+	v2Group.Use(middleware.Auth(db), middleware.OperationLog(db))
+	v2.NewInfraAPI(db).Register(v2Group)
 
 	return engine, svc
 }

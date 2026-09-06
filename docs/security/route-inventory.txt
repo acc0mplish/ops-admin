@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 437 entries.
+# 441 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -251,6 +251,10 @@ GET /api/v1/sysOperationLog/list -> ops-admin/backend/controller.(*Controller).G
 GET /api/v1/system/ldap/config -> ops-admin/backend/controller.(*Controller).GetLDAPConfig-fm
 GET /api/v1/systemConfig -> ops-admin/backend/controller.(*Controller).GetSystemConfig-fm
 GET /api/v1/systemConfig/public -> ops-admin/backend/controller.(*Controller).GetSystemConfig-fm
+GET /api/v2/infra/provider-connections -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListProviderConnections-fm
+GET /api/v2/infra/provider-types -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListProviderTypes-fm
+GET /api/v2/infra/resources -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListResources-fm
+GET /api/v2/infra/resources/:uid -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetResource-fm
 GET /ping -> ops-admin/backend/controller.(*Controller).Ping-fm
 GET /uploads/*filepath -> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1
 HEAD /uploads/*filepath -> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1
