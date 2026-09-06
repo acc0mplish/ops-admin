@@ -16,12 +16,14 @@ import (
 
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/model"
+	"ops-admin/backend/util"
 )
 
 // v2EnvelopePrefix — the §4.2 envelope version tag (util's unexported
-// constant, mirrored here as a read-only shape check). Anything that does
-// not carry the prefix is NOT copied — a plaintext detour is forbidden
-// (A6 UNKNOWN halt posture, 보존 제약 #7).
+// constant, mirrored here as a read-only shape check). Values carrying the
+// prefix are copied verbatim; anything else is treated as P-class plaintext
+// (see sourceKubeSecret) — a plaintext detour into SecretRef is still
+// forbidden (A6 posture, 보존 제약 #7).
 const v2EnvelopePrefix = "v2:"
 
 // BackfillReport is the propagation result — the report artifact's backfill
@@ -59,8 +61,9 @@ type k8sClusterRow struct {
 //     rows only.
 //   - §5.4b stale marking: source rows that disappeared from k8s_cluster
 //     mark their V2 connection stale_source=true (marked, never deleted).
-//   - J2: the kubeconfig v2 envelope is copied VERBATIM into SecretRef
-//     (same key set, same format — no re-encryption, no plaintext detour).
+//   - kubeconfig (P-class): envelope sources are copied verbatim; plaintext
+//     sources are encrypted on copy (sourceKubeSecret — J2's verbatim-only
+//     assumption did not hold and is recorded there).
 func RunK8sBackfill(ctx context.Context, db *gorm.DB) (BackfillReport, error) {
 	var rows []k8sClusterRow
 	err := db.WithContext(ctx).Table("k8s_cluster").
@@ -77,14 +80,17 @@ func RunK8sBackfill(ctx context.Context, db *gorm.DB) (BackfillReport, error) {
 		if !report.Checkpoint.After(row.UpdatedAt) && report.Checkpoint.Before(row.UpdatedAt) {
 			report.Checkpoint = row.UpdatedAt
 		}
-		keyID, ok := envelopeKeyID(row.KubeConfig)
+		keyID, secret, ok, err := sourceKubeSecret(row.KubeConfig)
+		if err != nil {
+			return report, fmt.Errorf("inventory: seal plaintext kubeconfig for k8s_cluster %d: %w", row.ID, err)
+		}
 		if !ok {
 			// Empty (defensive — a registered cluster always has a
-			// kubeconfig) or a non-v2 leftover value: skipped, never copied.
+			// kubeconfig): skipped, never copied.
 			report.Skipped++
 			continue
 		}
-		created, updated, unchanged, err := propagateCluster(ctx, db, row, keyID)
+		created, updated, unchanged, err := propagateCluster(ctx, db, row, keyID, secret)
 		if err != nil {
 			return report, err
 		}
@@ -115,13 +121,44 @@ func envelopeKeyID(value string) (string, bool) {
 	return keyID, true
 }
 
-// propagateCluster applies one source row to the V2 tables.
-func propagateCluster(ctx context.Context, db *gorm.DB, row *k8sClusterRow, keyID string) (created, updated, unchanged int, err error) {
+// sourceKubeSecret normalizes the source kube_config into (keyID, secret)
+// for the SecretRef copy, keeping k8s_cluster itself untouched (R9).
+//
+// J2 assumed the source kubeconfig always arrives as a v2 envelope and is
+// copied VERBATIM. That assumption was wrong: spec §4.4 orders
+// k8s_cluster.kube_config as P-class — plaintext is KEPT in v1 through the
+// whole Phase 4 window because the v1 reader (service/k8s.go parseKubeConfig)
+// consumes plain YAML and an envelope there breaks the legacy capture path.
+// Spec §7.5 makes SecretRef v2-only, so a plaintext source is encrypted on
+// copy into a fresh v2 envelope instead of being skipped — no plaintext ever
+// lands in V2, and no envelope is ever written back into v1.
+func sourceKubeSecret(value string) (keyID, secret string, ok bool, err error) {
+	if strings.TrimSpace(value) == "" {
+		return "", "", false, nil
+	}
+	if id, has := envelopeKeyID(value); has {
+		// v2 source (post-cutover writer) — verbatim copy stands.
+		return id, value, true, nil
+	}
+	sealed, err := util.EncryptSecretV2(value)
+	if err != nil {
+		return "", "", false, err
+	}
+	id, has := envelopeKeyID(sealed)
+	if !has {
+		return "", "", false, fmt.Errorf("sealed kubeconfig is not a v2 envelope")
+	}
+	return id, sealed, true, nil
+}
+
+// propagateCluster applies one source row to the V2 tables. secret is the
+// SecretRef material — always a v2 envelope (verbatim or freshly sealed).
+func propagateCluster(ctx context.Context, db *gorm.DB, row *k8sClusterRow, keyID, secret string) (created, updated, unchanged int, err error) {
 	var existing model.ProviderConnection
 	err = db.WithContext(ctx).Where("uid = ?", SourceKeyUID("k8s_cluster", row.ID)).First(&existing).Error
 	switch {
 	case isRecordNotFound(err):
-		if err := createClusterChain(db, row, keyID); err != nil {
+		if err := createClusterChain(db, row, keyID, secret); err != nil {
 			return 0, 0, 0, fmt.Errorf("inventory: backfill k8s_cluster %d: %w", row.ID, err)
 		}
 		return 1, 0, 0, nil
@@ -147,7 +184,7 @@ func propagateCluster(ctx context.Context, db *gorm.DB, row *k8sClusterRow, keyI
 		Updates(patch).Error; err != nil {
 		return 0, 0, 0, fmt.Errorf("inventory: update backfilled connection: %w", err)
 	}
-	if err := refreshClusterSatellites(db, existing.ID, row.Name, strconvID(row.ID), keyID, row.KubeConfig); err != nil {
+	if err := refreshClusterSatellites(db, existing.ID, row.Name, strconvID(row.ID), keyID, secret); err != nil {
 		return 0, 0, 0, err
 	}
 	return 0, 1, 0, nil
@@ -155,7 +192,7 @@ func propagateCluster(ctx context.Context, db *gorm.DB, row *k8sClusterRow, keyI
 
 // createClusterChain writes the connection + context + secret_ref +
 // credential_binding chain for a first-time source row (§3.4 mapping).
-func createClusterChain(db *gorm.DB, row *k8sClusterRow, keyID string) error {
+func createClusterChain(db *gorm.DB, row *k8sClusterRow, keyID, secret string) error {
 	connectionUID := SourceKeyUID("k8s_cluster", row.ID)
 	sourceUpdatedAt := row.UpdatedAt
 	conn := model.ProviderConnection{
@@ -180,14 +217,15 @@ func createClusterChain(db *gorm.DB, row *k8sClusterRow, keyID string) error {
 		return fmt.Errorf("create provider_context: %w", err)
 	}
 
-	// J2 — the kubeconfig v2 envelope copied verbatim; KeyID parsed from the
-	// envelope. The plaintext never exists on this path.
+	// P-class kubeconfig — the SecretRef material is always a v2 envelope
+	// (verbatim envelope source, or freshly sealed plaintext, see
+	// sourceKubeSecret). The v1 cell keeps its original value.
 	ref := model.SecretRef{
 		UID:        SourceKeyUIDSalted("k8s_cluster", row.ID, "secret"),
 		Backend:    "internal",
 		Path:       "backfill/k8s_cluster/" + strconvID(row.ID),
 		KeyID:      keyID,
-		Ciphertext: row.KubeConfig,
+		Ciphertext: secret,
 	}
 	if err := db.Create(&ref).Error; err != nil {
 		return fmt.Errorf("create secret_ref: %w", err)
@@ -207,7 +245,9 @@ func createClusterChain(db *gorm.DB, row *k8sClusterRow, keyID string) error {
 }
 
 // refreshClusterSatellites re-points the context name and, when the source
-// envelope changed (re-key or rotation upstream), re-copies it verbatim.
+// changed (re-key, rotation, or re-sealed plaintext — the incremental
+// checkpoint already gates this to actual source updates), re-copies the
+// SecretRef material.
 func refreshClusterSatellites(db *gorm.DB, connectionID uint, name, externalID, keyID, kubeConfig string) error {
 	if err := db.Model(&model.ProviderContext{}).Where("connection_id = ?", connectionID).
 		Updates(map[string]any{"name": name, "external_id": externalID}).Error; err != nil {
