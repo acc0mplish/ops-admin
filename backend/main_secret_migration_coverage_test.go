@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ops-admin/backend/internal/testutil"
 	"ops-admin/backend/util"
 )
 
@@ -45,8 +46,8 @@ func TestRunSecretMigrationLoadFailure(t *testing.T) {
 // the mixed-declaration column: the plan is announced, nothing is written and
 // no checkpoint table is created.
 func TestReencryptDryRunLeavesVariablesUntouched(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ops_script (id INTEGER PRIMARY KEY, variables TEXT)",
 		"CREATE TABLE ops_schedule_task (id INTEGER PRIMARY KEY, script_id INTEGER, variables TEXT)",
 	)
@@ -83,8 +84,8 @@ func TestReencryptDryRunLeavesVariablesUntouched(t *testing.T) {
 // variables column: a value that claims no parseable JSON shape halts the run
 // and lands in the quarantine report, never in plaintext interpretation.
 func TestReencryptHaltsOnMalformedVariablesJSON(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ops_script (id INTEGER PRIMARY KEY, variables TEXT)",
 		"CREATE TABLE ops_schedule_task (id INTEGER PRIMARY KEY, script_id INTEGER, variables TEXT)",
 	)
@@ -107,8 +108,8 @@ func TestReencryptHaltsOnMalformedVariablesJSON(t *testing.T) {
 // mixed-declaration column: declared v2 variables enter the spot-decrypt
 // sample and the gate report carries them.
 func TestVerifySamplesScheduleVariables(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ops_script (id INTEGER PRIMARY KEY, variables TEXT)",
 		"CREATE TABLE ops_schedule_task (id INTEGER PRIMARY KEY, script_id INTEGER, variables TEXT)",
 	)
@@ -142,8 +143,8 @@ func TestVerifySamplesScheduleVariables(t *testing.T) {
 // the gate: a value that classifies as V2 but does not decrypt fails the gate
 // even though the counts look clean.
 func TestVerifyGateFailsOnCorruptedV2Sample(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	// Well-formed envelope header with the known current key id but an
 	// invalid payload: the classifier accepts it as V2, the spot decrypt
 	// must not.
@@ -168,8 +169,8 @@ func TestVerifyGateFailsOnCorruptedV2Sample(t *testing.T) {
 // TestVerifySamplingFloorOnLargeTable exercises the >=500-row branch of the
 // sampling floor against a table of 600 v2 rows.
 func TestVerifySamplingFloorOnLargeTable(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	for index := 0; index < 600; index++ {
 		v2Value, err := util.EncryptSecretV2(fmt.Sprintf("bulk-value-%d", index))
 		if err != nil {
@@ -250,8 +251,8 @@ func TestRenderSecretVerificationText(t *testing.T) {
 // (table, pk) key is dropped and rebuilt with the cell-level key, and the
 // sweep re-checkpoints the already-migrated cells under the wider key.
 func TestCheckpointTableRebuildFromNarrowSchema(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("rebuild-probe")
 	if err != nil {
 		t.Fatal(err)
@@ -304,8 +305,8 @@ func TestStrideSampleEdges(t *testing.T) {
 // fail the migration, skip the checkpoint, and leave the row healable by the
 // next (untampered) run.
 func TestReencryptVerifyConsumesPersistedBytes(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("tamper-probe-value")
 	if err != nil {
 		t.Fatal(err)
