@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ops-admin/backend/internal/testutil"
 	"ops-admin/backend/util"
 )
 
@@ -13,8 +14,8 @@ import (
 // values are re-written as v2 envelopes, verified byte-for-byte against the
 // in-memory plaintext, checkpointed, and skipped entirely on a re-run.
 func TestReencryptMigratesLegacyToV2(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("legacy-private-key")
 	if err != nil {
 		t.Fatal(err)
@@ -66,8 +67,8 @@ func TestReencryptMigratesLegacyToV2(t *testing.T) {
 // command cannot take the column backup itself, so it refuses every write
 // until the operator acknowledges the backup with a flag.
 func TestReencryptRequiresBackupAcknowledgement(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("unbacked-up-value")
 	if err != nil {
 		t.Fatal(err)
@@ -107,8 +108,8 @@ func TestReencryptRequiresBackupAcknowledgement(t *testing.T) {
 // and the command halts leaving the mixed state behind for the dual-key
 // reader to serve.
 func TestReencryptHaltsOnUnknownQuarantine(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("migratable-value")
 	if err != nil {
 		t.Fatal(err)
@@ -154,8 +155,8 @@ func TestReencryptHaltsOnUnknownQuarantine(t *testing.T) {
 // never be swept into Step 2; the command aborts with an explanation unless
 // the operator explicitly excludes them.
 func TestReencryptRejectsPClass(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)",
 		"CREATE TABLE asset_credential (id INTEGER PRIMARY KEY, password TEXT)",
 	)
@@ -192,8 +193,8 @@ func TestReencryptRejectsPClass(t *testing.T) {
 // checkpoint row for a still-legacy value must cause the skip, proving the
 // command resumes from (table, column, pk) rather than rewriting history.
 func TestReencryptSkipsPreexistingCheckpoints(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	first, err := util.EncryptSecret("first-value")
 	if err != nil {
 		t.Fatal(err)
@@ -235,8 +236,8 @@ func TestReencryptSkipsPreexistingCheckpoints(t *testing.T) {
 // column: only per-value declared secrets migrate; undeclared values stay
 // declaration-exempt.
 func TestReencryptMigratesDeclaredScheduleVariables(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ops_script (id INTEGER PRIMARY KEY, variables TEXT)",
 		"CREATE TABLE ops_schedule_task (id INTEGER PRIMARY KEY, script_id INTEGER, variables TEXT)",
 	)
@@ -274,8 +275,8 @@ func TestReencryptMigratesDeclaredScheduleVariables(t *testing.T) {
 // covers exactly one (table, column, pk) cell, an interrupted run never
 // abandons the remaining columns, and re-recording a cell is idempotent.
 func TestReencryptCheckpointsArePerColumn(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE domain_public_dns_account (id INTEGER PRIMARY KEY, access_key_cipher TEXT, secret_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE domain_public_dns_account (id INTEGER PRIMARY KEY, access_key_cipher TEXT, secret_key_cipher TEXT)")
 	first, err := util.EncryptSecret("access-one")
 	if err != nil {
 		t.Fatal(err)
@@ -340,8 +341,8 @@ func TestReencryptCheckpointsArePerColumn(t *testing.T) {
 // UPDATE, so a read-back carrying tampered bytes fails the migration instead
 // of an in-memory check passing it.
 func TestReencryptVerifiesPersistedBytes(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("verify-me")
 	if err != nil {
 		t.Fatal(err)
@@ -367,8 +368,8 @@ func TestReencryptVerifiesPersistedBytes(t *testing.T) {
 // TestRenderSecretMigrationTextUsesPerFieldMigrated pins the report contract:
 // each field line carries its own migrated count, not the run's global total.
 func TestRenderSecretMigrationTextUsesPerFieldMigrated(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t,
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t,
 		"CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)",
 		"CREATE TABLE ssl_certificate_versions (id INTEGER PRIMARY KEY, private_key_cipher TEXT)",
 	)
@@ -404,8 +405,8 @@ func TestRenderSecretMigrationTextUsesPerFieldMigrated(t *testing.T) {
 // TestVerifyGatePassesAfterMigration covers Step 3: after a successful Step 2
 // run the gate passes with a spot-decrypt sample and emits report counts.
 func TestVerifyGatePassesAfterMigration(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("sampled-value")
 	if err != nil {
 		t.Fatal(err)
@@ -438,8 +439,8 @@ func TestVerifyGatePassesAfterMigration(t *testing.T) {
 // any LEGACY, PLAINTEXT or UNKNOWN row fails the gate and must be visible in
 // the report for the operator.
 func TestVerifyGateFailsOnUnmigratedData(t *testing.T) {
-	inventoryScanKeys(t)
-	db := newInventoryScanDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t, "CREATE TABLE ssl_certificates (id INTEGER PRIMARY KEY, private_key_cipher TEXT)")
 	legacy, err := util.EncryptSecret("still-legacy")
 	if err != nil {
 		t.Fatal(err)

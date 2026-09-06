@@ -4,47 +4,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"ops-admin/backend/internal/testutil"
 	"ops-admin/backend/util"
 )
 
-// inventoryScanKeys pins the secret key state for the scan tests.
+// inventoryScanKeys and newInventoryScanDB moved to the shared harness in
+// internal/testutil; the call sites below use the testutil names.
 func inventoryScanKeys(t *testing.T) {
 	t.Helper()
-	t.Setenv("OPS_SECRET_MASTER_KEYS", "")
-	if err := util.ConfigureSecretMasterKeys(""); err != nil {
-		t.Fatal(err)
-	}
-	util.ConfigureCredentialKey("inventory-scan-credential-seed")
-	t.Cleanup(func() {
-		util.ConfigureCredentialKey("")
-		_ = util.ConfigureSecretMasterKeys("")
-	})
+	testutil.PinSecretKeys(t)
 }
 
-// newInventoryScanDB opens a single-connection in-memory sqlite database with
-// hand-written minimal tables, mirroring how the command queries the registry
-// strings directly instead of importing models.
 func newInventoryScanDB(t *testing.T, statements ...string) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	for _, statement := range statements {
-		if err := db.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	return db
+	return testutil.OpenMemoryDB(t, statements...)
 }
 
 func TestRenderSecretInventoryText(t *testing.T) {

@@ -66,8 +66,21 @@
 | `backend/main.go` | 수정 | 디스패치: `len(os.Args) >= 2 && os.Args[1] == "inventory-secrets"` 가드(L-2) → `runSecretInventory(os.Args[2:])`, 그 외 기존 경로 무변경 |
 | `backend/main_inventory.go` | 신규 | `runSecretInventory` (§4 초기화 시퀀스 포함 — H-4) |
 | `backend/main_inventory_test.go` | 신규(선택) | 출력 조립 최소 테스트. 집계 계약 자체는 T18로 util 레벨에서 필수화(M-2) |
+| `backend/util/secret_guard.go` | **신규(페이즈 B)** | G-5 기동 가드: `EnsureSecretKeySource` — 키 소스 전무 + GO_ENV 비-development → 기동 fatal. 개발 폴백 시드 자체는 Step 4까지 유지 |
+| `backend/main_reencrypt.go` | **신규(페이즈 B)** | §4.4 Step 2 `reencrypt-secrets`: E-class row-by-row classify→read→v2 재작성→저장 바이트 재판정→(table, column, pk) 체크포인트. `--dry-run`·`--backup-acknowledged`·`--exclude-p-class`·`--json`. UNKNOWN halt+quarantine, P-class 거부(r2.4) |
+| `backend/main_verify.go` | **신규(페이즈 B)** | §4.4 Step 3 `verify-secrets`: classifier 재실행(zero LEGACY/PLAINTEXT/UNKNOWN) + 테이블당 ≥10%·≥500행 stride 스팟 복호, `--out` JSON 리포트, 게이트 exit code |
+| `backend/internal/testutil/secret_test_helpers.go` | **신규(페이즈 B)** | 공유 테스트 헤니스: `PinSecretKeys`(키 상태 고정·복원), `OpenMemoryDB`(단일 커넥션 in-memory sqlite). 아래 테스트 폴더 정책 참조 |
+| `backend/main_secret_migration_test.go` | **신규(페이즈 B)** | Step 2 코어 10건: legacy→v2 왕복·재개 스킵·UNKNOWN quarantine·P-class 거부·백업 미확인 거부·mixed-declaration |
+| `backend/main_secret_migration_coverage_test.go` | **신규(페이즈 B)** | 커버리지 강화 13건: CLI 플래그·dry-run 무쓰기·V2 오염값 스팟 복호 실패·≥500 샘플 하한·저장 바이트 소비 증명(tamper)·체크포인트 스키마 리빌드 |
 
 **[계획 결정] sqlite 테스트 의존성**: 왕복 테스트(T16/T17)가 실제 호출지(`SavePublicDNSAccount`→`publicProvider` 등)를 통과하려면 in-memory DB가 필요하다. 기존 service 테스트는 mock 기반으로 DB 하neus가 없고 mysql은 테스트 실행 불가. `gorm.io/driver/sqlite`를 **테스트 전용**으로 추가한다(프로덕션 import 금지 — 보존 제약 #10). 대안(util 경계 왕복만)은 CR-1의 "콜사이트 행동 검증 0"을 닫지 못해 기각. Service는 동일 패키지 테스트에서 `&Service{db: db}`로 구성(비내보내기 필드 직접 주입), 경로가 건드리는 모델(PublicDNSAccount·감사 로그 모델 등)만 `AutoMigrate`.
+
+**[계획 결정 — 페이즈 B] 테스트 파일 조직 (test 폴더 분리)**: 시크릿 마이그레이션 테스트가 계속 늘어나므로 다음 규칙으로 분리한다.
+
+- **공유 헤니스는 `backend/internal/testutil/` 패키지로 분리**: 키 상태 고정(`PinSecretKeys`)·in-memory fixture DB(`OpenMemoryDB`) 등 테스트 파일 간 중복되는 헬퍼는 여기에 모은다. 새 테스트 파일은 헬퍼를 자체 정의하지 않고 testutil을 import한다.
+- **`_test.go` 파일 자체는 Go 언어 제약상 각 패키지 디렉터리에 유지**: 미내보내기 식별자(`reencryptSecretsInDB` 등)는 동일 패키지에서만 보이므로 `test/` 최상위 폴더로 옮기면 컴파일이 깨진다. 분리는 "파일 소재지"가 아니라 "중복 제거 단위"로 한다.
+- **util 패키지 내부 테스트는 testutil을 import하지 않는다**: testutil이 util을 import하므로 `package util` 내부 테스트가 testutil을 참조하면 import 사이클. util의 `configureMasterKeys` 헬퍼는 `secretv2_test.go`에 유지.
+- **후속 대상**: service 레이어 왕복 테스트(`secretv2_roundtrip_test.go`, T16/T17)가 추가될 때도 같은 규칙 — fixture DB 구성은 testutil 헬퍼를 재사용하고, 서비스별 시드 데이터 빌더가 늘어나면 testutil에 기능별 파일(`testutil/k8s_fixtures.go` 등)로 분리한다.
 
 `util/secret.go`은 **한 글자도 수정하지 않는다** (보존 제약 #1). config·store·router·controller 무수정.
 
