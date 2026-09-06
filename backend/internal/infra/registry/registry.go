@@ -115,11 +115,12 @@ func (r *Registry) ProviderType(name string) (contract.ProviderTypeDescriptor, c
 // RegisterCapabilities attaches capabilities to a registered provider type.
 // V4: the capability name must exist in M1CapabilityVocabulary, must not
 // duplicate within the type, and every ResourceKind must be known (§8.5).
-// V5 minimum guard: an adapter declaring a capability must implement at least
-// one capability-serving interface (Discoverer or OperationExecutor); any
-// capability declared by an adapter implementing neither is rejected.
-// The per-capability interface mapping table is owned by the Phase 1 plan —
-// no ReadOnly→interface dichotomy here (r2).
+// V5 (table-based, PR 17 §3.7): the §3.7 capability→interface mapping table
+// governs — an adapter declaring a capability must implement the interface
+// the table marks required for it (type assertion). Rows with an explicit
+// empty requirement (cost.read, console.web_terminal) pass with no interface
+// check: that is the table's value, not a validation exclusion. No
+// ReadOnly→interface dichotomy (phase0 r2 V5 판정 승계).
 func (r *Registry) RegisterCapabilities(providerType string, caps ...contract.Capability) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -152,8 +153,12 @@ func (r *Registry) RegisterCapabilities(providerType string, caps ...contract.Ca
 				return fmt.Errorf("registry: capability %q: unknown resource kind %q (§8.5)", c.Name, k)
 			}
 		}
-		if !servesCapabilities(r.providers[providerType].adapter) {
-			return fmt.Errorf("registry: capability %q declared by provider type %q whose adapter implements no capability-serving interface (Discoverer/OperationExecutor) (§11, V5 guard)", c.Name, providerType)
+		row, ok := capabilityInterfaceRequirement(c.Name)
+		if !ok {
+			return fmt.Errorf("registry: capability %q has no §3.7 mapping-table row — the table must cover the M1 vocabulary", c.Name)
+		}
+		if !adapterServesInterface(r.providers[providerType].adapter, row.RequiredInterface) {
+			return fmt.Errorf("registry: capability %q requires provider type %q to implement %s (§3.7 mapping table)", c.Name, providerType, row.RequiredInterface)
 		}
 	}
 	if existing == nil {
@@ -166,12 +171,34 @@ func (r *Registry) RegisterCapabilities(providerType string, caps ...contract.Ca
 	return nil
 }
 
-// servesCapabilities reports whether the adapter implements at least one
-// capability-serving interface (V5 minimum guard).
-func servesCapabilities(a contract.BaseAdapter) bool {
-	_, isDiscoverer := a.(contract.Discoverer)
-	_, isExecutor := a.(contract.OperationExecutor)
-	return isDiscoverer || isExecutor
+// capabilityInterfaceRequirement finds the §3.7 mapping row for a capability
+// name.
+func capabilityInterfaceRequirement(name string) (contract.InterfaceRequirement, bool) {
+	for _, row := range contract.CapabilityInterfaceMap {
+		if row.Capability == name {
+			return row, true
+		}
+	}
+	return contract.InterfaceRequirement{}, false
+}
+
+// adapterServesInterface type-asserts the adapter against an interface name
+// from the mapping table. "" is satisfied by every adapter (explicit empty
+// requirement); an unknown name fails closed — the table and this validator
+// share one review.
+func adapterServesInterface(a contract.BaseAdapter, iface string) bool {
+	switch iface {
+	case "":
+		return true
+	case "Discoverer":
+		_, ok := a.(contract.Discoverer)
+		return ok
+	case "OperationExecutor":
+		_, ok := a.(contract.OperationExecutor)
+		return ok
+	default:
+		return false
+	}
 }
 
 // Capabilities returns the capabilities registered for a provider type,

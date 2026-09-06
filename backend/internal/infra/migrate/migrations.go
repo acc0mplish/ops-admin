@@ -28,4 +28,6 @@ var steps = []Step{
 	step0000Bootstrap,
 	// PR 16 appends step0001InfraFoundation here (one line).
 	step0001InfraFoundation,
+	// PR 17 appends step0002Tasks here (one line).
+	step0002Tasks,
 }
