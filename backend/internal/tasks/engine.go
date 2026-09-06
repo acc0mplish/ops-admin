@@ -70,14 +70,16 @@ type SubmitInput struct {
 }
 
 // Submit ① looks the OperationDefinition up in the registry (hard error when
-// unregistered — no retry) and snapshots MaxAttempts/CallTimeoutSeconds (and,
-// from PR 18's columns, the approval posture), ② rejects an empty ResourceUID
-// (T-5), ③ creates the task planned and transitions it in the same
-// transaction — awaiting_approval when the definition requires approval,
-// queued otherwise (§13.3), ④ classifies unique-violation errors by index
-// name (T-6). The idempotency-replay branch (return the existing task with
-// replayed=true) activates with PR 18's unique index; in PR 17 the index does
-// not exist yet, so that branch is structurally unreachable.
+// unregistered — no retry) and snapshots MaxAttempts/CallTimeoutSeconds plus
+// the approval posture (RequiresApproval, §13.3), ② rejects an empty
+// ResourceUID (T-5), ③ creates the task planned and transitions it in the
+// same transaction — awaiting_approval when the definition requires approval,
+// queued otherwise (§13.3), ④ resolves unique violations (T-6): with an
+// IdempotencyKey set, a failed insert first attempts the replay recovery —
+// the existing task returns with replayed=true (§13.4/N6, idempotency.go) —
+// and everything else classifies by index name: resource-active →
+// resource_busy hard error (N11), idempotency-miss → retryable conflict
+// error (R4). No fallbacks.
 func (e *Engine) Submit(ctx context.Context, in SubmitInput) (model.ProviderTask, bool, error) {
 	if in.ResourceUID == "" {
 		return model.ProviderTask{}, false, ErrEmptyResourceUID
@@ -108,6 +110,12 @@ func (e *Engine) Submit(ctx context.Context, in SubmitInput) (model.ProviderTask
 		MaxAttempts:        maxAttempts,
 		NextAttemptAt:      &now,
 		CallTimeoutSeconds: def.TimeoutSeconds,
+		RequiresApproval:   def.RequiresApproval,      // §13.3 전이 판단 스냅샷 (r2 T-10: 정준원천은 registry)
+		ApprovalStatus:     ApprovalStatusNotRequired, // 대기 표현은 Status=awaiting_approval이 담당 (approval.go)
+	}
+	if in.IdempotencyKey != "" { // "" 이면 미설정(단일 실행) — 컬럼은 NULL로 유니크에서 제외
+		key := in.IdempotencyKey
+		task.IdempotencyKey = &key
 	}
 
 	var out model.ProviderTask
@@ -134,14 +142,26 @@ func (e *Engine) Submit(ctx context.Context, in SubmitInput) (model.ProviderTask
 		return nil
 	})
 	if err != nil {
+		// Replay-first (idempotency.go): with a key set, a hit proves the
+		// insert duplicated that key — return the existing task even when the
+		// resource-active unique fired on the same insert (N6 semantics).
+		if in.IdempotencyKey != "" {
+			if existing, found, replayErr := e.replayByIdempotencyKey(ctx, in.IdempotencyKey); replayErr == nil && found {
+				return existing, true, nil
+			}
+		}
 		return model.ProviderTask{}, false, err
 	}
 	return out, false, nil
 }
 
 // classifySubmitViolation maps a submit-time unique violation to its engine
-// semantics (§3.6 ④): resource-active → resource_busy hard error; the
-// idempotency replay path activates with PR 18's index.
+// semantics (§3.6 ④): resource-active → resource_busy hard error. The
+// idempotency case is the replay recovery's fallback — it fires only when the
+// key collided but no committed task holds it (a concurrent submit's
+// transaction is still in flight — the caller retries, R4); the happy replay
+// path returns from Submit before this classification is consulted
+// (idempotency.go).
 func classifySubmitViolation(err error) error {
 	index, ok := classifyUniqueViolation(err)
 	if !ok {
@@ -151,9 +171,7 @@ func classifySubmitViolation(err error) error {
 	case uniqueIndexResourceActive:
 		return ErrResourceBusy
 	case uniqueIndexIdempotency:
-		// PR 18 replaces this with the replay return (§13.4/N6). PR 17 has no
-		// such index, so this branch cannot fire — kept for the contract shape.
-		return fmt.Errorf("tasks: idempotency conflict on %s: %w", index, err)
+		return fmt.Errorf("tasks: idempotency conflict on %s (retry the submit — R4): %w", index, err)
 	default:
 		return fmt.Errorf("tasks: unique constraint %s rejected the submit: %w", index, err)
 	}

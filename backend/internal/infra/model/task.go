@@ -28,16 +28,16 @@ type ProviderTask struct { // §13.1 "the unit of work + lease column + approval
 	ErrorMessage       string           `gorm:"type:text"`
 	CallTimeoutSeconds int              `gorm:"default:0"` // §13.4 provider call timeout (per attempt)
 	DeadlineAt         *time.Time       // §13.4 task deadline (overall)
-	// step0003 (PR 18) Expand — 이 시점엔 미포함:
-	//   RequiresApproval  bool   `gorm:"default:false"`                      // §13.3 전이 판단 스냅샷
-	//   ApprovalStatus    string `gorm:"size:32;default:not_required;index"` // §13.3 OpsJob 어휘 (model/ops.go:538 관례)
-	//   Approver          string `gorm:"size:128"`                           // §13.3
-	//   ApprovalAt        *time.Time                                             // §13.3
-	//   IdempotencyKey    *string `gorm:"size:128;uniqueIndex:uq_provider_task_idempotency"` // §13.4
-	StartedAt  *time.Time // §18.2 claim→terminal 측정
-	FinishedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// step0003 (PR 18) Expand — 승인 스냅샷(§13.3) + 멱등 키(§13.4).
+	RequiresApproval bool       `gorm:"default:false"`                      // §13.3 전이 판단 스냅샷 — Submit이 def.RequiresApproval을 복사
+	ApprovalStatus   string     `gorm:"size:32;default:not_required;index"` // §13.3 OpsJob 어휘(model/ops.go:538 관례) — not_required/approved/rejected. 'rejected'는 이 컬럼 값·task_event 타입일 뿐 Status 종단 아님(r2 A). 대기 표현은 Status=awaiting_approval이 담당
+	Approver         string     `gorm:"size:128"`                           // §13.3
+	ApprovalAt       *time.Time // §13.3
+	IdempotencyKey   *string    `gorm:"size:128;uniqueIndex:uq_provider_task_idempotency"` // §13.4 — NULL 다수 허용(MySQL/sqlite 유니크 관례, A5). 인덱스명은 T-6 분류 계약의 일부
+	StartedAt        *time.Time // §18.2 claim→terminal 측정
+	FinishedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // step0003 (PR 18) raw DDL 계약 — 모델 태그로 표현 불가한 가드는 그 스텝이 소유한다:
