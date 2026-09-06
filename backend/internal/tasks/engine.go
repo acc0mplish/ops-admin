@@ -202,7 +202,14 @@ func classifyUniqueViolation(err error) (string, bool) {
 		if i := strings.LastIndex(msg, marker); i >= 0 {
 			rest := msg[i+len(marker):]
 			if j := strings.IndexByte(rest, '\''); j >= 0 {
-				return rest[:j], true
+				name := rest[:j]
+				// MySQL 8 qualifies the key as '<table>.<index>' (verified
+				// 8.0.46, tier-2): "for key 'provider_task.uq_…'" — the
+				// classifier's vocabulary is the bare index name (T-6).
+				if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
+					name = name[dot+1:]
+				}
+				return name, true
 			}
 		}
 		return "", false

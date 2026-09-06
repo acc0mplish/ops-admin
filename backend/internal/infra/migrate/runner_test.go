@@ -337,14 +337,15 @@ func TestMySQLMigrationSuite(t *testing.T) {
 	cfg.ParseTime = true
 	cfg.Loc = time.Local
 
-	// Scratch schema lifecycle (A16): drop, create, run, drop.
+	// Scratch schema lifecycle (A16): drop, create, run, drop. The drop runs
+	// inside the LIFO cleanup BEFORE the admin handle closes — never through
+	// a closed handle.
 	noDB := *cfg
 	noDB.DBName = ""
 	admin, err := sql.Open("mysql", noDB.FormatDSN())
 	if err != nil {
 		t.Fatalf("dial mysql without schema: %v", err)
 	}
-	defer admin.Close()
 	if _, err := admin.Exec("DROP DATABASE IF EXISTS " + scratch); err != nil {
 		t.Fatalf("drop scratch schema: %v", err)
 	}
@@ -353,6 +354,7 @@ func TestMySQLMigrationSuite(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + scratch)
+		_ = admin.Close()
 	})
 
 	db, err := gorm.Open(gormmysqldriver.Open(cfg.FormatDSN()), &gorm.Config{})
@@ -362,7 +364,26 @@ func TestMySQLMigrationSuite(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := Run(ctx, db); err != nil {
+	// GET_LOCK is server-scoped (A15): with `go test` launching the migrate
+	// and tasks binaries in parallel, the sibling binary's run legitimately
+	// holds the lock — the runner's fail-fast is per-run, so the TEST retries
+	// the whole run until the sibling releases (bounded; runs hold it for
+	// seconds only). Non-lock errors return immediately.
+	runWithLockRetry := func() error {
+		deadline := time.Now().Add(90 * time.Second)
+		for {
+			err := Run(ctx, db)
+			if err == nil || !strings.Contains(err.Error(), "advisory lock") {
+				return err
+			}
+			if time.Now().After(deadline) {
+				return err
+			}
+			t.Logf("advisory lock held by the sibling test binary — retrying the migration run")
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	if err := runWithLockRetry(); err != nil {
 		t.Fatalf("migration run over clean MySQL schema: %v", err)
 	}
 
@@ -378,7 +399,7 @@ func TestMySQLMigrationSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load applied: %v", err)
 	}
-	if err := Run(ctx, db); err != nil {
+	if err := runWithLockRetry(); err != nil {
 		t.Fatalf("re-run over migrated MySQL schema: %v", err)
 	}
 	after, err := loadApplied(db)
@@ -387,5 +408,51 @@ func TestMySQLMigrationSuite(t *testing.T) {
 	}
 	if len(before) != len(after) {
 		t.Errorf("re-run changed the recorded versions %d -> %d, want a no-op", len(before), len(after))
+	}
+
+	// PR 19 완성 (plan §6/§7 claim 18): the clean install records EVERY
+	// registered step — the full 0000–0003 set, each non-dirty, in order —
+	// and the step0003 guard shape (generated column + composite unique) is
+	// present on MySQL. A step silently absent from the list would otherwise
+	// pass the no-op re-run above.
+	wantSteps := map[int64]string{
+		0: "bootstrap_schema_migration",
+		1: "infra_foundation",
+		2: "tasks",
+		3: "task_guards",
+	}
+	if len(after) != len(wantSteps) {
+		t.Errorf("recorded versions on MySQL = %d, want exactly %d (0000–0003)", len(after), len(wantSteps))
+	}
+	for version, name := range wantSteps {
+		row, ok := after[version]
+		if !ok {
+			t.Errorf("step %d (%s) not recorded on the clean MySQL install", version, name)
+			continue
+		}
+		if row.Dirty {
+			t.Errorf("step %d (%s) recorded dirty on MySQL", version, name)
+		}
+		if row.Name != name {
+			t.Errorf("step %d recorded as %q, want %q", version, row.Name, name)
+		}
+	}
+	if ok, err := columnExists(db, "provider_task", "active_flag"); err != nil || !ok {
+		t.Errorf("active_flag on MySQL = (%v, %v), want (true, nil) — step0003 guard column", ok, err)
+	}
+	var generated int64
+	if err := db.Raw(
+		"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'provider_task' AND column_name = 'active_flag' AND generation_expression <> ''",
+	).Scan(&generated).Error; err != nil {
+		t.Fatalf("probe active_flag generation expression: %v", err)
+	}
+	if generated != 1 {
+		t.Errorf("active_flag generated-column rows = %d, want 1 (it must be computed, not plain)", generated)
+	}
+	if ok, err := indexExists(db, "provider_task", "uq_provider_task_resource_active"); err != nil || !ok {
+		t.Errorf("uq_provider_task_resource_active on MySQL = (%v, %v), want (true, nil)", ok, err)
+	}
+	if ok, err := indexExists(db, "provider_task", "uq_provider_task_idempotency"); err != nil || !ok {
+		t.Errorf("uq_provider_task_idempotency on MySQL = (%v, %v), want (true, nil)", ok, err)
 	}
 }

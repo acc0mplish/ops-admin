@@ -215,6 +215,14 @@ func TestClassifyUniqueViolation(t *testing.T) {
 			ok:    true,
 		},
 		{
+			// MySQL 8 (verified 8.0.46 via the tier-2 suite) qualifies the
+			// key as '<table>.<index>' — the bare name must still come out.
+			label: "mysql 1062 table-qualified resource active",
+			err:   &gormMysql.MySQLError{Number: 1062, Message: "Duplicate entry 'res-1-1' for key 'provider_task.uq_provider_task_resource_active'"},
+			index: "uq_provider_task_resource_active",
+			ok:    true,
+		},
+		{
 			label: "mysql 1062 idempotency",
 			err:   &gormMysql.MySQLError{Number: 1062, Message: "Duplicate entry 'idem-1' for key 'uq_provider_task_idempotency'"},
 			index: "uq_provider_task_idempotency",
