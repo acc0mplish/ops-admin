@@ -1,12 +1,12 @@
 {
   "task": "v2-p1t6-ci-baseline",
   "tier": "L",
-  "phase": "review",
+  "phase": "done",
   "round": {
     "adversary": 1,
-    "review": 1
+    "review": 2
   },
-  "spawns": 8,
+  "spawns": 9,
   "claims": [
     {
       "claim": "스캐너·아치 클린·카나리 3종 발화",
@@ -67,10 +67,35 @@
       "claim": "LOW-6: 권한 SQL sys_role.status=1 조인",
       "status": "verified",
       "evidence": "permission_test(비활성 role 차단) GREEN·opdef fixture 활성 role 보강"
+    },
+    {
+      "claim": "CRITICAL-1: 체크포인트 키 (table,column,pk)·멱등 INSERT·다중 컬럼 완주",
+      "status": "verified",
+      "evidence": "TestReencryptCheckpointsArePerColumn run1-3 GREEN·리뷰 R2 verified·자기치유 논리검증"
+    },
+    {
+      "claim": "HIGH-1: AssignRoleMenus 은닉 그랜트 보존",
+      "status": "verified",
+      "evidence": "role_menu_grant_test 3종 GREEN·리뷰 R2 verified·fail-closed 확인"
+    },
+    {
+      "claim": "MEDIUM-1/LOW-3/LOW-7: 은닉 서브트리 전면 보호·GetMenu 차단·사칭 생성 거부",
+      "status": "verified",
+      "evidence": "서브트리 4종·과차단 회귀 무테스트 GREEN·리뷰 R2 verified"
+    },
+    {
+      "claim": "LOW-4: Step 2 write 후 DB 재독기 검증",
+      "status": "verified",
+      "evidence": "TestReencryptVerifiesPersistedBytes GREEN·리뷰 R2 verified"
+    },
+    {
+      "claim": "LOW-6: 리포트 필드별 migrated 수",
+      "status": "verified",
+      "evidence": "TestRenderSecretMigrationTextUsesPerFieldMigrated GREEN·리뷰 R2 verified"
     }
   ],
   "bundle": "v2-phase1/task6-plan.md",
-  "next": "review-pr",
+  "next": "user-rotation-handoff",
   "anchor": "1b7056c",
   "scope": "V2 Phase -1 T6 — §4.10 CI 베이스라인 7종 + 카나리 자기검증",
   "loop": "사용자 goal: 계획→적대→구현→적대→수정→커밋push→다음반복",
@@ -107,6 +132,14 @@
     {
       "gap": "HIGH 원천 스펙 리포 밖",
       "resolution": "superseded(docs/architecture/multi-infrastructure-control-plane-v2.md 편입 — 커밋 대기)"
+    },
+    {
+      "gap": "R④-CRITICAL-1 체크포인트 키 컬럼 누락 — 다중 컬럼 테이블 완주 불가",
+      "resolution": "superseded(dc82d84 — 리뷰 라운드 2 verified)"
+    },
+    {
+      "gap": "R④-HIGH-1 ListMenus 필터가 AssignRoleMenus 은닉 그랜트 소거 회귀",
+      "resolution": "superseded(dc82d84 — 리뷰 라운드 2 verified)"
     }
   ],
   "lows": "L-5 keyword-entropy 명칭·L-7 cancel-in-progress·INFO-8 allowlist 비용 — 기록. 렌즈2 LOW-2/4/5/7 설계 경계 보류. M-1 pull 지뢰·M-2 이중수용 0+메트릭 부재·M-3 sqlite-only fixture·M-4 fixture 규율 무검증 — followups 이관",
@@ -119,7 +152,13 @@
     "첫 PR 9잡 그린 관찰 — branch protection 등록 후 미실증",
     "M-2: WS 게이트 401 카운터 등 최소 메트릭",
     "M-3: MySQL 기반 마이그레이션 fixture (sqlite-only 한계)",
-    "Step 4/5: legacy 경로 코드 제거·백업 파괴 — Step 3 게이트 통과 후 별도 PR"
+    "Step 4/5: legacy 경로 코드 제거·백업 파괴 — Step 3 게이트 통과 후 별도 PR",
+    "MEDIUM-2: verify-secrets 표본 스트리밍(메모리 상한) — 대량 v2 행 편입 시",
+    "LOW-5: stride 표본의 스펙 \"random\" 편차 문서화",
+    "LOW-R2-1: 구형 2열 체크포인트 스키마 재생성 분기 무테스트 — fixture 테스트 추가",
+    "LOW-R2-2: 가시 메뉴 ParentID 은닉 root 재부여·생성 차단 — 비가역 봉쇄 방지",
+    "LOW-R2-3: assignPermissions payload 은닉 leaf 신규 부여 필터 — 방어 심층",
+    "INFO: dry-run 체크포인트 미로드 — 부분 실배포 후 planned 과대 보고"
   ],
   "phase1Complete": null
 }
