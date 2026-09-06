@@ -1,0 +1,47 @@
+{
+  "task": "v2-p0-arch-contract",
+  "tier": "L",
+  "phase": "done",
+  "round": {
+    "adversary": 0,
+    "review": 1
+  },
+  "spawns": 13,
+  "claims": [
+    {
+      "claim": "ADR 6종 작성·스펙 절 상호참조 (claims 1-8)",
+      "status": "verified",
+      "evidence": "ADR 6종 PR #10 add62f2 머지·스펙 상호참조 grep 6/6"
+    },
+    {
+      "claim": "기존 파일 0수정·go.mod 무변경 (claims 10-12)",
+      "status": "verified",
+      "evidence": "diff name-status 전부 A·go.mod diff 빈 — 리뷰 verified"
+    },
+    {
+      "claim": "레지스트리 등록·조회·검증 V1-V6·T1-T13 (claims 9,13,14,15)",
+      "status": "verified",
+      "evidence": "T1-T13 GREEN·레지스트리 93.3%·리뷰 verified·메인 재실행 infra 3패키지 ok"
+    },
+    {
+      "claim": "V6 완화 정규식 v1 175건 전수 충족 (claim 16)",
+      "status": "verified",
+      "evidence": "메인 사전 실측 VIOLATIONS=0"
+    },
+    {
+      "claim": "arch-boundary-canary 잡 D-2 (claim 17)",
+      "status": "verified",
+      "evidence": "PR #12 8e5b848 머지·YAML 9잡·로컬 시뮬레이션 R1/R2 FAIL 발화"
+    }
+  ],
+  "bundle": "v2-phase1/phase0-plan.md",
+  "next": "phase0-complete",
+  "anchor": "24f3db6",
+  "scope": "V2 Phase 0 — ADR 6종 + provider/capability/operation 레지스트리 as code + fake adapter (스펙 §20 Phase 0·§21 PR 12·13)",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "handoff": "Phase 1: capability→인터페이스 매핑 표·R2 규칙 재설계(CORE_PACKAGES 확장 전제)·infra 커버리지 래치 핀닝 — 계획 §13",
+  "assumptions": "A1-A13 계획 §0 — 적대검토 검증 대상",
+  "planR2": "승인 — 3렌즈 조건부승인 7건 반영(V5 원문회귀·V6 하이픈 완화-편차승인·D-2 카나리 반입·CORE_PACKAGES 재설계 인계·claim13 교체·상태주석 개방·LOW 일괄)",
+  "reviewR2": "④리뷰 1회 수정요청(HIGH-1 부분커밋·M2 별칭) → 581128b 수정·메인 재실행 green·병합",
+  "gateEvidence": "issue #4 코멘트 5558759277 — G1 ADR·G2 카나리 잡·G3 fake 등록"
+}
