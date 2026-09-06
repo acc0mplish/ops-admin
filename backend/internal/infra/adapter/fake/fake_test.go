@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"ops-admin/backend/internal/infra/contract"
+	"ops-admin/backend/internal/infra/contracttest"
 	"ops-admin/backend/internal/infra/registry"
 )
 
@@ -234,3 +235,26 @@ func TestFakeExecuteAndPoll(t *testing.T) {
 		}
 	})
 }
+
+// T44 — fake passes the contracttest harness: the §23.1 four assertion
+// families (discovery paging, error taxonomy, rate-limit signaling,
+// redaction) against the seeded single page. fake is the harness's own
+// measurement-instrument canary (계획 J5 — 하네스 자체의 측정 기구 검증).
+func TestFakePassesContractHarness(t *testing.T) {
+	a := &Adapter{}
+	contracttest.RunContractSuite(t, a, fakeFixture{a: a})
+}
+
+// fakeFixture adapts *Adapter to the harness Fixture seam. Seed/PageLimit are
+// test-side knowledge; scenario arming delegates to the adapter.
+type fakeFixture struct{ a *Adapter }
+
+func (f fakeFixture) Seed() []contract.DiscoveredResource { return seededResources }
+
+func (f fakeFixture) PageLimit() int { return len(seededResources) }
+
+func (f fakeFixture) Scenario(name string) error { return f.a.Scenario(name) }
+
+// Connection — the fake needs no credential material (J2 path is exercised
+// for real by the kubernetes adapter's harness run).
+func (fakeFixture) Connection() contract.ConnectionView { return contract.ConnectionView{} }
