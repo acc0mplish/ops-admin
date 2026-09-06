@@ -158,7 +158,8 @@
     "LOW-R2-1: 구형 2열 체크포인트 스키마 재생성 분기 무테스트 — fixture 테스트 추가",
     "LOW-R2-2: 가시 메뉴 ParentID 은닉 root 재부여·생성 차단 — 비가역 봉쇄 방지",
     "LOW-R2-3: assignPermissions payload 은닉 leaf 신규 부여 필터 — 방어 심층",
-    "INFO: dry-run 체크포인트 미로드 — 부분 실배포 후 planned 과대 보고"
+    "INFO: dry-run 체크포인트 미로드 — 부분 실배포 후 planned 과대 보고",
+    "Step 3 기능 스모크 4종 — K8s kubeconfig 클라이언트 빌드·DNS 계정 provider list 콜·SSL 개인키 파싱·schedule secret 왕복 (스펙 §4.4 Step 3 — verify-secrets는 분류+샘플만 커버)"
   ],
   "phase1Complete": null
 }
