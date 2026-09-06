@@ -23,6 +23,7 @@ func TestEnsureSecretKeySource(t *testing.T) {
 		{name: "OPS_ADMIN_CREDENTIAL_KEY present, prod allowed", goEnv: "production", envCredential: "env-credential-key-at-least-32-bytes"},
 		{name: "OPS_ADMIN_JWT_SECRET present, prod allowed", goEnv: "production", jwtSecret: "jwt-secret-fallback-at-least-32-bytes"},
 		{name: "OPS_SECRET_MASTER_KEYS present, prod allowed", goEnv: "production", masterKeys: "primary:primary-material-at-least-32-bytes"},
+		{name: "whitespace-only sources count as missing, prod fails", goEnv: "production", credentialKey: "   ", envCredential: "  ", jwtSecret: " ", masterKeys: "\t", wantErr: true, errContains: "GO_ENV=development"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
