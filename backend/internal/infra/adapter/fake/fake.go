@@ -20,20 +20,36 @@ import (
 	"sync"
 
 	"ops-admin/backend/internal/infra/contract"
+	"ops-admin/backend/internal/infra/metrics"
 	"ops-admin/backend/internal/infra/registry"
 )
 
 // errUnknownHandle — Poll on a handle this adapter never issued.
 var errUnknownHandle = errors.New("fake: unknown operation handle")
 
+// scenarioVocabulary — the harness Fixture scenario names the fake can arm.
+// The three error kinds are the closed contract.ProviderSignalError set.
+var scenarioVocabulary = map[string]bool{
+	contract.SignalRateLimited:      true,
+	contract.SignalPermissionDenied: true,
+	contract.SignalUnreachable:      true,
+	"":                              true, // reset
+}
+
 // Adapter is the fake adapter. All methods use pointer receivers: the
 // adapter carries a mutex-guarded execution counter and handle table —
 // Register hands the registry a single *Adapter.
+//
+// Phase 2 PR 20 additions: the contracttest harness scenario arm (rate-limit/
+// permission/unreachable divergence — 하네스 측정 기구의 카나리, T44) and the
+// in-process rate-limit counter the harness reads back (단얫 3 — 반증 가능성).
 type Adapter struct {
 	mu        sync.Mutex
 	execCount int
 	lastReq   contract.OperationRequest
 	handles   map[string]*fakeHandle
+	scenario  string
+	counters  *metrics.Counters
 }
 
 // fakeHandle is the §14.3 UPID stand-in: succeedAfter polling cycles to
@@ -74,21 +90,74 @@ func (*Adapter) Health(_ context.Context, _ contract.ConnectionView) contract.He
 // Close is a no-op.
 func (*Adapter) Close() error { return nil }
 
+// ProviderName is the fake provider's Prometheus label (metrics 패키지
+// 렌더 라인의 provider="fake").
+const ProviderName = "fake"
+
 // seededResources is the fixed discovery page — orchestration.* kinds 3종
-// (§3.8), one page, terminal NextCursor.
+// (§3.8), one page, terminal NextCursor. Raw carries benign payload material
+// so the contracttest redaction walk exercises a non-empty tree.
 var seededResources = []contract.DiscoveredResource{
-	{ExternalID: "cluster-1", ExternalURN: "urn:fake:cluster:cluster-1", Kind: "orchestration.cluster", DisplayName: "fake cluster"},
-	{ExternalID: "node-1", ExternalURN: "urn:fake:node:node-1", Kind: "orchestration.node", DisplayName: "fake node"},
-	{ExternalID: "workload-1", ExternalURN: "urn:fake:workload:workload-1", Kind: "orchestration.workload", DisplayName: "fake workload"},
+	{ExternalID: "cluster-1", ExternalURN: "urn:fake:cluster:cluster-1", Kind: "orchestration.cluster", DisplayName: "fake cluster", Raw: contract.JSONMap{"note": "seeded"}},
+	{ExternalID: "node-1", ExternalURN: "urn:fake:node:node-1", Kind: "orchestration.node", DisplayName: "fake node", Raw: contract.JSONMap{"note": "seeded"}},
+	{ExternalID: "workload-1", ExternalURN: "urn:fake:workload:workload-1", Kind: "orchestration.workload", DisplayName: "fake workload", Raw: contract.JSONMap{"note": "seeded"}},
 }
 
 // Discover returns the single seeded page; any non-empty cursor terminates
 // paging with an empty page (deterministic termination, §3.8).
+//
+// Phase 2 PR 20: an armed scenario diverges instead of seeding — the
+// contract.ProviderSignalError kind matches the scenario name, and the
+// rate_limited scenario increments the in-process counter the contracttest
+// harness reads back (계획 §3.7 단얫 3).
 func (a *Adapter) Discover(_ context.Context, req contract.DiscoverRequest) (contract.DiscoverPage, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.scenario != "" {
+		if a.scenario == contract.SignalRateLimited {
+			a.countersLocked().IncRateLimit(ProviderName)
+		}
+		return contract.DiscoverPage{}, &contract.ProviderSignalError{
+			Kind:    a.scenario,
+			Message: "fake: armed scenario " + a.scenario,
+		}
+	}
 	if req.Cursor != "" {
 		return contract.DiscoverPage{}, nil
 	}
 	return contract.DiscoverPage{Resources: seededResources, NextCursor: ""}, nil
+}
+
+// Scenario arms (or resets, with "") a harness failure scenario. Invalid
+// names are rejected — the closed ProviderSignalError kind set plus reset.
+func (a *Adapter) Scenario(name string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !scenarioVocabulary[name] {
+		return fmt.Errorf("fake: unknown scenario %q (want rate_limited|permission_denied|unreachable|\"\")", name)
+	}
+	a.scenario = name
+	return nil
+}
+
+// RateCounter exposes the adapter's in-process counters — the contracttest
+// harness rate-limit assertion reads it (계획 §3.7 단얫 3).
+func (a *Adapter) RateCounter() *metrics.Counters {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.countersLocked()
+}
+
+// ProviderName is the Prometheus provider label this adapter's counters use.
+func (*Adapter) ProviderName() string { return ProviderName }
+
+func (a *Adapter) countersLocked() *metrics.Counters {
+	if a.counters == nil {
+		a.counters = metrics.New()
+		a.counters.RegisterProviders(ProviderName)
+	}
+	return a.counters
 }
 
 // Execute — §3.8 controls, all read from Payload:
