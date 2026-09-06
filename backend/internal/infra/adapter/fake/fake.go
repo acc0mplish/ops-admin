@@ -47,6 +47,7 @@ type Adapter struct {
 	mu        sync.Mutex
 	execCount int
 	lastReq   contract.OperationRequest
+	lastPoll  contract.PollRequest
 	handles   map[string]*fakeHandle
 	scenario  string
 	counters  *metrics.Counters
@@ -201,33 +202,52 @@ func (a *Adapter) Execute(_ context.Context, req contract.OperationRequest) (con
 // Poll advances a handle issued by Execute: succeeded/failed/running (§3.8).
 // Polling never increments the execution counter — an async attempt is ONE
 // execution followed by polls (§3.6 "Poll은 새 attempt를 만들지 않는다").
-func (a *Adapter) Poll(_ context.Context, handle contract.OperationHandle) (contract.OperationStatus, error) {
+//
+// Phase 3 M19/J12: the signature carries PollRequest{Handle, Connection} —
+// the fake itself needs no credential material (stateless §3.5 path), but it
+// RECORDS the request so the engine-circuit tests (N11) can assert the
+// engine's two poll assembly sites deliver credentials on every poll. The
+// shallow copy is safe: the engine assembles a fresh ConnectionView per poll,
+// so there is no caller-side map to defend against.
+func (a *Adapter) Poll(_ context.Context, req contract.PollRequest) (contract.OperationStatus, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.initLocked()
 
-	h, ok := a.handles[handle.ProviderRef]
+	a.lastPoll = req
+
+	h, ok := a.handles[req.Handle.ProviderRef]
 	if !ok {
-		return contract.OperationStatus{}, fmt.Errorf("%w: %q", errUnknownHandle, handle.ProviderRef)
+		return contract.OperationStatus{}, fmt.Errorf("%w: %q", errUnknownHandle, req.Handle.ProviderRef)
 	}
 	h.polls++
 	switch {
 	case h.fail:
 		return contract.OperationStatus{
 			State:  contract.OperationStateFailed,
-			Detail: contract.JSONMap{"handle": handle.ProviderRef, "polls": h.polls},
+			Detail: contract.JSONMap{"handle": req.Handle.ProviderRef, "polls": h.polls},
 		}, nil
 	case h.polls >= h.succeedAfter:
 		return contract.OperationStatus{
 			State:  contract.OperationStateSucceeded,
-			Detail: contract.JSONMap{"handle": handle.ProviderRef, "polls": h.polls},
+			Detail: contract.JSONMap{"handle": req.Handle.ProviderRef, "polls": h.polls},
 		}, nil
 	default:
 		return contract.OperationStatus{
 			State:  contract.OperationStateRunning,
-			Detail: contract.JSONMap{"handle": handle.ProviderRef, "polls": h.polls},
+			Detail: contract.JSONMap{"handle": req.Handle.ProviderRef, "polls": h.polls},
 		}, nil
 	}
+}
+
+// LastPoll returns the most recent PollRequest the adapter saw — the engine's
+// re-poll credential-delivery path (J12) is asserted through it (N11).
+// Connection.Material is plaintext credential material: test-instrument only,
+// never logged or serialized.
+func (a *Adapter) LastPoll() contract.PollRequest {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastPoll
 }
 
 // ExecCount reports how many execution attempts the provider double has run —

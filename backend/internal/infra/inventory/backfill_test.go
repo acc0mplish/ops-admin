@@ -336,6 +336,88 @@ func TestBackfillCheckpointReflectsSource(t *testing.T) {
 	}
 }
 
+// TestBackfillClusterChainBindsOperationsPurpose (M18/J12(1)) — createClusterChain
+// writes BOTH purpose bindings against the SAME SecretRef: inventory (discovery)
+// and operations (execution). Without the operations row the broker's
+// Resolve(operations) fails forever — the Phase 3 execution circuit's credential
+// path is dead on arrival. The inventory-side refresh path must stay unaffected
+// by the second row.
+func TestBackfillClusterChainBindsOperationsPurpose(t *testing.T) {
+	db := newInventoryDB(t)
+	if err := db.Exec(k8sClusterDDL).Error; err != nil {
+		t.Fatalf("create k8s_cluster: %v", err)
+	}
+	envelope, err := util.EncryptSecretV2("kubeconfig-ops")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	ids := seedClusters(t, db, []k8sClusterSeed{
+		{name: "kind-ops", apiServer: "https://ops:6443", kubeConfig: envelope},
+	})
+	if _, err := inventory.RunK8sBackfill(context.Background(), db); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	conn, ok := connectionBySource(t, db, ids[0])
+	if !ok {
+		t.Fatal("backfill produced no connection")
+	}
+
+	var bindings []model.ProviderCredentialBinding
+	if err := db.Where("provider_connection_id = ?", conn.ID).Order("id").Find(&bindings).Error; err != nil {
+		t.Fatalf("load bindings: %v", err)
+	}
+	purposes := map[string]uint{}
+	for _, b := range bindings {
+		purposes[b.Purpose] = b.SecretRefID
+	}
+	if len(bindings) != 2 {
+		t.Fatalf("bindings = %d (%v), want exactly 2 — inventory + operations (J12(1))", len(bindings), purposes)
+	}
+	invRef, hasInv := purposes["inventory"]
+	opsRef, hasOps := purposes["operations"]
+	if !hasInv || !hasOps {
+		t.Fatalf("binding purposes = %v, want inventory AND operations", purposes)
+	}
+	if invRef != opsRef {
+		t.Errorf("inventory binding SecretRefID = %d but operations = %d — both must point at the SAME SecretRef (§7.4 shared-credential precedent)", invRef, opsRef)
+	}
+	for _, b := range bindings {
+		if b.Status != "active" {
+			t.Errorf("binding %q status = %q, want active", b.Purpose, b.Status)
+		}
+		if b.ProviderContextID == nil || *b.ProviderContextID == 0 {
+			t.Errorf("binding %q has no provider_context_id", b.Purpose)
+		}
+	}
+
+	// 기존 inventory 경로 무영향 — the source-update refresh path
+	// (refreshClusterSatellites filters purpose="inventory") still finds ITS
+	// binding with both rows present, and a changed source re-runs cleanly.
+	if err := db.Exec("UPDATE k8s_cluster SET name = ?, updated_at = ? WHERE id = ?",
+		"kind-ops-renamed", time.Now().Add(time.Hour), ids[0]).Error; err != nil {
+		t.Fatalf("bump source row: %v", err)
+	}
+	report, err := inventory.RunK8sBackfill(context.Background(), db)
+	if err != nil {
+		t.Fatalf("backfill re-run: %v — the refresh path must tolerate the operations row", err)
+	}
+	if report.Updated != 1 {
+		t.Errorf("re-run updated = %d, want 1", report.Updated)
+	}
+	after, ok := connectionBySource(t, db, ids[0])
+	if !ok || after.Name != "kind-ops-renamed" {
+		t.Errorf("re-run connection name = %q, want kind-ops-renamed", after.Name)
+	}
+	var recount int64
+	if err := db.Model(&model.ProviderCredentialBinding{}).
+		Where("provider_connection_id = ?", conn.ID).Count(&recount).Error; err != nil {
+		t.Fatalf("recount bindings: %v", err)
+	}
+	if recount != 2 {
+		t.Errorf("bindings after re-run = %d, want 2 — refresh must not duplicate bindings", recount)
+	}
+}
+
 func itoaUint(v uint) string {
 	return strconv.FormatUint(uint64(v), 10)
 }
