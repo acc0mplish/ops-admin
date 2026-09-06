@@ -12,6 +12,7 @@
 package kubernetes
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -194,14 +195,43 @@ func newK8sClient(rt clusterRuntime, dialContext func(ctx context.Context, netwo
 	return &k8sClient{http: hc, rt: rt, metrics: m}, nil
 }
 
-// getJSON fetches one JSON endpoint. Provider-side states surface as
+// getJSON fetches one JSON endpoint on the discovery path — the metrics op
+// label stays "discover" (기존 계약 무변경, Phase 2 PR 20). Signal mapping lives
+// in doJSON.
+func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]string, target any) error {
+	return c.doJSON(ctx, http.MethodGet, path, query, "", nil, "discover", target)
+}
+
+// getJSONOp — getJSON with an explicit §18.2 metrics op label. The executor's
+// poll path labels its own op so provider_api_errors_total distinguishes
+// mutation-path cycles from discovery.
+func (c *k8sClient) getJSONOp(ctx context.Context, path string, query map[string]string, op string, target any) error {
+	if op == "" {
+		op = "discover"
+	}
+	return c.doJSON(ctx, http.MethodGet, path, query, "", nil, op, target)
+}
+
+// patchJSON issues one PATCH with the Kubernetes strategic-merge-patch content
+// type (Phase 3 B / M3) — v1 RestartK8sWorkload가 워크로드 3종에 쓰던 것과
+// 동일한 patch 방식(R9 — 경로 3종은 v1이 이미 사용 중). `patch`는 구조체로
+// 전달한다: json.Marshal의 필드 순서는 선언 순으로 고정되므로 동일 입력의
+// 재실행은 byte-identical 본문이 된다(J1 멱등의 전송 계약).
+func (c *k8sClient) patchJSON(ctx context.Context, path string, patch any, op string, target any) error {
+	if op == "" {
+		op = "execute"
+	}
+	return c.doJSON(ctx, http.MethodPatch, path, nil, "application/strategic-merge-patch+json", patch, op, target)
+}
+
+// doJSON performs one REST call. Provider-side states surface as
 // contract.ProviderSignalError kinds (§9.3 매핑 — 계획 §3.3):
 //
 //	429            → rate_limited (계측: IncRateLimit)
 //	401/403        → permission_denied (계측: IncAPIError)
 //	transport fail → unreachable (계측: IncAPIError)
 //	기타 비-2xx     → 일반 error (계측: IncAPIError)
-func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]string, target any) error {
+func (c *k8sClient) doJSON(ctx context.Context, method, path string, query map[string]string, contentType string, body any, op string, target any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
@@ -214,11 +244,23 @@ func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]s
 		endpoint += "?" + values.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("kubernetes: request encode %s %s: %w", method, path, err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 	if err != nil {
 		return fmt.Errorf("kubernetes: request build: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	if c.rt.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.rt.Token)
 	}
@@ -228,7 +270,7 @@ func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]s
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		c.metrics.IncAPIError(ProviderName, "discover", "transport")
+		c.metrics.IncAPIError(ProviderName, op, "transport")
 		// transport error = unreachable — 자격 물질 없는 신호 에러.
 		return &contract.ProviderSignalError{
 			Kind:    contract.SignalUnreachable,
@@ -238,8 +280,8 @@ func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]s
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		snippet := strings.TrimSpace(string(body))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		snippet := strings.TrimSpace(string(respBody))
 		switch resp.StatusCode {
 		case http.StatusTooManyRequests:
 			c.metrics.IncRateLimit(ProviderName)
@@ -248,13 +290,13 @@ func (c *k8sClient) getJSON(ctx context.Context, path string, query map[string]s
 				Message: fmt.Sprintf("rate limited (status %d)", resp.StatusCode),
 			}
 		case http.StatusUnauthorized, http.StatusForbidden:
-			c.metrics.IncAPIError(ProviderName, "discover", strconv.Itoa(resp.StatusCode))
+			c.metrics.IncAPIError(ProviderName, op, strconv.Itoa(resp.StatusCode))
 			return &contract.ProviderSignalError{
 				Kind:    contract.SignalPermissionDenied,
 				Message: fmt.Sprintf("permission denied (status %d)", resp.StatusCode),
 			}
 		}
-		c.metrics.IncAPIError(ProviderName, "discover", strconv.Itoa(resp.StatusCode))
+		c.metrics.IncAPIError(ProviderName, op, strconv.Itoa(resp.StatusCode))
 		if snippet != "" {
 			return fmt.Errorf("kubernetes: unexpected status: %d, %s", resp.StatusCode, snippet)
 		}
