@@ -34,6 +34,12 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "sync-inventory" {
 		os.Exit(runSyncInventory(os.Args[2:]))
 	}
+	// V2 compare subcommand (Phase 2 PR 22): the §15 paired run + the dated
+	// artifact + the 3-day gate check, dispatched before any server startup
+	// path.
+	if len(os.Args) >= 2 && os.Args[1] == "compare-inventory" {
+		os.Exit(runCompareInventory(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)
