@@ -1,0 +1,310 @@
+{
+  "fields": [
+    {
+      "model": "PublicDNSAccount",
+      "table": "domain_public_dns_account",
+      "column": "access_key_cipher",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "PublicDNSAccount",
+      "table": "domain_public_dns_account",
+      "column": "secret_key_cipher",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "SSLCertificate",
+      "table": "ssl_certificates",
+      "column": "private_key_cipher",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "SSLCertificateVersion",
+      "table": "ssl_certificate_versions",
+      "column": "private_key_cipher",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "OpsScheduleTask",
+      "table": "ops_schedule_task",
+      "column": "variables",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetCredential",
+      "table": "asset_credential",
+      "column": "password",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetCredential",
+      "table": "asset_credential",
+      "column": "private_key",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetCredential",
+      "table": "asset_credential",
+      "column": "passphrase",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetCloudAccount",
+      "table": "asset_cloud_account",
+      "column": "access_key",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetCloudAccount",
+      "table": "asset_cloud_account",
+      "column": "secret_key",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "K8sCluster",
+      "table": "k8s_cluster",
+      "column": "kube_config",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "IntegrationFinOpsAccount",
+      "table": "integration_finops_account",
+      "column": "secret_key",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "IntegrationFinOpsAccount",
+      "table": "integration_finops_account",
+      "column": "billing_token",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "MonitorDatasource",
+      "table": "monitor_datasource",
+      "column": "password",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "MonitorDatasource",
+      "table": "monitor_datasource",
+      "column": "token",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "OpsImageRegistry",
+      "table": "ops_image_registry",
+      "column": "password",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "IntegrationAIModel",
+      "table": "integration_ai_model",
+      "column": "api_key",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "LDAPConfig",
+      "table": "sys_ldap_config",
+      "column": "bind_password",
+      "counts": {
+        "total": 1,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 1,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "NotifyChannel",
+      "table": "notify_channel",
+      "column": "secret",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "NotifyChannel",
+      "table": "notify_channel",
+      "column": "webhook_url",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    },
+    {
+      "model": "AssetDatabase",
+      "table": "asset_database",
+      "column": "password",
+      "counts": {
+        "total": 0,
+        "v2": 0,
+        "legacy": 0,
+        "plaintext": 0,
+        "empty": 0,
+        "unknown": 0,
+        "notSecret": 0
+      }
+    }
+  ],
+  "total": {
+    "total": 1,
+    "v2": 0,
+    "legacy": 0,
+    "plaintext": 0,
+    "empty": 1,
+    "unknown": 0,
+    "notSecret": 0
+  },
+  "samples": [],
+  "sampledRows": 0,
+  "passed": true
+}

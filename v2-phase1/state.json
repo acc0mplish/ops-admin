@@ -95,7 +95,7 @@
     }
   ],
   "bundle": "v2-phase1/task6-plan.md",
-  "next": "user-rotation-handoff",
+  "next": "phase-gate-dev-green",
   "anchor": "1b7056c",
   "scope": "V2 Phase -1 T6 — §4.10 CI 베이스라인 7종 + 카나리 자기검증",
   "loop": "사용자 goal: 계획→적대→구현→적대→수정→커밋push→다음반복",
@@ -143,9 +143,9 @@
     }
   ],
   "lows": "L-5 keyword-entropy 명칭·L-7 cancel-in-progress·INFO-8 allowlist 비용 — 기록. 렌즈2 LOW-2/4/5/7 설계 경계 보류. M-1 pull 지뢰·M-2 이중수용 0+메트릭 부재·M-3 sqlite-only fixture·M-4 fixture 규율 무검증 — followups 이관",
-  "history": "T1 0344ea8·T2 b43aa6d·T3 1e1ec21·T4 3129bdc·T5 1b7056c·폐문철회 적대검토 2026-09-06(3렌즈 병합)",
+  "history": "T1 0344ea8·T2 b43aa6d·T3 1e1ec21·T4 3129bdc·T5 1b7056c·폐문철회 적대검토 2026-09-06(3렌즈 병합)·키회전 dev 실행 2026-09-06(k20260906·G-1/G-2 아티팩트)",
   "followups": [
-    "키 회전 운영 실행 — Step 2·3 커맨드 완성 후 신규 키 발급·재암호화·Step 5 백업 파괴 (공개 이력 노출 대응)",
+    "프로덕션 키 회전 실행 — dev는 2026-09-06 완료(0행·게이트 통과). 운영 DB 대상 백업→reencrypt→verify 재실행 후 K1(legacy) 제거",
     "노출 키로 암호화된 자격증명 원문 폐기·재발급 — DNS/SSL/ACME/schedule (사용자 조치)",
     "P-class writer 전환 (157 라이트 사이트) — Step 2 P-pass 전제 (스펙 r2.4 ordering rule)",
     "R-6: 비super 역할 그랜트 해소 — legacy DB 마커 소진 시 비super 터미널 잠김 방지",
