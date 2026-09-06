@@ -1,0 +1,58 @@
+{
+  "task": "v2-p1-foundation",
+  "tier": "XL",
+  "phase": "done",
+  "round": {
+    "adversary": 0,
+    "review": 0
+  },
+  "spawns": 16,
+  "claims": [
+    {
+      "claim": "PR15 러너 — schema_migration·GET_LOCK 핀·멱등 가드 (T14-T17)",
+      "status": "verified",
+      "evidence": "PR #14 30b62cf·T14-T17 GREEN·메인 재실행"
+    },
+    {
+      "claim": "PR16 모델 8종+브로커+ConnectionView.Material (T18-T23)",
+      "status": "verified",
+      "evidence": "PR #15 merged·T18-T23·model 100%·secrets 88.9%"
+    },
+    {
+      "claim": "PR17 태스크 테이블·엔진 코어·가드·registry 매핑표 검증 (T24-T28)",
+      "status": "verified",
+      "evidence": "PR #16 ecf1ec4·T24-T28·tasks 81.6%·④리뷰 verified"
+    },
+    {
+      "claim": "PR18 승인·멱등·유일성 가드 (T29-T31)",
+      "status": "verified",
+      "evidence": "PR #17 merged·T29-T31·tasks 83.2%"
+    },
+    {
+      "claim": "PR19 게이트 스위트 -race·인터리빙 대조군·T39 누수 (T32-T41)",
+      "status": "verified",
+      "evidence": "PR #18 f3b38dd·게이트 ①8②6③6④4 라인 -race exit 0·④리뷰 독립 재실행"
+    },
+    {
+      "claim": "게이트 4조건 로컬 증명 — claims 5-8 -v RUN 카운트",
+      "status": "verified",
+      "evidence": "④리뷰 재실행 표 — 전 exit 0·vacuous pass 아님(대조군 존재)"
+    },
+    {
+      "claim": "계층2 MySQL 1회 실행 (claim 18) — 게이트 산출",
+      "status": "verified",
+      "evidence": "계층2 12테스트 PASS·엔진 MySQL 방언 결함 발견·수정"
+    }
+  ],
+  "bundle": "v2-phase1/phase1-plan.md",
+  "next": "phase1-complete",
+  "anchor": "c55b802",
+  "scope": "V2 Phase 1 — versioned migration runner·13 M1 테이블·시크릿 브로커·태스크 엔진(폴러·리퍼·승인·멱등)·fake harness (스펙 §20 Phase 1·§21 PR 15-19)",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "ciPolicy": "로컬 검증 판정 — 원격 CI 대기 금지 (memory github-ci-local-verify-policy)",
+  "handoffs": "Phase 0 인계 3건 소유: capability→인터페이스 매핑 표·R2 재설계·커버리지 래치 핀닝",
+  "planR2": "승인 — 5렌즈 조건부승인 A-H 반영(T24 4종·MySQL 계층2 게이트 산출화·스텝 방침·배치표 27·harness Phase2 이연·ConnectionView PR16 편입·리스크 4·엔진 보강 6·검증 강화)",
+  "reviewVerdict": "승인 — 8/8 claims verified·N-1(MEDIUM-LOW Phase3 인계)·N-2/3 LOW·N-4 INFO",
+  "gateEvidence": "issue #4 코멘트 5559726912",
+  "followups_phase2plus": "N-1 Material 소비자(OperationRequest·Phase 3)·N-2 stale poll continue·N-3 스텝 단조 검증 1줄·N-4 cancel_requested 발화(Phase 3)·harness(PR 20)·Phase 0 인계 2(R2 재설계)·3(커버리지 래치)"
+}
