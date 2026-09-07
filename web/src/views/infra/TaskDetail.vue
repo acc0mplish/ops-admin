@@ -110,10 +110,10 @@ async function loadTask(uid, silent = false) {
   if (!uid) return
   try {
     const response = await getInfraTask(uid)
-    task.value = response?.data?.task || null
+    task.value = response?.task || null
     if (silent) return
     const eventsResponse = await listInfraTaskEvents(uid)
-    events.value = eventsResponse?.data?.events || []
+    events.value = eventsResponse?.events || []
     schedulePoll()
   } catch (error) {
     if (silent) return

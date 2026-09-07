@@ -86,8 +86,8 @@ async function loadData() {
     const params = {}
     if (status.value) params.status = status.value
     const response = await listInfraTasks(params)
-    tasks.value = response?.data?.items || []
-    total.value = response?.data?.total ?? tasks.value.length
+    tasks.value = response?.items || []
+    total.value = response?.total ?? tasks.value.length
   } catch (error) {
     tasks.value = []
     total.value = 0

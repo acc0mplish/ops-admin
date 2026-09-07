@@ -184,3 +184,101 @@ jobs:
           grep -q 'R1 FAIL' out.txt || { echo "CANARY ATTRIBUTION FAILED: no R1 FAIL"; exit 1; }
           grep -q 'R2 FAIL' out.txt || { echo "CANARY ATTRIBUTION FAILED: no R2 FAIL"; exit 1; }
           grep -E 'R[12] FAIL' out.txt
+
+  slice-a-e2e:
+    # Plan J11 — the 10th job: §25's "one Kubernetes mutation end to end in CI
+    # against kind". Fresh kind cluster per run (plan §4.9), the committed seed
+    # fixture (N17) applied idempotently, the §15 compare segment captured as a
+    # non-BLOCKER artifact, then the two-layer split: the N16 Go trace (crash
+    # injection) and the N15 Playwright UI flow (stack owned by the webServer —
+    # N14). Not a required check (plan: standing evidence, stabilization first).
+    # Merge verdict is the local reproduction, not this job (plan §10).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: '3306'
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      SLICEA_CONTEXT: kind-v2-p3
+      SLICEA_MYSQL_HOST: 127.0.0.1
+      SLICEA_MYSQL_PORT: '3306'
+      SLICEA_MYSQL_USER: root
+      SLICEA_MYSQL_PASSWORD: root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - uses: oven-sh/setup-bun@v2
+      - name: Install the Playwright chromium browser
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bunx playwright install --with-deps chromium
+      - name: Create the kind cluster and pre-load the seed image (H1/R12)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kind" https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+          chmod +x "$RUNNER_TEMP/kind"
+          "$RUNNER_TEMP/kind" create cluster --name v2-p3 --image kindest/node:v1.34.0 --wait 180s
+          docker pull nginx:1.27-alpine
+          "$RUNNER_TEMP/kind" load docker-image nginx:1.27-alpine --name v2-p3
+      - name: Apply the committed seed fixture (N17)
+        run: |
+          kubectl --context "$SLICEA_CONTEXT" apply -f v2-phase1/k8s-fixture/seed.yaml
+          kubectl --context "$SLICEA_CONTEXT" -n v3-seed rollout status deploy/restart-target --timeout=180s
+      - name: Register the cluster, sync, and capture the §15 comparison (non-BLOCKER)
+        working-directory: web
+        env:
+          E2E_SCHEMA: ops_admin_p3ci
+        run: |
+          bash e2e/stack.sh compare
+          bash e2e/stack.sh down
+      - name: Upload the compare-inventory report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-inventory-report
+          path: web/e2e/.stack/data/
+          if-no-files-found: error
+      - name: Go trace E2E — crash injection + §25 trace (dedicated schema VK-7)
+        working-directory: backend
+        run: |
+          # Risk R3 mitigation — one retry against transient rollout flake. The
+          # harness drops and recreates its dedicated schema, so a rerun is
+          # clean by construction.
+          go test -tags=e2e ./e2e/slicea/ -count=1 -v \
+            || { sleep 10; go test -tags=e2e ./e2e/slicea/ -count=1 -v; }
+      - name: Playwright UI flow (N14/N15 — webServer owns the stack)
+        working-directory: web
+        env:
+          E2E_SCHEMA: ops_admin_p3ui
+          E2E_ADMIN_PASSWORD: slicea-e2e-admin
+        run: bun run e2e
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/e2e/playwright-report/
+          if-no-files-found: ignore
+      - name: Upload the backend child log on failure (dirty runbook VK-12)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-backend-log
+          path: web/e2e/.stack/backend.log
+          if-no-files-found: ignore

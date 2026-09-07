@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test --config e2e/playwright.config.js",
+    "e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "@antv/x6": "^3.1.7",
