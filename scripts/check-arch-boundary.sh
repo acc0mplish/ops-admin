@@ -98,7 +98,7 @@ for pkg in "${CORE_PACKAGES[@]}"; do
   if [[ "$hits" -eq 0 ]]; then
     echo "R2 PASS: $pkg references no provider product identifier (product code, vocabulary exception aside)"
   else
-    echo "R2 FAIL: $pkg references a provider product identifier (aliyun/tencent)"
+    echo "R2 FAIL: $pkg references a provider product identifier (aliyun/tencent/proxmox)"
     fail=1
   fi
 done

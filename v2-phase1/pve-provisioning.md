@@ -171,14 +171,23 @@ SET @conn_id = (SELECT id FROM provider_connection WHERE uid = @conn_uid);
 SELECT b.secret_ref_id FROM provider_credential_binding b
  WHERE b.provider_connection_id = @conn_id;
 
--- (1) 실행 이력 — 태스크 체인 (있는 경우)
+-- (1) 실행 이력 — 태스크 체인 (있는 경우). provider_task에는 커넥션 컬럼이
+--     없다(모델 실측 — resource_uid 키, model/task.go:18) — 컨텍스트→리소스
+--     uid→resource_uid 경유로 조인한다. 순서상 태스크가 (2)의 리소스 삭제보다
+--     선행하므로 서브쿼리가 유효하다.
 DELETE te FROM task_event te
   JOIN provider_task pt ON pt.id = te.task_id
- WHERE pt.connection_id = @conn_id;
+ WHERE pt.resource_uid IN (
+   SELECT ir.uid FROM infra_resource ir
+   WHERE ir.context_id IN (SELECT id FROM provider_context WHERE connection_id = @conn_id));
 DELETE ta FROM task_attempt ta
   JOIN provider_task pt ON pt.id = ta.task_id
- WHERE pt.connection_id = @conn_id;
-DELETE FROM provider_task WHERE connection_id = @conn_id;
+ WHERE pt.resource_uid IN (
+   SELECT ir.uid FROM infra_resource ir
+   WHERE ir.context_id IN (SELECT id FROM provider_context WHERE connection_id = @conn_id));
+DELETE FROM provider_task WHERE resource_uid IN (
+   SELECT ir.uid FROM infra_resource ir
+   WHERE ir.context_id IN (SELECT id FROM provider_context WHERE connection_id = @conn_id));
 
 -- (2) 관측·리소스·싱크런 — 컨텍스트 종속 데이터 전량
 DELETE ro FROM resource_observation ro
