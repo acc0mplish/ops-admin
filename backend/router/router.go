@@ -32,6 +32,15 @@ func New(cfg *config.Config, db *gorm.DB, v2API *v2.InfraAPI) (*gin.Engine, *ser
 	}
 
 	engine := gin.New()
+	// Route the tree on the escaped path: V2 infra resource uids are URNs
+	// whose tail carries '/' (urn:k8s:<ctx>:workload:<ns>/<kind>/<name>, §8.1),
+	// so a %2F-encoded uid segment must stay ONE segment while routing. With
+	// gin's default (decoded-path) matching such uids 404 on every
+	// /resources/:uid route — surfaced by the Phase 3 Slice A trace E2E
+	// (backend/e2e/slicea) against a real kind cluster. UnescapePathValues
+	// stays at its default (true): handlers see the decoded uid. Callers that
+	// send the slash unescaped still get 404 — escaping is the contract.
+	engine.UseRawPath = true
 	engine.Use(gin.Logger(), gin.Recovery(), middleware.CORS())
 	_ = os.MkdirAll("uploads", 0o755)
 	engine.Static("/uploads", "./uploads")
