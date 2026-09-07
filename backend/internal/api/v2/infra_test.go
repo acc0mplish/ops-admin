@@ -285,6 +285,63 @@ func TestResourceDetailCarriesLatestObservation(t *testing.T) {
 	}
 }
 
+// TestResourcesFilterByKindPrefix covers the PR 30 family filter (plan J9 —
+// M7): kindPrefix narrows the list to every kind under the prefix (the
+// compute family read the ComputeInventory view rides), composes with the
+// exact kind filter, and treats LIKE wildcards in the user input literally.
+func TestResourcesFilterByKindPrefix(t *testing.T) {
+	db := testutil.OpenMemoryDB(t)
+	engine := newRouter(t, db)
+	seedInfraFixture(t, db)
+	var liveContext model.ProviderContext
+	if err := db.Where("uid = ?", "ctx-live").First(&liveContext).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, res := range []*model.InfraResource{
+		{UID: "res-vm", ContextID: liveContext.ID, Kind: "compute.vm",
+			ExternalURN: "urn:aliyun:mock-aliyun:compute.vm:i-bp1mock0001", DisplayName: "mock-vm-web-01",
+			LifecycleState: "running", HealthState: "healthy", ManagedState: "discovered",
+			FirstSeenAt: now, LastSeenAt: now},
+		{UID: "res-volume", ContextID: liveContext.ID, Kind: "compute.volume",
+			ExternalURN: "urn:aliyun:mock-aliyun:compute.volume:d-bp1mock0001", DisplayName: "mock-disk-01",
+			FirstSeenAt: now, LastSeenAt: now},
+	} {
+		if err := db.Create(res).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cases := []struct {
+		name      string
+		query     string
+		wantTotal int
+	}{
+		{"family prefix", "kindPrefix=compute.", 2},
+		{"full kind as prefix", "kindPrefix=compute.vm", 1},
+		{"no prefix lists everything", "kindPrefix=", 4},
+		{"prefix composes with kind", "kindPrefix=compute.&kind=compute.volume", 1},
+		{"LIKE wildcards are literal (no match, not everything)", "kindPrefix=compute.%25", 0},
+		{"unknown prefix is empty", "kindPrefix=storage.", 0},
+	}
+	for _, tc := range cases {
+		code, rec := doGet(t, engine, "/api/v2/infra/resources?"+tc.query)
+		if code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", tc.name, code, rec.Body.String())
+		}
+		body := decode(t, rec)
+		if total := int(body["total"].(float64)); total != tc.wantTotal {
+			t.Fatalf("%s: expected %d rows, got %d — %s", tc.name, tc.wantTotal, total, rec.Body.String())
+		}
+		for _, item := range body["items"].([]any) {
+			kind := item.(map[string]any)["kind"].(string)
+			if tc.query != "kindPrefix=" && !strings.HasPrefix(kind, "compute.") {
+				t.Fatalf("%s: non-compute kind leaked through: %s", tc.name, kind)
+			}
+		}
+	}
+}
+
 // TestStackFailureDegradesToUnavailable pins the nil-registry degradation:
 // the process keeps booting and the registry read reports the outage instead
 // of panicking.
