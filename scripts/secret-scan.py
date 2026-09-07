@@ -106,6 +106,10 @@ ALLOWLIST = [
     ("env-credential-key-at-least-32-bytes", "backend/util/secret_guard_test.go"),
     ("jwt-secret-fallback-at-least-32-bytes", "backend/util/secret_guard_test.go"),
     ("primary-material-at-least-32-bytes", "backend/util/secret_guard_test.go"),
+    # Phase 5 PVE mock token literal — synthetic material for the adapter test
+    # tables only (the literal itself spells out that it is not real). Scoped
+    # to the proxmox package tests; the same value elsewhere still fires.
+    ("mock-pve-token-material-not-real", "backend/internal/infra/adapter/proxmox/*_test.go"),
 ]
 
 # Untracked-and-ignored guard for the previously leaked config files (plan A4).
