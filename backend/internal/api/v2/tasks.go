@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"ops-admin/backend/httpx"
@@ -92,6 +93,47 @@ func (a *InfraAPI) loadTask(c *gin.Context) (model.ProviderTask, *auditInfo, boo
 	}
 	stashAudit(c, info)
 	return task, info, true
+}
+
+// ListTasks — GET /tasks (§16.2 목록 — Phase D1 carryover): the status-
+// filtered paging read the tasks page calls (infra.js listInfraTasks — the
+// live 404 this closes). Read-only like the Phase 2 GET subset: no opdef row
+// (the grant middleware is not attached), and — the contrast with
+// plan/execute/cancel — no registry or engine dependency either, so the
+// route answers 200 on the degraded (nil-registry) assembly. Newest first;
+// the page bounds clamp exactly like ListResources.
+func (a *InfraAPI) ListTasks(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	query := a.db.Model(&model.ProviderTask{})
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		httpx.Failed(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var rows []model.ProviderTask
+	if err := query.Order("id DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&rows).Error; err != nil {
+		httpx.Failed(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	items := make([]taskView, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, newTaskView(row))
+	}
+	httpx.Success(c, gin.H{"items": items, "total": total, "page": page, "pageSize": pageSize})
 }
 
 // GetTask — GET /tasks/:uid.

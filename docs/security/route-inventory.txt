@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 449 entries.
+# 450 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -256,6 +256,7 @@ GET /api/v2/infra/provider-types -> ops-admin/backend/internal/api/v2.(*InfraAPI
 GET /api/v2/infra/resources -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListResources-fm
 GET /api/v2/infra/resources/:uid -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetResource-fm
 GET /api/v2/infra/resources/:uid/operations -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListResourceOperations-fm
+GET /api/v2/infra/tasks -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListTasks-fm
 GET /api/v2/infra/tasks/:uid -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetTask-fm
 GET /api/v2/infra/tasks/:uid/events -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetTaskEvents-fm
 GET /ping -> ops-admin/backend/controller.(*Controller).Ping-fm

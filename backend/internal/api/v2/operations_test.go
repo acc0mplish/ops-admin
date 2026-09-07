@@ -645,6 +645,105 @@ func TestExecuteDegradedAndPayloadValidation(t *testing.T) {
 	}
 }
 
+// TestListTasksFiltersAndPaginates pins the §16.2 목록 (Phase D1 carryover —
+// the live 404 the tasks page was riding): the list reads newest first, the
+// status filter narrows items and total together, paging slices without
+// reordering, and the page bounds clamp exactly like the ListResources
+// contract (default 1/20, floor 1, cap 100).
+func TestListTasksFiltersAndPaginates(t *testing.T) {
+	api, fx := newOperationFixture(t)
+	engine := newOperationRouter(api)
+
+	// One task per resource UID — the §13.4 active-slot unique forbids two
+	// active rows on the same resource, and both seeded rows are active-state.
+	mk := func(uid, status, resourceUID string, offset time.Duration) {
+		row := model.ProviderTask{UID: uid, OperationName: testOperation, OperationVersion: "1",
+			ResourceUID: resourceUID, Status: status, ApprovalStatus: tasks.ApprovalStatusNotRequired,
+			CreatedAt: time.Now().Add(offset), UpdatedAt: time.Now().Add(offset)}
+		if err := fx.db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("task-list-old", tasks.TaskStatusSucceeded, "res-list-1", -3*time.Hour)
+	mk("task-list-mid", tasks.TaskStatusQueued, "res-list-2", -2*time.Hour)
+	mk("task-list-new", tasks.TaskStatusQueued, "res-list-3", -time.Hour)
+
+	code, rec := doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list returned %d: %s", code, rec.Body.String())
+	}
+	body := decodeEnvelope(t, rec)
+	if body["total"].(float64) != 3 || body["page"].(float64) != 1 || body["pageSize"].(float64) != 20 {
+		t.Fatalf("list envelope wrong: %s", rec.Body.String())
+	}
+	items := body["items"].([]any)
+	if len(items) != 3 || items[0].(map[string]any)["uid"] != "task-list-new" || items[2].(map[string]any)["uid"] != "task-list-old" {
+		t.Fatalf("list must read newest first: %s", rec.Body.String())
+	}
+
+	// The status filter narrows items and total together.
+	code, rec = doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks?status=succeeded", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("filtered list returned %d: %s", code, rec.Body.String())
+	}
+	body = decodeEnvelope(t, rec)
+	if body["total"].(float64) != 1 || len(body["items"].([]any)) != 1 {
+		t.Fatalf("status filter must narrow both items and total: %s", rec.Body.String())
+	}
+	if body["items"].([]any)[0].(map[string]any)["uid"] != "task-list-old" {
+		t.Fatalf("status filter picked the wrong row: %s", rec.Body.String())
+	}
+	code, rec = doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks?status=running", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("empty-filter list returned %d: %s", code, rec.Body.String())
+	}
+	body = decodeEnvelope(t, rec)
+	if body["total"].(float64) != 0 || len(body["items"].([]any)) != 0 {
+		t.Fatalf("a status with no rows must answer an empty list: %s", rec.Body.String())
+	}
+
+	// Paging slices the newest-first ordering.
+	code, rec = doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks?page=2&pageSize=2", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("paged list returned %d: %s", code, rec.Body.String())
+	}
+	body = decodeEnvelope(t, rec)
+	items = body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["uid"] != "task-list-old" {
+		t.Fatalf("page 2 must hold the oldest row alone: %s", rec.Body.String())
+	}
+	if body["total"].(float64) != 3 || body["page"].(float64) != 2 || body["pageSize"].(float64) != 2 {
+		t.Fatalf("paged envelope wrong: %s", rec.Body.String())
+	}
+
+	// The clamps follow the ListResources contract.
+	code, rec = doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks?page=0&pageSize=500", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("clamped list returned %d: %s", code, rec.Body.String())
+	}
+	body = decodeEnvelope(t, rec)
+	if body["page"].(float64) != 1 || body["pageSize"].(float64) != 100 {
+		t.Fatalf("paging clamps broken: %s", rec.Body.String())
+	}
+}
+
+// TestListTasksNeedsNoStack pins the read-only contrast (opdef 불요·강하 대조):
+// the same nil-registry assembly that degrades provider-types 503 (nil
+// registry) and cancel 503 (nil engine seam) answers 200 here — the list has
+// no registry, engine or opdef dependency at all.
+func TestListTasksNeedsNoStack(t *testing.T) {
+	db := newOperationTestDB(t)
+	engine := newOperationRouter(NewInfraAPIWithRegistry(db, nil))
+	code, rec := doOperationRequest(t, engine, http.MethodGet, "/api/v2/infra/tasks", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list on the degraded assembly returned %d, want 200: %s", code, rec.Body.String())
+	}
+	body := decodeEnvelope(t, rec)
+	if body["total"].(float64) != 0 || len(body["items"].([]any)) != 0 {
+		t.Fatalf("empty table must answer an empty list: %s", rec.Body.String())
+	}
+}
+
 // TestPlanCarriesObservationGeneration covers the J7 hit path: an observation
 // carrying a generation key flows into resourceRevision (and the execute
 // payload freeze).

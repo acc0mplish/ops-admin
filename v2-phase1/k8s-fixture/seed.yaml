@@ -9,6 +9,11 @@
 # 최소 10초가 보장되므로, 태스크가 running으로 관찰되는 창이 충분히 넓어
 # SIGKILL 타이밍이 결정적이 된다 (계획 R2/H1·J2 교정 판정식과 연동).
 # 이미지는 kind 노드에 사전 적재된 nginx:1.27-alpine (슬로우 풀 리스크 R12 제거).
+#
+# v2 Phase 4 (Phase F말 — 이월 대장 #2) 추가: statefulset·daemonset 1종씩.
+# executor의 workload 3종(deployment/statefulset/daemonset) 중 2종이 시드에
+# 없던 갭 보험 — slice-b E2E의 종별 커버 (phase3-plan N17 판정식 승계).
+# apply 멱등 — run-fixture.sh 재실행으로 수렴 확인.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -31,6 +36,50 @@ spec:
     metadata:
       labels:
         app: restart-target
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: restart-target-sts
+  namespace: v3-seed
+  labels:
+    app: restart-target-sts
+spec:
+  replicas: 1
+  serviceName: restart-target-sts
+  selector:
+    matchLabels:
+      app: restart-target-sts
+  template:
+    metadata:
+      labels:
+        app: restart-target-sts
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: restart-target-ds
+  namespace: v3-seed
+  labels:
+    app: restart-target-ds
+spec:
+  selector:
+    matchLabels:
+      app: restart-target-ds
+  template:
+    metadata:
+      labels:
+        app: restart-target-ds
     spec:
       containers:
         - name: nginx
