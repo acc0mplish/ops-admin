@@ -42,12 +42,13 @@ var publicRouteKeys = map[string]struct{}{
 	"HEAD /uploads/*filepath": {},
 }
 
-// authGroupRoutes filters the live engine's route table down to the 439
+// authGroupRoutes filters the live engine's route table down to the 440
 // authenticated routes: the api-group routes minus the public set, plus the
 // /api/v2/infra group (M12 — plan: authGroupRoutes에 /api/v2 포함; 427 v1 +
-// 4 Phase-2 v2 reads + 8 Phase-3 v2 operation routes).
+// 4 Phase-2 v2 reads + 9 Phase-3 v2 operation routes incl. the D1 tasks
+// 목록).
 func authGroupRoutes(routes gin.RoutesInfo) []gin.RouteInfo {
-	out := make([]gin.RouteInfo, 0, 439)
+	out := make([]gin.RouteInfo, 0, 440)
 	for _, route := range routes {
 		inV1 := strings.HasPrefix(route.Path, apiPrefix+"/") || route.Path == apiPrefix
 		inV2 := strings.HasPrefix(route.Path, v2APIPrefix+"/")
@@ -230,8 +231,8 @@ func TestZeroGrantCoverage(t *testing.T) {
 		defKeys[d.Method+" "+d.Path] = struct{}{}
 	}
 	authRoutes := authGroupRoutes(engine.Routes())
-	if len(authRoutes) != 439 {
-		t.Fatalf("authGroup holds %d routes, contract is 439 (427 v1 + 12 v2)", len(authRoutes))
+	if len(authRoutes) != 440 {
+		t.Fatalf("authGroup holds %d routes, contract is 440 (427 v1 + 13 v2)", len(authRoutes))
 	}
 	missedDenials := []string{}
 	unexpectedDenials := []string{}

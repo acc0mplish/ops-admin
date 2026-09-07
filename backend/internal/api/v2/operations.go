@@ -28,8 +28,9 @@ type CancelStarter interface {
 }
 
 // RegisterOperations wires the §16.2 mutation surface onto the v2 group
-// (plan M8 — five mutation POSTs plus three reads; the Phase 2 GET subset in
-// Register is untouched so its route-count pin stays meaningful). The group
+// (plan M8 — five mutation POSTs plus four reads, the tasks 목록 carrying
+// the Phase 3/4 gap; the Phase 2 GET subset in Register is untouched so its
+// route-count pin stays meaningful). The group
 // already carries Auth + OperationLog from the router; this adds the v2 audit
 // middleware (A9) first — before any route-level middleware, so permission
 // denials stay audited (§3.4 "미권한 403(감사와 함께)") — and then each route
@@ -52,6 +53,7 @@ func (a *InfraAPI) RegisterOperations(group *gin.RouterGroup, grants func(def op
 	group.GET("/resources/:uid/operations", a.ListResourceOperations)
 	group.POST("/resources/:uid/operations/:name/plan", grant("/infra/resources/:uid/operations/:name/plan"), a.PlanOperation)
 	group.POST("/resources/:uid/operations/:name/execute", grant("/infra/resources/:uid/operations/:name/execute"), a.ExecuteOperation)
+	group.GET("/tasks", a.ListTasks)
 	group.GET("/tasks/:uid", a.GetTask)
 	group.GET("/tasks/:uid/events", a.GetTaskEvents)
 	group.POST("/tasks/:uid/approve", grant("/infra/tasks/:uid/approve"), a.ApproveTask)
