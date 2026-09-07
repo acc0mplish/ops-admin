@@ -1,0 +1,57 @@
+{
+  "task": "v2-p4-slice-b",
+  "tier": "L",
+  "phase": "done",
+  "round": {
+    "adversary": 0,
+    "review": 2
+  },
+  "spawns": 12,
+  "claims": [
+    {
+      "claim": "Phase A aliyun Discoverer (raw RPC·mock·§14.2 vm)",
+      "status": "verified",
+      "evidence": "PR #33 22f6180·85.7%·④리뷰 verified"
+    },
+    {
+      "claim": "Phase B tencent Discoverer (TC3·mock·§14.2 vm)",
+      "status": "verified",
+      "evidence": "PR #34 238a4e4·90.6%·④리뷰 verified"
+    },
+    {
+      "claim": "Phase C 자격 통합·finops rewire·step0006 (C1/C2·불변 단얫)",
+      "status": "verified",
+      "evidence": "PR #39 b366b4f — cloudcompare·R2 v2 10종·④리뷰 R2 gap 소거 verified"
+    },
+    {
+      "claim": "Phase D1/D2 tasks 라우트·seed sts/ds·R2 v2·카나리",
+      "status": "verified",
+      "evidence": "PR #37 4029df5·라우트 450·④리뷰 verified"
+    },
+    {
+      "claim": "Phase E1/E2 UI V2 전환·E2E (interim 마킹)",
+      "status": "verified",
+      "evidence": "PR #38 d30a9c0·Playwright 2 passed·④리뷰 verified"
+    },
+    {
+      "claim": "게이트 ①②③ interim 증명 — 분기 0 기계 증명·vm 페어 mock·UI Playwright",
+      "status": "verified",
+      "evidence": "게이트 ① 기계증명(R2 v2 10종·플레인트)·② mock 페어 interim (aliyun+tencent pass)·③ Playwright — ④리뷰 2라운드"
+    }
+  ],
+  "bundle": "v2-phase1/phase4-plan.md",
+  "next": "phase4-interim-complete",
+  "anchor": "a6ccfe1",
+  "scope": "V2 Phase 4 — Aliyun/Tencent 읽기 어댑터 (Slice B): Discoverer 전환·자격 통합·finops rewire·UI V2 전환 (스펙 §20 Phase 4·§21 PR 27-30·§14.2)",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "ciPolicy": "로컬 검증 판정 — 원격 CI 대기 금지",
+  "gateFeasibility": "게이트 ①② interim (mock·마킹)·③ 실현 가능. 실계정 제공 시 증명 승격 절차 계획 §13",
+  "handoffs": "Phase 3 이월: GET /tasks 라우트·seed sts/ds·관계 링크·R2 재설계·커버리지 래치·§18.2 메트릭 앵커 (M1 선언 전 필수)",
+  "escalations": "승인 2026-09-07 — E-1 interim mock (게이트 interim 마킹·M1 선언은 실계정 증명 전 불가)·E-3 vm 한정·E-4 카나리 잡 수정+E-2 env 오버라이드+E-5 cost.read (메인 승인)",
+  "planR2": "승인 — 2렌즈 A-E 반영(finops 좁은 Updates+불변 단얫·R2 v2 test 제외·compose 2→4 예외·링크 해제 전파·secret-scan claim·CLI freeze 09-09·interim 마킹·D1/D2·E1/E2 재분해)",
+  "reviewRound1": "수정요청 — 게이트 ② 기구 부재(N14/N15/M10/M11 누락 — E 스폰 라벨 착오)·게이트 ① 수비 축소(HIGH-1 inventory case 위음성)·M1 격리·L5. fix-forward 스폰",
+  "reviewRound2": "라운드1 gap 2건 소거·신규 F1/F2 (tencent 표시 형식) — 최종 수정 진행",
+  "reviewFinal": "라운드2 수정요청 F1/F2 → 6cfbeca 수정·메인 재실행 (RUN/PASS 40·29패키지) — 종결 (interim)",
+  "gateEvidence": "issue #4 코멘트 5569375225",
+  "m1Remaining": "Phase 2 게이트 2·3일차 수동·실계정 승격 (§13-10)·M5 ceefc27 freeze 해소·§18.2 메트릭 앵커"
+}
