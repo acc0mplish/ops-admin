@@ -409,17 +409,26 @@ func TestCancelRouteContract(t *testing.T) {
 		t.Fatalf("cancel terminal task returned %d, want 409", code)
 	}
 
-	// Awaiting task + seam not wired → 503 degradation.
+	// Awaiting task + engine lane off → 503 degradation. N6 이후
+	// *tasks.Engine는 CancelStarter를 충족한다(NewInfraAPIWithEngine의 타입
+	// 단언이 성공 — 시임 자동 활성, D2/A2 인계). 이제 이 형상은 엔진 없는 조립
+	// (nil registry)으로만 재현된다: 프로덕션의 실제 저하 경로(main의
+	// startEngineLane 실패 → v2.NewInfraAPI)와 같은 모양.
 	awaiting := model.ProviderTask{UID: "task-awaiting", OperationName: testOperation, OperationVersion: "1", ResourceUID: "res-other-2", Status: tasks.TaskStatusAwaitingApproval, ApprovalStatus: tasks.ApprovalStatusNotRequired, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := fx.db.Create(&awaiting).Error; err != nil {
 		t.Fatal(err)
 	}
-	code, _ = doOperationRequest(t, engine, http.MethodPost, "/api/v2/infra/tasks/task-awaiting/cancel", nil, nil)
+	degradedRouter := newOperationRouter(NewInfraAPIWithRegistry(fx.db, nil))
+	code, _ = doOperationRequest(t, degradedRouter, http.MethodPost, "/api/v2/infra/tasks/task-awaiting/cancel", nil, nil)
 	if code != http.StatusServiceUnavailable {
 		t.Fatalf("cancel without the engine seam returned %d, want 503", code)
 	}
 
 	// With the seam wired (the N6 signature), the delegation carries uid+actor.
+	// The fixture's REAL engine satisfies the seam since N6; the stub overrides
+	// it to keep this assertion about the delegation contract alone — the
+	// real-engine path is pinned end-to-end by the router's engine injection
+	// test.
 	starter := &testCancelStarter{}
 	api.cancelStarter = starter
 	code, _ = doOperationRequest(t, engine, http.MethodPost, "/api/v2/infra/tasks/task-awaiting/cancel", nil, nil)

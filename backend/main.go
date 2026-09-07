@@ -74,7 +74,12 @@ func main() {
 		log.Fatalf("canonicalize seed localization failed: %v", err)
 	}
 
-	engine, svc := router.New(cfg, db)
+	// V2 Phase 3 (plan M9): the engine lane assembles AFTER the schema and
+	// seeds are ready — compose once → engine (J6 hook) → fully-wired v2 API.
+	// A stack failure disables this lane alone (R11); v1 boots unchanged.
+	taskEngine, v2API := startEngineLane(db)
+
+	engine, svc := router.New(cfg, db, v2API)
 	server := &http.Server{Addr: ":" + cfg.App.Port, Handler: engine, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -84,10 +89,11 @@ func main() {
 	stop, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancelSignal()
 	<-stop.Done()
+	// F-7 shutdown order (engine_config.go gracefulShutdown): engine loops
+	// stop first — in-flight engine work reaches its terminal commit while
+	// the HTTP server still serves — then service cleanup, then the HTTP
+	// drain inside the 10s budget.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = svc.Shutdown(ctx)
-	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
-	}
+	gracefulShutdown(ctx, taskEngine, svc, server)
 }

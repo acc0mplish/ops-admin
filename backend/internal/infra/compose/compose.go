@@ -7,6 +7,10 @@
 package compose
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
 	"gorm.io/gorm"
 
 	"ops-admin/backend/internal/infra/adapter/fake"
@@ -14,12 +18,15 @@ import (
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/inventory"
 	"ops-admin/backend/internal/infra/metrics"
+	"ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/internal/infra/registry"
 	"ops-admin/backend/internal/infra/secrets"
+	"ops-admin/backend/internal/tasks"
 )
 
 // Stack is the assembled V2 inventory stack.
 type Stack struct {
+	db       *gorm.DB
 	Registry *registry.Registry
 	Broker   *secrets.Broker
 	Counters *metrics.Counters
@@ -56,11 +63,70 @@ func Build(db *gorm.DB) (*Stack, error) {
 
 	broker := secrets.NewBroker(db)
 	return &Stack{
+		db:       db,
 		Registry: reg,
 		Broker:   broker,
 		Counters: counters,
 		Runner:   inventory.NewSyncRunner(db, reg, broker, counters),
 	}, nil
+}
+
+// TerminalAuditFunc is the §18.1 terminal-row writer the engine's
+// OnTaskTerminal hook delegates to (J3(b)/J6). It is the exact signature of
+// v2.RecordTaskTerminal — injected by the caller (main) because compose
+// cannot import the api layer (api/v2 imports compose; the dependency must
+// point one way). nil is legal: the hook then owns the observation refresh
+// alone.
+type TerminalAuditFunc func(ctx context.Context, db *gorm.DB, task model.ProviderTask, status string, detail contract.JSONMap) error
+
+// BuildEngine assembles the durable task engine (§13) over the stack's
+// registry — the SAME registry Build registered the adapters and operation
+// definitions into, so submit/claim/execute resolve identically for the CLI
+// sync path and the engine lane (adapters register exactly once). The J6
+// OnTaskTerminal hook is wired here: observation refresh first
+// (SyncRunner.RunSync on the task's connection — status independent: a failed
+// rollout's observation is still the truth of a partial rollout), then the
+// §18.1 terminal audit row. A refresh failure never skips the audit row —
+// both legs run, the errors join, and the engine's fireTaskTerminal disposes
+// the joined error without rolling the terminal back (observation_refresh_failed
+// event).
+func (s *Stack) BuildEngine(cfg tasks.Config, terminalAudit TerminalAuditFunc) *tasks.Engine {
+	engine := tasks.NewEngine(s.db, s.Registry, cfg)
+	engine.OnTaskTerminal = func(ctx context.Context, task model.ProviderTask, status string, detail contract.JSONMap) error {
+		refreshErr := s.refreshObservation(ctx, task.ResourceUID)
+		var auditErr error
+		if terminalAudit != nil {
+			auditErr = terminalAudit(ctx, s.db, task, status, detail)
+		}
+		return errors.Join(refreshErr, auditErr)
+	}
+	return engine
+}
+
+// refreshObservation resolves the task's resource → context → connection
+// chain (the same join shape the engine's resolveExecutionChain walks) and
+// runs one full sync of that connection — the whole-connection form (J6:
+// kind 규모에서 충분; incremental is the Phase 4 handoff).
+func (s *Stack) refreshObservation(ctx context.Context, resourceUID string) error {
+	var connUID string
+	err := s.db.WithContext(ctx).
+		Table("infra_resource").
+		Select("provider_connection.uid").
+		Joins("JOIN provider_context ON provider_context.id = infra_resource.context_id").
+		Joins("JOIN provider_connection ON provider_connection.id = provider_context.connection_id").
+		Where("infra_resource.uid = ? AND infra_resource.deleted_at IS NULL", resourceUID).
+		Limit(1).
+		Scan(&connUID).Error
+	if err != nil {
+		return fmt.Errorf("compose: resolve connection for terminal refresh of %q: %w", resourceUID, err)
+	}
+	if connUID == "" {
+		return fmt.Errorf("compose: no live resource→context→connection chain for %q — terminal refresh skipped", resourceUID)
+	}
+	if _, err := s.Runner.RunSync(ctx, inventory.SyncInput{ConnectionUID: connUID}); err != nil {
+		return fmt.Errorf("compose: terminal observation refresh of %q: %w", connUID, err)
+	}
+	return nil
 }
 
 // kubernetesReadKinds — k8s 디스커버리가 관측하는 kind 면(§3.1 섹션 표 ↔

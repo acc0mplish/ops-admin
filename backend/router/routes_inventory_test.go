@@ -50,7 +50,9 @@ func newArtifactEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{}
-	engine, svc := New(cfg, db)
+	// nil v2API — the engine-less boot: the golden below is the unchanged-v1
+	// assertion (the engine lane must not alter the route surface, R11).
+	engine, svc := New(cfg, db, nil)
 	t.Cleanup(func() {
 		_ = svc.Shutdown(context.Background())
 		// router.New creates the uploads dir relative to the test working
