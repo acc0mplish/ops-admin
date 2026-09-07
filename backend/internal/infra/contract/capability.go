@@ -20,11 +20,13 @@ type CapabilityVocabularyEntry struct {
 	OwnerPhase string
 }
 
-// M1CapabilityVocabulary is the closed M1 capability vocabulary (§10.1).
-// ReadOnly is vocabulary metadata only — it is never used to derive a
-// serving interface (r2, V5): console.web_terminal is served by ConsoleBroker
-// (M2+, not declared here) and cost.read is readonly but not a Discoverer.
-// The capability→interface mapping table is CapabilityInterfaceMap below.
+// M1CapabilityVocabulary is the closed M1 capability vocabulary (§10.1) plus
+// the Phase 5 PVE guarded-operations trio (plan M2 — §14.3 "read-only token for
+// discovery, operations token gated by approval"). ReadOnly is vocabulary
+// metadata only — it is never used to derive a serving interface (r2, V5):
+// console.web_terminal is served by ConsoleBroker (M2+, not declared here) and
+// cost.read is readonly but not a Discoverer. The capability→interface mapping
+// table is CapabilityInterfaceMap below.
 var M1CapabilityVocabulary = []CapabilityVocabularyEntry{
 	{Name: "inventory.full", ReadOnly: true, OwnerPhase: "M1"},
 	{Name: "inventory.incremental", ReadOnly: true, OwnerPhase: "M1"},
@@ -33,6 +35,11 @@ var M1CapabilityVocabulary = []CapabilityVocabularyEntry{
 	{Name: "compute.vm.read", ReadOnly: true, OwnerPhase: "M1"},
 	{Name: "cost.read", ReadOnly: true, OwnerPhase: "M1"},
 	{Name: "console.web_terminal", ReadOnly: true, OwnerPhase: "M1"},
+	// Phase 5 (PR 31b) — PVE 게스트 mutation 3종(J7). executor 구현과 같은
+	// Phase에 승격된다(registry V5 — OperationExecutor 필수의 같은-커밋 요구).
+	{Name: "compute.power.manage", ReadOnly: false, OwnerPhase: "Phase5"},
+	{Name: "storage.snapshot.manage", ReadOnly: false, OwnerPhase: "Phase5"},
+	{Name: "compute.config.apply", ReadOnly: false, OwnerPhase: "Phase5"},
 }
 
 // InterfaceRequirement is one row of the capability→interface mapping table
@@ -54,10 +61,10 @@ type InterfaceRequirement struct {
 	Reason string
 }
 
-// CapabilityInterfaceMap — the §3.7 mapping table, 7 rows, one per M1
-// capability name. cost.read (§3.2 row 18 — finops stays on the existing
-// scheduler, no adapter interface) and console.web_terminal (§11 ConsoleBroker
-// M2+) carry an explicit empty requirement.
+// CapabilityInterfaceMap — the §3.7 mapping table, one row per M1 capability
+// name plus the Phase 5 PVE trio. cost.read (§3.2 row 18 — finops stays on the
+// existing scheduler, no adapter interface) and console.web_terminal (§11
+// ConsoleBroker M2+) carry an explicit empty requirement.
 var CapabilityInterfaceMap = []InterfaceRequirement{
 	{Capability: "inventory.full", RequiredInterface: "Discoverer",
 		Reason: "§9 동기화가 Discoverer 페이징 소비"},
@@ -74,6 +81,18 @@ var CapabilityInterfaceMap = []InterfaceRequirement{
 		Reason: "§3.2 row 18: finops는 기존 스케줄러 유지 — 어댑터 인터페이스 없음"},
 	{Capability: "console.web_terminal", RequiredInterface: "",
 		Reason: "§11 \"M2+, with the agent ADR\" — 미선언"},
+	// Phase 5 (PR 31b) — PVE guarded operations 3종은 같은 실행면을 공유한다:
+	// executor 필수(등록 시 타입 단얫) + 폴러 옵션(UPID dual-mode — J4).
+	// TaskCanceller는 미구현 — PVE 태스크 취소는 이월(계획 §13 이월 유지).
+	{Capability: "compute.power.manage", RequiredInterface: "OperationExecutor",
+		OptionalInterfaces: []string{"TaskPoller"},
+		Reason:             "Phase 5 PVE — POST …?background_delay → null|UPID dual mode (J4)"},
+	{Capability: "storage.snapshot.manage", RequiredInterface: "OperationExecutor",
+		OptionalInterfaces: []string{"TaskPoller"},
+		Reason:             "동일 실행면 — POST …/snapshot → dual mode (J4·J7)"},
+	{Capability: "compute.config.apply", RequiredInterface: "OperationExecutor",
+		OptionalInterfaces: []string{"TaskPoller"},
+		Reason:             "동일 실행면 — PUT …/config 화이트리스트(E-5) → dual mode (J4·J7)"},
 }
 
 // OperationStatus.State vocabulary (§3.9 — the Phase 0 inheritance

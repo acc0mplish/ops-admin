@@ -82,8 +82,8 @@ func TestProviderTypeVocabulary(t *testing.T) {
 	}
 }
 
-// T3 — 역량 어휘가 스펙 §10.1 "Initial names (M1)" 7종과 정합:
-// 이름·ReadOnly(apply만 false)·중복 0.
+// T3 — 역량 어휘가 스펙 §10.1 "Initial names (M1)" 7종 + Phase 5 PVE mutation
+// 3종(계획 M2)과 정합: 이름·ReadOnly(mutation 4종만 false)·중복 0.
 func TestCapabilityVocabularyMatchesSpec(t *testing.T) {
 	want := []CapabilityVocabularyEntry{
 		{Name: "inventory.full", ReadOnly: true, OwnerPhase: "M1"},
@@ -93,12 +93,21 @@ func TestCapabilityVocabularyMatchesSpec(t *testing.T) {
 		{Name: "compute.vm.read", ReadOnly: true, OwnerPhase: "M1"},
 		{Name: "cost.read", ReadOnly: true, OwnerPhase: "M1"},
 		{Name: "console.web_terminal", ReadOnly: true, OwnerPhase: "M1"},
+		{Name: "compute.power.manage", ReadOnly: false, OwnerPhase: "Phase5"},
+		{Name: "storage.snapshot.manage", ReadOnly: false, OwnerPhase: "Phase5"},
+		{Name: "compute.config.apply", ReadOnly: false, OwnerPhase: "Phase5"},
 	}
 	if !reflect.DeepEqual(M1CapabilityVocabulary, want) {
 		t.Fatalf("M1CapabilityVocabulary = %+v\nwant %+v", M1CapabilityVocabulary, want)
 	}
-	if len(M1CapabilityVocabulary) != 7 {
-		t.Errorf("M1CapabilityVocabulary length = %d, want 7", len(M1CapabilityVocabulary))
+	if len(M1CapabilityVocabulary) != 10 {
+		t.Errorf("M1CapabilityVocabulary length = %d, want 10", len(M1CapabilityVocabulary))
+	}
+	mutating := map[string]bool{
+		"orchestration.kubernetes.apply": true,
+		"compute.power.manage":           true,
+		"storage.snapshot.manage":        true,
+		"compute.config.apply":           true,
 	}
 	seen := make(map[string]bool, len(M1CapabilityVocabulary))
 	for _, e := range M1CapabilityVocabulary {
@@ -109,8 +118,8 @@ func TestCapabilityVocabularyMatchesSpec(t *testing.T) {
 			t.Errorf("duplicate capability name %q", e.Name)
 		}
 		seen[e.Name] = true
-		if e.Name != "orchestration.kubernetes.apply" && !e.ReadOnly {
-			t.Errorf("capability %q ReadOnly = false, want true (only apply is non-readonly)", e.Name)
+		if !mutating[e.Name] && !e.ReadOnly {
+			t.Errorf("capability %q ReadOnly = false, want true (only the mutation quartet is non-readonly)", e.Name)
 		}
 	}
 }
