@@ -56,7 +56,8 @@
     "31b": "rev-p5-31b — claims 14/14·HIGH(런북SQL) 수정(680a401)"
   },
   "finalVerification": "메인 직접 @main 1e71003: 전회귀 30 ok·build ok·arch exit 0 → register-pve 실엔드포인트 EXIT 0(standalone 폴백 실증) → sync EXIT 0·outcomes.created 5 → DB 5행·바인딩 2 sealed → 시더 menu 1·super-admin 1. 게이트 §20 Slice B 재증명 (a)실엔드포인트 (b)E2E (c)빈diff (d)R2v3+카나리 전부 실증",
-  "followups": "§13-9 테스트 게스트 생성 시 claim6·7 실게스트 실증+compute.vm 발견 보완 · MEDIUM-2 소멸노드 잔여섹션 결번(커서 서수 재설계) · seed.go 658행 분할(권한시더 3종 이동) · pveGuestOperatePermission 상수 2중선언 동기화 · register-pve probe 클라이언트 조립 재사용 · chain 비트랜잭션 · sync seenCount 0 관찰(outcomes.created가 실효 계수 — 계기 일관성 점검) · 스택 8082 기존 인스턴스 구버전 가능(재기동 권고)",
+  "s139Live": "§13-9 실게스트 증명 완료 2026-09-08 — CT100(opsadmin-gate-probe·lxc) 생성 → sync 6행(system_container pve/100) → power start 전 체인 실증: execute(201·Idempotency-Key 필수)→approve(admin)→UPID 폴→succeeded(attempt 1)·PVE uptime 증가·task_event created/approved/claimed/succeeded·서버로그 PVEAPIToken 0. 라이브 전용 결함 3건 발견·수정: (1)executor 엔진 부기키 관용(PR45 2decc92) (2)background_delay 버전 적응 재시도(PR45 14b14f0 — A4 가정 정정: delay는 최적화, dual-mode가 백본) (3)WARNINGS 종료 성공 분류(PR47 7fc693e)",
+  "followups": "MEDIUM-2 소멸노드 잔여섹션 결번(커서 서수 재설계) · register-pve probe 클라이언트 조립 재사용 · chain 비트랜잭션 · sync seenCount 0 관찰(outcomes.created가 실효 계수) · snapshot 오퍼레이션 라이브 실증(가능) · WARNINGS 건에 대한 opdef RetryPolicy 재검(프로바이더 실패 재시도가 이미-수렴 상태에 재쓰기 — provider_state_convergent 명시가 정합하는지)",
   "scope": "스펙 §14.3 Proxmox read-only+guarded ops — PR 31a/31b (계획 §21 PR 31의 2분해)",
   "m2Remaining": "Phase 6(legacy cutover·조건부) 진입 판정·§18.2 메트릭 앵커(M1 선언 전제)·Phase 2 게이트 2·3일차·클라우드 실계정 승격"
 }
