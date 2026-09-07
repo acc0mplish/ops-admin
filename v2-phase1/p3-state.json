@@ -1,0 +1,49 @@
+{
+  "task": "v2-p3-slice-a",
+  "tier": "XL",
+  "phase": "done",
+  "round": {
+    "adversary": 0,
+    "review": 0
+  },
+  "spawns": 16,
+  "claims": [
+    {
+      "claim": "Phase A 계약·엔진 회로 — OperationRequest.Connection+PollRequest+backfill operations 바인딩+OnTaskTerminal",
+      "status": "verified",
+      "evidence": "PR #25 82c43eb·27패키지·④리뷰 verified"
+    },
+    {
+      "claim": "Phase B k8s executor — Execute/Poll·판정식 3종·connUID ProviderRef",
+      "status": "verified",
+      "evidence": "PR #26 8769111·kubernetes 85.6%·④리뷰 verified"
+    },
+    {
+      "claim": "Phase A2/B2 API·승인·감사·메뉴 시드",
+      "status": "verified",
+      "evidence": "PR #27 911e614·라우트 245·④리뷰 verified"
+    },
+    {
+      "claim": "Phase D/E UI·E2E 트레이스·CI kind 잡",
+      "status": "verified",
+      "evidence": "PR #28·31 merged·Playwright 2 passed·④리뷰 verified"
+    },
+    {
+      "claim": "게이트 ①-③ kind-v2-p3 실측 증명 (트레이스·크래시 이중 restart 0·감사 20필드)",
+      "status": "verified",
+      "evidence": "E2E 리뷰 재실행 EXIT=0 (121s)·generation 불변·감사 union — 게이트 ①②③"
+    }
+  ],
+  "bundle": "v2-phase1/phase3-plan.md",
+  "next": "phase3-complete",
+  "anchor": "8a97b58",
+  "scope": "V2 Phase 3 — K8s workload restart 종단 (Slice A): plan→권한→정책→승인→멱등→리소스 개정→execute/poll→감사→관찰 갱신 (스펙 §20 Phase 3·§21 PR 24-26·§25 트레이스)",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "ciPolicy": "로컬 검증 판정 — 원격 대기 금지. 단 CI kind 잡 1개 추가 승인 (2026-09-07) — 스펙 'in CI' 충족·상시 증거, merge 판정은 로컬 유지",
+  "handoffs": "Phase 1 N-1 잔여 (OperationRequest.Connection)·N-4 (cancel_requested 발화)·PR21 관계 링크 normalizer 확장 — Phase 3 소유 검토",
+  "planConfirmations": "메인 승인 — J4 기존 권한 2종 재사용(신규 문자열 0)·J8 RequiresApproval=true V2 posture",
+  "planR2": "승인 — 5렌즈 조건부승인 6구역 반영(J12 자격 경로 2종·판정식 교정·kind-v2-p3 격리·회복 하한식·검증 계약 정정·보안 잔여)",
+  "reviewVerdict": "승인 8/8 — 이월 조건 2건 (tasks 목록 라우트·seed sts/ds)",
+  "gateEvidence": "issue #4 코멘트 5564378360",
+  "followups_phase4": "GET /tasks 목록 라우트·seed sts/ds·normalizer 관계 링크·R2 재설계·커버리지 래치·§18.2 메트릭 앵커 (M1 선언 전 필수)·normalizer generation/annotation 투영"
+}
