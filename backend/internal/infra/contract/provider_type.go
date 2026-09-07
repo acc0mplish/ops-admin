@@ -38,8 +38,9 @@ type ConfigFieldSpec struct {
 	Secret   bool // true면 값은 SecretRef UID로만 전달(§7.2: ConfigJSON에 시크릿 값 금지)
 }
 
-// §7.1 "Registered types in Milestone 1" + §11.1 fake
-var M1ProviderTypeNames = []string{"kubernetes", "aliyun", "tencent", "fake"}
+// §7.1 "Registered types in Milestone 1" + §11.1 fake. proxmox promoted from
+// reserved (phase5-plan §5 Phase A — descriptor lands with PR 31a Phase B).
+var M1ProviderTypeNames = []string{"kubernetes", "aliyun", "tencent", "proxmox", "fake"}
 
 // ProviderTypeAliases maps the legacy v1 provider vocabulary onto the §7.1 V2
 // provider types (§5.4 propagation rule 1 — J6): each legacy alias and its
@@ -52,7 +53,7 @@ var M1ProviderTypeNames = []string{"kubernetes", "aliyun", "tencent", "fake"}
 var ProviderTypeAliases = map[string]string{"aliyun": "aliyun", "alicloud": "aliyun", "tencent": "tencent", "tencentcloud": "tencent"}
 
 // §7.1 "Reserved (descriptors land with their milestone, not before)"
-var ReservedProviderTypeNames = []string{"proxmox", "vcenter", "cloudstack", "openstack"}
+var ReservedProviderTypeNames = []string{"vcenter", "cloudstack", "openstack"}
 
 // §7.3 Kind 주석: cluster, account, project, subscription
 var ProviderContextKinds = []string{"cluster", "account", "project", "subscription"}

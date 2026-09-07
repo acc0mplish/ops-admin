@@ -56,14 +56,14 @@ func TestM1ResourceKindVocabularyMatchesSpec(t *testing.T) {
 	}
 }
 
-// T2 — provider 유형 어휘: M1 4종 + 예약 4종 + 컨텍스트 종 4종,
-// M1 집합과 예약 집합의 교집합 0.
+// T2 — provider 유형 어휘: M1 5종(proxmox 승격, phase5 §5 Phase A) + 예약 3종
+// + 컨텍스트 종 4종, M1 집합과 예약 집합의 교집합 0.
 func TestProviderTypeVocabulary(t *testing.T) {
-	wantM1 := []string{"kubernetes", "aliyun", "tencent", "fake"}
+	wantM1 := []string{"kubernetes", "aliyun", "tencent", "proxmox", "fake"}
 	if !reflect.DeepEqual(M1ProviderTypeNames, wantM1) {
 		t.Fatalf("M1ProviderTypeNames = %v, want %v", M1ProviderTypeNames, wantM1)
 	}
-	wantReserved := []string{"proxmox", "vcenter", "cloudstack", "openstack"}
+	wantReserved := []string{"vcenter", "cloudstack", "openstack"}
 	if !reflect.DeepEqual(ReservedProviderTypeNames, wantReserved) {
 		t.Fatalf("ReservedProviderTypeNames = %v, want %v", ReservedProviderTypeNames, wantReserved)
 	}

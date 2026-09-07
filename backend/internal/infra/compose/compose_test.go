@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
+	"ops-admin/backend/internal/infra/adapter/proxmox"
 	"ops-admin/backend/internal/infra/compose"
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/migrate"
@@ -38,17 +39,17 @@ func TestBuildWiresStack(t *testing.T) {
 		t.Fatalf("compose.Build: %v", err)
 	}
 	names := stack.Registry.ProviderTypeNames()
-	// 등록 수 단얫 갱신(보존 제약 6 명시적 예외 — 계획 r2 H3·§5 합류점): aliyun
-	// (PR 27)·tencent(PR 28) 양 레인 합류 완료 — 4종이 최종 형상이다.
-	if len(names) != 4 {
-		t.Fatalf("registry provider types = %v, want [fake kubernetes aliyun tencent]", names)
+	// 등록 수 단얫 갱신(보존 제약 5 예외 (a) — p4 M2 선례): Phase 5 C2가
+	// proxmox(§3.4)를 합류시켰다 — 5종이 최종 형상이다.
+	if len(names) != 5 {
+		t.Fatalf("registry provider types = %v, want [fake kubernetes aliyun tencent proxmox]", names)
 	}
 	got := map[string]bool{}
 	for _, n := range names {
 		got[n] = true
 	}
-	if !got["fake"] || !got["kubernetes"] || !got["aliyun"] || !got["tencent"] {
-		t.Errorf("registry provider types = %v, want fake, kubernetes, aliyun and tencent", names)
+	if !got["fake"] || !got["kubernetes"] || !got["aliyun"] || !got["tencent"] || !got["proxmox"] {
+		t.Errorf("registry provider types = %v, want fake, kubernetes, aliyun, tencent and proxmox", names)
 	}
 	if stack.Runner == nil || stack.Broker == nil || stack.Counters == nil {
 		t.Fatal("stack left a component unwired")
@@ -64,6 +65,49 @@ func TestBuildWiresStack(t *testing.T) {
 	// composition, no global registration state.
 	if _, err := compose.Build(db); err != nil {
 		t.Errorf("second compose.Build: %v", err)
+	}
+}
+
+// TestBuildRegistersProxmoxInventory — Phase 5 C2(M3 31a분/M4): compose는
+// proxmox 읽기 전용 어댑터(계획 §3.4 — BaseAdapter + Discoverer)와 그 읽기
+// capability 1종을 등록한다. inventory.full의 ResourceKinds는 어댑터
+// DiscoveryKinds 전수다 — §3.7 매핑 표가 inventory.full에 Discoverer를 요구하므로
+// 등록이 받아졌다는 것은 *Adapter가 등록 시 Discoverer 타입 단얫(V5)을 통과했다는
+// 뜻이다. mutation capability·opdef 등록은 Phase D(31b) 소관 — 이 커밋은
+// 선언하지 않는다.
+func TestBuildRegistersProxmoxInventory(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+
+	stack, err := compose.Build(db)
+	if err != nil {
+		t.Fatalf("compose.Build: %v", err)
+	}
+
+	caps := stack.Registry.Capabilities("proxmox")
+	got := map[string]contract.Capability{}
+	for _, c := range caps {
+		got[c.Name] = c
+	}
+	c, ok := got["inventory.full"]
+	if !ok {
+		t.Fatalf("proxmox capabilities = %v, missing inventory.full", caps)
+	}
+	if !c.ReadOnly {
+		t.Error("capability inventory.full must be read-only (31a는 읽기 전용 — §3.4)")
+	}
+	if !slices.Equal(c.ResourceKinds, proxmox.DiscoveryKinds) {
+		t.Errorf("capability ResourceKinds = %v, want the adapter DiscoveryKinds %v", c.ResourceKinds, proxmox.DiscoveryKinds)
+	}
+	for _, name := range []string{"compute.power.manage", "storage.snapshot.manage", "compute.config.apply"} {
+		if _, ok := got[name]; ok {
+			t.Errorf("proxmox capabilities contain %q — mutation capability 선언은 Phase D(31b) 소관이다", name)
+		}
+	}
+
+	// 공유 카운터에 proxmox provider 행이 있다(게이트 ③ flat 증명 형식).
+	if want := `provider_rate_limit_total{provider="proxmox"} 0`; !strings.Contains(stack.Counters.Render(), want) {
+		t.Errorf("counters render missing %q:\n%s", want, stack.Counters.Render())
 	}
 }
 

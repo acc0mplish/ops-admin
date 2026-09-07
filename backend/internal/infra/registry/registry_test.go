@@ -136,7 +136,9 @@ func validOperation() contract.OperationDefinition {
 func TestRegisterProviderRejectsReservedAndUnknown(t *testing.T) {
 	r := registry.New()
 
-	err := r.RegisterProviderType(contract.ProviderTypeDescriptor{Type: "proxmox"}, discoverOnlyAdapter{})
+	// proxmox는 phase5 Phase A에서 M1 어휘로 승격되어 더 이상 reserved가 아니므로,
+	// 예약명 거부 단얫은 여전히 reserved인 vcenter 픽스처로 의미를 보존한다.
+	err := r.RegisterProviderType(contract.ProviderTypeDescriptor{Type: "vcenter"}, discoverOnlyAdapter{})
 	if err == nil {
 		t.Fatal("reserved provider type registered without error")
 	}
