@@ -32,6 +32,19 @@ type OperationLog struct {
 	DurationMs     int64     `json:"durationMs" gorm:"default:0"`
 	RequestSummary string    `json:"requestSummary" gorm:"type:text"`
 	CreatedAt      time.Time `json:"createTime"`
+
+	// step0005 (V2 Phase 3, plan §3.5 — J3/F-8): the §18.1 audit EXTEND. The
+	// named triplet plus the JSON context are all NULLABLE — every v1 row
+	// stays NULL, no backfill, no defaults (F-8 ①). The remaining §18.1
+	// fields (request/trace id, connection/context/resource uid, operation
+	// metadata, approval fields, request/result hashes) live inside
+	// v2_context as JSON text; assertions decode in Go (F-8 ② — no byte
+	// compare). The v2 lane's request_summary carries hashes and error codes
+	// only — never serialized request bodies (VK-11).
+	TaskUID       *string `json:"taskUid" gorm:"size:64;index"`
+	PolicyVersion *string `json:"policyVersion" gorm:"size:64"`
+	Mutating      *bool   `json:"mutating"`
+	V2Context     *string `json:"v2Context" gorm:"type:text"`
 }
 
 func (OperationLog) TableName() string {

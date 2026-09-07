@@ -247,7 +247,7 @@ func seedMenuName(value string) string {
 		"notify": "Notifications", "notify:rule:list": "Notification Rules", "notify:template:list": "Message Templates", "notify:channel:list": "Notification Channels", "notify:sendlog:list": "Send Logs",
 		"monitor": "Monitoring Center", "monitor:overview": "Monitoring Overview", "monitor:commandcenter": "Operations Command Center", "monitor:datasource:list": "Datasource Management", "monitor:query": "Instant Query", "monitor:logs": "Log Explorer", "monitor:traces": "Trace Explorer", "monitor:alerttemplate:list": "Alert Templates", "monitor:alertrule:list": "Alert Rules", "monitor:alertevent:list": "Alert Events", "monitor:silence:list": "Alert Silences", "monitor:aggregation:list": "Alert Aggregation", "monitor:dashboard:list": "Monitoring Dashboards", "monitor:inspection:list": "Inspection Dashboards",
 		"domains": "Domain Management", "domains:public:list": "Public Domains", "domains:account:list": "Public DNS Accounts", "domains:ssl:view": "SSL Certificates", "domains:internal:list": "Internal Domains", "domains:settings:view": "DNS Settings", "domains:query:test": "DNS Query Test", "domains:audit:list": "Operation Audit",
-		"infra": "Infrastructure", "infra:overview": "Infrastructure Overview", "infra:providers": "Provider Connections", "infra:resources": "K8s Inventory",
+		"infra": "Infrastructure", "infra:overview": "Infrastructure Overview", "infra:providers": "Provider Connections", "infra:resources": "K8s Inventory", "infra:tasks": "Tasks & Approvals",
 	}
 	return names[value]
 }
@@ -356,7 +356,11 @@ func seedApplicationMenus(db *gorm.DB) error {
 		{url: "/domains", value: "domains", icon: "Connection", children: []menuSeed{{"/domains/public", "domains:public:list", "Position"}, {"/domains/public/accounts", "domains:account:list", "Key"}, {"/domains/public/certificates", "domains:ssl:view", "Lock"}, {"/domains/internal", "domains:internal:list", "OfficeBuilding"}, {"/domains/internal/settings", "domains:settings:view", "Setting"}, {"/domains/query-test", "domains:query:test", "Search"}, {"/domains/audit", "domains:audit:list", "Memo"}}},
 		// V2 Infrastructure shell (plan PR 23 — spec §17.3 seed rows; read-only
 		// v2 read API pages, additive — existing menu rows are untouched).
-		{url: "/infra", value: "infra", icon: "Monitor", children: []menuSeed{{"/infra/overview", "infra:overview", "DataBoard"}, {"/infra/providers", "infra:providers", "Connection"}, {"/infra/resources", "infra:resources", "Grid"}}},
+		// M20 (plan E2 — spec §17.3 "seed rows for the new menu group + items"):
+		// the "Tasks & Approvals" row (infra:tasks) rides the same idempotent
+		// upsert as the rest of the boot seed — one additive row, existing
+		// menu rows untouched (A10).
+		{url: "/infra", value: "infra", icon: "Monitor", children: []menuSeed{{"/infra/overview", "infra:overview", "DataBoard"}, {"/infra/providers", "infra:providers", "Connection"}, {"/infra/resources", "infra:resources", "Grid"}, {"/infra/tasks", "infra:tasks", "List"}}},
 	}
 
 	menuByValue := make(map[string]model.Menu)

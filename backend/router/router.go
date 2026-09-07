@@ -13,6 +13,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// v2APIPrefix is the engine-level prefix of the v2 API tree (group root
+// /api/v2/infra). The replay/golden tests normalize v2 routes through it
+// (M12); the operation table stores the group-suffix paths (/infra/...), so
+// the prefix excludes the group name.
+const v2APIPrefix = "/api/v2"
+
 func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 	if cfg.App.Mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
@@ -499,9 +505,24 @@ func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 	// group, the /api/v1 tree above stays untouched. GET-only non-sensitive
 	// reads — Auth + OperationLog reuse, no opdef grant (sensitive-routes
 	// golden stays unchanged).
+	//
+	// V2 Phase 3 (plan M8): the §16.2 mutation surface joins the same group —
+	// five non-GET POSTs (every one opdef-registered; sensitive golden
+	// 285→290, replay baseline 240→245) plus three reads. Grants are dynamic
+	// (J4): V2DynamicMiddleware resolves the registry def's RequiredPermission
+	// for the operations routes and falls back to the opdef representative —
+	// ops:job:approve for the task verbs, whose route has no :name — so the
+	// enforced vocabulary stays registry-canonical without a second grant
+	// path. The task engine itself is not assembled here (compose owns the
+	// engine wiring — plan M4/M9); the mutation handlers that need it degrade
+	// 503 until the injection lands.
 	v2Group := engine.Group("/api/v2/infra")
 	v2Group.Use(middleware.Auth(db), middleware.OperationLog(db))
-	v2.NewInfraAPI(db).Register(v2Group)
+	v2API := v2.NewInfraAPI(db)
+	v2API.Register(v2Group)
+	v2API.RegisterOperations(v2Group, func(def opdef.Def) gin.HandlerFunc {
+		return opdef.V2DynamicMiddleware(db, def, v2API.ResolveOperationPermission)
+	})
 
 	return engine, svc
 }

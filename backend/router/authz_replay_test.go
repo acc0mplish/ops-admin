@@ -42,12 +42,16 @@ var publicRouteKeys = map[string]struct{}{
 	"HEAD /uploads/*filepath": {},
 }
 
-// authGroupRoutes filters the live engine's route table down to the 427
-// authenticated routes: the api-group routes minus the public set.
+// authGroupRoutes filters the live engine's route table down to the 439
+// authenticated routes: the api-group routes minus the public set, plus the
+// /api/v2/infra group (M12 — plan: authGroupRoutes에 /api/v2 포함; 427 v1 +
+// 4 Phase-2 v2 reads + 8 Phase-3 v2 operation routes).
 func authGroupRoutes(routes gin.RoutesInfo) []gin.RouteInfo {
-	out := make([]gin.RouteInfo, 0, 427)
+	out := make([]gin.RouteInfo, 0, 439)
 	for _, route := range routes {
-		if !strings.HasPrefix(route.Path, apiPrefix+"/") && route.Path != apiPrefix {
+		inV1 := strings.HasPrefix(route.Path, apiPrefix+"/") || route.Path == apiPrefix
+		inV2 := strings.HasPrefix(route.Path, v2APIPrefix+"/")
+		if !inV1 && !inV2 {
 			continue
 		}
 		if _, public := publicRouteKeys[route.Method+" "+route.Path]; public {
@@ -56,6 +60,24 @@ func authGroupRoutes(routes gin.RoutesInfo) []gin.RouteInfo {
 		out = append(out, route)
 	}
 	return out
+}
+
+// defRoutePrefix picks the group prefix a definition's Path lives under: the
+// v2 infra batch stores group-suffix paths (/infra/...), v1 the /api/v1
+// suffix — the same convention FormatLine's artifact rows already use.
+func defRoutePrefix(path string) string {
+	if strings.HasPrefix(path, "/infra/") {
+		return v2APIPrefix
+	}
+	return apiPrefix
+}
+
+// defKeyForRoute normalizes a live route to the operation table's key space.
+func defKeyForRoute(method, path string) string {
+	if strings.HasPrefix(path, v2APIPrefix+"/") {
+		return method + " " + strings.TrimPrefix(path, "/api/v2")
+	}
+	return method + " " + strings.TrimPrefix(path, apiPrefix)
 }
 
 // replaySession mints an access token plus the matching AuthSession row for a
@@ -170,7 +192,7 @@ func TestPermissionReplay(t *testing.T) {
 	defs := opdef.All()
 	denied := []string{}
 	for _, d := range defs {
-		status, body := doRequest(engine, token, d.Method, apiPrefix+d.Path, requestBody(d.Method))
+		status, body := doRequest(engine, token, d.Method, defRoutePrefix(d.Path)+d.Path, requestBody(d.Method))
 		if status == http.StatusUnauthorized {
 			t.Fatalf("replay %s %s returned 401 — session setup is broken", d.Method, d.Path)
 		}
@@ -208,15 +230,15 @@ func TestZeroGrantCoverage(t *testing.T) {
 		defKeys[d.Method+" "+d.Path] = struct{}{}
 	}
 	authRoutes := authGroupRoutes(engine.Routes())
-	if len(authRoutes) != 427 {
-		t.Fatalf("authGroup holds %d routes, contract is 427", len(authRoutes))
+	if len(authRoutes) != 439 {
+		t.Fatalf("authGroup holds %d routes, contract is 439 (427 v1 + 12 v2)", len(authRoutes))
 	}
 	missedDenials := []string{}
 	unexpectedDenials := []string{}
 	for _, route := range authRoutes {
 		status, body := doRequest(engine, token, route.Method, route.Path, requestBody(route.Method))
 		denied := isPermissionDenied(status, body)
-		_, sensitive := defKeys[route.Method+" "+strings.TrimPrefix(route.Path, apiPrefix)]
+		_, sensitive := defKeys[defKeyForRoute(route.Method, route.Path)]
 		if sensitive && !denied {
 			missedDenials = append(missedDenials, fmt.Sprintf("%s %s -> %d", route.Method, route.Path, status))
 		}
@@ -288,7 +310,7 @@ func TestOperationTableCoversRouter(t *testing.T) {
 	defs := opdef.All()
 	defKeys := map[string]struct{}{}
 	for _, d := range defs {
-		key := d.Method + " " + apiPrefix + d.Path
+		key := d.Method + " " + defRoutePrefix(d.Path) + d.Path
 		if _, ok := routeKeys[key]; !ok {
 			t.Fatalf("operation definition %s %s has no live route", d.Method, d.Path)
 		}
@@ -318,14 +340,16 @@ func TestOperationTableCoversRouter(t *testing.T) {
 			continue
 		}
 		count++
-		if _, ok := defKeys[route.Method+" "+strings.TrimPrefix(route.Path, apiPrefix)]; !ok {
+		if _, ok := defKeys[defKeyForRoute(route.Method, route.Path)]; !ok {
 			missing = append(missing, route.Method+" "+route.Path)
 		}
 	}
 	if len(missing) > 0 {
 		t.Fatalf("%d non-GET authGroup routes have no operation definition (must be 0): %v", len(missing), missing)
 	}
-	if count != 240 {
-		t.Fatalf("authGroup non-GET count %d drifted from the 240 baseline", count)
+	// 240→245 (plan M12 — golden refresh, 근거 기록): the five §16.2 v2
+	// mutation POSTs join the every-mutation-has-a-definition contract.
+	if count != 245 {
+		t.Fatalf("authGroup non-GET count %d drifted from the 245 baseline", count)
 	}
 }

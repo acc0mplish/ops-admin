@@ -272,3 +272,21 @@ func (r *Registry) Operation(name string) (contract.OperationDefinition, bool) {
 func (r *Registry) ResourceKinds() []string {
 	return append([]string(nil), contract.M1ResourceKinds...)
 }
+
+// Operations returns a defensive, name-sorted copy of every registered
+// operation definition — the enumeration source for §16.1's
+// GET /resources/{uid}/operations (definition set × resource kind).
+func (r *Registry) Operations() []contract.OperationDefinition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.operations))
+	for name := range r.operations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]contract.OperationDefinition, 0, len(names))
+	for _, name := range names {
+		out = append(out, r.operations[name])
+	}
+	return out
+}

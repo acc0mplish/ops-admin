@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 441 entries.
+# 449 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -255,6 +255,9 @@ GET /api/v2/infra/provider-connections -> ops-admin/backend/internal/api/v2.(*In
 GET /api/v2/infra/provider-types -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListProviderTypes-fm
 GET /api/v2/infra/resources -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListResources-fm
 GET /api/v2/infra/resources/:uid -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetResource-fm
+GET /api/v2/infra/resources/:uid/operations -> ops-admin/backend/internal/api/v2.(*InfraAPI).ListResourceOperations-fm
+GET /api/v2/infra/tasks/:uid -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetTask-fm
+GET /api/v2/infra/tasks/:uid/events -> ops-admin/backend/internal/api/v2.(*InfraAPI).GetTaskEvents-fm
 GET /ping -> ops-admin/backend/controller.(*Controller).Ping-fm
 GET /uploads/*filepath -> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1
 HEAD /uploads/*filepath -> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1
@@ -398,6 +401,11 @@ POST /api/v1/post/add -> ops-admin/backend/controller.(*Controller).CreatePost-f
 POST /api/v1/role/add -> ops-admin/backend/controller.(*Controller).CreateRole-fm
 POST /api/v1/system/ldap/test -> ops-admin/backend/controller.(*Controller).TestLDAPConfig-fm
 POST /api/v1/systemConfig/upload -> ops-admin/backend/controller.(*Controller).UploadSystemAsset-fm
+POST /api/v2/infra/resources/:uid/operations/:name/execute -> ops-admin/backend/internal/api/v2.(*InfraAPI).ExecuteOperation-fm
+POST /api/v2/infra/resources/:uid/operations/:name/plan -> ops-admin/backend/internal/api/v2.(*InfraAPI).PlanOperation-fm
+POST /api/v2/infra/tasks/:uid/approve -> ops-admin/backend/internal/api/v2.(*InfraAPI).ApproveTask-fm
+POST /api/v2/infra/tasks/:uid/cancel -> ops-admin/backend/internal/api/v2.(*InfraAPI).CancelTask-fm
+POST /api/v2/infra/tasks/:uid/reject -> ops-admin/backend/internal/api/v2.(*InfraAPI).RejectTask-fm
 PUT /api/v1/admin/update -> ops-admin/backend/controller.(*Controller).UpdateSysAdmin-fm
 PUT /api/v1/admin/updatePassword -> ops-admin/backend/controller.(*Controller).ResetSysAdminPassword-fm
 PUT /api/v1/admin/updatePersonal -> ops-admin/backend/controller.(*Controller).UpdatePersonal-fm

@@ -25,6 +25,7 @@ import (
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/internal/infra/registry"
+	"ops-admin/backend/internal/tasks"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -35,12 +36,19 @@ import (
 type InfraAPI struct {
 	db       *gorm.DB
 	registry *registry.Registry
+	engine   *tasks.Engine
+	// cancelStarter is the RequestCancel seam (see CancelStarter). The
+	// assertion keeps this package compiling — and the route contractually
+	// degraded — until the engine lane's Engine.RequestCancel lands.
+	cancelStarter CancelStarter
 }
 
 // NewInfraAPI assembles the V2 stack over db. Registration-time failures are
 // programming errors (the adapter set is compile-time static), so instead of
 // refusing to boot the whole v1 process the API degrades to a nil registry
-// and the provider-type route reports the outage.
+// and the provider-type route reports the outage. The task engine is not
+// assembled here (compose owns the engine wiring — plan M4/M9); the mutation
+// routes that need it degrade 503 until it is injected.
 func NewInfraAPI(db *gorm.DB) *InfraAPI {
 	stack, err := compose.Build(db)
 	if err != nil {
@@ -54,6 +62,19 @@ func NewInfraAPI(db *gorm.DB) *InfraAPI {
 // degraded nil-registry path is the stack-build-failure case above).
 func NewInfraAPIWithRegistry(db *gorm.DB, reg *registry.Registry) *InfraAPI {
 	return &InfraAPI{db: db, registry: reg}
+}
+
+// NewInfraAPIWithEngine builds the fully-assembled API: registry plus the
+// durable task engine (the mutation surface) — the form the router and the
+// tests use once the engine lane's compose wiring lands.
+func NewInfraAPIWithEngine(db *gorm.DB, reg *registry.Registry, engine *tasks.Engine) *InfraAPI {
+	api := &InfraAPI{db: db, registry: reg, engine: engine}
+	if engine != nil {
+		if starter, ok := any(engine).(CancelStarter); ok {
+			api.cancelStarter = starter
+		}
+	}
+	return api
 }
 
 // Register wires the GET subset onto group. The group is created by the
