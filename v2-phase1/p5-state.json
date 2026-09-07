@@ -1,0 +1,62 @@
+{
+  "task": "v2-p5-proxmox",
+  "tier": "L",
+  "phase": "done",
+  "round": {"adversary": 0, "review": 2},
+  "spawns": 14,
+  "claims": [
+    {"claim": "C1 proxmox 패키지 -race GREEN", "status": "verified", "evidence": "①~④ 전 단계 go test ./internal/infra/adapter/proxmox/ -race -count=1 ok — 리뷰 2회 독립 실행 포함"},
+    {"claim": "C2 전 회귀 GREEN", "status": "verified", "evidence": "go test ./... -count=1 → 30패키지 ok · 31b -race ok 30 (rev-p5-31b)"},
+    {"claim": "C3 게이트c 코어 빈 diff", "status": "verified", "evidence": "git diff main -- model/migrate/inventory/secrets/tasks/api-v2 → 0라인 (rev 2회)"},
+    {"claim": "C4 게이트d R2 v3 PASS", "status": "verified", "evidence": "bash scripts/check-arch-boundary.sh exit 0 · R1 10·R2 10·R3"},
+    {"claim": "C5 게이트d 카나리 반증", "status": "verified", "evidence": "스크래치 재현 — 제품 플레인트 exit1 'R2 FAIL sync.go:477' · _test 플레인트 exit0 (E·리뷰 2회)"},
+    {"claim": "C6 UPID dual-mode 3경우", "status": "verified", "evidence": "-run 'DualMode|Execute|Poll' -v === RUN 14 전 PASS — SyncNull·UPIDThenPoll·SyncError"},
+    {"claim": "C7 자격 분리 양방향", "status": "verified", "evidence": "TestExecuteRejectsInventoryCredentials·SelectsOperationsMaterial + 실DB 바인딩 2행(inventory·operations·sealed)"},
+    {"claim": "C8 build·parity", "status": "verified", "evidence": "bun run build ✓ 38.23s · check-i18n-parity PASS (rev-p5-31b)"},
+    {"claim": "C9 게이트b E2E", "status": "verified", "evidence": "E2E_STACK_MODE=serve-c bun run e2e --grep slice-c → 4 passed 1.1m (스택부트 포함·리뷰 재실행)"},
+    {"claim": "C10 게이트a 실엔드포인트", "status": "verified", "evidence": "register-pve EXIT 0 (conn 27cbc461…·standalone true·nodes 1) → sync-inventory EXIT 0 → outcomes.created 5 → DB infra_resource 5행(hypervisor_node·network×2·storage×2·URN urn:proxmox:3:…) — 2026-09-08 01:48"},
+    {"claim": "C11 권한 시더 기능", "status": "verified", "evidence": "서버 부트 시드 후 sys_menu 1행·super-admin JOIN 1행 — grep 아닌 기능 단얫 (rev + 실측)"},
+    {"claim": "C12 의존 0", "status": "verified", "evidence": "git diff main -- go.mod go.sum → 0라인"},
+    {"claim": "C13 자격 비로그", "status": "verified", "evidence": "grep log/print 0행 · assertNoTokenMaterial 에러체인 전수 · PVEAPIToken= 부재 단얫"},
+    {"claim": "C14 secret-scan", "status": "verified", "evidence": "repo root python3 scripts/secret-scan.py exit 0 (742 files) — backend/ 실행 시 오탐(경로 glob 루트 상대)"},
+    {"claim": "C15 커버리지", "status": "verified", "evidence": "31a 88.2% · 31b 89.6% (≥80)"},
+    {"claim": "C16 VNC 0", "status": "verified", "evidence": "grep -rniE 'vnc|spice' → 0행"},
+    {"claim": "C17 mapping 동치", "status": "verified", "evidence": "TestProxmoxMappingCoverage PASS (31a 리뷰)"},
+    {"claim": "C18 interim 0", "status": "verified", "evidence": "grep -rn interim → 0행 — 게이트 실엔드포인트 단일 경로 실증"}
+  ],
+  "gaps": [
+    {"gap": "31a④ HIGH-1 소멸 노드 잔류 index 무음 스킵", "resolution": "superseded(62e6442 index=0+회귀테스트 RED 반증)"},
+    {"gap": "31b④ HIGH 런북 롤백 SQL provider_task.connection_id 허위 컬럼", "resolution": "superseded(680a401 resource_uid 서브쿼리 정정)"}
+  ],
+  "bundle": "v2-phase1/phase5-plan.md",
+  "next": "phase5-complete",
+  "anchor": "18e2cb1",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "ciPolicy": "로컬 검증 판정 — 원격 CI 대기 금지·protection 임시해제 merge 후 9체크 원복",
+  "commitPolicy": "PR 31a(#42 merged 04e2fa4)·31b(#43 merged 1e71003)",
+  "entry": {
+    "endpoint": "PVE 9.2.2 standalone pve (backend/data/p5-proxmox.env — .gitignore 봉쇄)",
+    "tokens": "RO root@pam!testtest(PVEAuditor)·OPS root@pam!opsadmin-ops(privsep0) — 2벌 검증 통과·§14.3 전제조건 충족",
+    "note": "register-pve --ro-token-id는 순수 토큰명(testtest) — 전체형(root@pam!testtest) 전달 시 이중 접두 401"
+  },
+  "lanes": {
+    "A": "done 37303ab — 어휘 승격·registry 픽스처(vcenter)",
+    "B": "done a47c7a3 — 클라이언트·UPID (429로 스폰 사망 직전 GREEN 인수·메인 마무리)",
+    "C": "done 1f68b62 — 디스커버리·normalizer·mapping (커버리지 88.2%)",
+    "M11": "done d861fa4 — secret-scan allowlist (메인 직접)",
+    "C2": "done 5173f8b — compose 등록·counters 행",
+    "D": "done e432793 — executor·opdef 3종 (커버리지 89.6%)",
+    "E": "done d5945c8 — R2 v3·카나리 양측 재현",
+    "F": "done 55e1d02 — register-pve·시더·런북",
+    "G": "done 2331fcd — kindOptions·slice-c E2E 4 passed"
+  },
+  "adversary": "3렌즈 조건부 승인 — CRITICAL 0·HIGH 5(수렴1)·r1.4 전량 반영·메인 실증",
+  "reviews": {
+    "31a": "rev-p5-31a — claims 11/11·HIGH-1 수정(62e6442)",
+    "31b": "rev-p5-31b — claims 14/14·HIGH(런북SQL) 수정(680a401)"
+  },
+  "finalVerification": "메인 직접 @main 1e71003: 전회귀 30 ok·build ok·arch exit 0 → register-pve 실엔드포인트 EXIT 0(standalone 폴백 실증) → sync EXIT 0·outcomes.created 5 → DB 5행·바인딩 2 sealed → 시더 menu 1·super-admin 1. 게이트 §20 Slice B 재증명 (a)실엔드포인트 (b)E2E (c)빈diff (d)R2v3+카나리 전부 실증",
+  "followups": "§13-9 테스트 게스트 생성 시 claim6·7 실게스트 실증+compute.vm 발견 보완 · MEDIUM-2 소멸노드 잔여섹션 결번(커서 서수 재설계) · seed.go 658행 분할(권한시더 3종 이동) · pveGuestOperatePermission 상수 2중선언 동기화 · register-pve probe 클라이언트 조립 재사용 · chain 비트랜잭션 · sync seenCount 0 관찰(outcomes.created가 실효 계수 — 계기 일관성 점검) · 스택 8082 기존 인스턴스 구버전 가능(재기동 권고)",
+  "scope": "스펙 §14.3 Proxmox read-only+guarded ops — PR 31a/31b (계획 §21 PR 31의 2분해)",
+  "m2Remaining": "Phase 6(legacy cutover·조건부) 진입 판정·§18.2 메트릭 앵커(M1 선언 전제)·Phase 2 게이트 2·3일차·클라우드 실계정 승격"
+}
