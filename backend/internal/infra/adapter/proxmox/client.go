@@ -234,6 +234,13 @@ func (c *Client) do(ctx context.Context, method, path, op string, form url.Value
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// 스키마 거부 센티널 — postForm의 버전 적응 재시도가 errors.Is로
+		// 판별한다. 본문(파라미터명)은 자격 물질이 아니므로 단일 문장에
+		// 진입해도 claim 13에 반하지 않는다.
+		if resp.StatusCode == http.StatusBadRequest &&
+			strings.Contains(string(respBody), "background_delay") {
+			return nil, errBackgroundDelaySchema
+		}
 		return nil, c.classify(op, resp.StatusCode)
 	}
 
@@ -403,13 +410,22 @@ func failoverCandidates(entries []clusterStatusEntry, currentEndpoint string) []
 // 증류 계약 1: 창 내 완료 시 PVE가 data null을 돌려 동기 완료로 판정된다.
 // 호출자가 이미 채웠다면 그 값을 존중한다 — Phase D executor의 덮어쓰기면).
 //
+// 버전 적응(§13-9 실엔드포인트 증명 발견 — 2026-09-08): background_delay는
+// 최적화일 뿐 정확성 요건이 아니다. PVE 9.2 스키마는 미선언 파라미터를
+// 400으로 거부한다("property is not defined in schema") — 이는 수용 버전
+// (창 내 완료 → null)과 거부 버전(즉시 UPID)의 차이일 뿐 dual-mode 백본
+// (UPID→폴·null→단일 시도)은 양쪽 다 성립한다. 따라서 첫 응답이 이
+// 파라미터를 지목하는 400이면 delay를 떼고 1회 재시도한다 — 구·신버전
+// 모두 동작. 재시도도 실패면 원 에러를 전파한다.
+//
 // 반환 data는 원문이다: "UPID:…"(비동기)·null(동기 완료)·에러 — 3분기는
 // executor(Phase D)가 해석한다.
 //
 // 페일오버 비대칭(판정 J6(2)): 쓰기 실패 — 타임아웃 포함 — 는 전환 증거가
 // 아니다("A timed-out write is never failover evidence"). 착지 가능성이
 // 불명인 쓰기의 재시도·전환은 멱등성이 지배하므로, 이 경로는 장부를
-// 건드리지 않고 에러만 반환한다.
+// 건드리지 않고 에러만 반환한다. 스키마 저하 재시도는 예외다 — 같은
+// 연산의 파라미터 축소판이며 장부 착지가 없는(fail-fast 400) 재시도다.
 func (c *Client) postForm(ctx context.Context, path string, form url.Values, op string) (json.RawMessage, error) {
 	if form == nil {
 		form = url.Values{}
@@ -417,5 +433,18 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values, op 
 	if form.Get("background_delay") == "" {
 		form.Set("background_delay", strconv.Itoa(defaultBackgroundDelaySeconds))
 	}
+	raw, err := c.do(ctx, http.MethodPost, path, op, form)
+	if err == nil || form.Get("background_delay") == "" {
+		return raw, err
+	}
+	if !errors.Is(err, errBackgroundDelaySchema) {
+		return raw, err
+	}
+	form.Del("background_delay")
 	return c.do(ctx, http.MethodPost, path, op, form)
 }
+
+// errBackgroundDelaySchema — PVE 버전에 따라 background_delay 미수용
+// (9.x 엄격 스키마: "property is not defined in schema"). do()가 400 본문에서
+// 검출해 반환하는 센티널 — postForm이 이를 보고 delay 제거 재시도한다.
+var errBackgroundDelaySchema = errors.New("proxmox: background_delay is not accepted by this endpoint schema")

@@ -187,6 +187,25 @@ func (m *mockProxmox) serveAPI(w http.ResponseWriter, r *http.Request) {
 			envelope(w, nil)
 		case "error5xx":
 			http.Error(w, `{"data":null}`, http.StatusInternalServerError)
+		case "strict_schema":
+			// PVE 9.x 엄격 스키마 재현 — background_delay가 실린 첫 POST만
+			// 400("property is not defined in schema")으로 거부. 적응 재시도
+			// (delay 제거)은 UPID로 수용한다(§13-9 버전 적응 계약).
+			m.mu.Lock()
+			delayed := r.FormValue("background_delay") != ""
+			m.mu.Unlock()
+			if delayed {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"data":null,"errors":{"background_delay":"property is not defined in schema and the schema does not allow additional properties"},"message":"Parameter verification failed.\n"}`))
+				return
+			}
+			envelope(w, testUPID)
+		case "strict_schema_hard":
+			// 재시도 후에도 실패하는 형상 — delay 유무와 무관한 400. 적응
+			// 재시도가 원 에러를 전파하는지 단얫하는 입력.
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"data":null,"errors":{"vmid":"volume quota reached"},"message":"Parameter verification failed.\n"}`))
+			return
 		default:
 			envelope(w, testUPID)
 		}
@@ -768,5 +787,58 @@ func TestClientErrorsNeverCarryTokenMaterial(t *testing.T) {
 				t.Errorf("error surface carries the mock secret literal: %v", err)
 			}
 		})
+	}
+}
+
+// TestClientPostFormAdaptsToStrictSchema — 버전 적응(§13-9 발견): PVE 9.x
+// 엄격 스키마는 background_delay를 400으로 거부한다. 첫 응답이 이 거부면
+// delay를 떼고 1회 재시도해 UPID를 받는다 — 수용 버전(기본 응답)과 거부
+// 버전(재시도) 모두 동일 연산이 성공해야 한다.
+func TestClientPostFormAdaptsToStrictSchema(t *testing.T) {
+	m := newMockProxmox(t)
+	m.setMutMode("strict_schema")
+	c := newTestClient(t, m)
+
+	data, err := c.postForm(context.Background(),
+		"/nodes/pve1/qemu/100/status/start", url.Values{"node": {"pve1"}}, "execute")
+	if err != nil {
+		t.Fatalf("strict-schema PVE must still accept the operation after delay drop: %v", err)
+	}
+	var upid string
+	if err := json.Unmarshal(data, &upid); err != nil || upid != testUPID {
+		t.Fatalf("retry data = %q (%v), want %q", data, err, testUPID)
+	}
+
+	snap := m.snap()
+	if len(snap.postForms) != 2 {
+		t.Fatalf("captured %d post forms, want 2 (delayed attempt + degraded retry)", len(snap.postForms))
+	}
+	if snap.postForms[0].Get("background_delay") == "" {
+		t.Error("first attempt must carry background_delay (optimization for accepting versions)")
+	}
+	if snap.postForms[1].Get("background_delay") != "" {
+		t.Error("retry must drop background_delay (strict schema rejects it)")
+	}
+}
+
+// TestClientPostFormSurfacesNonDelay400 — 400이어도 background_delay 거부가
+// 아니면(예: vmid 오류) 재시도하지 않고 원 에러를 전파한다 — 저하 재시도는
+// 스키마 차이에만 한정된다(멱등성 지배 원칙 유지).
+func TestClientPostFormSurfacesNonDelay400(t *testing.T) {
+	m := newMockProxmox(t)
+	m.setMutMode("strict_schema_hard")
+	c := newTestClient(t, m)
+
+	_, err := c.postForm(context.Background(),
+		"/nodes/pve1/qemu/100/status/start", url.Values{"node": {"pve1"}}, "execute")
+	if err == nil {
+		t.Fatal("non-delay 400 must surface as error")
+	}
+	if errors.Is(err, errBackgroundDelaySchema) {
+		t.Fatalf("unrelated 400 must not be misread as delay-schema rejection: %v", err)
+	}
+	snap := m.snap()
+	if len(snap.postForms) != 1 {
+		t.Fatalf("captured %d post forms, want 1 (no retry for unrelated 400)", len(snap.postForms))
 	}
 }
