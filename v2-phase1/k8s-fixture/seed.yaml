@@ -1,0 +1,38 @@
+# v2 Phase 3 Slice A — kind 2호기(v2-p3) 시드 fixture (계획 N17)
+#
+# 대상: kind 클러스터 `v2-p3` 전용 (phase2 게이트 클러스터 v2-p2 무변경 —
+# 계획 §0.2a 게이트 자산 보호, 보존 제약 #11). run-fixture.sh이 본 파일을
+# kubectl apply한다 (멱등 — 수렴 적용).
+#
+# minReadySeconds: 10 — 크래시 주입(G1 게이트 ②)의 킬 창 결정성 장치.
+# rollout restart 후 availableReplicas가 spec.replicas에 도달하기까지
+# 최소 10초가 보장되므로, 태스크가 running으로 관찰되는 창이 충분히 넓어
+# SIGKILL 타이밍이 결정적이 된다 (계획 R2/H1·J2 교정 판정식과 연동).
+# 이미지는 kind 노드에 사전 적재된 nginx:1.27-alpine (슬로우 풀 리스크 R12 제거).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: v3-seed
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restart-target
+  namespace: v3-seed
+  labels:
+    app: restart-target
+spec:
+  replicas: 2
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app: restart-target
+  template:
+    metadata:
+      labels:
+        app: restart-target
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
