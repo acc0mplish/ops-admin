@@ -97,7 +97,9 @@ http.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob') return response
     const res = response.data
-    if (res.code !== 200) {
+    // code 201 — v2 operations execute first submit (spec §13.4 / plan §3.4);
+    // a key replay converges to 200. Everything else stays the v1 envelope.
+    if (res.code !== 200 && res.code !== 201) {
       const message = resolveApiError(res, 'requestFailed')
       ElMessage.error(message)
       return Promise.reject(new Error(message))
