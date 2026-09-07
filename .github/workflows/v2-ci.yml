@@ -185,6 +185,37 @@ jobs:
           grep -q 'R2 FAIL' out.txt || { echo "CANARY ATTRIBUTION FAILED: no R2 FAIL"; exit 1; }
           grep -E 'R[12] FAIL' out.txt
 
+      # Phase 4 J8/E-4 — the R2 v2 cloud-branch canary: a provider-name branch
+      # inside a core package must fire (product code), while the same
+      # identifier in a core _test.go must pass (the scan excludes tests by
+      # design — the second copy asserts the exclusion rule itself, so it
+      # cannot quietly rot into either a false positive or a blind spot).
+      - name: Plant a cloud provider branch in the core (R2 v2)
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary-cloud-product"
+          cd "$RUNNER_TEMP/canary-cloud-product/backend"
+          printf '\nfunc canaryCloudBranch(p string) bool {\n\treturn p == "aliyun"\n}\n' >> internal/infra/contract/provider_type.go
+          grep -q 'return p == "aliyun"' internal/infra/contract/provider_type.go || { echo "CANARY PLANT FAILED: cloud branch anchor drifted"; exit 1; }
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary-cloud-test"
+          cd "$RUNNER_TEMP/canary-cloud-test/backend"
+          printf '\n// canary plant: provider product identifier in a core test file\nvar canaryTestPlant = "aliyun"\n' >> internal/infra/contract/contract_test.go
+          grep -q 'canaryTestPlant = "aliyun"' internal/infra/contract/contract_test.go || { echo "CANARY PLANT FAILED: test-file plant anchor drifted"; exit 1; }
+      - name: The product-code branch must fire, the test-file branch must pass
+        run: |
+          cd "$RUNNER_TEMP/canary-cloud-product"
+          if bash scripts/check-arch-boundary.sh > out-cloud.txt 2>&1; then
+            echo "CANARY DID NOT FIRE: a cloud provider branch passed in core product code"; exit 1
+          fi
+          grep -q 'R2 FAIL' out-cloud.txt || { echo "CANARY ATTRIBUTION FAILED: cloud branch did not fire R2"; exit 1; }
+          grep -q 'provider_type.go' out-cloud.txt || { echo "CANARY ATTRIBUTION FAILED: cloud branch not attributed to the core contract file"; exit 1; }
+          grep 'R2 FAIL' out-cloud.txt
+          cd "$RUNNER_TEMP/canary-cloud-test"
+          if ! bash scripts/check-arch-boundary.sh > out-cloud-test.txt 2>&1; then
+            echo "CANARY FALSE POSITIVE: a core _test.go identifier fired R2 (the test exclusion regressed)"; exit 1
+          fi
+          grep 'PASS: arch-boundary clean' out-cloud-test.txt
+          echo "CANARY OK: cloud branch fires in product code, passes in core tests"
+
   slice-a-e2e:
     # Plan J11 — the 10th job: §25's "one Kubernetes mutation end to end in CI
     # against kind". Fresh kind cluster per run (plan §4.9), the committed seed

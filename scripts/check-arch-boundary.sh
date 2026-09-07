@@ -6,8 +6,14 @@
 #   R1 import : internal/domain/dnsserver must not directly import
 #               internal/domain/provider (direct imports only — -deps would
 #               flag the opdef→middleware→store transit and false-alarm).
-#   R2 name   : core domain packages must not reference provider product
-#               identifiers (aliyun/tencent); capability names are fine.
+#   R2 name   : core packages must not reference provider product identifiers
+#               (aliyun/tencent/alicloud/tencentcloud); capability names are
+#               fine. v2 (phase4 J8/D2): the guarded set covers the V2 core
+#               packages too, *_test.go is excluded (core-test mock identifiers
+#               are not product branches), and the §7.1 vocabulary declaration
+#               lines in contract/provider_type.go are the single exception —
+#               *declaring* a provider name is the spec's own design, *branching*
+#               on it is not.
 #   R3 purity : opdef's direct imports are limited to {middleware, gin,
 #               gorm.io/gorm, stdlib} — opdef stays a pure vocabulary table
 #               and may not reach into service/controller/router/store/model.
@@ -18,7 +24,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
 
 # Core packages guarded by R1/R2 (script constant; extend deliberately).
-CORE_PACKAGES=(internal/domain/dnsserver)
+# phase4 J8 defines the full V2 core set (infra/{contract,registry,inventory,
+# secrets,model,policy,metrics} + internal/tasks + internal/api/v2); the D2
+# slice enrolls contract+registry first — the remaining packages join in the
+# phases that own them. infra/compose stays outside on purpose: it is the
+# assembly root that §11.1 "registered explicitly" requires to import adapter
+# packages, and "core orchestration" (spec §25) is not what it is.
+CORE_PACKAGES=(internal/domain/dnsserver internal/infra/contract internal/infra/registry)
+
+# R2 v2 (phase4 J8): scan the full provider-name vocabulary, exclude core test
+# files, and pin the single allowed exception — the §7.1 vocabulary declaration
+# lines (M1ProviderTypeNames / ReservedProviderTypeNames) in provider_type.go.
+# A hit on the exception file counts only when the line names one of those
+# symbols, and even then fails if the line branches on a provider name
+# (declaration vs branch, J8-c).
+R2_PATTERN='\b(aliyun|tencent|alicloud|tencentcloud)\b'
+R2_VOCAB_EXCEPTION_FILE=internal/infra/contract/provider_type.go
+R2_VOCAB_EXCEPTION_SYMBOLS='M1ProviderTypeNames|ReservedProviderTypeNames'
+R2_BRANCH_PATTERN='== *"(aliyun|tencent|alicloud|tencentcloud)"|case "(aliyun|tencent|alicloud|tencentcloud)"|ProviderType.*=='
 
 # R3 allowlist of non-stdlib imports opdef may hold.
 OPDEF_ALLOWED_NONSTD=(
@@ -43,12 +66,32 @@ for pkg in "${CORE_PACKAGES[@]}"; do
 done
 
 # --- R2: no provider product identifiers in core sources --------------------
+# v2: *_test.go is excluded from the scan (phase4 J8-d — core tests legitimately
+# carry provider mock identifiers; product code still requires zero). The
+# canary plants the same branch in both a product file and a test file, so the
+# exclusion rule itself stays falsifiable.
 for pkg in "${CORE_PACKAGES[@]}"; do
-  if grep -rnE '\b(aliyun|tencent)\b' "$pkg" --include='*.go'; then
+  hits=0
+  while IFS= read -r hit; do
+    [[ -z "$hit" ]] && continue
+    file="${hit%%:*}"
+    if [[ "$file" == "$R2_VOCAB_EXCEPTION_FILE" ]] \
+      && grep -qE "$R2_VOCAB_EXCEPTION_SYMBOLS" <<<"$hit"; then
+      # The allowed vocabulary declaration line — unless it branches.
+      if grep -qE "$R2_BRANCH_PATTERN" <<<"$hit"; then
+        echo "R2 FAIL: $hit"
+        hits=$((hits + 1))
+      fi
+      continue
+    fi
+    echo "R2 FAIL: $hit"
+    hits=$((hits + 1))
+  done < <(grep -rnE "$R2_PATTERN" "$pkg" --include='*.go' --exclude='*_test.go' || true)
+  if [[ "$hits" -eq 0 ]]; then
+    echo "R2 PASS: $pkg references no provider product identifier (product code, vocabulary exception aside)"
+  else
     echo "R2 FAIL: $pkg references a provider product identifier (aliyun/tencent)"
     fail=1
-  else
-    echo "R2 PASS: $pkg references no provider product identifier"
   fi
 done
 
