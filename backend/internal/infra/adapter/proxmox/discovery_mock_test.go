@@ -21,12 +21,6 @@ import (
 // 모의 응답 형상은 PVE API2 공개 문서 기반(가정 A2). 파일은 800라인 상한
 // (전역 코딩 규칙)에 따라 시나리오 절(discovery_test.go)과 분리되어 있다.
 
-// discovery_test.go — Phase C(N6) read-only 디스커버리 하니스. mockProxmox
-// (client_test.go — Phase B 소유)의 뮤텍스·envelope·자격 리터럴 관례를 승계하되,
-// 배치표 소유 경계(§12 — client_test.go는 Phase B 파일)를 지키기 위해 디스커버리
-// 표면(/cluster/status·/nodes·/nodes/{n}/{qemu,lxc,storage,network})을 이 파일의
-// 별도 서버로 재현한다. 모의 응답 형상은 PVE API2 공개 문서 기반(가정 A2).
-
 // pxTestPageSize — 하네스가 강제하는 페이지 상한(k8s/클라우드 testPageSize=4 관례).
 const pxTestPageSize = 4
 
@@ -120,6 +114,7 @@ type discoveryMock struct {
 	mu          sync.Mutex
 	mode        string // "" ok | fail500 | fail401 | fail403 | fail429 | badjson
 	standalone  bool   // /cluster/status가 cluster행 없이 node행 1개만 보고(A11)
+	dropNode    string // 페이지 사이 멤버십 변동 — 이 노드를 status·/nodes에서 소멸(④리뷰 HIGH-1 시나리오)
 	authHeaders []string
 	getPaths    []string
 }
@@ -146,6 +141,12 @@ func (m *discoveryMock) setStandalone(standalone bool) {
 	m.standalone = standalone
 }
 
+func (m *discoveryMock) setDropNode(node string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dropNode = node
+}
+
 type discoverySnapshot struct {
 	authHeaders []string
 	getPaths    []string
@@ -164,7 +165,7 @@ func (m *discoveryMock) serveAPI(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	auth := r.Header.Get("Authorization")
 	m.authHeaders = append(m.authHeaders, auth)
-	mode, standalone := m.mode, m.standalone
+	mode, standalone, dropNode := m.mode, m.standalone, m.dropNode
 	m.mu.Unlock()
 
 	if r.Method != http.MethodGet {
@@ -203,16 +204,36 @@ func (m *discoveryMock) serveAPI(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		envelope(w, discoveryStatusSeed())
+		status := discoveryStatusSeed()
+		if dropNode != "" {
+			kept := status[:0]
+			for _, row := range status {
+				if row["name"] != dropNode {
+					kept = append(kept, row)
+				}
+			}
+			status = kept
+		}
+		envelope(w, status)
 
 	case path == "/api2/json/version":
 		envelope(w, map[string]any{"version": "8.2.4", "release": "8.2", "repoid": "mock"})
 
 	case path == "/api2/json/nodes":
-		envelope(w, []map[string]any{
+		nodes := []map[string]any{
 			{"node": "pve1", "status": "online"},
 			{"node": "pve2", "status": "online"},
-		})
+		}
+		if dropNode != "" {
+			kept := nodes[:0]
+			for _, row := range nodes {
+				if row["node"] != dropNode {
+					kept = append(kept, row)
+				}
+			}
+			nodes = kept
+		}
+		envelope(w, nodes)
 
 	case path == "/api2/json/nodes/pve1/qemu" || path == "/api2/json/nodes/pve2/qemu" ||
 		path == "/api2/json/nodes/pve1/lxc" || path == "/api2/json/nodes/pve2/lxc":

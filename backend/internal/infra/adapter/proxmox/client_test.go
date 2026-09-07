@@ -27,7 +27,8 @@ import (
 //
 // 모의 자격 리터럴은 테스트 전용 플레이스홀더다(claim 14 형식 승계 — tencent
 // adapter_test.go 선례). 실토큰 값이 아님을 값 자체가 증명한다("mock-" 접두 ·
-// "not-real" 접미) — secret-scan은 값 완전일치 매칭이므로 allowlist 불요.
+// "not-real" 접미)지만 keyword-entropy 룰은 키명+32자 값 성분으로 발화하므로
+// secret-scan allowlist에 등재돼 있다(M11 — d861fa4, proxmox 테스트 패키지 한정).
 
 const testTokenUser = "root@pam"
 const testTokenID = "opsadmin-ro"

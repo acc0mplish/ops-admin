@@ -225,6 +225,44 @@ func TestProxmoxDiscoverOfflineNode(t *testing.T) {
 	}
 }
 
+// ④리뷰 HIGH-1 회귀: 페이지 사이에 커서 노드가 순회 목록에서 사라지면
+// (멤버십 변동·재부팅 플래핑) 재개 유닛은 index 0부터 시작해야 한다. 잔류
+// index가 앞 항목을 무음 스킵하면 sync 결장 사다리(§9.2 — 2연속 결장→
+// stale_candidate·3연속→tombstone)가 라이브 리소스를 오탐 삭제할 수 있다.
+// 소멸 노드의 서수를 목록에서 되찾을 수 없어 advanceFamily는 다음 섹션으로
+// 건너뛴다(MEDIUM-2 — 잔여 노드의 해당 섹션은 이번 세대 결번·커서 서수
+// 재설계 이월). 단, 도착한 유닛의 항목은 전수가 보여야 한다.
+func TestProxmoxDiscoverVanishedNodeResetsIndex(t *testing.T) {
+	f := newDiscoveryFixture(t)
+	f.mock.setDropNode("pve1")
+
+	page, err := f.adapter.Discover(context.Background(), contract.DiscoverRequest{
+		ContextID:  1,
+		Cursor:     "storage|pve1|1",
+		Connection: f.Connection(),
+	})
+	if err != nil {
+		t.Fatalf("Discover(vanished cursor): %v", err)
+	}
+
+	want := len(discoveryNetworkSeed("pve2")) // network는 최종 섹션 — pve2 시드 전수
+	if len(page.Resources) != want {
+		t.Errorf("vanished-node resume must start at index 0: got %d resources, want full pve2 network seed %d (silent skip = stale index)",
+			len(page.Resources), want)
+	}
+	for _, r := range page.Resources {
+		if r.Kind != "network.interface" || r.Subtype != "bridge" {
+			t.Errorf("expected pve2 network interface, got kind=%q subtype=%q urn=%q", r.Kind, r.Subtype, r.ExternalURN)
+		}
+		if !strings.HasSuffix(r.ExternalURN, "pve2/vmbr0") {
+			t.Errorf("expected urn …pve2/vmbr0, got %q", r.ExternalURN)
+		}
+	}
+	if page.NextCursor != "" {
+		t.Errorf("network is the last section — walk must terminate, got cursor %q", page.NextCursor)
+	}
+}
+
 // standalone 시나리오(A11 — cluster행 없이 node행만): 노드행만 정규화되고,
 // 클러스터 신원이 허위 구성되지 않는다. VM 리소스의 상태 필드에 클러스터
 // 쿼럼이 붕괴되어 들어가지 않는다(A10 — VM 헬스 붕괴 금지).

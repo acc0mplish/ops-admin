@@ -368,11 +368,16 @@ func (a *Adapter) Discover(ctx context.Context, req contract.DiscoverRequest) (c
 			}
 			if indexOfNode(nodes, node) < 0 {
 				// 커서가 가리킨 노드가 순회 목록에 없다(변동) — 다음 유닛으로.
+				// 사라진 노드는 목록에서 서수를 잃어 advanceFamily가 다음 섹션으로
+				// 건너뛴다(잔여 노드의 해당 섹션은 이번 세대 결번 — §9.2 사다리가
+				// 관측한다). 새 유닛은 반드시 index 0부터 — 잔류 index가 앞 항목을
+				// 무음 스킵하게 두지 않는다(④리뷰 HIGH-1).
 				terminated := false
 				section, node, terminated = advanceFamily(section, node, nodes)
 				if terminated {
 					return contract.DiscoverPage{Resources: resources, NextCursor: ""}, nil
 				}
+				index = 0
 				continue
 			}
 
