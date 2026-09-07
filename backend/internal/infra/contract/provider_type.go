@@ -41,6 +41,16 @@ type ConfigFieldSpec struct {
 // §7.1 "Registered types in Milestone 1" + §11.1 fake
 var M1ProviderTypeNames = []string{"kubernetes", "aliyun", "tencent", "fake"}
 
+// ProviderTypeAliases maps the legacy v1 provider vocabulary onto the §7.1 V2
+// provider types (§5.4 propagation rule 1 — J6): each legacy alias and its
+// canonical form resolve to the §7.1 registered type of the same family.
+// Declared here as vocabulary, not behaviour: core packages look keys up (map
+// lookup only — no switch), so the R2 v2 arch-boundary line-wise symbol
+// exception covers this declaration and any branch pattern crossing it still
+// fails the scan (④review HIGH-1). The literal stays on this declaration line
+// so the line-wise symbol pin keeps covering it.
+var ProviderTypeAliases = map[string]string{"aliyun": "aliyun", "alicloud": "aliyun", "tencent": "tencent", "tencentcloud": "tencent"}
+
 // §7.1 "Reserved (descriptors land with their milestone, not before)"
 var ReservedProviderTypeNames = []string{"proxmox", "vcenter", "cloudstack", "openstack"}
 

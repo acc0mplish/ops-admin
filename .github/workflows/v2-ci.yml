@@ -216,6 +216,28 @@ jobs:
           grep 'PASS: arch-boundary clean' out-cloud-test.txt
           echo "CANARY OK: cloud branch fires in product code, passes in core tests"
 
+      # ④review HIGH-1 (phase4 J8/E-4): the inventory core is enrolled in R2
+      # now — a CASE-SHAPED provider branch planted there must fire with
+      # correct attribution. This is the exact shape the cloud backfill
+      # carried before its alias table moved into the contract vocabulary, so
+      # a reintroduction cannot slip back through the new package set.
+      - name: Plant a provider case branch in the inventory core (R2 v2)
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary-inventory-case"
+          cd "$RUNNER_TEMP/canary-inventory-case/backend"
+          printf '\nfunc canaryInventoryCase(p string) string {\n\tswitch p {\n\tcase "aliyun":\n\t\treturn "aliyun"\n\t}\n\treturn ""\n}\n' >> internal/infra/inventory/cloudcompare.go
+          grep -q 'case "aliyun"' internal/infra/inventory/cloudcompare.go || { echo "CANARY PLANT FAILED: inventory case anchor drifted"; exit 1; }
+      - name: The planted inventory case branch must be caught (failure is required)
+        run: |
+          cd "$RUNNER_TEMP/canary-inventory-case"
+          if bash scripts/check-arch-boundary.sh > out-inv.txt 2>&1; then
+            echo "CANARY DID NOT FIRE: a provider case branch passed in the inventory core"; exit 1
+          fi
+          grep -q 'R2 FAIL' out-inv.txt || { echo "CANARY ATTRIBUTION FAILED: inventory branch did not fire R2"; exit 1; }
+          grep -q 'internal/infra/inventory/cloudcompare.go' out-inv.txt || { echo "CANARY ATTRIBUTION FAILED: branch not attributed to the inventory core file"; exit 1; }
+          grep 'R2 FAIL' out-inv.txt
+          echo "CANARY OK: the inventory case branch fired with correct attribution"
+
   slice-a-e2e:
     # Plan J11 — the 10th job: §25's "one Kubernetes mutation end to end in CI
     # against kind". Fresh kind cluster per run (plan §4.9), the committed seed

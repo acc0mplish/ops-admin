@@ -25,6 +25,13 @@ import (
 // and key routing are new.
 const v2EnvelopePrefix = "v2:"
 
+// IsV2Envelope reports whether the value carries the v2 envelope prefix —
+// decrypt-if-envelope-else-plaintext call sites use it to keep P-class
+// plaintext and sealed values apart without duplicating the format constant.
+func IsV2Envelope(value string) bool {
+	return strings.HasPrefix(value, v2EnvelopePrefix)
+}
+
 // legacyMasterKeyID is the reserved key id of the implicit key set entry that
 // carries the pre-migration credential seed chain. The id is rejected in
 // OPS_SECRET_MASTER_KEYS because the entry is always derived, never configured.
