@@ -610,3 +610,45 @@ func TestPollMissingOperationsMaterial(t *testing.T) {
 		t.Errorf("credential-less poll reached the wire: %v", snap.taskPaths)
 	}
 }
+
+// TestExecuteToleratesEngineEnvelopeKeys — 엔진이 Payload에 동봉하는 부기키
+// (restartedAt J1 동결·resourceRevision J7 감사)는 오퍼레이션 화이트리스트의
+// 검증 대상이 아니다(k8s executor 선례 — restartedAt 소비·resourceRevision
+// 무시). 실엔드포인트 증명(§13-9, 2026-09-08)에서 이중 중첩이 아닌 평형
+// 페이로드조차 부기키로 거부되던 결함의 회귀 단얫.
+func TestExecuteToleratesEngineEnvelopeKeys(t *testing.T) {
+	f := newExecutorFixture(t) // 기본 mutMode = UPID 반환 — 검증 통과 자체가 단얫
+
+	envelope := contract.JSONMap{
+		"action":           "start",
+		"restartedAt":      "2026-09-08T07:48:51Z",
+		"resourceRevision": "gen-42",
+	}
+	if _, err := f.execute(PowerOperationName, execVMURN, envelope); err != nil {
+		t.Fatalf("power payload with engine envelope keys must pass whitelist: %v", err)
+	}
+
+	if _, err := f.execute(SnapshotOperationName, execVMURN, contract.JSONMap{
+		"snapname":         "pre-upgrade",
+		"restartedAt":      "2026-09-08T07:48:51Z",
+		"resourceRevision": "gen-42",
+	}); err != nil {
+		t.Fatalf("snapshot payload with engine envelope keys must pass whitelist: %v", err)
+	}
+
+	if _, err := f.execute(ConfigOperationName, execVMURN, contract.JSONMap{
+		"cores":            2,
+		"restartedAt":      "2026-09-08T07:48:51Z",
+		"resourceRevision": "gen-42",
+	}); err != nil {
+		t.Fatalf("config payload with engine envelope keys must pass whitelist: %v", err)
+	}
+
+	// 부기키 관용이 화이트리스트 자체를 무력화하지 않는다 — 모르는 키는 여전히 거부.
+	if _, err := f.execute(PowerOperationName, execVMURN, contract.JSONMap{
+		"action":  "start",
+		"devices": "usb0",
+	}); err == nil {
+		t.Fatal("unknown payload key must still be rejected (E-5)")
+	}
+}

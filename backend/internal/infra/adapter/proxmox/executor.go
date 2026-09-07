@@ -165,8 +165,14 @@ func (a *Adapter) buildExecutorClient(conn contract.ConnectionView) (*Client, er
 
 // payloadKeysExactly — 허용 키 집합 밖의 키는 전부 거부한다: provider로 흘러가는
 // 파라미터 면을 opdef 화이트리스트로 닫는다(E-5 — "화이트리스트 외 키·값 거부").
+// 엔진이 Payload에 동봉하는 부기키는 검증 대상이 아니다 — restartedAt(J1 동결,
+// k8s executor가 소비하는 선례)와 resourceRevision(J7 감사 선택키)은 오퍼레이션
+// 파라미터가 아니라 실행 기록 성분이다(§3.2. 실엔드포인트 증명 §13-9 발견).
 func payloadKeysExactly(payload contract.JSONMap, allowed ...string) error {
 	for key := range payload {
+		if key == "restartedAt" || key == "resourceRevision" {
+			continue
+		}
 		known := false
 		for _, a := range allowed {
 			if key == a {
