@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"ops-admin/backend/config"
+	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/inventory"
 	"ops-admin/backend/internal/infra/migrate"
 	inframodel "ops-admin/backend/internal/infra/model"
@@ -138,6 +139,7 @@ func runCompareCloudInventory(args []string) int {
 	attempt := 1
 	pairInput := inventory.CloudPairInput{
 		AccountID: *accountID, AccountName: account.Name, Attempt: attempt,
+		Family: cloudFamilyOf(conn.ProviderType),
 		Legacy: legacy,
 		V2: inventory.ProjectedV2{
 			SyncedAt: generation.CommittedAt, GenerationUID: generation.GenerationUID, Resources: projected,
@@ -198,6 +200,24 @@ func runCompareCloudInventory(args []string) int {
 		fmt.Fprintln(os.Stderr, "compare-inventory-cloud: verdict pass is INTERIM (§13-10) — it cannot clear the formal gate until re-run without the mock endpoint")
 	}
 	return 0
+}
+
+// cloudFamilyOf resolves the §5.4 provider type to the family display-unit
+// rules the compare engine consumes (per-adapter mapping.md §2). It lives in
+// main, not the engine: the engine is a core package and must not branch on
+// provider identifiers (arch R2) — it only ever sees the rules as data.
+func cloudFamilyOf(providerType string) inventory.CloudFamily {
+	switch contract.ProviderTypeAliases[strings.ToLower(strings.TrimSpace(providerType))] {
+	case "tencent":
+		// tencent mapping.md §2 — legacy 표시 GB = Memory/1024 ("MB 전제"
+		// display), V2 memoryGB = the API GB value as-is.
+		return inventory.CloudFamily{LegacyMemoryDivisor: 1024}
+	default:
+		// aliyun mapping.md §2 — legacy display (MB/1024) already is the V2
+		// scale; any future family defaults to no conversion until its
+		// mapping documents otherwise.
+		return inventory.CloudFamily{}
+	}
 }
 
 // runCompareCloudGate evaluates the 3-day cloud gate (§15.4 r2 + §13-10) over

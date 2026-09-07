@@ -6,6 +6,7 @@ package inventory_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,6 +80,16 @@ func cloudV2(at time.Time) inventory.ProjectedV2 {
 			cloudProjected("i-mock-2", "db-1", "10.0.0.2", "", "Ubuntu 22.04", "cn-hangzhou", 2, 16, 500),
 		},
 	}
+}
+
+// hasMismatchField reports whether any mismatch carries the given field name.
+func hasMismatchField(ms []inventory.Mismatch, field string) bool {
+	for _, m := range ms {
+		if m.Field == field {
+			return true
+		}
+	}
+	return false
 }
 
 func cloudPair(at time.Time) inventory.CloudPairInput {
@@ -318,6 +329,137 @@ func TestCloudArtifactInterimMarkingAndGate(t *testing.T) {
 	}
 	if res := inventory.EvaluateCloudGate(paths[:2]); res.Passed {
 		t.Fatalf("fewer than three artifacts must be rejected")
+	}
+}
+
+// N15 (④review round2 F1) — the legacy CPU display is parsed across the
+// family suffix set {vCPU, cores}, case-insensitively: tencent's v1
+// serialization prints "N cores" while aliyun prints "N vCPU" (per-adapter
+// mapping.md §3), and a legacy-side parse failure would surface as a
+// value-missing-one-side VOLATILE (compare.go) — a false negative masking the
+// comparison.
+func TestCloudCPUCoresAcceptsFamilySuffixSet(t *testing.T) {
+	cases := []struct {
+		display string
+		cores   float64
+		ok      bool
+	}{
+		{"4 vCPU", 4, true},
+		{"4 cores", 4, true},
+		{"4 Cores", 4, true},
+		{"4 CORES", 4, true},
+		{"2 vcpu", 2, true},
+		{" 8 Vcpu ", 8, true},
+		{"4", 0, false},
+		{"cores", 0, false},
+		{"4 cpus", 0, false},
+		{"", 0, false},
+	}
+	for _, c := range cases {
+		cores, ok := inventory.CloudCPUCores(c.display)
+		if ok != c.ok || (ok && cores != c.cores) {
+			t.Fatalf("CloudCPUCores(%q) = (%v, %v), want (%v, %v)", c.display, cores, ok, c.cores, c.ok)
+		}
+	}
+}
+
+// N15 (④review round2 F1+F2) — the tencent-format mock pair: the legacy side
+// is the v1 serialization exactly as fetchCloudInstances prints it (CPU
+// "%d cores", Memory = API value / 1024 on the "MB 전제" display convention,
+// Disk "%dGB") while the V2 side carries the API values as-is (tencent
+// mapping.md §2 — legacy 표시 GB = Memory/1024, V2 memoryGB = Memory). The
+// family display-unit rule (passed as data — the engine never branches on
+// provider identifiers) multiplies the legacy memory display back to the V2
+// scale and the pair passes.
+func TestCompareCloudPairTencentMockFormatPasses(t *testing.T) {
+	at := time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC)
+
+	// The mock API response (one tencent instance, API 원본 values — the same
+	// DescribeInstances fields both sides consume).
+	const (
+		mockCPU        = 4
+		mockMemoryGB   = 8192 // API GB value — what the V2 normalizer records
+		mockDiskGB     = 80
+		mockInstanceID = "ins-mock-1"
+	)
+	// The legacy path's v1 serialization of that same response — exactly the
+	// fetchCloudInstances format strings: CPU "%d cores", Memory = API value
+	// divided by 1024 on the "MB 전제" display convention, Disk "%dGB".
+	legacyCPU := fmt.Sprintf("%d cores", mockCPU)
+	legacyMemory := fmt.Sprintf("%dGB", mockMemoryGB/1024)
+	legacyDisk := fmt.Sprintf("%dGB", mockDiskGB)
+	if legacyCPU != "4 cores" || legacyMemory != "8GB" || legacyDisk != "80GB" {
+		t.Fatalf("v1 serialization simulation drifted: %q %q %q", legacyCPU, legacyMemory, legacyDisk)
+	}
+
+	tencent := inventory.CloudPairInput{
+		AccountID: 7, AccountName: "tencent-mock", Attempt: 1,
+		Family: inventory.CloudFamily{LegacyMemoryDivisor: 1024},
+		Legacy: inventory.CloudLegacyCapture{
+			CapturedAt: at,
+			Instances: []inventory.CloudLegacyVM{
+				{
+					InstanceID: mockInstanceID, HostName: "web-1",
+					PrivateIP: "10.0.0.1", PublicIP: "203.0.113.7",
+					CPU: legacyCPU, Memory: legacyMemory, Disk: legacyDisk,
+					OS: "Ubuntu 22.04", Region: "ap-seoul",
+					SSHUser: "root", SSHPort: 22,
+				},
+			},
+		},
+		V2: inventory.ProjectedV2{
+			SyncedAt: at, GenerationUID: "gen-tencent-1",
+			Resources: []inventory.ProjectedResource{
+				cloudProjected(mockInstanceID, "web-1", "10.0.0.1", "203.0.113.7", "Ubuntu 22.04", "ap-seoul",
+					mockCPU, mockMemoryGB, mockDiskGB),
+			},
+		},
+	}
+
+	report := inventory.CompareCloudPair(tencent)
+	if report.Verdict != inventory.VerdictPass {
+		t.Fatalf("verdict = %q, want pass on the tencent mock-format pair (blockers %+v, volatiles %+v)",
+			report.Verdict, report.Blockers, report.Volatiles)
+	}
+
+	// Without the family rule the same pair cannot pass — the legacy memory
+	// display stays on the divided scale (documents what F2 fixes).
+	noRule := tencent
+	noRule.Family = inventory.CloudFamily{}
+	report = inventory.CompareCloudPair(noRule)
+	if report.Verdict != inventory.VerdictBlocker {
+		t.Fatalf("verdict = %q, want blocker when the family memory rule is absent", report.Verdict)
+	}
+	if !hasMismatchField(report.Blockers, "memory") {
+		t.Fatalf("memory field-mismatch missing: %+v", report.Blockers)
+	}
+}
+
+// N15 (④review round2 F2) — the aliyun family keeps the no-conversion rule:
+// its legacy display (MB/1024 — formatAliyunMemory) already is the V2 scale
+// (aliyun mapping.md §2), so the zero-value family must NOT multiply memory.
+func TestCompareCloudPairAliyunMemoryUnconverted(t *testing.T) {
+	at := time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC)
+	in := cloudPair(at) // zero-value family — the aliyun rule
+	if in.Family.LegacyMemoryDivisor != 0 {
+		t.Fatalf("the aliyun pair fixture must carry the zero-value family")
+	}
+	if report := inventory.CompareCloudPair(in); report.Verdict != inventory.VerdictPass {
+		t.Fatalf("verdict = %q, want pass — aliyun memory is not rescaled (blockers %+v)",
+			report.Verdict, report.Blockers)
+	}
+
+	// ④review round2 F3 judgment — aliyun's legacy floor truncation is NOT
+	// inside QuantityEpsilon (the lost MB fraction reaches 1023/1024 GB, far
+	// beyond 0.01), so it must surface as a real field-mismatch, not be
+	// masked: "3 GB" from a 3900 MB ECS memory against the V2 float 3.90625
+	// is a genuine drift the compare reports (the V2 side converts float —
+	// aliyun mapping.md §2 — and the legacy display loss stays visible).
+	in.V2.Resources[0].Normalized["memoryGB"] = 3.90625
+	in.Legacy.Instances[0].Memory = "3 GB"
+	report := inventory.CompareCloudPair(in)
+	if report.Verdict != inventory.VerdictBlocker {
+		t.Fatalf("verdict = %q, want blocker — the aliyun display truncation beyond the epsilon must surface", report.Verdict)
 	}
 }
 

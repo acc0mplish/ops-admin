@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -157,6 +158,7 @@ func TestRunCompareCloudMockPairProducesPassArtifact(t *testing.T) {
 
 	pairInput := inventory.CloudPairInput{
 		AccountID: accountID, AccountName: "acct-mock", Attempt: 1,
+		Family: cloudFamilyOf(conn.ProviderType),
 		Legacy: capture,
 		V2: inventory.ProjectedV2{
 			SyncedAt: generation.CommittedAt, GenerationUID: generation.GenerationUID, Resources: projected,
@@ -211,6 +213,103 @@ func TestRunCompareCloudMockPairProducesPassArtifact(t *testing.T) {
 	}
 
 	// An interim artifact cannot clear the formal gate (§13-10 promotion rule).
+	if res := inventory.EvaluateCloudGate([]string{path}); res.Passed {
+		t.Fatalf("the interim artifact must not clear the formal gate")
+	}
+}
+
+// TestCompareCloudTencentMockFormatArtifactPasses produces the ④review
+// round2 F1/F2 proof artifact for the tencent display-format path: the legacy
+// side simulates the v1 serialization of a tencent mock response (CPU
+// "%d cores", Memory = API value / 1024 on the "MB 전제" display convention,
+// Disk "%dGB") while the V2 side carries the API values as-is. The pair must
+// pass through the family display-unit rule and serialize into a
+// §13-10 interim-marked mock-endpoint artifact (E-1/E-2 — the simulated
+// legacy path never touches a real account, so the artifact stays interim).
+func TestCompareCloudTencentMockFormatArtifactPasses(t *testing.T) {
+	at := time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC)
+
+	// The tencent mock DescribeInstances response, API 원본.
+	const (
+		instanceID     = "ins-mock-1"
+		mockCPU        = 4
+		mockMemoryGB   = 8192
+		mockDiskGB     = 80
+		instanceRegion = "ap-seoul"
+	)
+
+	legacy := inventory.CloudLegacyCapture{
+		CapturedAt: at,
+		Instances: []inventory.CloudLegacyVM{{
+			InstanceID: instanceID, HostName: "web-1",
+			PrivateIP: "10.0.0.1", PublicIP: "203.0.113.7",
+			CPU:    fmt.Sprintf("%d cores", mockCPU),       // fetchCloudInstances format
+			Memory: fmt.Sprintf("%dGB", mockMemoryGB/1024), // Memory/1024 표시 규격
+			Disk:   fmt.Sprintf("%dGB", mockDiskGB),
+			OS:     "Ubuntu 22.04", Region: instanceRegion,
+			SSHUser: "root", SSHPort: 22,
+		}},
+	}
+	v2 := inventory.ProjectedV2{
+		SyncedAt: at, GenerationUID: "gen-tencent-mock-1",
+		Resources: []inventory.ProjectedResource{{
+			Kind: "compute.vm", DisplayName: "web-1", ExternalID: instanceID,
+			Normalized: map[string]any{
+				"displayName": "web-1", "region": instanceRegion, "zone": "ap-seoul-1",
+				"cpu": mockCPU, "memoryGB": mockMemoryGB, "diskGB": mockDiskGB,
+				"os":         "Ubuntu 22.04",
+				"privateIps": []any{"10.0.0.1"}, "publicIps": []any{"203.0.113.7"},
+			},
+			Raw: map[string]any{"instanceId": instanceID},
+		}},
+	}
+
+	report := inventory.CompareCloudPair(inventory.CloudPairInput{
+		AccountID: 9, AccountName: "tencent-mock", Attempt: 1,
+		Family: cloudFamilyOf("tencentcloud"), // the alias table target — divisor 1024
+		Legacy: legacy, V2: v2,
+	})
+	if report.Verdict != inventory.VerdictPass {
+		t.Fatalf("tencent mock-format pair verdict = %q, want pass (blockers %+v, volatiles %+v)",
+			report.Verdict, report.Blockers, report.Volatiles)
+	}
+
+	artifact := inventory.CloudCompareArtifact{
+		ArtifactSchema:   inventory.CloudCompareArtifactSchema,
+		AccountID:        9,
+		AccountName:      "tencent-mock",
+		Verdict:          report.Verdict,
+		Attempt:          1,
+		TsDeltaSeconds:   report.TsDelta.Seconds(),
+		LegacyCapturedAt: legacy.CapturedAt,
+		LegacyHash:       inventory.CloudLegacyCaptureHash(legacy),
+		V2GenerationUID:  v2.GenerationUID,
+		V2SyncedAt:       v2.SyncedAt,
+		V2Hash:           inventory.ProjectionHash(v2),
+		Report:           report,
+		Interim:          true,
+		InterimReason:    "real-account proof pending (E-1): the pair was served by the development endpoint override",
+		Scope:            "mock-endpoint",
+	}
+	path, err := writeCloudCompareArtifact(t.TempDir(), 9, legacy.CapturedAt, artifact)
+	if err != nil {
+		t.Fatalf("writeCloudCompareArtifact: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read artifact: %v", err)
+	}
+	t.Logf("tencent mock-format pair artifact %s:\n%s", path, b)
+	var parsed map[string]any
+	if err := json.Unmarshal(b, &parsed); err != nil {
+		t.Fatalf("parse artifact: %v", err)
+	}
+	if parsed["verdict"] != inventory.VerdictPass {
+		t.Fatalf("artifact verdict = %v, want pass", parsed["verdict"])
+	}
+	if parsed["interim"] != true || parsed["scope"] != "mock-endpoint" {
+		t.Fatalf("artifact interim marking missing: interim=%v scope=%v", parsed["interim"], parsed["scope"])
+	}
 	if res := inventory.EvaluateCloudGate([]string{path}); res.Passed {
 		t.Fatalf("the interim artifact must not clear the formal gate")
 	}
