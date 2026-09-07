@@ -38,15 +38,19 @@ func TestBuildWiresStack(t *testing.T) {
 		t.Fatalf("compose.Build: %v", err)
 	}
 	names := stack.Registry.ProviderTypeNames()
-	if len(names) != 2 {
-		t.Fatalf("registry provider types = %v, want [fake kubernetes]", names)
+	// M2 등록 수 단얫 갱신(계획 §6 명시적 예외 b — r2 H3 승인): 어댑터 등록의
+	// 필연. PR 27(aliyun)·PR 28(tencent)이 병렬 브랜치이므로 본 브랜치(PR 28)는
+	// 3종이고 aliyun 합류 시 4종이 된다 — 합류점 갱신은 계획 §5 "M1/M2만
+	// 합류점 — 순차 커밋" 규정의 적용이다.
+	if len(names) != 3 {
+		t.Fatalf("registry provider types = %v, want [fake kubernetes tencent]", names)
 	}
 	got := map[string]bool{}
 	for _, n := range names {
 		got[n] = true
 	}
-	if !got["fake"] || !got["kubernetes"] {
-		t.Errorf("registry provider types = %v, want fake and kubernetes", names)
+	if !got["fake"] || !got["kubernetes"] || !got["tencent"] {
+		t.Errorf("registry provider types = %v, want fake, kubernetes and tencent", names)
 	}
 	if stack.Runner == nil || stack.Broker == nil || stack.Counters == nil {
 		t.Fatal("stack left a component unwired")
@@ -62,6 +66,49 @@ func TestBuildWiresStack(t *testing.T) {
 	// composition, no global registration state.
 	if _, err := compose.Build(db); err != nil {
 		t.Errorf("second compose.Build: %v", err)
+	}
+}
+
+// TestBuildRegistersTencentCapabilities — Phase 4 B(M2 tencent분): compose는
+// tencent 어댑터(계획 §2 N6 — TC3 직구현, PR 28)와 그 읽기 capability 쌍을
+// 등록한다(판정 J10 — inventory.full·compute.vm.read, ResourceKinds는
+// compute.vm 1종). V5 실증: 두 capability 모두 §3.7 매핑 표가 Discoverer를
+// 요구한다 — 등록이 받아졌다는 것은 *Adapter가 Discoverer 타입 단얫을
+// 통과했다는 뜻이다(어댑터 자체의 4단얫 하네스는 adapter_test.go 소관).
+func TestBuildRegistersTencentCapabilities(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+
+	stack, err := compose.Build(db)
+	if err != nil {
+		t.Fatalf("compose.Build: %v", err)
+	}
+
+	caps := stack.Registry.Capabilities("tencent")
+	got := map[string]contract.Capability{}
+	for _, c := range caps {
+		got[c.Name] = c
+	}
+	for _, want := range []string{"inventory.full", "compute.vm.read"} {
+		c, ok := got[want]
+		if !ok {
+			t.Errorf("tencent capabilities = %v, missing %q", caps, want)
+			continue
+		}
+		if !c.ReadOnly {
+			t.Errorf("capability %q must be read-only (Phase 4는 읽기 전용 — §20)", want)
+		}
+		if len(c.ResourceKinds) != 1 || c.ResourceKinds[0] != "compute.vm" {
+			t.Errorf("capability %q ResourceKinds = %v, want [compute.vm] (판정 J3 — vm family 한정)", want, c.ResourceKinds)
+		}
+	}
+	if _, ok := got["orchestration.kubernetes.apply"]; ok {
+		t.Error("tencent must not declare a mutating capability (읽기 전용 어댑터)")
+	}
+
+	// 공유 카운터에 tencent provider 행이 있다(게이트 ③ flat 증명 형식).
+	if want := `provider_rate_limit_total{provider="tencent"} 0`; !strings.Contains(stack.Counters.Render(), want) {
+		t.Errorf("counters render missing %q:\n%s", want, stack.Counters.Render())
 	}
 }
 

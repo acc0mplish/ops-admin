@@ -15,6 +15,7 @@ import (
 
 	"ops-admin/backend/internal/infra/adapter/fake"
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
+	"ops-admin/backend/internal/infra/adapter/tencent"
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/inventory"
 	"ops-admin/backend/internal/infra/metrics"
@@ -41,6 +42,7 @@ func Build(db *gorm.DB) (*Stack, error) {
 	// set gets the row here so the report render always carries the
 	// {provider="kubernetes"} 0 line the gate ③ flat proof reads (J6).
 	counters.RegisterProviders(kubernetes.ProviderName)
+	counters.RegisterProviders(tencent.ProviderName)
 	reg := registry.New()
 
 	// The kubernetes adapter shares the stack's counters so the sync report
@@ -53,6 +55,30 @@ func Build(db *gorm.DB) (*Stack, error) {
 	// §3.7 매핑 표가 OperationExecutor를 요구한다(V5) — 어댑터가 executor를
 	// 구현한 같은 Phase에 선언이 내려온다(§0.4 registry V5 요구의 이행).
 	if err := registerKubernetes(reg); err != nil {
+		return nil, err
+	}
+	// Phase 4 B(M1 tencent분): the tencent inventory adapter (PR 28 — TC3
+	// 직구현, 판정 J2(c)) shares the stack's counters and declares its read
+	// capability pair over the compute.vm kind it discovers (판정 J10 —
+	// inventory.full·compute.vm.read, 둘 다 §3.7 매핑 표가 Discoverer 필수).
+	tn := tencent.NewAdapter(tencent.WithCounters(counters))
+	if err := reg.RegisterProviderType(tn.Descriptor(), tn); err != nil {
+		return nil, err
+	}
+	if err := reg.RegisterCapabilities(tencent.ProviderName,
+		contract.Capability{
+			Name:          "inventory.full",
+			Version:       "1",
+			ResourceKinds: []string{tencent.KindVM},
+			ReadOnly:      true,
+		},
+		contract.Capability{
+			Name:          "compute.vm.read",
+			Version:       "1",
+			ResourceKinds: []string{tencent.KindVM},
+			ReadOnly:      true,
+		},
+	); err != nil {
 		return nil, err
 	}
 	// The fake stays a first-class registered adapter (§11.1) — its harness
