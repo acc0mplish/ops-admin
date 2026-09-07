@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"ops-admin/backend/internal/infra/contract"
+	"ops-admin/backend/internal/infra/secrets"
 	"ops-admin/backend/model"
 
 	"gorm.io/gorm"
@@ -194,6 +196,12 @@ func (s *Service) SaveFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 			return nil, err
 		}
 	}
+	// J5-3 (r2 — F2): a rotated credential makes the V2 link a lie — the
+	// stale link would resolve the OLD material from the broker while the row
+	// carries the new secret. Detect the rotation here and clear the link in
+	// the same transaction as the save; sync-inventory re-creates the chain
+	// from the new material (runbook, plan §11).
+	previous := account
 	account.Name = payload.Name
 	account.Provider = payload.Provider
 	account.AccountIdentifier = strings.TrimSpace(payload.AccountIdentifier)
@@ -206,6 +214,9 @@ func (s *Service) SaveFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 	if payload.BillingToken != "" {
 		account.BillingToken = payload.BillingToken
 	}
+	credentialRotated := account.AccessKey != previous.AccessKey ||
+		account.SecretKey != previous.SecretKey ||
+		account.BillingToken != previous.BillingToken
 	account.Region = strings.TrimSpace(payload.Region)
 	account.Currency = strings.ToUpper(strings.TrimSpace(payload.Currency))
 	if account.Currency == "" {
@@ -225,7 +236,20 @@ func (s *Service) SaveFinOpsAccount(payload FinOpsAccountPayload) (map[string]an
 	} else {
 		account.NextSyncAt = nil
 	}
-	if err := s.db.Save(&account).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&account).Error; err != nil {
+			return err
+		}
+		if credentialRotated {
+			// White-field update only — NULL the link, touch nothing else.
+			if err := tx.Model(&model.IntegrationFinOpsAccount{}).Where("id = ?", account.ID).
+				Update("provider_connection_uid", gorm.Expr("NULL")).Error; err != nil {
+				return err
+			}
+			account.ProviderConnectionUID = ""
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return finOpsAccountView(account), nil
@@ -383,9 +407,33 @@ func (s *Service) SyncFinOpsAccountMonths(accountID uint, trigger, startMonth, e
 		return FinOpsSyncResult{}, errors.New("start_month cannot be after end_month")
 	}
 
+	// J5 (plan phase4 r2 §3.3): a linked account resolves its billing
+	// credential through the V2 secrets broker. The resolved plaintext is
+	// injected into the LOCAL copy only — `account` itself (and the v1 row it
+	// was loaded from) stays untouched, and the trailing update below is a
+	// narrow two-column UPDATE that can never write the credential columns
+	// back (the r2 plaintext re-seal block, claim 16). An empty link keeps
+	// the pre-rewire behavior: the row's own (sealed) columns feed the sync.
+	rewired := account
+	if account.ProviderConnectionUID != "" {
+		resolved, err := secrets.NewBroker(s.db).Resolve(context.Background(), account.ProviderConnectionUID, contract.CredentialPurposeBilling)
+		if err != nil {
+			return FinOpsSyncResult{}, fmt.Errorf("finops: resolve billing credential through provider connection %q: %w", account.ProviderConnectionUID, err)
+		}
+		credential, err := decodeFinOpsCredentialBlob(resolved.Value)
+		if err != nil {
+			return FinOpsSyncResult{}, fmt.Errorf("finops: provider connection %q carries unusable credential material: %w", account.ProviderConnectionUID, err)
+		}
+		rewired.AccessKey = credential.AccessKey
+		rewired.SecretKey = credential.SecretKey
+		if credential.BillingToken != "" {
+			rewired.BillingToken = credential.BillingToken
+		}
+	}
+
 	result := FinOpsSyncResult{AccountID: account.ID, Provider: account.Provider, StartMonth: start.Format("2006-01"), EndMonth: end.Format("2006-01")}
 	for month := start; !month.After(end); month = month.AddDate(0, 1, 0) {
-		monthly := s.syncFinOpsAccountMonth(account, trigger, month)
+		monthly := s.syncFinOpsAccountMonth(rewired, trigger, month)
 		result.Months = append(result.Months, monthly)
 		result.SourceRecordCount += monthly.SourceRecordCount
 		result.SourceTotalAmount += monthly.SourceTotalAmount
@@ -411,8 +459,34 @@ func (s *Service) SyncFinOpsAccountMonths(accountID uint, trigger, startMonth, e
 	account.LastSyncAt = &now
 	next := nextFinOpsSync(now, account.SyncFrequency)
 	account.NextSyncAt = &next
-	_ = s.db.Save(&account).Error
+	// Narrow update (J5-2, r2): the UPDATE statement names exactly these two
+	// columns — access_key/secret_key/billing_token are structurally absent,
+	// so no plaintext (or stale sealed material) can ever be re-written into
+	// the credential columns by the sync itself (claim 16 — MD5 invariance).
+	_ = s.db.Model(&model.IntegrationFinOpsAccount{}).Where("id = ?", account.ID).
+		Select("last_sync_at", "next_sync_at").
+		Updates(model.IntegrationFinOpsAccount{LastSyncAt: account.LastSyncAt, NextSyncAt: account.NextSyncAt}).Error
 	return result, nil
+}
+
+// decodeFinOpsCredentialBlob parses the J4 SecretRef JSON blob
+// {"accessKey","secretKey"[,"billingToken"]} — the same shape the cloud
+// backfill seals (A4).
+func decodeFinOpsCredentialBlob(value string) (finOpsCredentialBlob, error) {
+	var blob finOpsCredentialBlob
+	if err := json.Unmarshal([]byte(value), &blob); err != nil {
+		return blob, err
+	}
+	if strings.TrimSpace(blob.AccessKey) == "" {
+		return blob, errors.New("credential blob has no accessKey")
+	}
+	return blob, nil
+}
+
+type finOpsCredentialBlob struct {
+	AccessKey    string `json:"accessKey"`
+	SecretKey    string `json:"secretKey"`
+	BillingToken string `json:"billingToken"`
 }
 
 func (s *Service) syncFinOpsAccountMonth(account model.IntegrationFinOpsAccount, trigger string, month time.Time) FinOpsMonthSyncResult {

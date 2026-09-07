@@ -3,24 +3,31 @@ package model
 import "time"
 
 type IntegrationFinOpsAccount struct {
-	ID                uint       `json:"id" gorm:"primaryKey"`
-	Name              string     `json:"name" gorm:"size:128;not null;index"`
-	Provider          string     `json:"provider" gorm:"size:32;not null;index"`
-	AccountIdentifier string     `json:"accountIdentifier" gorm:"size:128;index"`
-	AccessKey         string     `json:"-" gorm:"size:512"`
-	SecretKey         string     `json:"-" gorm:"size:1024"`
-	Region            string     `json:"region" gorm:"size:128;index"`
-	Currency          string     `json:"currency" gorm:"size:16;not null;default:CNY"`
-	BillingEndpoint   string     `json:"billingEndpoint" gorm:"size:2048"`
-	BillingToken      string     `json:"-" gorm:"size:2048"`
-	SyncEnabled       bool       `json:"syncEnabled" gorm:"not null;default:false;index"`
-	SyncFrequency     string     `json:"syncFrequency" gorm:"size:32;not null;default:daily"`
-	Status            int        `json:"status" gorm:"not null;default:1;index"`
-	LastSyncAt        *time.Time `json:"lastSyncAt"`
-	NextSyncAt        *time.Time `json:"nextSyncAt" gorm:"index"`
-	Description       string     `json:"description" gorm:"size:500"`
-	CreatedAt         time.Time  `json:"createTime"`
-	UpdatedAt         time.Time  `json:"updateTime"`
+	ID                uint   `json:"id" gorm:"primaryKey"`
+	Name              string `json:"name" gorm:"size:128;not null;index"`
+	Provider          string `json:"provider" gorm:"size:32;not null;index"`
+	AccountIdentifier string `json:"accountIdentifier" gorm:"size:128;index"`
+	AccessKey         string `json:"-" gorm:"size:512"`
+	SecretKey         string `json:"-" gorm:"size:1024"`
+	Region            string `json:"region" gorm:"size:128;index"`
+	Currency          string `json:"currency" gorm:"size:16;not null;default:CNY"`
+	BillingEndpoint   string `json:"billingEndpoint" gorm:"size:2048"`
+	BillingToken      string `json:"-" gorm:"size:2048"`
+	SyncEnabled       bool   `json:"syncEnabled" gorm:"not null;default:false;index"`
+	SyncFrequency     string `json:"syncFrequency" gorm:"size:32;not null;default:daily"`
+	// ProviderConnectionUID is the V2 credential link (§5.4 propagation, PR
+	// 29 / J4): backfilled by inventory.RunCloudAccountBackfill, cleared by
+	// SaveFinOpsAccount when a v1 credential column is rotated. NULL keeps
+	// the pre-rewire behavior — the v1 columns stay authoritative until the
+	// M2 cutover. Never serialized (the uid alone is not material, but the
+	// credential surface of this struct stays json:"-").
+	ProviderConnectionUID string     `json:"-" gorm:"size:64;index"`
+	Status                int        `json:"status" gorm:"not null;default:1;index"`
+	LastSyncAt            *time.Time `json:"lastSyncAt"`
+	NextSyncAt            *time.Time `json:"nextSyncAt" gorm:"index"`
+	Description           string     `json:"description" gorm:"size:500"`
+	CreatedAt             time.Time  `json:"createTime"`
+	UpdatedAt             time.Time  `json:"updateTime"`
 }
 
 func (IntegrationFinOpsAccount) TableName() string { return "integration_finops_account" }

@@ -298,6 +298,9 @@ func TestMigrationAppliesExactV2TableSet(t *testing.T) {
 	// table (보존 제약 #6 forbids a separate audit table) — the step EXTENDs
 	// the existing v1 audit table with the §18.1 columns, which brings it
 	// under migration management on a fresh schema.
+	// + integration_finops_account (V2 Phase 4 step0006 — plan §3.3 J4): same
+	// category — the v1 EXTEND of §3.2 row 17 adds the nullable
+	// provider_connection_uid link, not a new V2 table.
 	want := map[string]bool{
 		"schema_migration":            true,
 		"provider_connection":         true,
@@ -312,6 +315,7 @@ func TestMigrationAppliesExactV2TableSet(t *testing.T) {
 		"task_attempt":                true,
 		"task_event":                  true,
 		"sys_operation_log":           true,
+		"integration_finops_account":  true,
 	}
 
 	for name := range got {
