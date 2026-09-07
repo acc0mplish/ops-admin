@@ -15,6 +15,10 @@
 #   serve-b   Slice B (plan N17 — PR 30): prepare (no kind cluster needed) +
 #             backend boot + seed_cloud (mock aliyun account → V2 rows) +
 #             interim-marked artifact + vite (webServer)
+#   serve-c   Slice C (plan N9 — PR 31c): prepare (no kind cluster needed) +
+#             backend boot + seed_pve (the proxmox normalizer renders the V2
+#             rows through TestSliceCSeedWriter — no hand-written JSON, R10) +
+#             vite (webServer)
 #   compare   J11's §15 segment: boot + register + sync + compare-inventory CLI
 #   down      stop the backend, drop the schema (unless STACK_KEEP=1)
 #
@@ -341,6 +345,43 @@ serve_b() {
   start_vite
 }
 
+# --- Slice C PVE fixture (plan N9 — PR 31c) ------------------------------------
+# Seeds a MOCK proxmox account straight into the V2 tables. R10 forbids
+# hand-written resource JSON: the rows are rendered by the package's own
+# normalizer (TestSliceCSeedWriter, a test helper this script drives with
+# SLICEC_SEED_OUT) — one compute.vm, one compute.system_container and one
+# compute.hypervisor_node under a cluster context. Discovery itself is NOT
+# exercised here (real-endpoint proof stays with the register-pve runbook);
+# the UI read path (kindPrefix=compute.) and the opdef × kind intersection
+# (pve.guest.* on guest kinds) are the claims.
+seed_pve() {
+  [ -f "$RUN_DIR/backend-booted" ] || die "backend has never booted — the V2 schema does not exist yet"
+  log "generating PVE seed SQL through the proxmox normalizer"
+  mkdir -p "$RUN_DIR/data/slice-c"
+  (cd "$REPO_ROOT/backend" && SLICEC_SEED_OUT="$RUN_DIR/data/slice-c/seed.sql" \
+    go test ./internal/infra/adapter/proxmox -run TestSliceCSeedWriter -count=1 > "$RUN_DIR/data/slice-c/seed-gen.log" 2>&1) \
+    || { tail -20 "$RUN_DIR/data/slice-c/seed-gen.log" >&2; die "seed helper failed — see $RUN_DIR/data/slice-c/seed-gen.log"; }
+  [ -s "$RUN_DIR/data/slice-c/seed.sql" ] || die "seed helper produced no SQL"
+  mysql_exec "$E2E_SCHEMA" < "$RUN_DIR/data/slice-c/seed.sql"
+  local compute_rows
+  compute_rows="$(mysql_exec -N -s "$E2E_SCHEMA" -e \
+    "SELECT COUNT(*) FROM infra_resource WHERE uid LIKE 'res-pve-mock-%';")"
+  [ "$compute_rows" = "3" ] || die "expected 3 seeded PVE rows, got $compute_rows"
+  log "pve mock fixture seeded (res-pve-mock rows: $compute_rows)"
+}
+
+# --- mode: serve-c (Slice C Playwright webServer command) ---------------------
+serve_c() {
+  REQUIRE_KIND=0
+  E2E_SCHEMA="${E2E_SCHEMA:-ops_admin_p5c}"
+  # Failure-safe like serve_b(): the backend child never outlives this mode.
+  trap teardown_stack EXIT
+  prepare
+  start_backend
+  seed_pve
+  start_vite
+}
+
 start_vite() {
   # No `exec` for vite: the EXIT trap must survive to reap the backend child
   # and the schema — Playwright SIGTERMs this script when the run ends.
@@ -387,7 +428,8 @@ case "${1:-}" in
   register) register ;;
   serve)    serve ;;
   serve-b)  serve_b ;;
+  serve-c)  serve_c ;;
   compare)  compare ;;
   down)     down ;;
-  *) die "usage: stack.sh {prepare|register|serve|serve-b|compare|down}" ;;
+  *) die "usage: stack.sh {prepare|register|serve|serve-b|serve-c|compare|down}" ;;
 esac

@@ -116,6 +116,13 @@ func Build(db *gorm.DB) (*Stack, error) {
 	); err != nil {
 		return nil, err
 	}
+	// Phase 5 D (PR 31b): the proxmox mutation capability trio and the guarded
+	// operation definitions (J7). V5는 mutation capability 3종에
+	// OperationExecutor를 요구한다 — executor 구현과 같은 커밋에 내려온다(§0.4
+	// registry V5 요구의 이행 — k8s apply 선례와 동일 형상).
+	if err := registerProxmoxMutations(reg); err != nil {
+		return nil, err
+	}
 	// The fake stays a first-class registered adapter (§11.1) — its harness
 	// scenarios keep the measurement instrument reachable in every stack.
 	if err := fake.Register(reg); err != nil {
@@ -285,4 +292,140 @@ type restartResultRedaction struct {
 	ReadyReplicas int    `json:"readyReplicas"`
 	Updated       int    `json:"updated"`
 	ServerURL     string `json:"serverURL"`
+}
+
+// proxmoxGuestKinds — proxmox mutation capability·opdef가 통제하는 게스트 kind
+// 면(J7 — [compute.vm, compute.system_container]).
+var proxmoxGuestKinds = []string{"compute.vm", "compute.system_container"}
+
+// pveGuestOperatePermission — E-2 승인 신규 권한 1종(4세그 — v1
+// permissionPattern 충족). v1 권한 175종 중 PVE guest 전원/스냅샷/구성에 부합하는
+// 권한이 없어(계획 §0.4 — zero-prior-code 신규 도메인) 신규로 두고 opdef 3종이
+// 공유한다.
+const pveGuestOperatePermission = "infra:pve:guest:operate"
+
+// pveGuardedRetry — J7 공통 재시도 보수: MaxAttempts 2(재시도 파괴 가능성의
+// 완화 — R3)·BackoffSeconds 10(재시도는 승인 후 폴 회로에 한정하는 계약의
+// 수치면 — A4).
+var pveGuardedRetry = contract.RetryPolicy{MaxAttempts: 2, BackoffSeconds: 10}
+
+// registerProxmoxMutations declares the proxmox mutation capability trio and the
+// three guarded operation definitions (J7). 정의의 소재는 코드다(§3.3 —
+// descriptors are code).
+func registerProxmoxMutations(reg *registry.Registry) error {
+	if err := reg.RegisterCapabilities(proxmox.ProviderName,
+		contract.Capability{
+			Name:          "compute.power.manage",
+			Version:       "1",
+			ResourceKinds: proxmoxGuestKinds,
+		},
+		contract.Capability{
+			Name:          "storage.snapshot.manage",
+			Version:       "1",
+			ResourceKinds: proxmoxGuestKinds,
+		},
+		contract.Capability{
+			Name:          "compute.config.apply",
+			Version:       "1",
+			ResourceKinds: proxmoxGuestKinds,
+		},
+	); err != nil {
+		return err
+	}
+	if err := reg.RegisterOperation(pveGuestPowerOperation); err != nil {
+		return err
+	}
+	if err := reg.RegisterOperation(pveGuestSnapshotOperation); err != nil {
+		return err
+	}
+	return reg.RegisterOperation(pveGuestConfigOperation)
+}
+
+// pveGuestPowerOperation — pve.guest.power(J7): 4 액션(start|shutdown|stop|
+// reboot)을 1 opdef로 묶는다(k8s restart 1종 선례 — 동일 승인자 인구, 액션 통제는
+// executor의 payload 검증이 담당). IdempotencyPolicy는 A4 — 전원 상태는 상태
+// 수렴형이다(이미 켜진 VM의 start는 PVE가 오류 반환).
+var pveGuestPowerOperation = contract.OperationDefinition{
+	Name:               proxmox.PowerOperationName,
+	Version:            "1",
+	RequiredPermission: pveGuestOperatePermission,
+	RequiredCapability: "compute.power.manage",
+	ResourceKinds:      proxmoxGuestKinds,
+	Mutating:           true,
+	RiskLevel:          "medium",
+	// J7 — guarded posture(승인 후에만 발행된다).
+	RequiresApproval:  true,
+	IdempotencyPolicy: "provider_state_convergent",
+	TimeoutSeconds:    30,
+	RetryPolicy:       pveGuardedRetry,
+	// §10.2 typed redaction spec — 허용 필드는 §3.2 표의 op별 집합이고 executor가
+	// 실제로 싣는 것은 그 부분집합이다(stateless 핸들 계약 — 폴 시점에 재현
+	// 가능한 성분만 흘린다).
+	Redaction: func() any { return pvePowerResultRedaction{} },
+}
+
+// pveGuestSnapshotOperation — pve.guest.snapshot(J7): snapname 필수 — POST
+// …/snapshot.
+var pveGuestSnapshotOperation = contract.OperationDefinition{
+	Name:               proxmox.SnapshotOperationName,
+	Version:            "1",
+	RequiredPermission: pveGuestOperatePermission,
+	RequiredCapability: "storage.snapshot.manage",
+	ResourceKinds:      proxmoxGuestKinds,
+	Mutating:           true,
+	RiskLevel:          "medium",
+	RequiresApproval:   true,
+	IdempotencyPolicy:  "provider_state_convergent",
+	TimeoutSeconds:     30,
+	RetryPolicy:        pveGuardedRetry,
+	Redaction:          func() any { return pveSnapshotResultRedaction{} },
+}
+
+// pveGuestConfigOperation — pve.guest.config(J7): 화이트리스트(E-5) — {cores?,
+// memoryMB?} 외 키 거부 — PUT …/config. 구성 변경은 게스트 가용성에 직결되므로
+// 리스크 high로 분화한다.
+var pveGuestConfigOperation = contract.OperationDefinition{
+	Name:               proxmox.ConfigOperationName,
+	Version:            "1",
+	RequiredPermission: pveGuestOperatePermission,
+	RequiredCapability: "compute.config.apply",
+	ResourceKinds:      proxmoxGuestKinds,
+	Mutating:           true,
+	RiskLevel:          "high",
+	RequiresApproval:   true,
+	IdempotencyPolicy:  "provider_state_convergent",
+	TimeoutSeconds:     30,
+	RetryPolicy:        pveGuardedRetry,
+	Redaction:          func() any { return pveConfigResultRedaction{} },
+}
+
+// pve 결과 redaction 3종 — §10.2 typed specs. 허용 필드는 §3.2 표(성공 detail
+// 허용 필드)와 1:1이다: {node, vmid, guestType, action?, snapname?, upid?,
+// exitStatus, cores?, memoryMB?}.
+type pvePowerResultRedaction struct {
+	Node       string `json:"node"`
+	VMID       string `json:"vmid"`
+	GuestType  string `json:"guestType"`
+	Action     string `json:"action"`
+	UPID       string `json:"upid"`
+	ExitStatus string `json:"exitStatus"`
+}
+
+type pveSnapshotResultRedaction struct {
+	Node       string `json:"node"`
+	VMID       string `json:"vmid"`
+	GuestType  string `json:"guestType"`
+	Snapname   string `json:"snapname"`
+	UPID       string `json:"upid"`
+	ExitStatus string `json:"exitStatus"`
+}
+
+type pveConfigResultRedaction struct {
+	Node       string `json:"node"`
+	VMID       string `json:"vmid"`
+	GuestType  string `json:"guestType"`
+	UPID       string `json:"upid"`
+	ExitStatus string `json:"exitStatus"`
+	Cores      int64  `json:"cores"`
+	MemoryMB   int64  `json:"memoryMB"`
 }

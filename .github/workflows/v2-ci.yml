@@ -238,6 +238,39 @@ jobs:
           grep 'R2 FAIL' out-inv.txt
           echo "CANARY OK: the inventory case branch fired with correct attribution"
 
+      # Phase 5 J9/E-4 — the R2 v3 proxmox canary: the newly guarded vocabulary
+      # gets the same two-sided proof — a proxmox ProviderType branch in the
+      # inventory core must fire (product code), while the same identifier in a
+      # core _test.go must pass (the exclusion rule itself, replanted for the
+      # extended set so it cannot quietly rot into a false positive or a blind
+      # spot). The plants are compile-safe wrappers so go list still loads the
+      # package and the failure is a genuine R2 grep hit, not a build error.
+      - name: Plant a proxmox branch in the inventory core (R2 v3)
+        run: |
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary-proxmox-product"
+          cd "$RUNNER_TEMP/canary-proxmox-product/backend"
+          printf '\nfunc canaryProxmoxBranch(conn model.ProviderConnection) bool {\n\tif conn.ProviderType == "proxmox" {\n\t}\n\treturn false\n}\n' >> internal/infra/inventory/sync.go
+          grep -q 'conn.ProviderType == "proxmox"' internal/infra/inventory/sync.go || { echo "CANARY PLANT FAILED: proxmox branch anchor drifted"; exit 1; }
+          cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary-proxmox-test"
+          cd "$RUNNER_TEMP/canary-proxmox-test/backend"
+          printf '\n// canary plant: provider product identifier in a core test file\nfunc canaryProxmoxTestBranch(conn model.ProviderConnection) bool {\n\tif conn.ProviderType == "proxmox" {\n\t}\n\treturn false\n}\n' >> internal/infra/inventory/sync_test.go
+          grep -q 'conn.ProviderType == "proxmox"' internal/infra/inventory/sync_test.go || { echo "CANARY PLANT FAILED: proxmox test-file plant anchor drifted"; exit 1; }
+      - name: The proxmox product branch must fire, the test-file branch must pass
+        run: |
+          cd "$RUNNER_TEMP/canary-proxmox-product"
+          if bash scripts/check-arch-boundary.sh > out-proxmox.txt 2>&1; then
+            echo "CANARY DID NOT FIRE: a proxmox branch passed in core product code"; exit 1
+          fi
+          grep -q 'R2 FAIL' out-proxmox.txt || { echo "CANARY ATTRIBUTION FAILED: proxmox branch did not fire R2"; exit 1; }
+          grep -q 'internal/infra/inventory/sync.go' out-proxmox.txt || { echo "CANARY ATTRIBUTION FAILED: proxmox branch not attributed to the inventory core file"; exit 1; }
+          grep 'R2 FAIL' out-proxmox.txt
+          cd "$RUNNER_TEMP/canary-proxmox-test"
+          if ! bash scripts/check-arch-boundary.sh > out-proxmox-test.txt 2>&1; then
+            echo "CANARY FALSE POSITIVE: a core _test.go proxmox identifier fired R2 (the test exclusion regressed)"; exit 1
+          fi
+          grep 'PASS: arch-boundary clean' out-proxmox-test.txt
+          echo "CANARY OK: proxmox branch fires in product code, passes in core tests"
+
   slice-a-e2e:
     # Plan J11 — the 10th job: §25's "one Kubernetes mutation end to end in CI
     # against kind". Fresh kind cluster per run (plan §4.9), the committed seed
