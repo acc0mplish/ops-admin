@@ -1,0 +1,52 @@
+{
+  "task": "v2-p2-k8s-slice",
+  "tier": "L",
+  "phase": "implement",
+  "revision": "r2",
+  "round": {
+    "adversary": 0,
+    "review": 1
+  },
+  "spawns": 6,
+  "claims": [
+    {
+      "claim": "PR20 discoverer·normalizer·mapping.md·harness·DiscoverRequest.Connection·rate 카운터 (T42-T45)",
+      "status": "verified",
+      "evidence": "PR #20 1826c8a·T42-T45 GREEN·메인 재실행 23패키지"
+    },
+    {
+      "claim": "PR21 step0004·backfill·shadow sync·outcomes 10종 (T46-T49)",
+      "status": "verified",
+      "evidence": "PR #21 3b2cb65·계층2 MySQL·+ fix #24 8a97b58 (P-class 암호화 복사 — 실측 결함)"
+    },
+    {
+      "claim": "PR22 compare CLI·projection.go·아티팩트·게이트 체커 (T50-T54)",
+      "status": "verified",
+      "evidence": "PR #23 dafd0a4·T50-T54·RUN 11건"
+    },
+    {
+      "claim": "PR23 API v2 GET 4종·UI 셸 3뷰·메뉴 시드 (T52·claims 7·16)",
+      "status": "verified",
+      "evidence": "PR #22 merged·라우트 441·bun·parity PASS·메인 재실행 26패키지"
+    },
+    {
+      "claim": "게이트 ①-④ 로컬 증명 — 페어 3일 아티팩트·identity 0·rate flat·UI curl",
+      "status": "in_progress",
+      "evidence": "1일차 pass·2·3일차 cron 예약"
+    }
+  ],
+  "bundle": "v2-phase1/phase2-plan.md",
+  "next": "review",
+  "anchor": "6cc1e72",
+  "scope": "V2 Phase 2 — K8s/K3s 읽기 vertical slice: discoverer·harness·shadow sync·비교 커맨드·UI 셸 (스펙 §20 Phase 2·§21 PR 20-23·§15 비교 프로토콜)",
+  "loop": "계획→적대→구현→적대→수정→커밋push→다음반복",
+  "ciPolicy": "로컬 검증 판정 — 원격 CI 대기 금지",
+  "gateFeasibility": "조건부 실현가능 → 실현 가능. 게이트 1-3은 kind 시드 클러스터 경로 — 설치 완료(r2 재실측), 클러스터 구축은 R0 잔여",
+  "handoffs": "contract test harness (Phase 1 r2 이연분 — PR 20 소관). N-1~N-4는 §13 r2 정의 완료 — N-1 Discover 경로 Phase 2 해소분·OperationRequest.Connection은 Phase 3",
+  "escalations": "승인 2026-09-06 — E-1 kind+kubectl 설치·실행 완료(~/go/bin, ~/.kube/config 부재)·E-2 파이프라인 비교 해석·E-3 3일 달력 게이트",
+  "r2Changes": "A DiscoverRequest.Connection 자격 경로·B 페어링 키/비교 스코프·C 게이트 증명 명령·D 완전성 M1-M5(outcomes 10종·unreachable 매핑·커서 소비 Phase 4 이연·GET 8종 중 4종)·E 기술(tolerance=0·GenerationUID 규약·projection.go PR22·mapping_test P22 단일 소유·64KiB A12·image-tag 죽은 예시)·F 리스크(PR23 조건부 롤백·게이트 윈도우 지침·EvaluateGate 최신 3개 확정)·G LOW 일괄",
+  "invariants": "§0 실측 게이트 산출 매핑·§5.4 전파·J9 어휘 경로·§15 요소 전 코드화·harness 4단얫 — r1에서 r2로 미변경",
+  "planR2": "승인 — 3렌즈 조건부승인 A-G 반영(DiscoverRequest.Connection·페어링 ns/name·비교 스코프 4종 처분표·grep 정정·이월 대장 실등재·커서 Phase4 이연·운영 지침). 신규 실측 11건",
+  "gateDay1": "2026-09-07 아티팩트 backend/data/compare/1/2026-09-07/021523.json — pass (BLOCKER 0·VOLATILE 0·DRIFT 0·ABSENT 3=스코프 처분 기대분)",
+  "gateSchedule": "cron 03b33402(09-08 2일차)·1d18ea1f(09-09 3일차+--gate 종결)"
+}
