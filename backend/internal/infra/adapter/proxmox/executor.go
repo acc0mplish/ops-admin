@@ -419,10 +419,20 @@ func (a *Adapter) Poll(ctx context.Context, req contract.PollRequest) (contract.
 	switch {
 	case st.Status == "running":
 		return contract.OperationStatus{State: contract.OperationStateRunning}, nil
-	case st.Status == "stopped" && st.ExitStatus == "OK":
+	case st.Status == "stopped" && pveTaskSucceeded(st.ExitStatus):
 		return contract.OperationStatus{State: contract.OperationStateSucceeded, Detail: upidDetail(handle, st.ExitStatus)}, nil
 	case st.Status == "stopped":
 		return contract.OperationStatus{State: contract.OperationStateFailed, Detail: upidDetail(handle, st.ExitStatus)}, nil
 	}
 	return contract.OperationStatus{}, fmt.Errorf("proxmox: task status %q is outside the PVE vocabulary (running|stopped)", st.Status)
+}
+
+// pveTaskSucceeded — PVE 태스크 종료 어휘: "OK"(완전 성공)와 "WARNINGS: N"
+// (완료했으나 비치명 경고 N건 — 예: CT 기동의 autostart 기록 실패)은 둘 다
+// 성공 종단이다. WARNINGS를 실패로 분류하면 성공한 연산이 재시도(MaxAttempts)
+// 되어 이미 수렴한 상태에 두 번째 쓰기가 날아간다(§13-9 실증 2026-09-08 발견
+// — start가 WARNINGS: 1로 성공 후 재시도가 이미-running 400을 맞음). 그 밖의
+// exitstatus는 실패.
+func pveTaskSucceeded(exitStatus string) bool {
+	return exitStatus == "OK" || strings.HasPrefix(exitStatus, "WARNINGS")
 }

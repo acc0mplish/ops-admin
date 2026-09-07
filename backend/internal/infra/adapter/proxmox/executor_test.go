@@ -652,3 +652,28 @@ func TestExecuteToleratesEngineEnvelopeKeys(t *testing.T) {
 		t.Fatal("unknown payload key must still be rejected (E-5)")
 	}
 }
+
+// TestPollWarningsExitIsSuccess — PVE 태스크 종료 어휘에서 "WARNINGS: N"은
+// 완료(비치명 경고)다. 실패 분류하면 엔진이 재시도해 이미 수렴한 상태에
+// 두 번째 쓰기가 날아간다(§13-9 실증 2026-09-08 — CT start가 WARNINGS: 1로
+// 성공 후 재시도가 already-running 400을 기록). 성공 종단으로 수렴 단얫.
+func TestPollWarningsExitIsSuccess(t *testing.T) {
+	f := newExecutorFixture(t) // 기본 mutMode = UPID 반환
+
+	handle, err := f.execute(PowerOperationName, execVMURN, contract.JSONMap{"action": "start"})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	f.mock.setTaskStatus("stopped", "WARNINGS: 1")
+
+	st, err := f.poll(handle, f.opsConnection())
+	if err != nil {
+		t.Fatalf("Poll(stopped WARNINGS: 1): %v", err)
+	}
+	if st.State != contract.OperationStateSucceeded {
+		t.Fatalf("WARNINGS exit must be a success terminal, got %q", st.State)
+	}
+	if st.Detail["exitStatus"] != "WARNINGS: 1" {
+		t.Errorf("detail exitStatus = %v, want the warning text (audit trail)", st.Detail["exitStatus"])
+	}
+}
