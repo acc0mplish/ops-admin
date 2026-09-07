@@ -94,6 +94,33 @@ type CloudLegacyVM struct {
 	SSHPort    int    // display-only — dropped disposition
 }
 
+// CloudFamily carries the family-specific legacy display-unit rule the
+// compare consumes (each adapter's mapping.md §2 단위·집계 규칙). The rules
+// travel as data on purpose: the engine is a core package and must not branch
+// on provider product identifiers (V2 arch R2) — the caller resolves the
+// provider type to this rule set and hands it in with the pair.
+type CloudFamily struct {
+	// LegacyMemoryDivisor is how much the family's legacy v1 memory display
+	// divides the V2 memoryGB scale by. A legacy display on the divided scale
+	// is normalized back by multiplication (legacy display GB × divisor).
+	// A divisor ≤ 1 (the zero value included) means the legacy display already
+	// is the V2 scale and must not be rescaled.
+	LegacyMemoryDivisor float64
+}
+
+// MemoryGB normalizes one legacy memory display value (already parsed to its
+// GB number) into the V2 memoryGB scale for this family. A divided display is
+// lossy (integer division floors), so the normalization recovers the V2 scale
+// only up to that display rounding — a genuine hardware drift past the floor
+// still surfaces as a field mismatch; the rule exists to absorb the family's
+// documented display convention, not to widen the QuantityEpsilon.
+func (f CloudFamily) MemoryGB(legacyGB float64) float64 {
+	if f.LegacyMemoryDivisor > 1 {
+		return legacyGB * f.LegacyMemoryDivisor
+	}
+	return legacyGB
+}
+
 // CloudPairInput is one cloud pairing attempt (§15.1): Attempt 1 is the first
 // capture, 2 the single re-pair — a second miss beyond the window is a
 // BLOCKER. The V2 side reuses the public projection shape (ProjectedV2).
@@ -101,6 +128,7 @@ type CloudPairInput struct {
 	AccountID   uint
 	AccountName string
 	Attempt     int
+	Family      CloudFamily
 	Legacy      CloudLegacyCapture
 	V2          ProjectedV2
 }
@@ -128,7 +156,7 @@ func CompareCloudPair(in CloudPairInput) CompareReport {
 		Drifts: []Mismatch{}, Absents: []Mismatch{},
 	}
 
-	legacy := cloudLegacyEntries(in.Legacy)
+	legacy := cloudLegacyEntries(in.Legacy, in.Family)
 	v2 := cloudV2Entries(in.V2)
 
 	// Identity sets (§15.3 BLOCKER — the instance-id sets must match).
@@ -185,7 +213,9 @@ func CompareCloudPair(in CloudPairInput) CompareReport {
 
 // cloudLegacyEntries extracts the legacy side: one entry per instance, keyed
 // by the pairing key (§15.2), fields per the mapping table's compared rows.
-func cloudLegacyEntries(c CloudLegacyCapture) map[string]sideEntry {
+// The family display-unit rules normalize the legacy display strings into the
+// V2 scale before the field comparison.
+func cloudLegacyEntries(c CloudLegacyCapture, family CloudFamily) map[string]sideEntry {
 	out := make(map[string]sideEntry, len(c.Instances))
 	for _, vm := range c.Instances {
 		id := strings.TrimSpace(vm.InstanceID)
@@ -204,7 +234,19 @@ func cloudLegacyEntries(c CloudLegacyCapture) map[string]sideEntry {
 			fields["cpu"] = numeric(cores, false)
 		}
 		if gb, ok := cloudGB(vm.Memory); ok {
-			fields["memory"] = numeric(gb, false)
+			// ④review round2 F2 — family display-unit rule (mapping.md §2 per
+			// adapter): a divided legacy display is multiplied back to the V2
+			// memoryGB scale; a display already on the V2 scale passes through.
+			//
+			// ④review round2 F3 judgment — the unrescaled family's legacy
+			// floor truncation (MB/1024 integer division) is NOT absorbable
+			// by QuantityEpsilon: the lost fraction reaches 1023/1024 GB, far
+			// beyond 0.01. The float conversion therefore lives on the V2
+			// side (the normalizer records memoryGB = float64(MB)/1024), and
+			// a legacy display whose source MB was not an exact GB multiple
+			// surfaces as a real field mismatch — reported, not masked (the
+			// same false-negative philosophy F1 enforces on the CPU display).
+			fields["memory"] = numeric(family.MemoryGB(gb), false)
 		}
 		if gb, ok := cloudGB(vm.Disk); ok {
 			fields["disk"] = numeric(gb, false)
@@ -287,7 +329,43 @@ func cloudQuantity(s, suffix string) (float64, bool) {
 	return n, true
 }
 
-func cloudCPUCores(s string) (float64, bool) { return cloudQuantity(s, "vCPU") }
+// cloudQuantityFold is cloudQuantity with a case-insensitive unit suffix —
+// display strings are presentation, not contract, so "4 Cores" parses like
+// "4 cores".
+func cloudQuantityFold(s, suffix string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) < len(suffix) || !strings.EqualFold(s[len(s)-len(suffix):], suffix) {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(strings.TrimSpace(s[:len(s)-len(suffix)]), 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// cloudCPUSuffixes is the family suffix set of the legacy CPU display: one
+// family prints "N vCPU", another prints "N cores" (per-adapter mapping.md
+// §3 — CPU row). The parser accepts the whole set so a family's display
+// convention never degrades into a legacy-side parse failure — which would
+// surface as a value-missing-one-side VOLATILE (compare.go) and mask the
+// comparison (④review round2 F1).
+var cloudCPUSuffixes = []string{"vCPU", "cores"}
+
+// cloudCPUCores parses the legacy CPU display into its core count.
+func cloudCPUCores(s string) (float64, bool) {
+	for _, suffix := range cloudCPUSuffixes {
+		if n, ok := cloudQuantityFold(s, suffix); ok {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// CloudCPUCores is the exported form of the legacy CPU display parser — the
+// family suffix set is the mapping table's contract (mapping.md §3 CPU rows),
+// so it is testable from the external package too.
+func CloudCPUCores(s string) (float64, bool) { return cloudCPUCores(s) }
 
 func cloudGB(s string) (float64, bool) { return cloudQuantity(s, "GB") }
 
