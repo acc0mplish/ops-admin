@@ -25,6 +25,7 @@ import (
 	"ops-admin/backend/internal/infra/registry"
 	"ops-admin/backend/internal/infra/secrets"
 	"ops-admin/backend/internal/tasks"
+	"ops-admin/backend/store"
 )
 
 // Stack is the assembled V2 inventory stack.
@@ -298,11 +299,9 @@ type restartResultRedaction struct {
 // 면(J7 — [compute.vm, compute.system_container]).
 var proxmoxGuestKinds = []string{"compute.vm", "compute.system_container"}
 
-// pveGuestOperatePermission — E-2 승인 신규 권한 1종(4세그 — v1
-// permissionPattern 충족). v1 권한 175종 중 PVE guest 전원/스냅샷/구성에 부합하는
-// 권한이 없어(계획 §0.4 — zero-prior-code 신규 도메인) 신규로 두고 opdef 3종이
-// 공유한다.
-const pveGuestOperatePermission = "infra:pve:guest:operate"
+// pveGuestOperatePermission — E-2 승인 신규 권한 1종(4세그 — v1 permissionPattern
+// 충족, opdef 3종 공유). 단일 원천은 store.PVEGuestOperatePermission — compose는
+// 참조만 한다(p5 followup; seed.go·compose 2중 선언 통일).
 
 // pveGuardedRetry — J7 공통 재시도 보수: MaxAttempts 2(재시도 파괴 가능성의
 // 완화 — R3)·BackoffSeconds 10(재시도는 승인 후 폴 회로에 한정하는 계약의
@@ -348,7 +347,7 @@ func registerProxmoxMutations(reg *registry.Registry) error {
 var pveGuestPowerOperation = contract.OperationDefinition{
 	Name:               proxmox.PowerOperationName,
 	Version:            "1",
-	RequiredPermission: pveGuestOperatePermission,
+	RequiredPermission: store.PVEGuestOperatePermission,
 	RequiredCapability: "compute.power.manage",
 	ResourceKinds:      proxmoxGuestKinds,
 	Mutating:           true,
@@ -369,7 +368,7 @@ var pveGuestPowerOperation = contract.OperationDefinition{
 var pveGuestSnapshotOperation = contract.OperationDefinition{
 	Name:               proxmox.SnapshotOperationName,
 	Version:            "1",
-	RequiredPermission: pveGuestOperatePermission,
+	RequiredPermission: store.PVEGuestOperatePermission,
 	RequiredCapability: "storage.snapshot.manage",
 	ResourceKinds:      proxmoxGuestKinds,
 	Mutating:           true,
@@ -387,7 +386,7 @@ var pveGuestSnapshotOperation = contract.OperationDefinition{
 var pveGuestConfigOperation = contract.OperationDefinition{
 	Name:               proxmox.ConfigOperationName,
 	Version:            "1",
-	RequiredPermission: pveGuestOperatePermission,
+	RequiredPermission: store.PVEGuestOperatePermission,
 	RequiredCapability: "compute.config.apply",
 	ResourceKinds:      proxmoxGuestKinds,
 	Mutating:           true,
