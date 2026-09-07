@@ -98,8 +98,8 @@ async function loadData() {
     const params = { page: page.value, pageSize: pageSize.value }
     if (kind.value) params.kind = kind.value
     const response = await listInfraResources(params)
-    resources.value = response?.data?.items || []
-    total.value = response?.data?.total || 0
+    resources.value = response?.items || []
+    total.value = response?.total || 0
   } catch (error) {
     ElMessage.error(inft('loadFailed'))
   } finally {
@@ -110,7 +110,7 @@ async function loadData() {
 async function openDetail(row) {
   try {
     const response = await getInfraResource(row.uid)
-    detail.value = response?.data || null
+    detail.value = response || null
     activeTab.value = 'info'
     detailVisible.value = true
   } catch (error) {

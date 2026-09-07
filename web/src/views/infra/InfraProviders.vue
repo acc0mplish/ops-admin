@@ -58,7 +58,7 @@ async function loadData() {
   loading.value = true
   try {
     const response = await listInfraProviderConnections()
-    connections.value = response?.data?.items || []
+    connections.value = response?.items || []
   } catch (error) {
     ElMessage.error(inft('loadFailed'))
   } finally {

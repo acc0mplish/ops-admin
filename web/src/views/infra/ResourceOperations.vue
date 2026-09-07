@@ -62,7 +62,7 @@ async function loadOperations() {
   operations.value = []
   try {
     const response = await listInfraResourceOperations(props.resource.uid)
-    operations.value = response?.data?.items || []
+    operations.value = response?.items || []
   } catch (error) {
     operations.value = []
   } finally {
@@ -73,7 +73,7 @@ async function loadOperations() {
 async function openPlan(row) {
   try {
     const response = await planInfraOperation(props.resource.uid, row.name)
-    plan.value = response?.data || null
+    plan.value = response || null
     planVisible.value = true
   } catch (error) {
     // the interceptor already surfaced the failure reason
@@ -94,7 +94,7 @@ async function confirmExecute() {
       payload.resourceRevision = plan.value.resourceRevision
     }
     const response = await executeInfraOperation(props.resource.uid, plan.value.operation, payload, crypto.randomUUID())
-    const taskUid = response?.data?.task?.uid
+    const taskUid = response?.task?.uid
     planVisible.value = false
     ElMessage.success(inft('executeSuccess', { uid: taskUid }))
     router.push({ path: '/infra/tasks', query: taskUid ? { uid: taskUid } : {} })
