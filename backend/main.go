@@ -47,6 +47,13 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "compare-inventory-cloud" {
 		os.Exit(runCompareCloudInventory(os.Args[2:]))
 	}
+	// V2 Phase 5 (PR 31c N8): the PVE connection registration CLI (plan J6·
+	// §3.3) — validate against the provider, upsert the connection/context/
+	// secret/binding chain, then exit. Dispatched before any server startup
+	// path.
+	if len(os.Args) >= 2 && os.Args[1] == "register-pve" {
+		os.Exit(runRegisterPVE(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)

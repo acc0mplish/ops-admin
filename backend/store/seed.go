@@ -28,6 +28,13 @@ const (
 	// losing the marker would re-run migrateRoleRoutePermissionsOnce and
 	// re-grant every role its full route vocabulary.
 	RoutePermissionsMarkerValue = "route-permissions:granted:v1"
+	// pveGuestOperatePermission is the one PVE guest-operation permission the
+	// three proxmox opdefs share (compose pveGuestOperatePermission — plan
+	// phase5 E-2). It is declared here (not in opdef) because the opdef table
+	// is intentionally unchanged in this phase — zero prior code, zero new
+	// route vocabulary — and grantRoutePermissionMenus reads the opdef
+	// vocabulary only, so this permission cannot ride that path.
+	pveGuestOperatePermission = "infra:pve:guest:operate"
 )
 
 func Seed(db *gorm.DB) error {
@@ -42,6 +49,7 @@ func Seed(db *gorm.DB) error {
 		seedSuperRolePermissions,
 		seedRoutePermissionMenus,
 		seedSuperAdminRoutePermissions,
+		seedPVEGuestOperatePermission,
 		migrateRoleRoutePermissionsOnce,
 	}
 	for _, step := range steps {
@@ -555,6 +563,44 @@ func seedSuperAdminRoutePermissions(db *gorm.DB) error {
 		return err
 	}
 	return grantRoutePermissionMenus(db, role.ID)
+}
+
+// seedPVEGuestOperatePermission (always-on, plan phase5 M8 — r1.4 HIGH-1
+// 재계약) creates the sys_menu leaf for the PVE guest-operation permission and
+// grants it to super-admin. grantRoutePermissionMenus cannot cover it: that
+// grant selects menus by the opdef vocabulary (value IN opdef.PermissionStrings)
+// and the opdef table is unchanged in this phase, so without this seeder the
+// permission would have no menu row at all and adminHasAnyPermission's join on
+// sys_menu.value would reject every PVE operation. Same idempotent
+// count-then-create shape as seedRoutePermissionMenus — reruns skip existing
+// rows and leave row counts unchanged.
+func seedPVEGuestOperatePermission(db *gorm.DB) error {
+	var root model.Menu
+	if err := db.Where("value = ?", RoutePermissionsRootValue).First(&root).Error; err != nil {
+		return fmt.Errorf("seed pve permission: route-permissions root missing (seedRoutePermissionMenus must run first): %w", err)
+	}
+	var leaf model.Menu
+	err := db.Where("value = ?", pveGuestOperatePermission).First(&leaf).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		leaf = model.Menu{ParentID: root.ID, MenuName: "PVE Guest Operate", MenuType: 3, Value: pveGuestOperatePermission, MenuStatus: 1, Sort: 1000, CreatedAt: time.Now()}
+		if err := db.Create(&leaf).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	var role model.Role
+	if err := db.Where("role_key = ?", "super-admin").First(&role).Error; err != nil {
+		return err
+	}
+	var count int64
+	if err := db.Model(&model.RoleMenu{}).Where("role_id = ? AND menu_id = ?", role.ID, leaf.ID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	return db.Create(&model.RoleMenu{RoleID: role.ID, MenuID: leaf.ID}).Error
 }
 
 // migrateRoleRoutePermissionsOnce (one-shot, marker-gated) grants the full
