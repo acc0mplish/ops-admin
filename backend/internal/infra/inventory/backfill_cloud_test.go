@@ -7,6 +7,7 @@ package inventory_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -689,5 +690,56 @@ func TestCloudBackfillEnvelopeComponentsAndSkipPaths(t *testing.T) {
 	// The idempotent re-run walks every branch again without writes.
 	if _, err := inventory.RunCloudAccountBackfill(context.Background(), db); err != nil {
 		t.Fatalf("run 2: %v", err)
+	}
+}
+
+// TestCloudBackfillIsolatesFinopsLinkFailure — J6 / ④review MEDIUM-1: a
+// failed §5.4 finops link write is isolated per account (Failed++ +
+// FailedSources, continue) — the pipeline does not error, the remaining
+// accounts keep propagating, and the report survives.
+func TestCloudBackfillIsolatesFinopsLinkFailure(t *testing.T) {
+	db := newInventoryDB(t)
+	if err := db.Exec(assetCloudAccountDDL).Error; err != nil {
+		t.Fatalf("create asset_cloud_account: %v", err)
+	}
+	if err := db.Exec(integrationFinopsAccountDDL).Error; err != nil {
+		t.Fatalf("create integration_finops_account: %v", err)
+	}
+	seedCloudAccounts(t, db, []cloudAccountSeed{
+		{name: "cloud-1", provider: "aliyun", accessKey: "AK1", secretKey: "SK1", regions: `["cn-hangzhou"]`},
+	})
+	finopsIDs := seedFinopsAccounts(t, db, []finopsSeed{
+		{name: "finops-ok", provider: "aliyun", accessKey: "AK1", secretKey: "SK1"},
+		{name: "finops-broken", provider: "aliyun", accessKey: "AK9", secretKey: "SK9"},
+	})
+
+	// The broken account's link write fails: a sqlite trigger aborts only the
+	// provider_connection_uid UPDATE of that row (reads stay healthy, so the
+	// failure is link-write scoped, not source-read scoped).
+	trigger := fmt.Sprintf(`CREATE TRIGGER fail_finops_link_%d BEFORE UPDATE ON integration_finops_account
+		WHEN NEW.id = %d
+		BEGIN SELECT RAISE(ABORT, 'link rejected'); END`, finopsIDs[1], finopsIDs[1])
+	if err := db.Exec(trigger).Error; err != nil {
+		t.Fatalf("create link-failure trigger: %v", err)
+	}
+
+	report, err := inventory.RunCloudAccountBackfill(context.Background(), db)
+	if err != nil {
+		t.Fatalf("link failure must not halt the pipeline: %v", err)
+	}
+	if report.Failed != 1 {
+		t.Fatalf("report.Failed = %d, want 1 (the broken link only)", report.Failed)
+	}
+	want := fmt.Sprintf("integration_finops_account:%d", finopsIDs[1])
+	if len(report.FailedSources) != 1 || report.FailedSources[0] != want {
+		t.Fatalf("report.FailedSources = %v, want [%s]", report.FailedSources, want)
+	}
+	// The healthy finops account still collapsed onto the cloud chain and got
+	// its link backfilled.
+	if link := finopsLink(t, db, finopsIDs[0]); link == "" {
+		t.Fatalf("healthy finops link was not backfilled")
+	}
+	if report.FinopsLinked != 1 {
+		t.Fatalf("report.FinopsLinked = %d, want 1", report.FinopsLinked)
 	}
 }

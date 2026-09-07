@@ -25,22 +25,25 @@ BACKEND="$ROOT/backend"
 
 # Core packages guarded by R1/R2 (script constant; extend deliberately).
 # phase4 J8 defines the full V2 core set (infra/{contract,registry,inventory,
-# secrets,model,policy,metrics} + internal/tasks + internal/api/v2); the D2
-# slice enrolls contract+registry first — the remaining packages join in the
-# phases that own them. infra/compose stays outside on purpose: it is the
-# assembly root that §11.1 "registered explicitly" requires to import adapter
-# packages, and "core orchestration" (spec §25) is not what it is.
-CORE_PACKAGES=(internal/domain/dnsserver internal/infra/contract internal/infra/registry)
+# secrets,model,policy,metrics} + internal/tasks + internal/api/v2); the ④
+# review of Phase 4 (HIGH-1) enrolls the remaining packages now that the
+# backfill's provider branch moved into the contract alias table. infra/compose
+# stays outside on purpose: it is the assembly root that §11.1 "registered
+# explicitly" requires to import adapter packages, and "core orchestration"
+# (spec §25) is not what it is.
+CORE_PACKAGES=(internal/domain/dnsserver internal/infra/contract internal/infra/registry internal/infra/inventory internal/infra/secrets internal/infra/model internal/infra/policy internal/infra/metrics internal/tasks internal/api/v2)
 
 # R2 v2 (phase4 J8): scan the full provider-name vocabulary, exclude core test
 # files, and pin the single allowed exception — the §7.1 vocabulary declaration
-# lines (M1ProviderTypeNames / ReservedProviderTypeNames) in provider_type.go.
+# lines (M1ProviderTypeNames / ReservedProviderTypeNames) and the §5.4 legacy
+# alias table (ProviderTypeAliases, ④review HIGH-1) in provider_type.go.
 # A hit on the exception file counts only when the line names one of those
 # symbols, and even then fails if the line branches on a provider name
-# (declaration vs branch, J8-c).
+# (declaration vs branch, J8-c). The alias table is declared as a single-line
+# literal so every alias literal stays under the line-wise symbol pin.
 R2_PATTERN='\b(aliyun|tencent|alicloud|tencentcloud)\b'
 R2_VOCAB_EXCEPTION_FILE=internal/infra/contract/provider_type.go
-R2_VOCAB_EXCEPTION_SYMBOLS='M1ProviderTypeNames|ReservedProviderTypeNames'
+R2_VOCAB_EXCEPTION_SYMBOLS='M1ProviderTypeNames|ReservedProviderTypeNames|ProviderTypeAliases'
 R2_BRANCH_PATTERN='== *"(aliyun|tencent|alicloud|tencentcloud)"|case "(aliyun|tencent|alicloud|tencentcloud)"|ProviderType.*=='
 
 # R3 allowlist of non-stdlib imports opdef may hold.

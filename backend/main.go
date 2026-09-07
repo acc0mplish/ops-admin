@@ -40,6 +40,13 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "compare-inventory" {
 		os.Exit(runCompareInventory(os.Args[2:]))
 	}
+	// V2 cloud compare subcommand (Phase 4 PR 30b E1): the §15 cloud vm paired
+	// run + the dated artifact + the gate, dispatched before any server
+	// startup path. Its own dispatch and file — main_compare.go stays frozen
+	// until the Phase 2 gate closes (plan §4 CLI freeze).
+	if len(os.Args) >= 2 && os.Args[1] == "compare-inventory-cloud" {
+		os.Exit(runCompareCloudInventory(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)

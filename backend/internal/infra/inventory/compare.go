@@ -20,9 +20,10 @@ import (
 // CountTolerance is §15.3 "count fields differ beyond tolerance" (A11): the
 // spec leaves the value open, the plan fixes 0 — a count field must match
 // exactly; any drift inside the pairing window is absorbed by the re-pair
-// path, not by tolerance.
-const CountTolerance = 0
-
+// path, not by tolerance. The 0 is inlined at the comparison site
+// (valuesEqual — the only count consumer), so no named constant exists to
+// drift from it.
+//
 // QuantityEpsilon absorbs the legacy display round-trip on capacity fields
 // (legacy prints decimal MB — formatMemoryMB — while V2 stores GiB-scale GB,
 // round3). Compared numerically, not by string.
@@ -924,9 +925,10 @@ func ProjectionHash(v2 ProjectedV2) string {
 // --- 아티팩트 (R-3 — whitelist 마셜) ---
 
 const (
-	artifactScopeRoot     = "root"
-	artifactScopeReport   = "report"
-	artifactScopeMismatch = "mismatch"
+	artifactScopeRoot      = "root"
+	artifactScopeCloudRoot = "cloudRoot"
+	artifactScopeReport    = "report"
+	artifactScopeMismatch  = "mismatch"
 )
 
 // CompareArtifact is the whole report artifact — a fixed whitelist: report,
@@ -958,6 +960,16 @@ var artifactAllowedKeys = map[string]map[string]bool{
 		"v2GenerationUid": true, "v2SyncedAt": true, "v2Hash": true,
 		"report": true,
 	},
+	// Cloud root scope (plan phase4 N14 / §13-10): the K8s whitelist plus the
+	// interim marking keys.
+	artifactScopeCloudRoot: {
+		"artifactSchema": true, "accountId": true, "accountName": true,
+		"verdict": true, "attempt": true, "tsDeltaSeconds": true,
+		"legacyCapturedAt": true, "legacyHash": true,
+		"v2GenerationUid": true, "v2SyncedAt": true, "v2Hash": true,
+		"report":  true,
+		"interim": true, "interimReason": true, "scope": true,
+	},
 	artifactScopeReport: {
 		"verdict": true, "tsDelta": true,
 		"blockers": true, "volatiles": true, "drifts": true, "absents": true,
@@ -980,7 +992,7 @@ func validateArtifactKeys(node map[string]any, scope string) error {
 			return fmt.Errorf("compare: artifact key %q is outside the %s whitelist", key, scope)
 		}
 		switch {
-		case scope == artifactScopeRoot && key == "report":
+		case (scope == artifactScopeRoot || scope == artifactScopeCloudRoot) && key == "report":
 			report, ok := value.(map[string]any)
 			if !ok {
 				return fmt.Errorf("compare: artifact report is not an object")
@@ -1013,18 +1025,7 @@ func validateArtifactKeys(node map[string]any, scope string) error {
 // MarshalArtifact serializes the artifact and enforces the whitelist — a key
 // outside it (schema drift, injected payload) fails the write.
 func MarshalArtifact(artifact CompareArtifact) ([]byte, error) {
-	b, err := json.MarshalIndent(artifact, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("compare: marshal artifact: %w", err)
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal(b, &parsed); err != nil {
-		return nil, fmt.Errorf("compare: re-parse artifact: %w", err)
-	}
-	if err := validateArtifactKeys(parsed, artifactScopeRoot); err != nil {
-		return nil, err
-	}
-	return b, nil
+	return marshalArtifactScoped(artifact, artifactScopeRoot)
 }
 
 // --- 게이트 체커 (§15.4 r2) ---

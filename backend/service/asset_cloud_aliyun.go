@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"ops-admin/backend/util"
 )
 
 const aliyunECSAPIEndpoint = "https://ecs.aliyuncs.com/"
@@ -155,6 +157,15 @@ func aliyunECSRequest(ctx context.Context, accessKey, secretKey, action, region 
 }
 
 func aliyunECSEndpoint(region string) string {
+	// E-2 (M11) — development-only mock endpoint override for the §15 pair
+	// capture. Same precedence the V2 adapter applies (Connection.Endpoint
+	// first where one exists; the legacy path has none — A3), the override
+	// above the regional default. Inert outside GO_ENV=development + a
+	// loopback http URL, so production keeps the operating endpoint path
+	// (판정 J7).
+	if override, ok := util.CloudEndpointOverride("aliyun"); ok {
+		return strings.TrimRight(override, "/") + "/"
+	}
 	region = strings.TrimSpace(region)
 	if region == "" {
 		return aliyunECSAPIEndpoint

@@ -93,8 +93,9 @@ type cloudChain struct {
 // RunCloudAccountBackfill propagates the v1 cloud sources into the V2
 // tables (§3.3 rules 1–6):
 //
-//   - rule 1: provider normalization {alicloud→aliyun, tencentcloud→tencent}
-//     applied to BOTH the asset_cloud_account and the finops sides.
+//   - rule 1: provider normalization via the contract alias table
+//     (contract.ProviderTypeAliases) applied to BOTH the asset_cloud_account
+//     and the finops sides.
 //   - rule 2: the v1 credential columns (P-class plaintext) are sealed once —
 //     decrypt-if-envelope-else-plaintext → JSON blob → EncryptSecretV2 — and
 //     plaintext never leaves process memory; an unsealable component halts
@@ -175,20 +176,14 @@ func RunCloudAccountBackfill(ctx context.Context, db *gorm.DB) (CloudBackfillRep
 	return report, nil
 }
 
-// normalizeCloudProvider maps the legacy v1 provider vocabulary onto the V2
-// provider types (J6 rule 1 — the same lexicon the legacy sync switch uses).
-// Note for the R2 v2 proof machine (plan J8/E2): these literals are the
-// §5.4 propagation mapping table, not a core branch — they select no
-// behaviour, they only re-lexicon the source column.
+// normalizeCloudProvider re-lexicons the legacy v1 provider column onto the
+// V2 provider types through the contract alias table (J6 rule 1 — §5.4
+// propagation). Map lookup only — the core never branches on a provider
+// product identifier (R2 v2, ④review HIGH-1): the literals live in the
+// contract vocabulary declaration, not here.
 func normalizeCloudProvider(raw string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "aliyun", "alicloud":
-		return "aliyun", true
-	case "tencent", "tencentcloud":
-		return "tencent", true
-	default:
-		return "", false
-	}
+	normalized, ok := contract.ProviderTypeAliases[strings.ToLower(strings.TrimSpace(raw))]
+	return normalized, ok
 }
 
 // readCloudCredential assembles the J4 blob from the v1 columns. Each
@@ -486,11 +481,16 @@ func propagateFinopsAccounts(ctx context.Context, db *gorm.DB, chains map[uint]*
 			}
 		}
 
-		// The §5.4 finops link — written only when it actually moves.
+		// The §5.4 finops link — written only when it actually moves. A failed
+		// link write is isolated per account (J6/MEDIUM-1): counted, reported,
+		// and the remaining accounts keep propagating — a single broken row
+		// never halts the pipeline or loses the report.
 		if row.ProviderConnectionUID != conn.UID {
 			if err := db.Model(&v1model.IntegrationFinOpsAccount{}).Where("id = ?", row.ID).
 				Update("provider_connection_uid", conn.UID).Error; err != nil {
-				return fmt.Errorf("inventory: backfill finops link for account %d: %w", row.ID, err)
+				report.Failed++
+				report.FailedSources = append(report.FailedSources, fmt.Sprintf("integration_finops_account:%d", row.ID))
+				continue
 			}
 			report.FinopsLinked++
 		}

@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -40,6 +41,16 @@ func (s *TencentCloudService) GetInstances(regions []string) ([]TencentInstanceI
 	credential := common.NewCredential(s.AccessKey, s.AccessSecret)
 	clientProfile := profile.NewClientProfile()
 	clientProfile.HttpProfile.Endpoint = "cvm.tencentcloudapi.com"
+	// E-2 (M11) — development-only mock endpoint override for the §15 pair
+	// capture, the same gate and precedence the aliyun legacy hook and the V2
+	// adapters apply (override above the provider default; inert outside
+	// GO_ENV=development + a loopback http URL — 판정 J7).
+	if override, ok := CloudEndpointOverride("tencent"); ok {
+		if parsed, err := url.Parse(override); err == nil {
+			clientProfile.HttpProfile.Endpoint = parsed.Host
+			clientProfile.HttpProfile.Scheme = "HTTP"
+		}
+	}
 
 	var allInstances []TencentInstanceInfo
 	var failures []string
@@ -56,6 +67,15 @@ func (s *TencentCloudService) GetInstances(regions []string) ([]TencentInstanceI
 		response, err := client.DescribeInstances(cvm.NewDescribeInstancesRequest())
 		if err != nil {
 			failures = append(failures, regionName+": "+err.Error())
+			continue
+		}
+		// ④review LOW-1 — a 2xx response that the SDK did not classify (an
+		// Error envelope with an empty code, a gateway body without the
+		// "Response" wrapper) decodes to a nil typed response: classify it as
+		// a region failure instead of dereferencing nil or reporting a silent
+		// empty success.
+		if response == nil || response.Response == nil {
+			failures = append(failures, regionName+": Tencent Cloud returned a 2xx response without a usable response envelope (classified as a query failure)")
 			continue
 		}
 		for _, instance := range response.Response.InstanceSet {
