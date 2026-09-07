@@ -33,21 +33,28 @@
       />
     </el-card>
 
-    <el-drawer v-model="detailVisible" :title="inft('detailTitle')" size="45%">
+    <el-drawer v-model="detailVisible" :title="inft('detailTitle')" size="55%">
       <template v-if="detail">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item :label="inft('resourceDisplayName')">{{ detail.resource.displayName }}</el-descriptions-item>
-          <el-descriptions-item :label="inft('urnCol')">{{ detail.resource.externalUrn }}</el-descriptions-item>
-          <el-descriptions-item :label="inft('kindCol')">{{ detail.resource.kind }}</el-descriptions-item>
-          <el-descriptions-item v-if="detail.observation" :label="inft('detailGeneration')">{{ detail.observation.generationUid }}</el-descriptions-item>
-          <el-descriptions-item v-if="detail.observation" :label="inft('detailObservedAt')">{{ detail.observation.observedAt }}</el-descriptions-item>
-        </el-descriptions>
-        <template v-if="detail.observation">
-          <h4 class="json-title">{{ inft('detailNormalized') }}</h4>
-          <pre class="json-block">{{ pretty(detail.observation.normalized) }}</pre>
-          <h4 class="json-title">{{ inft('detailRaw') }}</h4>
-          <pre class="json-block">{{ pretty(detail.observation.raw) }}</pre>
-        </template>
+        <el-tabs v-model="activeTab">
+          <el-tab-pane :label="inft('infoTab')" name="info">
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item :label="inft('resourceDisplayName')">{{ detail.resource.displayName }}</el-descriptions-item>
+              <el-descriptions-item :label="inft('urnCol')">{{ detail.resource.externalUrn }}</el-descriptions-item>
+              <el-descriptions-item :label="inft('kindCol')">{{ detail.resource.kind }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.observation" :label="inft('detailGeneration')">{{ detail.observation.generationUid }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.observation" :label="inft('detailObservedAt')">{{ detail.observation.observedAt }}</el-descriptions-item>
+            </el-descriptions>
+            <template v-if="detail.observation">
+              <h4 class="json-title">{{ inft('detailNormalized') }}</h4>
+              <pre class="json-block">{{ pretty(detail.observation.normalized) }}</pre>
+              <h4 class="json-title">{{ inft('detailRaw') }}</h4>
+              <pre class="json-block">{{ pretty(detail.observation.raw) }}</pre>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane :label="inft('operationsTab')" name="operations" lazy>
+            <ResourceOperations :resource="detail.resource" />
+          </el-tab-pane>
+        </el-tabs>
         <el-button class="drawer-close" @click="detailVisible = false">{{ inft('close') }}</el-button>
       </template>
     </el-drawer>
@@ -59,6 +66,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getInfraResource, listInfraResources } from '../../api/infra'
 import { inft } from '../../utils/infra-i18n'
+import ResourceOperations from './ResourceOperations.vue'
 
 const kindOptions = [
   'orchestration.node', 'orchestration.namespace', 'orchestration.pod', 'orchestration.workload',
@@ -73,6 +81,7 @@ const total = ref(0)
 const loading = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
+const activeTab = ref('info')
 
 function onKindChange() {
   page.value = 1
@@ -102,6 +111,7 @@ async function openDetail(row) {
   try {
     const response = await getInfraResource(row.uid)
     detail.value = response?.data || null
+    activeTab.value = 'info'
     detailVisible.value = true
   } catch (error) {
     ElMessage.error(inft('loadFailed'))

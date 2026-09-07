@@ -96,6 +96,7 @@ import SSLCertificates from '../views/domains/SSLCertificates.vue'
 import SSLCertificateDetail from '../views/domains/SSLCertificateDetail.vue'
 import InfraOverview from '../views/infra/InfraOverview.vue'
 import InfraProviders from '../views/infra/InfraProviders.vue'
+import InfraTasks from '../views/infra/InfraTasks.vue'
 import K8sInventory from '../views/infra/K8sInventory.vue'
 import { getToken } from '../utils/auth'
 
@@ -185,6 +186,7 @@ const routes = [
       { path: '/infra/overview', component: InfraOverview, meta: { title: 'Infrastructure Overview', app: 'console' } },
       { path: '/infra/providers', component: InfraProviders, meta: { title: 'Provider Connections', app: 'console' } },
       { path: '/infra/resources', component: K8sInventory, meta: { title: 'K8s Inventory', app: 'console' } },
+      { path: '/infra/tasks', component: InfraTasks, meta: { title: 'Tasks & Approvals', app: 'console' } },
       { path: '/containers/k8s', redirect: '/containers/k8s/clusters' },
       { path: '/containers/k8s/clusters', component: K8sClusterManage, meta: { title: 'Cluster Management', app: 'containers' } },
       { path: '/containers/k8s/clusters/:id/detail', name: 'K8sClusterDetail', component: AssetDetail, props: { resourceType: 'k8s' }, meta: { title: 'Cluster Details', app: 'containers' } },
