@@ -60,7 +60,7 @@ import { ElMessage } from 'element-plus'
 import { getInfraResource, listInfraComputeResources } from '../../api/infra'
 import { inft } from '../../utils/infra-i18n'
 
-const kindOptions = ['compute.vm', 'compute.volume', 'compute.snapshot', 'compute.image']
+const kindOptions = ['compute.vm', 'compute.volume', 'compute.snapshot', 'compute.image', 'compute.hypervisor_node', 'compute.system_container']
 
 const resources = ref([])
 const kind = ref('')
