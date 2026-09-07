@@ -4,6 +4,9 @@ import http from './http'
 export const listInfraProviderTypes = () => http.get('/api/v2/infra/provider-types')
 export const listInfraProviderConnections = () => http.get('/api/v2/infra/provider-connections')
 export const listInfraResources = (params) => http.get('/api/v2/infra/resources', { params })
+// Compute family read (plan J9/M12 — PR 30): the backend kindPrefix filter
+// narrows to every kind under the family; the view pins "compute.".
+export const listInfraComputeResources = (params) => http.get('/api/v2/infra/resources', { params: { kindPrefix: 'compute.', ...params } })
 // UIDs ride the path, so they must be percent-encoded — the backend router
 // matches the escaped path (router.go UseRawPath), and a raw separator inside
 // a uid would both split the route and 404.

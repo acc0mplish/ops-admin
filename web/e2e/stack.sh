@@ -12,6 +12,9 @@
 #   prepare   schema + run dir + config + backend build (no processes)
 #   register  k8s_cluster row + sync-inventory (needs one backend boot first)
 #   serve     prepare + seed apply + backend boot + register + vite (webServer)
+#   serve-b   Slice B (plan N17 — PR 30): prepare (no kind cluster needed) +
+#             backend boot + seed_cloud (mock aliyun account → V2 rows) +
+#             interim-marked artifact + vite (webServer)
 #   compare   J11's §15 segment: boot + register + sync + compare-inventory CLI
 #   down      stop the backend, drop the schema (unless STACK_KEEP=1)
 #
@@ -73,10 +76,14 @@ mysql_exec() {
 
 # --- mode: prepare ------------------------------------------------------------
 prepare() {
-  command -v kubectl >/dev/null 2>&1 || die "kubectl not found"
   command -v go >/dev/null 2>&1 || die "go not found"
-  kubectl --context "$SLICEA_CONTEXT" get ns v3-seed >/dev/null 2>&1 \
-    || die "context $SLICEA_CONTEXT has no v3-seed namespace (create the v2-p3 fixture first — v2-phase1/k8s-fixture/README.md)"
+  # Slice B (serve-b) never touches a kind cluster — the cloud fixture is
+  # DB-seeded V2 rows, so REQUIRE_KIND=0 skips the fixture guards entirely.
+  if [ "${REQUIRE_KIND:-1}" = "1" ]; then
+    command -v kubectl >/dev/null 2>&1 || die "kubectl not found"
+    kubectl --context "$SLICEA_CONTEXT" get ns v3-seed >/dev/null 2>&1 \
+      || die "context $SLICEA_CONTEXT has no v3-seed namespace (create the v2-p3 fixture first — v2-phase1/k8s-fixture/README.md)"
+  fi
   if command -v ss >/dev/null 2>&1; then
     if ss -ltnp "sport = :$BACKEND_PORT" 2>/dev/null | grep -q LISTEN; then
       # A previous lane run may have leaked its own backend child — reap only
@@ -232,7 +239,109 @@ serve() {
   # Boot first (creates the v1 schema), then register + sync against it.
   start_backend
   register
+  start_vite
+}
 
+# --- Slice B cloud fixture (plan N17 — PR 30) ---------------------------------
+# Seeds a MOCK cloud account directly into the V2 tables: one aliyun
+# connection + account context, two compute.vm resources and one
+# orchestration.node (the node proves the view's kindPrefix=compute. filter —
+# it must never appear in the Compute Inventory list). This is E-1(b)
+# territory: no real credentials exist (§0.1), so the run's artifact carries
+# the §13-10 interim marking. Discovery itself is NOT exercised here (E2E
+# 범위 한계 — plan §6 M6): gate ③ (UI reads V2) is the only claim.
+seed_cloud() {
+  [ -f "$RUN_DIR/backend-booted" ] || die "backend has never booted — the V2 schema does not exist yet"
+  log "seeding mock aliyun cloud account into V2 tables"
+  mysql_exec "$E2E_SCHEMA" <<'SQL'
+INSERT INTO provider_connection
+  (uid, provider_type, name, endpoint, status, stale_source, source_model, source_id, created_at, updated_at)
+VALUES
+  ('conn-mock-aliyun', 'aliyun', 'mock-cloud-account', 'http://127.0.0.1:9/mock-aliyun', 'active', 0, 'asset_cloud_account', 1, NOW(3), NOW(3));
+
+INSERT INTO provider_context (uid, connection_id, kind, external_id, name, status, created_at, updated_at)
+SELECT 'ctx-mock-aliyun', id, 'account', 'mock-access-key-id', 'mock-cloud-account', 'active', NOW(3), NOW(3)
+FROM provider_connection WHERE uid = 'conn-mock-aliyun';
+
+INSERT INTO infra_resource
+  (uid, context_id, kind, subtype, external_id, external_urn, name, display_name,
+   lifecycle_state, health_state, managed_state, labels_json, first_seen_at, last_seen_at)
+SELECT 'res-mock-vm-1', pc.id, 'compute.vm', 'ecs.g7', 'i-mock0001',
+       'urn:aliyun:ctx-mock-aliyun:compute.vm:i-mock0001', 'i-mock0001', 'mock-vm-web-01',
+       'running', 'healthy', 'discovered', '{"region":"cn-hangzhou"}', NOW(3), NOW(3)
+FROM provider_context pc WHERE pc.uid = 'ctx-mock-aliyun';
+
+INSERT INTO infra_resource
+  (uid, context_id, kind, subtype, external_id, external_urn, name, display_name,
+   lifecycle_state, health_state, managed_state, labels_json, first_seen_at, last_seen_at)
+SELECT 'res-mock-vm-2', pc.id, 'compute.vm', 'ecs.c6', 'i-mock0002',
+       'urn:aliyun:ctx-mock-aliyun:compute.vm:i-mock0002', 'i-mock0002', 'mock-vm-db-01',
+       'running', 'healthy', 'discovered', '{"region":"cn-hangzhou"}', NOW(3), NOW(3)
+FROM provider_context pc WHERE pc.uid = 'ctx-mock-aliyun';
+
+INSERT INTO infra_resource
+  (uid, context_id, kind, subtype, external_id, external_urn, name, display_name,
+   lifecycle_state, health_state, managed_state, first_seen_at, last_seen_at)
+SELECT 'res-mock-node', pc.id, 'orchestration.node', '', 'n-mock0001',
+       'urn:mock:ctx-mock-aliyun:orchestration.node:n-mock0001', 'n-mock0001', 'mock-control-plane',
+       'running', 'healthy', 'discovered', NOW(3), NOW(3)
+FROM provider_context pc WHERE pc.uid = 'ctx-mock-aliyun';
+
+INSERT INTO resource_observation
+  (resource_id, generation_uid, observation_hash, normalizer_version, normalized_json, raw_json, observed_at)
+SELECT r.id, 'gen-mock-1', 'sha256-mock-observation-1', '1',
+       '{"displayName":"mock-vm-web-01","region":"cn-hangzhou","zone":"cn-hangzhou-i","cpu":4,"memoryGB":16,"diskGB":80,"os":"Alibaba Cloud Linux","privateIps":["10.0.0.11"],"publicIps":["47.0.0.11"],"instanceType":"ecs.g7.large","status":"Running"}',
+       '{"InstanceId":"i-mock0001","InstanceType":"ecs.g7.large","Status":"Running"}',
+       NOW(3)
+FROM infra_resource r WHERE r.uid = 'res-mock-vm-1';
+
+INSERT INTO resource_observation
+  (resource_id, generation_uid, observation_hash, normalizer_version, normalized_json, raw_json, observed_at)
+SELECT r.id, 'gen-mock-1', 'sha256-mock-observation-2', '1',
+       '{"displayName":"mock-vm-db-01","region":"cn-hangzhou","zone":"cn-hangzhou-h","cpu":8,"memoryGB":32,"diskGB":200,"os":"Ubuntu 22.04","privateIps":["10.0.0.12"],"publicIps":[],"instanceType":"ecs.c6.xlarge","status":"Running"}',
+       '{"InstanceId":"i-mock0002","InstanceType":"ecs.c6.xlarge","Status":"Running"}',
+       NOW(3)
+FROM infra_resource r WHERE r.uid = 'res-mock-vm-2';
+SQL
+  local vms
+  vms="$(mysql_exec -N -s "$E2E_SCHEMA" -e "SELECT COUNT(*) FROM infra_resource WHERE kind='compute.vm';")"
+  log "mock cloud fixture seeded (compute.vm rows: $vms)"
+
+  # §13-10 interim marking — machine-detectable top-level "interim": true on
+  # the run artifact. This E2E proves gate ③ only; gates ①② stay pending on
+  # real credentials (E-1), so M1 must not be declared from this run.
+  local artifact="$RUN_DIR/data/slice-b"
+  mkdir -p "$artifact"
+  cat > "$artifact/artifact.json" <<EOF
+{
+  "slice": "b",
+  "gate": "phase4-gate-3-ui-v2-read",
+  "interim": true,
+  "interimReason": "E-1(b): mock cloud account (DB-seeded V2 rows) — real Aliyun/Tencent credentials absent (plan §13-10)",
+  "schema": "$E2E_SCHEMA",
+  "connectionUid": "conn-mock-aliyun",
+  "providerType": "aliyun",
+  "seededComputeVmRows": $vms,
+  "scope": "UI V2 read only — real-credentials discovery (gate 1) and the section-15 pairs (gate 2) are not covered",
+  "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+  log "interim-marked artifact: $artifact/artifact.json"
+}
+
+# --- mode: serve-b (Slice B Playwright webServer command) ---------------------
+serve_b() {
+  REQUIRE_KIND=0
+  E2E_SCHEMA="${E2E_SCHEMA:-ops_admin_p4b}"
+  # Failure-safe like compare(): the backend child never outlives this mode.
+  trap teardown_stack EXIT
+  prepare
+  start_backend
+  seed_cloud
+  start_vite
+}
+
+start_vite() {
   # No `exec` for vite: the EXIT trap must survive to reap the backend child
   # and the schema — Playwright SIGTERMs this script when the run ends.
   trap teardown_stack EXIT INT TERM
@@ -277,7 +386,8 @@ case "${1:-}" in
   prepare)  prepare ;;
   register) register ;;
   serve)    serve ;;
+  serve-b)  serve_b ;;
   compare)  compare ;;
   down)     down ;;
-  *) die "usage: stack.sh {prepare|register|serve|compare|down}" ;;
+  *) die "usage: stack.sh {prepare|register|serve|serve-b|compare|down}" ;;
 esac

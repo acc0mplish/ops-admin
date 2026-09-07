@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"ops-admin/backend/httpx"
@@ -234,6 +235,16 @@ func liveResources(db *gorm.DB) *gorm.DB {
 		Where("infra_resource.deleted_at IS NULL")
 }
 
+// escapeLike neutralizes the LIKE metacharacters of a user-supplied pattern
+// fragment so kindPrefix matches its literal text only (the ESCAPE '!'
+// clause on the kindPrefix WHERE rides this; the escape character itself is
+// escaped first, and the fragment binds as a parameter so no SQL-literal
+// backslash handling is involved).
+func escapeLike(fragment string) string {
+	replacer := strings.NewReplacer(`!`, `!!`, `%`, `!%`, `_`, `!_`)
+	return replacer.Replace(fragment)
+}
+
 // ListResources lists resources with an optional kind filter and paging
 // (§3.8 — stale_source 제외·kind 필터·페이징).
 func (a *InfraAPI) ListResources(c *gin.Context) {
@@ -252,6 +263,15 @@ func (a *InfraAPI) ListResources(c *gin.Context) {
 	query := liveResources(a.db)
 	if kind := c.Query("kind"); kind != "" {
 		query = query.Where("infra_resource.kind = ?", kind)
+	}
+	// kindPrefix (plan J9 — PR 30 M7): family-wide read filter for the
+	// ComputeInventory view ("compute." — every kind under the family). A
+	// query parameter over the read side only — no schema change, no provider
+	// branching (A9). LIKE metacharacters in the input stay literal; the
+	// escape character is '!' because '\' is not portable across the MySQL
+	// (string-literal escape) and sqlite (unit fixture) dialects.
+	if prefix := c.Query("kindPrefix"); prefix != "" {
+		query = query.Where("infra_resource.kind LIKE ? ESCAPE '!'", escapeLike(prefix)+"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

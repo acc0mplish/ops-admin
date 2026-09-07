@@ -27,7 +27,9 @@ export default defineConfig({
     locale: 'en-US'
   },
   webServer: {
-    command: 'bash stack.sh serve',
+    // Slice A ('serve', default) vs Slice B ('serve-b' — plan N17): the mode
+    // picks the stack fixture (kind cluster vs DB-seeded mock cloud account).
+    command: `bash stack.sh ${process.env.E2E_STACK_MODE || 'serve'}`,
     cwd: thisDir,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
