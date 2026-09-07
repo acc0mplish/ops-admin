@@ -36,4 +36,6 @@ var steps = []Step{
 	step0004ConnectionSource,
 	// V2 Phase 3 appends step0005AuditExtend here (one line).
 	step0005AuditExtend,
+	// V2 Phase 4 C1 appends step0006FinopsCloudLink here (one line).
+	step0006FinopsCloudLink,
 }

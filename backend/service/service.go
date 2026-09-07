@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 	"ops-admin/backend/auth"
 	"ops-admin/backend/internal/domain/dnsserver"
+	infraModel "ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/model"
 	"ops-admin/backend/store"
 	"ops-admin/backend/util"
@@ -2242,6 +2243,16 @@ func (s *Service) UpdateAssetCloudAccount(payload AssetCloudAccountPayload) erro
 	if len(regions) == 0 {
 		return errors.New("at least one sync region is required")
 	}
+	var existing model.AssetCloudAccount
+	if err := s.db.Select("id", "access_key", "secret_key").First(&existing, payload.ID).Error; err != nil {
+		return err
+	}
+	// J5-3 (plan phase4 r2): a rotated v1 credential makes the backfilled V2
+	// inventory binding a lie — the broker would serve the OLD material.
+	// Detect the rotation and unlink the binding in the same transaction as
+	// the save; `sync-inventory` re-creates the chain from the new material.
+	credentialRotated := Trimmed(payload.AccessKey) != existing.AccessKey ||
+		(payload.SecretKey != "" && payload.SecretKey != existing.SecretKey)
 	updates := map[string]any{
 		"name":        Trimmed(payload.Name),
 		"provider":    Trimmed(payload.Provider),
@@ -2254,7 +2265,21 @@ func (s *Service) UpdateAssetCloudAccount(payload AssetCloudAccountPayload) erro
 	if payload.SecretKey != "" {
 		updates["secret_key"] = payload.SecretKey
 	}
-	return s.db.Model(&model.AssetCloudAccount{}).Where("id = ?", payload.ID).Updates(updates).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AssetCloudAccount{}).Where("id = ?", payload.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if credentialRotated {
+			if err := tx.Where("purpose = ?", "inventory").
+				Where("provider_connection_id IN (?)",
+					tx.Table("provider_connection").Select("id").
+						Where("source_model = ? AND source_id = ?", "asset_cloud_account", payload.ID),
+				).Delete(&infraModel.ProviderCredentialBinding{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Service) DeleteAssetCloudAccount(id uint) error {
