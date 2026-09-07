@@ -7,13 +7,14 @@
 #               internal/domain/provider (direct imports only — -deps would
 #               flag the opdef→middleware→store transit and false-alarm).
 #   R2 name   : core packages must not reference provider product identifiers
-#               (aliyun/tencent/alicloud/tencentcloud); capability names are
-#               fine. v2 (phase4 J8/D2): the guarded set covers the V2 core
-#               packages too, *_test.go is excluded (core-test mock identifiers
-#               are not product branches), and the §7.1 vocabulary declaration
-#               lines in contract/provider_type.go are the single exception —
-#               *declaring* a provider name is the spec's own design, *branching*
-#               on it is not.
+#               (aliyun/tencent/alicloud/tencentcloud/proxmox); capability
+#               names are fine. v2 (phase4 J8/D2): the guarded set covers the
+#               V2 core packages too, *_test.go is excluded (core-test mock
+#               identifiers are not product branches), and the §7.1 vocabulary
+#               declaration lines in contract/provider_type.go are the single
+#               exception — *declaring* a provider name is the spec's own
+#               design, *branching* on it is not. v3 (phase5 J9/E-4) adds
+#               proxmox to the scanned vocabulary under the same rule.
 #   R3 purity : opdef's direct imports are limited to {middleware, gin,
 #               gorm.io/gorm, stdlib} — opdef stays a pure vocabulary table
 #               and may not reach into service/controller/router/store/model.
@@ -41,10 +42,14 @@ CORE_PACKAGES=(internal/domain/dnsserver internal/infra/contract internal/infra/
 # symbols, and even then fails if the line branches on a provider name
 # (declaration vs branch, J8-c). The alias table is declared as a single-line
 # literal so every alias literal stays under the line-wise symbol pin.
-R2_PATTERN='\b(aliyun|tencent|alicloud|tencentcloud)\b'
+# R2 v3 (phase5 J9): proxmox joins the scanned vocabulary. Its promotion doc
+# comment in provider_type.go cites §7.1, so the §7.1 citation joins the
+# symbol pin — that declaration-zone line passes while any branch shape
+# crossing it still fails.
+R2_PATTERN='\b(aliyun|tencent|alicloud|tencentcloud|proxmox)\b'
 R2_VOCAB_EXCEPTION_FILE=internal/infra/contract/provider_type.go
-R2_VOCAB_EXCEPTION_SYMBOLS='M1ProviderTypeNames|ReservedProviderTypeNames|ProviderTypeAliases'
-R2_BRANCH_PATTERN='== *"(aliyun|tencent|alicloud|tencentcloud)"|case "(aliyun|tencent|alicloud|tencentcloud)"|ProviderType.*=='
+R2_VOCAB_EXCEPTION_SYMBOLS='M1ProviderTypeNames|ReservedProviderTypeNames|ProviderTypeAliases|§7\.1'
+R2_BRANCH_PATTERN='== *"(aliyun|tencent|alicloud|tencentcloud|proxmox)"|case "(aliyun|tencent|alicloud|tencentcloud|proxmox)"|ProviderType.*=='
 
 # R3 allowlist of non-stdlib imports opdef may hold.
 OPDEF_ALLOWED_NONSTD=(
