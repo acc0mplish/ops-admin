@@ -4,3 +4,6 @@ package compose
 // V4 오류 경로(공급자 유형 등록 선행 계약)는 Build의 정상 조립으로는 도달
 // 불가 — 등록 순서 계약의 음성 단얫이 직접 호출을 필요로 한다.
 var RegisterKubernetesForTest = registerKubernetes
+
+// RegisterAliyunForTest — registerAliyun의 동일 음성 단언면(Phase 4 A).
+var RegisterAliyunForTest = registerAliyun

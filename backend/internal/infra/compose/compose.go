@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ops-admin/backend/internal/infra/adapter/aliyun"
 	"ops-admin/backend/internal/infra/adapter/fake"
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
 	"ops-admin/backend/internal/infra/contract"
@@ -40,7 +41,7 @@ func Build(db *gorm.DB) (*Stack, error) {
 	// The adapter pre-registers its own row on its internal set; the shared
 	// set gets the row here so the report render always carries the
 	// {provider="kubernetes"} 0 line the gate ③ flat proof reads (J6).
-	counters.RegisterProviders(kubernetes.ProviderName)
+	counters.RegisterProviders(kubernetes.ProviderName, aliyun.ProviderName)
 	reg := registry.New()
 
 	// The kubernetes adapter shares the stack's counters so the sync report
@@ -53,6 +54,17 @@ func Build(db *gorm.DB) (*Stack, error) {
 	// §3.7 매핑 표가 OperationExecutor를 요구한다(V5) — 어댑터가 executor를
 	// 구현한 같은 Phase에 선언이 내려온다(§0.4 registry V5 요구의 이행).
 	if err := registerKubernetes(reg); err != nil {
+		return nil, err
+	}
+	// Phase 4 A (PR 27): aliyun 어댑터 등록 — 읽기 전용 inventory(계획 §5
+	// Phase A, 판정 J10). capability 선언은 등록의 후행 계약(V4·V5 — §3.7
+	// 매핑 표가 compute.vm.read에 Discoverer를 요구하고 어댑터가 그것을
+	// 구현하므로 등록 시 타입 단얫이 통과한다).
+	ali := aliyun.NewAdapter(aliyun.WithCounters(counters))
+	if err := reg.RegisterProviderType(ali.Descriptor(), ali); err != nil {
+		return nil, err
+	}
+	if err := registerAliyun(reg); err != nil {
 		return nil, err
 	}
 	// The fake stays a first-class registered adapter (§11.1) — its harness
@@ -170,6 +182,28 @@ func registerKubernetes(reg *registry.Registry) error {
 		return err
 	}
 	return reg.RegisterOperation(restartOperation)
+}
+
+// registerAliyun declares the aliyun read capability pair (판정 J10 — §10.1
+// 어휘): inventory.full + compute.vm.read, 둘 다 compute.vm 1종(E-3 — vm family
+// 한정). §3.7 매핑 표가 두 capability 모두 Discoverer를 요구한다 — 어댑터의
+// Discoverer 구현이 등록 시 타입 단얫으로 검증된다(V5). opdef 없음 — Phase 4는
+// 읽기 전용(§20).
+func registerAliyun(reg *registry.Registry) error {
+	return reg.RegisterCapabilities(aliyun.ProviderName,
+		contract.Capability{
+			Name:          "inventory.full",
+			Version:       "1",
+			ResourceKinds: []string{"compute.vm"},
+			ReadOnly:      true,
+		},
+		contract.Capability{
+			Name:          "compute.vm.read",
+			Version:       "1",
+			ResourceKinds: []string{"compute.vm"},
+			ReadOnly:      true,
+		},
+	)
 }
 
 // restartOperation — k8s.workload.restart 정의(§3.3).

@@ -38,15 +38,18 @@ func TestBuildWiresStack(t *testing.T) {
 		t.Fatalf("compose.Build: %v", err)
 	}
 	names := stack.Registry.ProviderTypeNames()
-	if len(names) != 2 {
-		t.Fatalf("registry provider types = %v, want [fake kubernetes]", names)
+	// 등록 수 단얫 갱신(보존 제약 6 명시적 예외 — 계획 r2 H3): 어댑터 등록의
+	// 필연. Phase 4 A(P27)가 fake·kubernetes에 aliyun을 더해 3종 — Phase 4 B
+	// (PR 28, tencent) 착지 시 4종으로 갱신된다.
+	if len(names) != 3 {
+		t.Fatalf("registry provider types = %v, want [fake kubernetes aliyun]", names)
 	}
 	got := map[string]bool{}
 	for _, n := range names {
 		got[n] = true
 	}
-	if !got["fake"] || !got["kubernetes"] {
-		t.Errorf("registry provider types = %v, want fake and kubernetes", names)
+	if !got["fake"] || !got["kubernetes"] || !got["aliyun"] {
+		t.Errorf("registry provider types = %v, want fake, kubernetes and aliyun", names)
 	}
 	if stack.Runner == nil || stack.Broker == nil || stack.Counters == nil {
 		t.Fatal("stack left a component unwired")
@@ -170,6 +173,60 @@ func TestRegisterKubernetesOrderingContract(t *testing.T) {
 	}
 	if err := compose.RegisterKubernetesForTest(reg); err == nil {
 		t.Fatal("duplicate capability declaration succeeded, want the V4 duplicate error")
+	}
+}
+
+// TestBuildRegistersAliyunInventory — Phase 4 A(M1/M2 aliyun분): compose는
+// aliyun provider type + 읽기 capability 2종(판정 J10)을 등록한다. §3.7 매핑
+// 표가 compute.vm.read·inventory.full에 Discoverer를 요구한다(V5) — 등록된
+// 어댑터가 실제로 구현한다. opdef 없음 — Phase 4는 읽기 전용(§20).
+func TestBuildRegistersAliyunInventory(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+
+	stack, err := compose.Build(db)
+	if err != nil {
+		t.Fatalf("compose.Build: %v", err)
+	}
+
+	caps := stack.Registry.Capabilities("aliyun")
+	got := map[string]contract.Capability{}
+	for _, c := range caps {
+		got[c.Name] = c
+	}
+	for _, name := range []string{"inventory.full", "compute.vm.read"} {
+		c, ok := got[name]
+		if !ok {
+			t.Errorf("aliyun capabilities = %v, missing %q", caps, name)
+			continue
+		}
+		if !c.ReadOnly {
+			t.Errorf("capability %q must be read-only (§20)", name)
+		}
+		if !slices.Equal(c.ResourceKinds, []string{"compute.vm"}) {
+			t.Errorf("capability %q ResourceKinds = %v, want [compute.vm] (E-3 vm family)", name, c.ResourceKinds)
+		}
+	}
+
+	_, adapter, ok := stack.Registry.ProviderType("aliyun")
+	if !ok {
+		t.Fatal("aliyun provider type not registered")
+	}
+	if _, ok := adapter.(contract.Discoverer); !ok {
+		t.Error("aliyun adapter does not implement Discoverer (§3.7 inventory row, V5)")
+	}
+	if _, ok := adapter.(contract.OperationExecutor); ok {
+		t.Error("aliyun adapter must not implement OperationExecutor — Phase 4 is read-only (§20)")
+	}
+	// 공유 카운터 집합이 aliyun 0행을 미리 등록한다 — 리포트 렌더의 flat 증거.
+	if want := `provider_rate_limit_total{provider="aliyun"} 0`; !strings.Contains(stack.Counters.Render(), want) {
+		t.Errorf("counters render missing %q:\n%s", want, stack.Counters.Render())
+	}
+
+	// V4 순서 계약 — provider type 등록 없이 capability 선언은 거부된다.
+	bare := registry.New()
+	if err := compose.RegisterAliyunForTest(bare); err == nil {
+		t.Fatal("capability declaration before provider registration succeeded, want the V4 unregistered-type error")
 	}
 }
 
