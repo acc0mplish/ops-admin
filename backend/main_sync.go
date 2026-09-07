@@ -22,21 +22,22 @@ import (
 // metrics render (claims 5/6 evidence). Nothing credential-shaped
 // (kubeconfig, SecretRef material) exists on this struct (보존 제약 #7).
 type syncReportArtifact struct {
-	RunUID         string                   `json:"runUid"`
-	ConnectionUID  string                   `json:"connectionUid"`
-	Mode           string                   `json:"mode"`
-	Status         string                   `json:"status"`
-	Outcomes       map[string]int           `json:"outcomes"`
-	SeenCount      int                      `json:"seenCount"`
-	CreatedCount   int                      `json:"createdCount"`
-	UpdatedCount   int                      `json:"updatedCount"`
-	MissingCount   int                      `json:"missingCount"`
-	Backfill       inventory.BackfillReport `json:"backfill"`
-	MetricsText    string                   `json:"metricsText"`
-	StartedAt      time.Time                `json:"startedAt"`
-	CommittedAt    time.Time                `json:"committedAt"`
-	FinishedAt     time.Time                `json:"finishedAt"`
-	ArtifactSchema string                   `json:"artifactSchema"`
+	RunUID         string                        `json:"runUid"`
+	ConnectionUID  string                        `json:"connectionUid"`
+	Mode           string                        `json:"mode"`
+	Status         string                        `json:"status"`
+	Outcomes       map[string]int                `json:"outcomes"`
+	SeenCount      int                           `json:"seenCount"`
+	CreatedCount   int                           `json:"createdCount"`
+	UpdatedCount   int                           `json:"updatedCount"`
+	MissingCount   int                           `json:"missingCount"`
+	Backfill       inventory.BackfillReport      `json:"backfill"`
+	CloudBackfill  inventory.CloudBackfillReport `json:"cloudBackfill"`
+	MetricsText    string                        `json:"metricsText"`
+	StartedAt      time.Time                     `json:"startedAt"`
+	CommittedAt    time.Time                     `json:"committedAt"`
+	FinishedAt     time.Time                     `json:"finishedAt"`
+	ArtifactSchema string                        `json:"artifactSchema"`
 }
 
 // runSyncInventory implements the "sync-inventory" command: backfill the v1
@@ -93,6 +94,15 @@ func runSyncInventory(args []string) int {
 		fmt.Fprintf(os.Stderr, "sync-inventory: backfill: %v\n", err)
 		return 1
 	}
+	// §5.4 propagation for the cloud sources (plan phase4 C1 — J6): the
+	// credential collapse + finops link backfill shares the k8s checkpoint
+	// here; its per-account failures stay in the report (error isolation),
+	// never a crash.
+	cloudBackfill, err := inventory.RunCloudAccountBackfill(ctx, db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sync-inventory: cloud backfill: %v\n", err)
+		return 1
+	}
 
 	report, err := stack.Runner.RunSync(ctx, inventory.SyncInput{ConnectionUID: *connectionUID, Mode: *mode})
 	if err != nil {
@@ -103,7 +113,7 @@ func runSyncInventory(args []string) int {
 	artifact := syncReportArtifact{
 		RunUID: report.RunUID, ConnectionUID: *connectionUID, Mode: *mode,
 		Status: report.Status, Outcomes: report.Outcomes,
-		Backfill: backfill, MetricsText: report.MetricsText,
+		Backfill: backfill, CloudBackfill: cloudBackfill, MetricsText: report.MetricsText,
 		StartedAt: report.StartedAt, CommittedAt: report.CommittedAt, FinishedAt: report.FinishedAt,
 		ArtifactSchema: "ops-admin.sync-report/v1",
 	}
