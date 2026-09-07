@@ -3,17 +3,26 @@
 package compose_test
 
 import (
+	"context"
 	"reflect"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"gorm.io/gorm"
 
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
 	"ops-admin/backend/internal/infra/compose"
 	"ops-admin/backend/internal/infra/contract"
+	"ops-admin/backend/internal/infra/migrate"
+	"ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/internal/infra/registry"
+	"ops-admin/backend/internal/tasks"
 	"ops-admin/backend/internal/testutil"
+	"ops-admin/backend/util"
 )
 
 // TestBuildWiresStack — Build must yield a registry carrying both built-in
@@ -161,5 +170,237 @@ func TestRegisterKubernetesOrderingContract(t *testing.T) {
 	}
 	if err := compose.RegisterKubernetesForTest(reg); err == nil {
 		t.Fatal("duplicate capability declaration succeeded, want the V4 duplicate error")
+	}
+}
+
+// TestBuildEngineWiresTerminalHook — Phase 3 D2(M4/M9): BuildEngine assembles
+// the durable engine over the stack's registry and wires the J6 OnTaskTerminal
+// hook end to end. Driving a task to its terminal through the fake circuit
+// must fire BOTH hook legs: the §18.1 terminal audit (the injected
+// TerminalAuditFunc — production passes v2.RecordTaskTerminal; injected here
+// so compose never imports the api layer) and the observation refresh
+// (SyncRunner.RunSync on the task's connection — status independent, J6: a
+// failed rollout's observation is still the truth of a partial rollout).
+func TestBuildEngineWiresTerminalHook(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	if err := migrate.Run(context.Background(), db); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	// The chain the engine resolves AND the sync runner refreshes: fake
+	// connection → context → resource, with a real inventory binding (a
+	// sealed envelope under the pinned test key) so RunSync's broker resolve
+	// succeeds. The resource urn matches the fake adapter's seeded workload —
+	// the refresh re-observes the very resource the task mutated.
+	now := time.Now()
+	conn := model.ProviderConnection{UID: "conn-hook", ProviderType: "fake", Name: "hook cluster", Endpoint: "https://fake.invalid", Status: "active"}
+	if err := db.Create(&conn).Error; err != nil {
+		t.Fatal(err)
+	}
+	pctx := model.ProviderContext{UID: "ctx-hook", ConnectionID: conn.ID, Kind: "cluster", ExternalID: "1", Name: "hook cluster"}
+	if err := db.Create(&pctx).Error; err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := util.EncryptSecretV2("test-kubeconfig-material")
+	if err != nil {
+		t.Fatalf("EncryptSecretV2: %v", err)
+	}
+	ref := model.SecretRef{UID: "ref-hook", Backend: "internal", Path: "test/hook", Ciphertext: envelope}
+	if err := db.Create(&ref).Error; err != nil {
+		t.Fatal(err)
+	}
+	binding := model.ProviderCredentialBinding{ProviderConnectionID: conn.ID, ProviderContextID: &pctx.ID, Purpose: "inventory", SecretRefID: ref.ID, Status: "active"}
+	if err := db.Create(&binding).Error; err != nil {
+		t.Fatal(err)
+	}
+	res := model.InfraResource{
+		UID: "res-hook", ContextID: pctx.ID, Kind: "orchestration.workload",
+		ExternalURN: "urn:fake:workload:workload-1", DisplayName: "hook workload",
+		LifecycleState: "running", HealthState: "healthy", ManagedState: "discovered",
+		FirstSeenAt: now, LastSeenAt: now.Add(-time.Minute),
+	}
+	if err := db.Create(&res).Error; err != nil {
+		t.Fatal(err)
+	}
+	baseline := model.ResourceObservation{
+		ResourceID: res.ID, GenerationUID: res.UID, ObservationHash: "baseline", NormalizerVersion: "1",
+		ObservedAt: now.Add(-time.Minute),
+	}
+	if err := db.Create(&baseline).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	stack, err := compose.Build(db)
+	if err != nil {
+		t.Fatalf("compose.Build: %v", err)
+	}
+	def := contract.OperationDefinition{
+		Name: "fake.workload.restart", Version: "1",
+		ResourceKinds: []string{"orchestration.workload"},
+		// The fake adapter declares orchestration.kubernetes.apply (fake.go).
+		RequiredCapability: "orchestration.kubernetes.apply",
+		RequiredPermission: "assets:k8s:workload:restart",
+		Mutating:           true, RiskLevel: "medium",
+		TimeoutSeconds: 30, RetryPolicy: contract.RetryPolicy{MaxAttempts: 1},
+	}
+	if err := stack.Registry.RegisterOperation(def); err != nil {
+		t.Fatalf("seed fake operation: %v", err)
+	}
+
+	var mu sync.Mutex
+	var auditCalls []string
+	audit := compose.TerminalAuditFunc(func(_ context.Context, _ *gorm.DB, task model.ProviderTask, status string, _ contract.JSONMap) error {
+		mu.Lock()
+		defer mu.Unlock()
+		auditCalls = append(auditCalls, task.UID+"|"+status)
+		return nil
+	})
+
+	engine := stack.BuildEngine(tasks.Config{
+		WorkerID: "hook-test", PollInterval: time.Hour, LeaseSeconds: 30, ReaperGrace: time.Second,
+	}, audit)
+	if engine == nil {
+		t.Fatal("BuildEngine returned nil")
+	}
+
+	ctx := context.Background()
+	task, _, err := engine.Submit(ctx, tasks.SubmitInput{
+		OperationName: "fake.workload.restart",
+		ResourceUID:   "res-hook",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	processed, err := engine.RunOnce(ctx)
+	if err != nil || !processed {
+		t.Fatalf("RunOnce = (%v, %v), want (true, nil) — the task must reach its terminal", processed, err)
+	}
+
+	var final model.ProviderTask
+	if err := db.Where("uid = ?", task.UID).First(&final).Error; err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != tasks.TaskStatusSucceeded {
+		t.Fatalf("task status = %q, want succeeded (the null-handle synchronous leg)", final.Status)
+	}
+
+	// Audit leg: the §18.1 terminal writer was invoked exactly once with the
+	// committed terminal task (url=task://<uid> convention is the writer's).
+	mu.Lock()
+	got := append([]string(nil), auditCalls...)
+	mu.Unlock()
+	if len(got) != 1 || got[0] != task.UID+"|"+tasks.TaskStatusSucceeded {
+		t.Fatalf("terminal audit calls = %v, want exactly [%s|succeeded]", got, task.UID)
+	}
+
+	// Refresh leg: the hook ran a sync run on the task's connection and the
+	// task's own resource gained a newer observation.
+	var runs int64
+	if err := db.Model(&model.InventorySyncRun{}).Where("context_id = ?", pctx.ID).Count(&runs).Error; err != nil {
+		t.Fatalf("count sync runs: %v", err)
+	}
+	if runs == 0 {
+		t.Fatal("no inventory sync run recorded — the observation-refresh leg never ran")
+	}
+	var observations int64
+	if err := db.Model(&model.ResourceObservation{}).Where("resource_id = ?", res.ID).Count(&observations).Error; err != nil {
+		t.Fatalf("count observations: %v", err)
+	}
+	if observations < 2 {
+		t.Fatalf("observations for the task's resource = %d, want ≥2 (baseline + the terminal refresh)", observations)
+	}
+	var refreshed model.InfraResource
+	if err := db.First(&refreshed, res.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !refreshed.LastSeenAt.After(res.LastSeenAt) {
+		t.Error("resource last_seen_at not advanced by the terminal refresh")
+	}
+}
+
+// TestBuildEngineHookSurvivesRefreshFailure — J6: a failed observation refresh
+// must not skip the terminal audit row. Both legs run; the engine's
+// fireTaskTerminal disposes the joined error (the terminal stands). Here the
+// chain is unresolvable (no binding at all → RunSync cannot resolve the
+// inventory credential) yet the audit writer still fired.
+func TestBuildEngineHookSurvivesRefreshFailure(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	if err := migrate.Run(context.Background(), db); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	// Chain WITHOUT any binding: execution is fine (the fake runs on Config
+	// alone — §3.5), but RunSync's broker resolve fails.
+	conn := model.ProviderConnection{UID: "conn-norefresh", ProviderType: "fake", Name: "no refresh", Status: "active"}
+	if err := db.Create(&conn).Error; err != nil {
+		t.Fatal(err)
+	}
+	pctx := model.ProviderContext{UID: "ctx-norefresh", ConnectionID: conn.ID, Kind: "cluster", ExternalID: "1"}
+	if err := db.Create(&pctx).Error; err != nil {
+		t.Fatal(err)
+	}
+	res := model.InfraResource{
+		UID: "res-norefresh", ContextID: pctx.ID, Kind: "orchestration.workload",
+		ExternalURN: "urn:fake:workload:workload-1", FirstSeenAt: time.Now(), LastSeenAt: time.Now(),
+	}
+	if err := db.Create(&res).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	stack, err := compose.Build(db)
+	if err != nil {
+		t.Fatalf("compose.Build: %v", err)
+	}
+	def := contract.OperationDefinition{
+		Name: "fake.workload.restart", Version: "1",
+		ResourceKinds:      []string{"orchestration.workload"},
+		RequiredCapability: "orchestration.kubernetes.apply",
+		RequiredPermission: "assets:k8s:workload:restart",
+		Mutating:           true, TimeoutSeconds: 30,
+		RetryPolicy: contract.RetryPolicy{MaxAttempts: 1},
+	}
+	if err := stack.Registry.RegisterOperation(def); err != nil {
+		t.Fatalf("seed fake operation: %v", err)
+	}
+
+	auditCalls := 0
+	audit := compose.TerminalAuditFunc(func(context.Context, *gorm.DB, model.ProviderTask, string, contract.JSONMap) error {
+		auditCalls++
+		return nil
+	})
+	engine := stack.BuildEngine(tasks.Config{WorkerID: "hook-test2", PollInterval: time.Hour}, audit)
+
+	ctx := context.Background()
+	task, _, err := engine.Submit(ctx, tasks.SubmitInput{
+		OperationName: "fake.workload.restart",
+		ResourceUID:   "res-norefresh",
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if _, err := engine.RunOnce(ctx); err != nil {
+		t.Fatalf("RunOnce: %v — a hook failure must not escape the engine (fireTaskTerminal disposes it)", err)
+	}
+	var final model.ProviderTask
+	if err := db.Where("uid = ?", task.UID).First(&final).Error; err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != tasks.TaskStatusSucceeded {
+		t.Fatalf("status = %q, want succeeded — the terminal stands despite the refresh failure (J6)", final.Status)
+	}
+	if auditCalls != 1 {
+		t.Fatalf("terminal audit calls = %d, want 1 — the refresh failure must not skip the audit row", auditCalls)
+	}
+	// The hook failure is recorded, not swallowed: observation_refresh_failed.
+	var mark int64
+	if err := db.Model(&model.TaskEvent{}).
+		Where("task_id = ? AND type = ?", final.ID, tasks.TaskEventObservationRefreshFailed).
+		Count(&mark).Error; err != nil {
+		t.Fatal(err)
+	}
+	if mark != 1 {
+		t.Fatalf("observation_refresh_failed events = %d, want 1 — the failed refresh must be recorded", mark)
 	}
 }

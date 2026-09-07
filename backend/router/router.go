@@ -19,7 +19,14 @@ import (
 // the prefix excludes the group name.
 const v2APIPrefix = "/api/v2"
 
-func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
+// New assembles the full engine. v2API is the injected V2 infra API (plan
+// M8/M9): main builds the stack ONCE (compose.Build), assembles the task
+// engine over it and hands the fully-wired API in here — the mutation
+// handlers then carry the engine instead of degrading 503. nil keeps the
+// Phase 2 self-assembly path (compose.Build inside NewInfraAPI) — the
+// engine-less boot is byte-for-byte what it was: the v1 tree and the V2 read
+// routes are untouched by the engine lane's absence (R11).
+func New(cfg *config.Config, db *gorm.DB, v2API *v2.InfraAPI) (*gin.Engine, *service.Service) {
 	if cfg.App.Mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -513,12 +520,14 @@ func New(cfg *config.Config, db *gorm.DB) (*gin.Engine, *service.Service) {
 	// for the operations routes and falls back to the opdef representative —
 	// ops:job:approve for the task verbs, whose route has no :name — so the
 	// enforced vocabulary stays registry-canonical without a second grant
-	// path. The task engine itself is not assembled here (compose owns the
-	// engine wiring — plan M4/M9); the mutation handlers that need it degrade
-	// 503 until the injection lands.
+	// path. The engine is injected through v2API (main's startEngineLane —
+	// plan M9); a nil injection keeps the Phase 2 self-assembly below and the
+	// mutation handlers degrade 503 (R11: the engine lane never gates v1).
 	v2Group := engine.Group("/api/v2/infra")
 	v2Group.Use(middleware.Auth(db), middleware.OperationLog(db))
-	v2API := v2.NewInfraAPI(db)
+	if v2API == nil {
+		v2API = v2.NewInfraAPI(db)
+	}
 	v2API.Register(v2Group)
 	v2API.RegisterOperations(v2Group, func(def opdef.Def) gin.HandlerFunc {
 		return opdef.V2DynamicMiddleware(db, def, v2API.ResolveOperationPermission)
