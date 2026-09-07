@@ -16,6 +16,7 @@ import (
 	"ops-admin/backend/internal/infra/adapter/aliyun"
 	"ops-admin/backend/internal/infra/adapter/fake"
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
+	"ops-admin/backend/internal/infra/adapter/proxmox"
 	"ops-admin/backend/internal/infra/adapter/tencent"
 	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/inventory"
@@ -89,6 +90,27 @@ func Build(db *gorm.DB) (*Stack, error) {
 			Name:          "compute.vm.read",
 			Version:       "1",
 			ResourceKinds: []string{tencent.KindVM},
+			ReadOnly:      true,
+		},
+	); err != nil {
+		return nil, err
+	}
+	// Phase 5 C2 (PR 31a): the proxmox read-only adapter (BaseAdapter +
+	// Discoverer) shares the stack's counters and declares the single read
+	// capability over its whole discovery kind surface (§3.4 —
+	// inventory.full의 ResourceKinds는 DiscoveryKinds 전수). mutation
+	// capability·opdef 등록은 Phase D(31b) 소관 — executor 구현과 같은
+	// Phase에 내려온다(§0.4 registry V5 요구의 이행).
+	counters.RegisterProviders(proxmox.ProviderName)
+	px := proxmox.NewAdapter(proxmox.WithCounters(counters))
+	if err := reg.RegisterProviderType(px.Descriptor(), px); err != nil {
+		return nil, err
+	}
+	if err := reg.RegisterCapabilities(proxmox.ProviderName,
+		contract.Capability{
+			Name:          "inventory.full",
+			Version:       "1",
+			ResourceKinds: proxmox.DiscoveryKinds,
 			ReadOnly:      true,
 		},
 	); err != nil {
