@@ -294,6 +294,10 @@ func TestMigrationAppliesExactV2TableSet(t *testing.T) {
 	}
 
 	// 스펙 §3.2 나열 그대로 (A1: 12종이 M1 전부 — "13" 선언 대비 1종 부족은 계획 §0.1 판정).
+	// + sys_operation_log (V2 Phase 3 step0005 — plan §3.5 J3): NOT a new
+	// table (보존 제약 #6 forbids a separate audit table) — the step EXTENDs
+	// the existing v1 audit table with the §18.1 columns, which brings it
+	// under migration management on a fresh schema.
 	want := map[string]bool{
 		"schema_migration":            true,
 		"provider_connection":         true,
@@ -307,6 +311,7 @@ func TestMigrationAppliesExactV2TableSet(t *testing.T) {
 		"provider_task":               true,
 		"task_attempt":                true,
 		"task_event":                  true,
+		"sys_operation_log":           true,
 	}
 
 	for name := range got {

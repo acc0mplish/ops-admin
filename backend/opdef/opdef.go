@@ -53,14 +53,55 @@ var permissionPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?::[a-z][a-z0-9-]*){
 // read-only; the physical order of the underlying tables is not contractual —
 // artifact generators sort their output (determinism contract M-1).
 func All() []Def {
-	defs := make([]Def, 0, len(domainDefs)+len(systemDefs)+len(assetDefs)+len(integrationDefs)+len(opsDefs)+len(monitorDefs))
+	defs := make([]Def, 0, len(domainDefs)+len(systemDefs)+len(assetDefs)+len(integrationDefs)+len(opsDefs)+len(monitorDefs)+len(v2infraDefs))
 	defs = append(defs, domainDefs...)
 	defs = append(defs, systemDefs...)
 	defs = append(defs, assetDefs...)
 	defs = append(defs, integrationDefs...)
 	defs = append(defs, opsDefs...)
 	defs = append(defs, monitorDefs...)
+	// V2 infra mutation batch (plan §3.4, M11): the /api/v2/infra non-GET
+	// surface — sensitive-route golden and the permission seeder see it like
+	// every v1 group.
+	defs = append(defs, v2infraDefs...)
 	return defs
+}
+
+// v2ResolvedPermission resolves the enforced permission for one v2 operation
+// route (J4): the registry lookup wins when the operation is registered (the
+// registry is the canonical RequiredPermission source — §3.4 동적 권한), and
+// the opdef representative is enforced when it is not, so enforcement stays
+// visible to the zero-grant oracle regardless of registry state. found=false
+// means no permission could be determined (a programming error — the
+// middleware must fail the request, never let it through).
+func v2ResolvedPermission(d Def, resolve func(operation string) (string, bool), operation string) (string, bool) {
+	if resolve != nil {
+		if permission, ok := resolve(operation); ok && permission != "" {
+			return permission, true
+		}
+	}
+	if d.Permission != "" {
+		return d.Permission, true
+	}
+	return "", false
+}
+
+// V2DynamicMiddleware turns a v2 definition into the gin middleware that
+// enforces the registry-resolved permission for the route's :name parameter
+// (J4 — the v2 extension of the "opdef.Middleware is the only origin of
+// route-level checks" principle; the check still funnels through
+// middleware.RequirePermission). The R3 arch boundary pins this package to
+// {middleware, gin, gorm, stdlib}, so the registry lookup arrives as a
+// closure injected by the router.
+func V2DynamicMiddleware(db *gorm.DB, d Def, resolve func(operation string) (string, bool)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		permission, found := v2ResolvedPermission(d, resolve, c.Param("name"))
+		if !found {
+			c.AbortWithStatusJSON(500, gin.H{"code": 500, "message": "operation definition carries no permission"})
+			return
+		}
+		middleware.RequirePermission(db, permission)(c)
+	}
 }
 
 // Validate checks one definition against the table invariants (T2/T3/T4).

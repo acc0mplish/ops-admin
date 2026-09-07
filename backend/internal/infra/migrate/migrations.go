@@ -34,4 +34,6 @@ var steps = []Step{
 	step0003TaskGuards,
 	// PR 21 appends step0004ConnectionSource here (one line).
 	step0004ConnectionSource,
+	// V2 Phase 3 appends step0005AuditExtend here (one line).
+	step0005AuditExtend,
 }

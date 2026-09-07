@@ -1,6 +1,6 @@
 # Sensitive-route classification generated from backend/opdef — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestSensitiveRoutesArtifact -update
-# 285 entries.
+# 290 entries.
 DELETE /admin/delete	permission=system:admin:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/cloudAccount/delete	permission=assets:cloudaccount:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/credential/delete	permission=assets:credential:delete	mutating=true	risk=high	reduction=false
@@ -154,6 +154,11 @@ POST /domain/public/certificates/upload	permission=domains:ssl:upload	mutating=t
 POST /domain/public/domains/sync	permission=domains:public:sync	mutating=true	risk=medium	reduction=false
 POST /domain/public/records/batch	permission=domains:public:batch	mutating=true	risk=medium	reduction=false
 POST /domain/public/records/mutate	permission=domains:public:record	mutating=true	risk=medium	reduction=false
+POST /infra/resources/:uid/operations/:name/execute	permission=assets:k8s:workload:restart	mutating=true	risk=medium	reduction=false
+POST /infra/resources/:uid/operations/:name/plan	permission=assets:k8s:workload:restart	mutating=true	risk=medium	reduction=false
+POST /infra/tasks/:uid/approve	permission=ops:job:approve	mutating=true	risk=medium	reduction=false
+POST /infra/tasks/:uid/cancel	permission=ops:job:approve	mutating=true	risk=medium	reduction=false
+POST /infra/tasks/:uid/reject	permission=ops:job:approve	mutating=true	risk=medium	reduction=false
 POST /integration/ai/action/confirm	permission=integration:ai:action	mutating=true	risk=high	reduction=false
 POST /integration/ai/action/reject	permission=integration:ai:action	mutating=true	risk=medium	reduction=false
 POST /integration/ai/chat/send	permission=integration:ai:conversation	mutating=true	risk=medium	reduction=false
