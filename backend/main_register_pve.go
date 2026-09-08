@@ -16,18 +16,14 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"ops-admin/backend/config"
 	"ops-admin/backend/internal/infra/adapter/proxmox"
@@ -47,10 +43,6 @@ const (
 	pveROTokenSecretEnv  = "OPS_ADMIN_PVE_RO_TOKEN_SECRET"
 	pveOpsTokenSecretEnv = "OPS_ADMIN_PVE_OPS_TOKEN_SECRET"
 )
-
-// pveRegisterTimeout bounds each registration probe. Registration is a
-// one-shot CLI — a hung provider should fail the run, not the shell.
-const pveRegisterTimeout = 15 * time.Second
 
 type pveRegisterOptions struct {
 	Name                  string // idempotency key — the upsert looks the chain up by its derived UID
@@ -169,16 +161,6 @@ func pveResolveSecret(envKey, flagValue, flagName string) (string, error) {
 	return secret, nil
 }
 
-// pveClusterIdentity is what /cluster/status says about the registration
-// target: the cluster name, or — standalone (A11) — the only node name with
-// the marker set.
-type pveClusterIdentity struct {
-	Name       string
-	Standalone bool
-	Nodes      int
-	Quorate    bool
-}
-
 // registerPVEInDB writes the connection/context/secret/binding chain. Kept
 // separate from flag parsing so the tests can drive it against an in-memory
 // database and a mock PVE endpoint (J8 — harness only).
@@ -231,8 +213,10 @@ func registerPVEInDB(ctx context.Context, db *gorm.DB, opts pveRegisterOptions) 
 		return report, fmt.Errorf("validate: %w", err)
 	}
 
-	// 2) /cluster/status → cluster identity (standalone 폴백 A11).
-	identity, err := pveResolveClusterIdentity(ctx, opts.Endpoint, roMaterial, opts.InsecureTLS)
+	// 2) /cluster/status → cluster identity (standalone 폴백 A11). Validate와
+	// 같은 ConnectionView·같은 어댑터 클라이언트 조립 — 등록 probe가 런타임
+	// 전송 posture(자격 헤더·TLS·배치 모드)에서 드리프트하지 않는다(④리뷰 LOW).
+	identity, err := adapter.ResolveIdentity(ctx, view)
 	if err != nil {
 		return report, fmt.Errorf("cluster identity: %w", err)
 	}
@@ -243,82 +227,92 @@ func registerPVEInDB(ctx context.Context, db *gorm.DB, opts pveRegisterOptions) 
 		report.Warnings = append(report.Warnings, warning)
 	}
 
-	// 3) upsert provider_connection — the UID is derived from --name so a
-	// rerun lands on the same row (§3.3 멱등).
-	connUID := pveRegisterUID(opts.Name, "")
-	report.ConnectionUID = connUID
-	var conn model.ProviderConnection
-	err = db.Where("uid = ?", connUID).First(&conn).Error
-	switch {
-	case isRecordNotFound(err):
-		conn = model.ProviderConnection{
-			UID: connUID, ProviderType: proxmox.ProviderName,
-			Name: opts.Name, Endpoint: opts.Endpoint,
-			Status: "active", ConfigJSON: configJSON,
+	// 3–6) 체인 쓰기는 단일 트랜잭션으로(④리뷰 LOW — 중간 실패 시 부분 체인
+	// 잔여 제거). 멱등 upsert 의미론은 불변 — 재실행은 같은 UID 체인에서
+	// 자가 치유하되, 이제 어느 한 단계의 실패도 반쯤 씌인 체인을 남기지
+	// 않는다. 검증·신원 probe는 네트워크 I/O라 트랜잭션 밖에 둔다 — 잠금
+	// 보유 중 원격 왕복을 두지 않는다.
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		// 3) upsert provider_connection — the UID is derived from --name so a
+		// rerun lands on the same row (§3.3 멱등).
+		connUID := pveRegisterUID(opts.Name, "")
+		report.ConnectionUID = connUID
+		var conn model.ProviderConnection
+		err := tx.Where("uid = ?", connUID).First(&conn).Error
+		switch {
+		case isRecordNotFound(err):
+			conn = model.ProviderConnection{
+				UID: connUID, ProviderType: proxmox.ProviderName,
+				Name: opts.Name, Endpoint: opts.Endpoint,
+				Status: "active", ConfigJSON: configJSON,
+			}
+			if err := tx.Create(&conn).Error; err != nil {
+				return fmt.Errorf("create provider_connection: %w", err)
+			}
+		case err != nil:
+			return fmt.Errorf("load provider_connection: %w", err)
+		default:
+			// Struct + Select — config_json's column serializer applies to
+			// model-field writes only (map updates double-encode; backfill 규약).
+			patch := model.ProviderConnection{Name: opts.Name, Endpoint: opts.Endpoint, ConfigJSON: configJSON}
+			if err := tx.Model(&model.ProviderConnection{}).Where("id = ?", conn.ID).
+				Select("name", "endpoint", "config_json").Updates(patch).Error; err != nil {
+				return fmt.Errorf("update provider_connection: %w", err)
+			}
 		}
-		if err := db.Create(&conn).Error; err != nil {
-			return report, fmt.Errorf("create provider_connection: %w", err)
-		}
-	case err != nil:
-		return report, fmt.Errorf("load provider_connection: %w", err)
-	default:
-		// Struct + Select — config_json's column serializer applies to
-		// model-field writes only (map updates double-encode; backfill 규약).
-		patch := model.ProviderConnection{Name: opts.Name, Endpoint: opts.Endpoint, ConfigJSON: configJSON}
-		if err := db.Model(&model.ProviderConnection{}).Where("id = ?", conn.ID).
-			Select("name", "endpoint", "config_json").Updates(patch).Error; err != nil {
-			return report, fmt.Errorf("update provider_connection: %w", err)
-		}
-	}
 
-	// 4) upsert provider_context — Kind "cluster"; ExternalID is the cluster
-	// name, or the only node name with the standalone marker (A11).
-	ctxUID := pveRegisterUID(opts.Name, "context")
-	report.ContextUID = ctxUID
-	metadata := contract.JSONMap{"nodes": identity.Nodes, "quorum": identity.Quorate}
-	if identity.Standalone {
-		metadata = contract.JSONMap{"standalone": true}
-	}
-	var pctx model.ProviderContext
-	err = db.Where("uid = ?", ctxUID).First(&pctx).Error
-	switch {
-	case isRecordNotFound(err):
-		pctx = model.ProviderContext{
-			UID: ctxUID, ConnectionID: conn.ID, Kind: "cluster",
-			ExternalID: identity.Name, Name: opts.Name,
-			Status: "active", MetadataJSON: metadata,
+		// 4) upsert provider_context — Kind "cluster"; ExternalID is the cluster
+		// name, or the only node name with the standalone marker (A11).
+		ctxUID := pveRegisterUID(opts.Name, "context")
+		report.ContextUID = ctxUID
+		metadata := contract.JSONMap{"nodes": identity.Nodes, "quorum": identity.Quorate}
+		if identity.Standalone {
+			metadata = contract.JSONMap{"standalone": true}
 		}
-		if err := db.Create(&pctx).Error; err != nil {
-			return report, fmt.Errorf("create provider_context: %w", err)
+		var pctx model.ProviderContext
+		err = tx.Where("uid = ?", ctxUID).First(&pctx).Error
+		switch {
+		case isRecordNotFound(err):
+			pctx = model.ProviderContext{
+				UID: ctxUID, ConnectionID: conn.ID, Kind: "cluster",
+				ExternalID: identity.Name, Name: opts.Name,
+				Status: "active", MetadataJSON: metadata,
+			}
+			if err := tx.Create(&pctx).Error; err != nil {
+				return fmt.Errorf("create provider_context: %w", err)
+			}
+		case err != nil:
+			return fmt.Errorf("load provider_context: %w", err)
+		default:
+			patch := model.ProviderContext{ExternalID: identity.Name, Name: opts.Name, Status: "active", MetadataJSON: metadata}
+			if err := tx.Model(&model.ProviderContext{}).Where("id = ?", pctx.ID).
+				Select("external_id", "name", "status", "metadata_json").Updates(patch).Error; err != nil {
+				return fmt.Errorf("update provider_context: %w", err)
+			}
 		}
-	case err != nil:
-		return report, fmt.Errorf("load provider_context: %w", err)
-	default:
-		patch := model.ProviderContext{ExternalID: identity.Name, Name: opts.Name, Status: "active", MetadataJSON: metadata}
-		if err := db.Model(&model.ProviderContext{}).Where("id = ?", pctx.ID).
-			Select("external_id", "name", "status", "metadata_json").Updates(patch).Error; err != nil {
-			return report, fmt.Errorf("update provider_context: %w", err)
-		}
-	}
 
-	// 5) SecretRef 2건 — sealed here, re-sealed on every rerun (자격 갱신).
-	roRef, err := pveUpsertSecretRef(db, pveRegisterUID(opts.Name, "ro-secret"),
-		"register/pve/"+opts.Name+"/inventory", roMaterial)
-	if err != nil {
-		return report, err
-	}
-	opsRef, err := pveUpsertSecretRef(db, pveRegisterUID(opts.Name, "ops-secret"),
-		"register/pve/"+opts.Name+"/operations", opsMaterial)
-	if err != nil {
-		return report, err
-	}
+		// 5) SecretRef 2건 — sealed here, re-sealed on every rerun (자격 갱신).
+		roRef, err := pveUpsertSecretRef(tx, pveRegisterUID(opts.Name, "ro-secret"),
+			"register/pve/"+opts.Name+"/inventory", roMaterial)
+		if err != nil {
+			return err
+		}
+		opsRef, err := pveUpsertSecretRef(tx, pveRegisterUID(opts.Name, "ops-secret"),
+			"register/pve/"+opts.Name+"/operations", opsMaterial)
+		if err != nil {
+			return err
+		}
 
-	// 6) 바인딩 2행 — inventory는 RO 토큰, operations는 별도 RW 토큰을 지목한다.
-	// 같은 SecretRef 공유 금지(판정 J5 — §14.3 권한 분리).
-	if err := pveUpsertBinding(db, conn.ID, pctx.ID, contract.CredentialPurposeInventory, roRef.ID); err != nil {
-		return report, err
-	}
-	if err := pveUpsertBinding(db, conn.ID, pctx.ID, contract.CredentialPurposeOperations, opsRef.ID); err != nil {
+		// 6) 바인딩 2행 — inventory는 RO 토큰, operations는 별도 RW 토큰을
+		// 지목한다. 같은 SecretRef 공유 금지(판정 J5 — §14.3 권한 분리).
+		if err := pveUpsertBinding(tx, conn.ID, pctx.ID, contract.CredentialPurposeInventory, roRef.ID); err != nil {
+			return err
+		}
+		if err := pveUpsertBinding(tx, conn.ID, pctx.ID, contract.CredentialPurposeOperations, opsRef.ID); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return report, err
 	}
 	return report, nil
@@ -425,86 +419,6 @@ func pveEnvelopeKeyID(sealed string) (string, error) {
 		return "", fmt.Errorf("sealed v2 envelope is malformed")
 	}
 	return keyID, nil
-}
-
-// pveClusterIdentity resolves the context ExternalID from /cluster/status
-// (§3.3): the cluster row's name when present, or — A11 standalone — the
-// only node row's name (no fake cluster identity). Uses the read-only
-// credential; the header assembly mirrors the adapter's runtime client
-// (§14.3 증류 계약 2) because the adapter surface is DB-free and unexported.
-func pveResolveClusterIdentity(ctx context.Context, endpoint, roMaterial string, insecureTLS bool) (pveClusterIdentity, error) {
-	var identity pveClusterIdentity
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if insecureTLS {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // private-network premise, plan A7
-	}
-	client := &http.Client{Transport: transport, Timeout: pveRegisterTimeout}
-	probeURL := strings.TrimRight(endpoint, "/") + "/api2/json/cluster/status"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
-	if err != nil {
-		return identity, err
-	}
-	header, err := pveAuthorizationHeader(roMaterial)
-	if err != nil {
-		return identity, err
-	}
-	req.Header.Set("Authorization", header)
-	resp, err := client.Do(req)
-	if err != nil {
-		return identity, fmt.Errorf("GET /cluster/status: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		// Status only — the body may echo request internals; the credential never does.
-		return identity, fmt.Errorf("GET /cluster/status: HTTP %d", resp.StatusCode)
-	}
-	var envelope struct {
-		Data []struct {
-			Type    string `json:"type"`
-			Name    string `json:"name"`
-			Quorate *int   `json:"quorate"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
-		return identity, fmt.Errorf("decode /cluster/status: %w", err)
-	}
-	var firstNode string
-	for _, entry := range envelope.Data {
-		switch entry.Type {
-		case "cluster":
-			identity.Name = entry.Name
-			identity.Quorate = entry.Quorate != nil && *entry.Quorate != 0
-		case "node":
-			identity.Nodes++
-			if firstNode == "" {
-				firstNode = entry.Name
-			}
-		}
-	}
-	if identity.Name != "" {
-		return identity, nil
-	}
-	// A11 standalone 폴백: cluster행 부재 + node행 1개 → node명으로 신원 확정.
-	if identity.Nodes == 1 && firstNode != "" {
-		identity.Name = firstNode
-		identity.Standalone = true
-		return identity, nil
-	}
-	return identity, fmt.Errorf("/cluster/status reported %d node rows without a cluster row — cannot resolve a cluster identity", identity.Nodes)
-}
-
-// pveAuthorizationHeader assembles `PVEAPIToken=<tokenUser>!<tokenID>=<tokenSecret>`
-// from the sealed blob components. The value flows into the request header
-// only — never into logs, errors, or reports (claim 13).
-func pveAuthorizationHeader(material string) (string, error) {
-	var blob pveTokenMaterialJSON
-	if err := json.Unmarshal([]byte(material), &blob); err != nil {
-		return "", fmt.Errorf("credential material is not the expected {tokenUser,tokenID,tokenSecret} JSON blob")
-	}
-	if blob.TokenUser == "" || blob.TokenID == "" || blob.TokenSecret == "" {
-		return "", fmt.Errorf("credential material is incomplete")
-	}
-	return "PVEAPIToken=" + blob.TokenUser + "!" + blob.TokenID + "=" + blob.TokenSecret, nil
 }
 
 // pveEndpointPrivateWarn is the MEDIUM-8 defense line: --insecure-tls
