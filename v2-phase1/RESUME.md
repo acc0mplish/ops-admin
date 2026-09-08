@@ -51,7 +51,7 @@ go run . compare-inventory --cluster 1 --gate   # 3 distinct days PASS 확인
 
 ## 진행 중 브랜치/PR
 
-- 없음 (전부 병합·삭제). 진행분: `impl-p5-rem` 스폰 — p5 잔여 3건(probe 재사용·체인 트랜잭션·런북 CLI 경계), 병합 후 이 줄 삭제.
+- 없음 (전부 병합·삭제). p5 잔여 3건도 PR #50(c4813ca)으로 소화 — **기술 잔여 0**. 잔여는 day-3 게이트(09-09 예약)만.
 
 ## 원천 인덱스
 
