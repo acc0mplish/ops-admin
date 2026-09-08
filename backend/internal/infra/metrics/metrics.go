@@ -1,9 +1,9 @@
-// Package metrics is the minimal in-process counter shape for the §18.2
-// provider metrics (Phase 2 PR 20, J6 판정). The gate ③ proof target is the
-// VALUE (`provider_rate_limit_total` flat), not an endpoint: the
-// /internal/metrics endpoint and the full §18.2 table are explicitly deferred
-// to Phase 3+ (§13 부채 대장). Sync/compare report artifacts carry the
-// Render() text as their evidence payload.
+// Package metrics is the in-process counter shape for the §18.2 control-plane
+// metrics. It started as the gate ③ proof (PR 20, J6 판정 — the proof target
+// is the VALUE, `provider_rate_limit_total` flat) and now carries the full
+// §18.2 M1 family set (14종) with standard Prometheus text exposition
+// rendering. The /internal/metrics endpoint wiring stays with the engine lane
+// (V2 계획 P6) — the package itself stays endpoint-free.
 //
 // Purity: this package imports the standard library only — it sits beside
 // contract as vocabulary-adjacent infrastructure and must stay importable
@@ -11,8 +11,6 @@
 package metrics
 
 import (
-	"sort"
-	"strings"
 	"sync"
 )
 
@@ -23,21 +21,80 @@ type apiErrKey struct {
 	code     string
 }
 
-// Counters is the mutex-guarded minimal counter set. Zero value is not
-// usable — use New.
+// providerOpKey — provider_api_latency_seconds 라벨 쌍.
+type providerOpKey struct {
+	provider string
+	op       string
+}
+
+// connModeKey — inventory_sync_duration_seconds 라벨 쌍.
+type connModeKey struct {
+	connection string
+	mode       string
+}
+
+// opStatusKey — provider_task_duration_seconds 라벨 쌍.
+type opStatusKey struct {
+	operation string
+	status    string
+}
+
+// opCodeKey — provider_task_failures_total 라벨 쌍.
+type opCodeKey struct {
+	operation string
+	code      string
+}
+
+// purposeBackendKey — secret_access_total 라벨 쌍.
+type purposeBackendKey struct {
+	purpose string
+	backend string
+}
+
+// Counters is the mutex-guarded §18.2 M1 family set (2종 기존 + 12종 신규).
+// Zero value is not usable — use New.
 type Counters struct {
 	mu         sync.Mutex
 	providers  map[string]bool      // 등록 프로바이더 — Render가 0행을 포함해 내보낸다(게이트 ③ flat 증명용)
 	rateLimits map[string]uint64    // provider_rate_limit_total{provider=...}
 	apiErrors  map[apiErrKey]uint64 // provider_api_errors_total{provider,op,code}
+
+	// counter families (§18.2 M1)
+	syncChanges    map[string]uint64            // inventory_sync_resource_changes_total{connection}
+	syncPartial    map[string]uint64            // inventory_sync_partial_total{connection}
+	taskFailures   map[opCodeKey]uint64         // provider_task_failures_total{operation,code}
+	taskRetries    map[string]uint64            // provider_task_retries_total{operation}
+	leaseExpired   uint64                       // worker_lease_expired_total
+	staleResources map[string]uint64            // resource_stale_total{kind}
+	secretAccess   map[purposeBackendKey]uint64 // secret_access_total{purpose,backend}
+
+	// histogram families (§18.2 M1) — histogram.go
+	apiLatency   map[providerOpKey]*histSample // provider_api_latency_seconds{provider,op}
+	syncDuration map[connModeKey]*histSample   // inventory_sync_duration_seconds{connection,mode}
+	taskDuration map[opStatusKey]*histSample   // provider_task_duration_seconds{operation,status}
+
+	// gauge families (§18.2 M1) — gauge.go
+	health        map[string]bool // provider_health{connection} 0/1
+	queueDepth    uint64          // worker_queue_depth
+	queueDepthSet bool            // worker_queue_depth 패밀리 존재 — 명시적 Set 호출 시에만 렌더
 }
 
 // New returns an empty counter set.
 func New() *Counters {
 	return &Counters{
-		providers:  make(map[string]bool),
-		rateLimits: make(map[string]uint64),
-		apiErrors:  make(map[apiErrKey]uint64),
+		providers:      make(map[string]bool),
+		rateLimits:     make(map[string]uint64),
+		apiErrors:      make(map[apiErrKey]uint64),
+		syncChanges:    make(map[string]uint64),
+		syncPartial:    make(map[string]uint64),
+		taskFailures:   make(map[opCodeKey]uint64),
+		taskRetries:    make(map[string]uint64),
+		staleResources: make(map[string]uint64),
+		secretAccess:   make(map[purposeBackendKey]uint64),
+		apiLatency:     make(map[providerOpKey]*histSample),
+		syncDuration:   make(map[connModeKey]*histSample),
+		taskDuration:   make(map[opStatusKey]*histSample),
+		health:         make(map[string]bool),
 	}
 }
 
@@ -72,72 +129,57 @@ func (c *Counters) IncAPIError(provider, op, code string) {
 	c.apiErrors[apiErrKey{provider: provider, op: op, code: code}]++
 }
 
-// Render produces Prometheus text exposition with the §18.2 label shapes:
-//
-//	provider_rate_limit_total{provider="kubernetes"} 0
-//	provider_api_errors_total{provider="kubernetes",op="discover",code="429"} 2
-//
-// Every registered (or touched) provider yields a rate-limit line — zero
-// included — sorted by provider for deterministic artifacts. API error lines
-// appear only for (provider,op,code) triples that fired (Prometheus-side
-// absence equals zero; the report artifact needs no empty combinatorics).
-func (c *Counters) Render() string {
+// AddSyncResourceChanges records the created+updated resource count of one
+// sync run (가정 A2: changes = created + updated).
+func (c *Counters) AddSyncResourceChanges(connection string, n uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	providers := make([]string, 0, len(c.providers))
-	for p := range c.providers {
-		providers = append(providers, p)
-	}
-	sort.Strings(providers)
-
-	var b strings.Builder
-	for _, p := range providers {
-		b.WriteString("provider_rate_limit_total{provider=\"")
-		b.WriteString(p)
-		b.WriteString("\"} ")
-		b.WriteString(itoa(c.rateLimits[p]))
-		b.WriteByte('\n')
-	}
-	keys := make([]apiErrKey, 0, len(c.apiErrors))
-	for k := range c.apiErrors {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].provider != keys[j].provider {
-			return keys[i].provider < keys[j].provider
-		}
-		if keys[i].op != keys[j].op {
-			return keys[i].op < keys[j].op
-		}
-		return keys[i].code < keys[j].code
-	})
-	for _, k := range keys {
-		b.WriteString("provider_api_errors_total{provider=\"")
-		b.WriteString(k.provider)
-		b.WriteString("\",op=\"")
-		b.WriteString(k.op)
-		b.WriteString("\",code=\"")
-		b.WriteString(k.code)
-		b.WriteString("\"} ")
-		b.WriteString(itoa(c.apiErrors[k]))
-		b.WriteByte('\n')
-	}
-	return b.String()
+	c.syncChanges[connection] += n
 }
 
-// itoa — uint64 to decimal without strconv import churn in the hot path
-// (readability over micro-optimisation; strconv would be equally fine).
-func itoa(v uint64) string {
-	if v == 0 {
-		return "0"
-	}
-	var digits [20]byte
-	i := len(digits)
-	for v > 0 {
-		i--
-		digits[i] = byte('0' + v%10)
-		v /= 10
-	}
-	return string(digits[i:])
+// IncSyncPartial records one partial sync completion for a connection.
+func (c *Counters) IncSyncPartial(connection string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.syncPartial[connection]++
+}
+
+// IncTaskFailure records one task terminal in {failed, timed_out} with its
+// error code (가정 A4).
+func (c *Counters) IncTaskFailure(operation, code string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.taskFailures[opCodeKey{operation: operation, code: code}]++
+}
+
+// IncTaskRetry records one task requeue for retry (가정 A4: requeueForRetry만
+// 발화 — reaper 재큐는 lease_expired 쪽이 담당).
+func (c *Counters) IncTaskRetry(operation string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.taskRetries[operation]++
+}
+
+// IncLeaseExpired records one CAS-won expired lease handled by the reaper
+// (재큐·소진 양 갈래 모두).
+func (c *Counters) IncLeaseExpired() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.leaseExpired++
+}
+
+// IncStaleResource records one stale_candidate transition, by resource kind
+// (가정 A3: tombstoned는 미가산).
+func (c *Counters) IncStaleResource(kind string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.staleResources[kind]++
+}
+
+// IncSecretAccess records one successful secret broker resolve (가정 A5:
+// 성공만 가산). purpose·backend는 binding/ref 필드에서 온다.
+func (c *Counters) IncSecretAccess(purpose, backend string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.secretAccess[purposeBackendKey{purpose: purpose, backend: backend}]++
 }
