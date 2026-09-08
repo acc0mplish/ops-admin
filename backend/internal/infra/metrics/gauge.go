@@ -13,6 +13,15 @@ func (c *Counters) SetHealth(connection string, healthy bool) {
 	c.health[connection] = healthy
 }
 
+// RemoveHealth drops a connection's health series — 커넥션 행이 DB에서 사라진
+// 뒤에도 마지막 값 라인이 프로세스 수명 내내 잔존하는 것을 막는다(④리뷰 LOW —
+// gauge.go). health sweep이 관측 집합 대조로 호출한다.
+func (c *Counters) RemoveHealth(connection string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.health, connection)
+}
+
 // SetQueueDepth records the queued-task COUNT snapshot for
 // worker_queue_depth (무라벨 gauge). The poller tick is the only caller.
 func (c *Counters) SetQueueDepth(depth uint64) {

@@ -164,3 +164,49 @@ func TestHealthSweeperStartStopCancelsLoop(t *testing.T) {
 		t.Fatal("Stop did not return — the loop goroutine must exit on stop")
 	}
 }
+
+// TestSweepOnceRemovesVanishedSeries — ④리뷰 LOW(gauge.go): 관측 후 DB 행이
+// 사라진 커넥션의 provider_health 시리즈는 다음 sweep에서 소거된다 — 마지막
+// 값 라인이 프로세스 수명 내내 잔존하지 않는다.
+func TestSweepOnceRemovesVanishedSeries(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	sweeper, counters := newSweepStack(t, db)
+	seedHealthChain(t, db, "conn-vanish", true)
+
+	if err := sweeper.SweepOnce(context.Background()); err != nil {
+		t.Fatalf("first sweep: %v", err)
+	}
+	if want := healthLine(counters.Render(), "conn-vanish", "1"); !strings.Contains(counters.Render(), want) {
+		t.Fatalf("seeded connection must render healthy=1:\n%s", counters.Render())
+	}
+
+	// 행 삭제 → 재 sweep → 시리즈 소거.
+	if err := db.Unscoped().Where("uid = ?", "conn-vanish").Delete(&model.ProviderConnection{}).Error; err != nil {
+		t.Fatalf("delete connection: %v", err)
+	}
+	if err := sweeper.SweepOnce(context.Background()); err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+	if render := counters.Render(); strings.Contains(render, `provider_health{connection="conn-vanish"}`) {
+		t.Fatalf("vanished connection series must be pruned:\n%s", render)
+	}
+}
+
+// TestStopBeforeStartIsSafe — ④리뷰 LOW(healthloop.go:92-100): Start 이전
+// Stop은 교착 없이 즉시 반환한다.
+func TestStopBeforeStartIsSafe(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	sweeper, _ := newSweepStack(t, db)
+	done := make(chan struct{})
+	go func() {
+		sweeper.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop before Start must not block")
+	}
+}
