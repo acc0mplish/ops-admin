@@ -3,7 +3,8 @@
   "tier": "L",
   "phase": "done",
   "round": {"adversary": 0, "review": 2},
-  "spawns": 14,
+  "spawns": 15,
+  "goalABCD": "A ✅(PR46) · B ✅(phase6-entry-assessment.md — 진입 불가·조건부 대기, 사용자 3항 결정 요청) · C ✅(PR48 메트릭 14종·MEDIUM-1 수정·r2 승인화) · D ✅(§13-9 실증+PR45/47)",
   "claims": [
     {"claim": "C1 proxmox 패키지 -race GREEN", "status": "verified", "evidence": "①~④ 전 단계 go test ./internal/infra/adapter/proxmox/ -race -count=1 ok — 리뷰 2회 독립 실행 포함"},
     {"claim": "C2 전 회귀 GREEN", "status": "verified", "evidence": "go test ./... -count=1 → 30패키지 ok · 31b -race ok 30 (rev-p5-31b)"},
