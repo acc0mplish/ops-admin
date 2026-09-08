@@ -8,7 +8,7 @@
 
 | # | 전제조건 (§19.1) | 상태 | 근거 (2026-09-08 실측) | 해소 주체 |
 |---|---|---|---|---|
-| 1 | per-family §15.4 shadow 비교 통과 | **미충족 (부분)** | k8s family: 1일차 pass·**2일차 완료(2026-09-08 — clean 페어 5연속·사다리 수렴 후)**·3일차는 게이트기의 **3 상이 일자** 기계 계약상 09-09 실행 예정(원샷 예약 — 단 세션 생존 시에만 자동 발화, 미발화 시 수동 요청). 병행 발견: v2-p2 자격이 로테이션 구키(k20260906) 봉인으로 sync 불능 → 소스 touch→백필 재봉인 경로로 해소(재발 시 동일 런북). ~~cloud family~~ — **범위 제외 확정(2026-09-08 사용자: Aliyun 지원 계획 없음·현시점 유지)** — 어댑터는 존치하나 §15.4 비교·실계정 승격(§13-10) 보류. Phase 6 cutover 대상 family는 k8s만 | — |
+| 1 | per-family §15.4 shadow 비교 통과 | **미충족 (부분)** | k8s family: 1일차 pass·**2일차 완료(2026-09-08 — clean 페어 5연속·사다리 수렴 후)**·3일차는 **소유자 면제로 2026-09-08 충족**(compare-gate-waiver-2026-09-08.json — E-3 캘린더 면제·동일 날 연속 clean 3연속 104439/104505/104530·Δ<=60s·identity 0·게이트기 Passed:true. 기본 게이트 불변 — PR #51). 병행 발견: v2-p2 자격 로테이션 구키 봉인 → 소스 touch→백필 재봉인으로 해소. ~~cloud family~~ — **범위 제외 확정(2026-09-08 사용자: Aliyun 지원 계획 없음·현시점 유지)** — 어댑터는 존치하나 §15.4 비교·실계정 승격(§13-10) 보류. Phase 6 cutover 대상 family는 k8s만 | — |
 | 2 | backup + scratch DB 복구 리허설 | **✅ 충족 (2026-09-08)** | 신선 전체 덤프(389KB·`--single-transaction`)→스크래치 스키마 `ops_admin_rehearsal` 리스토어 exit 0→**핵심 13테이블 COUNT·CHECKSUM 전부 일치**(sys_role_menu 289·infra_resource 105·provider_connection 3 등)→스크래치 폐기. 히스토리 guard 대상 파일 무접촉 | — |
 | 3 | dual-write authority rule 공개 | **충족** | 스펙 §19.1 본문에 규칙 공개 완료(V2 authoritative: V2가 서빙하는 읽기·V2 발신 변이 / V1 잔류: §3 REMAIN·기존 쓰기 경로 / 충돌→V1) | — |
 | 4 | (상위 게이트) M1 soak | **미충족** | §5.3 표 497행 "cutover still gated by M1 soak". M1 잔여: ①§18.2 메트릭 — **2026-09-08 충족**(PR #48 — 14종 전부) ②Phase 2 게이트 2·3일차 — 사용자 수동 ③클라우드 실계정 승격(§13-10) — 실자격 부재 ④M5 ceefc27 CLI freeze(09-09) — 해소 대기 | ②③ 사용자 · ④ 시간 경과 |
@@ -24,7 +24,7 @@
 1. **Phase 2 게이트 2·3일차 수동 실행 허가** — kind 클러스터 v2-p2 보존 확인 후 `compare-inventory` 페어 2회 추가 실행 (§15.4 3연속 완성)
 2. ~~클라우드 자격~~ — **보류 확정**(사용자 결정 — 위 표)  3. ✅ 복구 리허설 — 2026-09-08 실행 완료(13테이블 COUNT·CHECKSUM 일치)
 
-**잔여 = k8s family 3일차 단일 항목(09-09 예약)** — PASS 시 M1 soak 충족 + §19.1 전제 녹색(cloud 제외 확정) → **Phase 6 계획(plan-high) 착수 가능**. 재개 절차는 `v2-phase1/RESUME.md`.
+**§19.1 전제 전부 녹색 (2026-09-08)** — k8s family §15.4 충족(면제 기록 포함)·복구 리허설 ✅·authority ✅·M1 soak 기술 조건 충족(§18.2 14종·메트릭). 남은 것 = M5 freeze 경과(09-09)뿐. → **Phase 6 계획(plan-high) 착수 가능 상태**. 재개 절차는 `v2-phase1/RESUME.md`.
 
 ## 비고
 

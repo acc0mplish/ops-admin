@@ -21,9 +21,8 @@
 
 | 항목 | 예정 | 재개 시 할 일 |
 |---|---|---|
-| **Phase 2 게이트 3일차** (§15.4 3연속·3 상이 일자) | **2026-09-09** — 원샷 cron 예약(a903b7b9, 세션 생존 시 자동). 미발화 시 수동 | 아래 "day-3 수동 실행" 블록 |
+| ~~Phase 2 게이트 3일차~~ | **✅ 2026-09-08 충족** — 소유자 면제(E-3 캘린더 waiver·PR #51). 동일 날 연속 clean 3연속으로 §15.4 완성. cron 해제 | — |
 | **M5 ceefc27 CLI freeze 해소** | 2026-09-09 | freeze 해소 확인만 — 별도 작업 없음(해소 = freeze 만료 경과) |
-| day-3 PASS 후 | — | `phase6-entry-assessment.md` §15.4 행 갱신 → k8s family 조건 충족 |
 
 ### day-3 수동 실행 (게이트기가 3 상이 일자를 기계 강제)
 
@@ -45,9 +44,9 @@ go run . compare-inventory --cluster 1 --gate   # 3 distinct days PASS 확인
 
 - ✅ 복구 리허설 (2026-09-08 — 13테이블 COUNT·CHECKSUM 일치)
 - ✅ dual-write authority rule 공개 (§19.1 본문)
-- ⏳ §15.4 k8s family 3일차 (09-09)
+- ✅ §15.4 k8s family (2026-09-08 — 소유자 면제 waiver 기록 포함)
 - ➖ ~~cloud family~~ — **범위 제외 확정**(위 결정)
-- k8s family 충족 시: **Phase 6 계획(plan-high) 착수** — cutover 대상 family = k8s(호스트 계열 asset은 §3 row 4 M2 cutover 표기 유지, 별도 판정)
+- **§19.1 전제 전부 녹색 — Phase 6 계획(plan-high) 착수 가능**. cutover 대상 family = k8s(호스트 계열 asset은 §3 row 4 M2 cutover 표기 유지, 별도 판정). 사용자 지시로 착수
 
 ## 진행 중 브랜치/PR
 

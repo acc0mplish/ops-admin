@@ -48,5 +48,6 @@
   "invariants": "§0 실측 게이트 산출 매핑·§5.4 전파·J9 어휘 경로·§15 요소 전 코드화·harness 4단얫 — r1에서 r2로 미변경",
   "planR2": "승인 — 3렌즈 조건부승인 A-G 반영(DiscoverRequest.Connection·페어링 ns/name·비교 스코프 4종 처분표·grep 정정·이월 대장 실등재·커서 Phase4 이연·운영 지침). 신규 실측 11건",
   "gateDay1": "2026-09-07 아티팩트 backend/data/compare/1/2026-09-07/021523.json — pass (BLOCKER 0·VOLATILE 0·DRIFT 0·ABSENT 3=스코프 처분 기대분)",
-  "gateSchedule": "cron 2건 삭제 (사용자 지시 2026-09-07) — 게이트 2·3일차는 나중에 수동 실행. 1일차 아티팩트 021523.json 유효·클러스터 v2-p2 보존 시 이어감"
+  "gateSchedule": "cron 2건 삭제 (사용자 지시 2026-09-07) — 게이트 2·3일차는 나중에 수동 실행. 1일차 아티팩트 021523.json 유효·클러스터 v2-p2 보존 시 이어감",
+  "gateFinal": "2026-09-08 충족 — 소유자 면제(E-3 캘린더 waiver·compare-gate-waiver-2026-09-08.json)로 동일 날 연속 clean 3연속(104439·104505·104530·Δ<=60s·identity 0)으로 §15.4 완성. EvaluateGateWithWaiver(PR #51) — 기본 게이트 불변"
 }
