@@ -148,6 +148,17 @@ SELECT COUNT(*) FROM sys_role_menu rm
  WHERE r.role_key='super-admin' AND m.value='infra:pve:guest:operate';
 ```
 
+### 3-c. 메트릭 경계 (§18.2 — CLI 프로세스는 렌더에 나오지 않는다)
+
+이 런북의 두 CLI(`register-pve`·`sync-inventory`)는 서버와 별개 OS 프로세스로,
+카운터가 프로세스 내부(in-process `metrics.Counters`)에만 살기 때문에 각 CLI가
+발생시킨 어댑터 계기는 CLI 프로세스 종료와 함께 사라지고 서버
+`/internal/metrics` 렌더에 합산되지 않는다 — 이는 결함이 아니라 §18.2 메트릭
+앵커의 설계 속성이다. 렌더에 나타나는 것은 서버 프로세스를 경유한 활동(health
+sweep의 커넥션별 시리즈·API 태스크의 latency·에러 계기)뿐이다. 따라서
+register-pve 실행 직후 `/internal/metrics`에서 PVE 계기를 찾지 말고, 등록의
+증거는 §2의 stdout JSON 리포트와 §3-a의 DB 행으로 확인한다.
+
 ## 4. 롤백 SQL (r1.4 §11 HIGH-2 — 삭제 순서는 참조 방향 역순)
 
 코드는 revert로 복귀한다. 데이터 잔여물은 아래 순서로 수동 삭제한다.
