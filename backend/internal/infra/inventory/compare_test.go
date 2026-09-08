@@ -416,3 +416,83 @@ func TestCompareReportJSONRoundTrip(t *testing.T) {
 		t.Fatalf("round trip lost classification: %+v", back)
 	}
 }
+
+// TestEvaluateGateWithWaiver — 소유자 면제 계약(2026-09-08 사용자 승인):
+// waiver가 지목한 3개 pass 아티팩트는 distinct-days 검사만 면제되고, waiver
+// 밖 아티팩트로의 확장·verdict·단일 클러스터 검사는 유지된다. waiver 부재는
+// 원래 EvaluateGate와 동일(조용한 완화 없음).
+func TestEvaluateGateWithWaiver(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel string, verdict string, capturedAt time.Time) string {
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := json.Marshal(inventory.CompareArtifact{
+			ArtifactSchema:  inventory.CompareArtifactSchema,
+			ClusterID:       1,
+			Verdict:         verdict,
+			LegacyCapturedAt: capturedAt,
+		})
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	day := func(offset int) time.Time {
+		return time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC).Add(time.Duration(offset) * time.Minute)
+	}
+	sameDay := []string{
+		write("compare/1/2026-09-08/100001.json", inventory.VerdictPass, day(0)),
+		write("compare/1/2026-09-08/100002.json", inventory.VerdictPass, day(1)),
+		write("compare/1/2026-09-08/100003.json", inventory.VerdictPass, day(2)),
+	}
+
+	// 면제 없이는 same-day 3연속 pass도 거부된다(기본 동작 불변).
+	if got := inventory.EvaluateGate(sameDay); got.Passed {
+		t.Fatalf("same-day pass trio must fail without waiver: %+v", got)
+	}
+
+	waiver := &inventory.GateWaiver{
+		WaivedCheck:  "distinct_days",
+		Artifacts:    sameDay,
+		Reason:       "fixture cron churn converged; owner waives the calendar window",
+		ApprovedBy:   "product owner",
+		ApprovedDate: "2026-09-08",
+	}
+	got := inventory.EvaluateGateWithWaiver(sameDay, waiver)
+	if !got.Passed {
+		t.Fatalf("waived gate must pass: %+v", got)
+	}
+	if len(got.Artifacts) != 3 || got.Cluster != "1" {
+		t.Fatalf("waived gate must carry the 3 artifacts and one cluster: %+v", got)
+	}
+	waivedRecorded := false
+	for _, r := range got.Reasons {
+		if strings.Contains(r, "distinct-days waived") {
+			waivedRecorded = true
+		}
+	}
+	if !waivedRecorded {
+		t.Fatalf("waiver must be recorded in the gate result: %+v", got.Reasons)
+	}
+
+	// waiver가 pass가 아닌 아티팩트를 지목하면 면제돼도 거부된다.
+	bad := []string{
+		sameDay[0], sameDay[1],
+		write("compare/1/2026-09-08/100004.json", inventory.VerdictBlocker, day(3)),
+	}
+	waiver.Artifacts = bad
+	if got := inventory.EvaluateGateWithWaiver(bad, waiver); got.Passed {
+		t.Fatalf("waiver must not launder a blocker artifact: %+v", got)
+	}
+
+	// waiver 밖의 새 아티팩트가 섞여도 waiver 대상 3개로만 판정한다 —
+	// waiver 확장 불가(지목 경로 외 면제 없음).
+	waiver.Artifacts = sameDay
+	extra := append(append([]string{}, sameDay...),
+		write("compare/1/2026-09-08/100005.json", inventory.VerdictBlocker, day(4)))
+	if got := inventory.EvaluateGateWithWaiver(extra, waiver); !got.Passed {
+		t.Fatalf("waiver scope is exactly its 3 named artifacts: %+v", got)
+	}
+}

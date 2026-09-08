@@ -37,12 +37,13 @@ func runCompareInventory(args []string) int {
 	clusterID := flags.Uint("cluster", 0, "v1 k8s_cluster id to pair (required)")
 	dataDir := flags.String("data", "data", "data directory root for report artifacts")
 	gate := flags.Bool("gate", false, "evaluate the 3-day gate over stored artifacts instead of capturing a pair")
+	gateWaiver := flags.String("gate-waiver", "", "owner waiver JSON (GateWaiver) — waives the distinct-days calendar check for exactly the 3 artifacts it names")
 	if err := flags.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "compare-inventory: %v\n", err)
 		return 1
 	}
 	if *gate {
-		return runCompareGate(*dataDir, *clusterID)
+		return runCompareGate(*dataDir, *clusterID, *gateWaiver)
 	}
 	if *clusterID == 0 {
 		fmt.Fprintln(os.Stderr, "compare-inventory: --cluster is required")
@@ -183,10 +184,25 @@ func runCompareInventory(args []string) int {
 }
 
 // runCompareGate evaluates the 3-day gate (§15.4 r2) over the stored
-// artifacts of one cluster — no database access needed.
-func runCompareGate(dataDir string, clusterID uint) int {
+// artifacts of one cluster — no database access needed. -gate-waiver로 소유자
+// 면제 파일(E-3 distinct-days 면제 — GateWaiver 계약)을 지정하면 그 3개
+// 아티팩트 한정으로 캘린더 검사만 면제된다. 기본 동작 무변경.
+func runCompareGate(dataDir string, clusterID uint, waiverPath string) int {
 	clusterName := strconv.FormatUint(uint64(clusterID), 10)
-	result := inventory.EvaluateGate(collectCompareArtifacts(dataDir, clusterName))
+	var waiver *inventory.GateWaiver
+	if waiverPath != "" {
+		b, err := os.ReadFile(waiverPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "compare-inventory: gate: read waiver: %v\n", err)
+			return 1
+		}
+		waiver = &inventory.GateWaiver{}
+		if err := json.Unmarshal(b, waiver); err != nil {
+			fmt.Fprintf(os.Stderr, "compare-inventory: gate: parse waiver: %v\n", err)
+			return 1
+		}
+	}
+	result := inventory.EvaluateGateWithWaiver(collectCompareArtifacts(dataDir, clusterName), waiver)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(result); err != nil {
