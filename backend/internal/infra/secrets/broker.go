@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ops-admin/backend/internal/infra/metrics"
 	"ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/util"
 )
@@ -39,11 +40,21 @@ func knownCredentialPurpose(p string) bool {
 // reads through util.DecryptSecretV2 only — the same implementation the
 // migration tool used (§4.3). Results are never cached (short-lived = a
 // per-call view, §1 J7). Secrets are never serialized through model JSON.
-type Broker struct{ db *gorm.DB }
+type Broker struct {
+	db       *gorm.DB
+	counters *metrics.Counters
+}
 
-// NewBroker returns a broker reading through db.
+// NewBroker returns a broker reading through db. Counters stay nil — the
+// §18.2 L family (secret_access_total) is only fed by NewBrokerWithCounters.
 func NewBroker(db *gorm.DB) *Broker {
 	return &Broker{db: db}
+}
+
+// NewBrokerWithCounters returns a broker that records every successful
+// Resolve into the shared counter set (§18.2 L — {purpose, backend} 라벨).
+func NewBrokerWithCounters(db *gorm.DB, counters *metrics.Counters) *Broker {
+	return &Broker{db: db, counters: counters}
 }
 
 // ResolvedSecret is one per-call view of decrypted material. Value is plaintext
@@ -96,6 +107,12 @@ func (b *Broker) Resolve(ctx context.Context, connectionUID, purpose string) (Re
 		// Hard error — no legacy or plaintext fallback (§4.3). The wrapped
 		// error carries key-id metadata only, never material.
 		return ResolvedSecret{}, fmt.Errorf("secrets: decrypt secret_ref %q: %w", ref.UID, err)
+	}
+
+	// §18.2 L — 성공 경로만 가산(가정 A5). backend 라벨은 SecretRef 행의
+	// Backend 필드(M1 기본 "internal").
+	if b.counters != nil {
+		b.counters.IncSecretAccess(binding.Purpose, ref.Backend)
 	}
 
 	return ResolvedSecret{

@@ -127,13 +127,19 @@ func gracefulShutdown(ctx context.Context, taskEngine *tasks.Engine, svc Stoppab
 // audit via v2.RecordTaskTerminal) → fully-assembled v2 API
 // (NewInfraAPIWithEngine — the CancelStarter seam activates the moment the
 // engine carries RequestCancel, N6). A stack failure disables the engine
-// lane ALONE (R11): the returned API is nil and the router keeps its Phase 2
-// self-assembly path — v1 boots exactly as before.
-func startEngineLane(db *gorm.DB) (*tasks.Engine, *v2.InfraAPI) {
+// lane ALONE (R11): the returned engine·sweeper·render are nil and the
+// router keeps its Phase 2 self-assembly path — v1 boots exactly as before,
+// and /internal/metrics stays unregistered (the nil guard is claim 9).
+//
+// §18.2 P6 — the sweeper starts alongside the engine on the same derived
+// base context (계획 §1.5) and its Stop is the caller's to invoke (main's
+// post-gracefulShutdown step); the render func is the /internal/metrics
+// handler source (계획 §1.3).
+func startEngineLane(db *gorm.DB) (*tasks.Engine, *v2.InfraAPI, *compose.HealthSweeper, func() string) {
 	stack, err := compose.Build(db)
 	if err != nil {
 		log.Printf("v2 engine lane disabled — stack build failed: %v (v1 services continue, R11)", err)
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 	cfg, warnings := engineConfigFromEnv(engineDefaults(), os.Getenv)
 	for _, warning := range warnings {
@@ -142,6 +148,9 @@ func startEngineLane(db *gorm.DB) (*tasks.Engine, *v2.InfraAPI) {
 	taskEngine := stack.BuildEngine(cfg, v2.RecordTaskTerminal)
 	api := v2.NewInfraAPIWithEngine(db, stack.Registry, taskEngine)
 	log.Printf("v2 task engine starting: %s", engineConfigSummary(cfg)) // VK-8
-	taskEngine.Start(context.Background())
-	return taskEngine, api
+	baseCtx := context.Background()
+	taskEngine.Start(baseCtx)
+	healthSweep := compose.NewHealthSweeper(db, stack.Registry, stack.Broker, stack.Counters)
+	healthSweep.Start(baseCtx)
+	return taskEngine, api, healthSweep, stack.Counters.Render
 }

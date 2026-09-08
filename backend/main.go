@@ -9,12 +9,29 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"ops-admin/backend/config"
 	"ops-admin/backend/internal/infra/migrate"
 	"ops-admin/backend/router"
 	"ops-admin/backend/store"
 	"ops-admin/backend/util"
 )
+
+// registerMetricsRoute wires /internal/metrics onto the assembled engine —
+// the §18.2 internal scrape endpoint (P6). router.New의 조립 표면 밖 등록이므로
+// 라우트 골든(route-inventory.txt·sensitive-routes.txt)과 무관하다(가정 A8).
+// 인증 게이트는 없다 — §18.2의 "internal-only"는 배포 경계(리버스 프록시
+// 비노출·망 분리) 시행 가정이다(가정 A1). 스택 실패(R11)로 render가 nil이면
+// 등록하지 않는다 — 라우트 미등록 nil 가드가 claim 9.
+func registerMetricsRoute(engine *gin.Engine, renderMetrics func() string) {
+	if engine == nil || renderMetrics == nil {
+		return
+	}
+	engine.GET("/internal/metrics", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(renderMetrics()))
+	})
+}
 
 func main() {
 	// Read-only subcommand, dispatched before any server startup path.
@@ -91,9 +108,12 @@ func main() {
 	// V2 Phase 3 (plan M9): the engine lane assembles AFTER the schema and
 	// seeds are ready — compose once → engine (J6 hook) → fully-wired v2 API.
 	// A stack failure disables this lane alone (R11); v1 boots unchanged.
-	taskEngine, v2API := startEngineLane(db)
+	taskEngine, v2API, healthSweep, renderMetrics := startEngineLane(db)
 
 	engine, svc := router.New(cfg, db, v2API)
+	// §18.2 P6 — the internal metrics scrape route. nil render (stack failure)
+	// keeps the route unregistered (claim 9).
+	registerMetricsRoute(engine, renderMetrics)
 	server := &http.Server{Addr: ":" + cfg.App.Port, Handler: engine, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -110,4 +130,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	gracefulShutdown(ctx, taskEngine, svc, server)
+	// §18.2 P6 — the health sweep is not an in-flight-work loop (5분 틱 계측
+	// 회로), so its stop trails the F-7 order; nil 수신자 Stop은 no-op다.
+	healthSweep.Stop()
 }

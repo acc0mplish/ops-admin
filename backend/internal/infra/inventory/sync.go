@@ -137,6 +137,14 @@ func (r *SyncRunner) RunSync(ctx context.Context, in SyncInput) (SyncReport, err
 	report.Status = status
 	report.FinishedAt = finished
 	if r.counters != nil {
+		// §18.2 C/D/E — 확정점 계기: duration(전 구간), changes(created+updated
+		// 합산 — 가정 A2), partial(최종 상태가 partial일 때만).
+		r.counters.ObserveSyncDuration(in.ConnectionUID, mode, finished.Sub(started))
+		r.counters.AddSyncResourceChanges(in.ConnectionUID,
+			uint64(report.Outcomes[OutcomeCreated]+report.Outcomes[OutcomeUpdated]))
+		if status == RunStatusPartial {
+			r.counters.IncSyncPartial(in.ConnectionUID)
+		}
 		report.MetricsText = r.counters.Render()
 	}
 	return report, nil
@@ -420,6 +428,12 @@ func (r *SyncRunner) reconcileAbsences(contextID uint, run *model.InventorySyncR
 		}
 		if outcome != "" {
 			outcomes[outcome]++
+			// §18.2 K — stale_candidate 전환만 kind 라벨로 가산(tombstoned는
+			// 미가산 — 가정 A3). tombstone은 행 삭제이므로 kind 면의 stale
+			// 관측 대상이 아니다.
+			if outcome == OutcomeStaleCandidate && r.counters != nil {
+				r.counters.IncStaleResource(res.Kind)
+			}
 		}
 	}
 	run.MissingCount = missing

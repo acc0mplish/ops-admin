@@ -232,6 +232,8 @@ func (c *k8sClient) patchJSON(ctx context.Context, path string, patch any, op st
 //	transport fail → unreachable (계측: IncAPIError)
 //	기타 비-2xx     → 일반 error (계측: IncAPIError)
 func (c *k8sClient) doJSON(ctx context.Context, method, path string, query map[string]string, contentType string, body any, op string, target any) error {
+	start := time.Now()
+	defer func() { c.metrics.ObserveAPILatency(ProviderName, op, time.Since(start)) }()
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 

@@ -198,6 +198,12 @@ type apiEnvelope struct {
 // 장부(get이 소유)에는 개입하지 않는다 — maybeFailover의 /cluster/status
 // 재조회도 이 코어를 그대로 쓴다(재귀 유발 없음).
 func (c *Client) do(ctx context.Context, method, path, op string, form url.Values) (json.RawMessage, error) {
+	start := time.Now()
+	defer func() {
+		if c.metrics != nil {
+			c.metrics.ObserveAPILatency(providerName, op, time.Since(start))
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
