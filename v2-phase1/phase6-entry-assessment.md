@@ -8,8 +8,8 @@
 
 | # | 전제조건 (§19.1) | 상태 | 근거 (2026-09-08 실측) | 해소 주체 |
 |---|---|---|---|---|
-| 1 | per-family §15.4 shadow 비교 통과 | **미충족 (부분)** | k8s family: Phase 2 게이트 **1일차만 pass**(`backend/data/compare/1/2026-09-07/021523.json` — BLOCKER 0)·**2·3일차 미실행**(p2-state — cron 삭제·사용자 수동 보류). §15.4는 **3연속 clean 페어** 요구 → 1/3. cloud family: aliyun/tencent 어댑터 존재하나 **asset_cloud_account 0행** — 비교 대상 계정 부재(p4 E-1 미해소) | 사용자 — PVE 선례처럼 읽기 전용 Aliyun/Tencent 키 제공 시 실행 가능 |
-| 2 | backup + scratch DB 복구 리허설 | **미충족** | rotation-backup-2026-09-06.sql 존재하나 **복구 리허설 기록 0**(restore rehearsal — "복구해본 적 없는 백업은 희망일 뿐") | 메인 — 실행 가능 (scratch DB 리스토어 + 검증) |
+| 1 | per-family §15.4 shadow 비교 통과 | **미충족 (부분)** | k8s family: 1일차 pass·**2일차 완료(2026-09-08 — clean 페어 5연속·사다리 수렴 후)**·3일차는 게이트기의 **3 상이 일자** 기계 계약상 09-09 실행 예정(원샷 예약 — 단 세션 생존 시에만 자동 발화, 미발화 시 수동 요청). 병행 발견: v2-p2 자격이 로테이션 구키(k20260906) 봉인으로 sync 불능 → 소스 touch→백필 재봉인 경로로 해소(재발 시 동일 런북). cloud family: aliyun/tencent 어댑터 존재하나 **asset_cloud_account 0행** — 비교 대상 계정 부재(p4 E-1 미해소) | 사용자 — PVE 선례처럼 읽기 전용 Aliyun/Tencent 키 제공 시 실행 가능 |
+| 2 | backup + scratch DB 복구 리허설 | **✅ 충족 (2026-09-08)** | 신선 전체 덤프(389KB·`--single-transaction`)→스크래치 스키마 `ops_admin_rehearsal` 리스토어 exit 0→**핵심 13테이블 COUNT·CHECKSUM 전부 일치**(sys_role_menu 289·infra_resource 105·provider_connection 3 등)→스크래치 폐기. 히스토리 guard 대상 파일 무접촉 | — |
 | 3 | dual-write authority rule 공개 | **충족** | 스펙 §19.1 본문에 규칙 공개 완료(V2 authoritative: V2가 서빙하는 읽기·V2 발신 변이 / V1 잔류: §3 REMAIN·기존 쓰기 경로 / 충돌→V1) | — |
 | 4 | (상위 게이트) M1 soak | **미충족** | §5.3 표 497행 "cutover still gated by M1 soak". M1 잔여: ①§18.2 메트릭 — **2026-09-08 충족**(PR #48 — 14종 전부) ②Phase 2 게이트 2·3일차 — 사용자 수동 ③클라우드 실계정 승격(§13-10) — 실자격 부재 ④M5 ceefc27 CLI freeze(09-09) — 해소 대기 | ②③ 사용자 · ④ 시간 경과 |
 
