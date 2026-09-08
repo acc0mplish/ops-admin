@@ -62,9 +62,26 @@ func (e *Engine) pollLoop(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			e.observeQueueDepth(ctx)
 			_, _ = e.RunOnce(ctx)
 		}
 	}
+}
+
+// observeQueueDepth samples the queued-task COUNT into the worker_queue_depth
+// gauge (§18.2 I) — once per poll tick. QueueDepth is a read-only standalone
+// query, so measuring never joins the claim circuit (R5); a measurement
+// failure is dropped here, keeping the loop-error contract (루프 오류는 루프에
+// 남는다 — Start 문서).
+func (e *Engine) observeQueueDepth(ctx context.Context) {
+	if e.Metrics == nil {
+		return
+	}
+	depth, err := e.QueueDepth(ctx)
+	if err != nil {
+		return
+	}
+	e.Metrics.SetQueueDepth(uint64(depth))
 }
 
 func (e *Engine) reapLoop(ctx context.Context, interval time.Duration) {

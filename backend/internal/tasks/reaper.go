@@ -40,6 +40,8 @@ func (e *Engine) ReapOnce(ctx context.Context) (int, error) {
 	for i := range stale {
 		task := stale[i]
 		attemptsRemain := task.AttemptCount < task.MaxAttempts
+		won := false           // CAS 승윈 리프 처리만 계기 대상(§18.2 J — 경합 패배 제외)
+		claimAt := time.Time{} // 소진 종단 duration의 원점 — 마지막 열린 시도의 클레임 시각
 
 		var next map[string]any
 		var eventType string
@@ -78,6 +80,17 @@ func (e *Engine) ReapOnce(ctx context.Context) (int, error) {
 			if res.RowsAffected == 0 {
 				return nil // raced (terminal commit or another reaper) — not ours
 			}
+			won = true
+			// 소진 종단의 duration 원점(가정 A4 — claim→terminal). 닫히는 열린 시도의
+			// 시작이 클레임 시각이다; 종결 커밋과 같은 트랜잭션에서 읽는다. 질의 실패는
+			// duration 미가산일 뿐 리프를 바꾸지 않는다.
+			if !attemptsRemain {
+				var open model.TaskAttempt
+				if err := tx.Where("task_id = ? AND finished_at IS NULL", task.ID).
+					Order("id DESC").First(&open).Error; err == nil {
+					claimAt = open.StartedAt
+				}
+			}
 			// Close the crashed worker's open attempt(s) in the same commit.
 			if err := tx.Model(&model.TaskAttempt{}).
 				Where("task_id = ? AND finished_at IS NULL", task.ID).
@@ -89,11 +102,34 @@ func (e *Engine) ReapOnce(ctx context.Context) (int, error) {
 		if err != nil {
 			return requeued, err
 		}
+		if won {
+			e.observeReapTerminal(&task, !attemptsRemain, claimAt)
+		}
 		if attemptsRemain {
 			requeued++
 		}
 	}
 	return requeued, nil
+}
+
+// observeReapTerminal feeds the §18.2 J family — plus F/G on the exhausted
+// branch — for one CAS-won reap. The requeue branch is not a terminal: it
+// adds only worker_lease_expired_total (duration·failure·retry 가산 밖 —
+// metrics 패키지 가정 A4). The exhausted branch commits the failed terminal,
+// so it feeds the same F/G families finishAttempt does: duration
+// {operation, failed} from the crashed attempt's claim time and failure
+// {operation, lease_expired}. Metrics nil = no-op (T-4).
+func (e *Engine) observeReapTerminal(task *model.ProviderTask, exhausted bool, claimAt time.Time) {
+	if e.Metrics == nil {
+		return
+	}
+	e.Metrics.IncLeaseExpired()
+	if exhausted {
+		if !claimAt.IsZero() {
+			e.Metrics.ObserveTaskDuration(task.OperationName, TaskStatusFailed, time.Since(claimAt))
+		}
+		e.Metrics.IncTaskFailure(task.OperationName, ErrorCodeLeaseExpired)
+	}
 }
 
 const actorReaper = "reaper"

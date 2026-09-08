@@ -17,7 +17,8 @@ import (
 // inside the §13.5 diagram. The attempt created by the claim is closed
 // unexecuted.
 func (e *Engine) cancelAtClaimBoundary(ctx context.Context, task *model.ProviderTask, now time.Time) error {
-	return e.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	won := false // CAS 승리 종단만 계기 대상 — 경합 패배는 종단이 아니다(§18.2 F)
+	err := e.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&model.ProviderTask{}).
 			Where("id = ? AND status = ? AND next_attempt_at <= ? AND version = ?",
 				task.ID, TaskStatusQueued, now, task.Version).
@@ -34,6 +35,7 @@ func (e *Engine) cancelAtClaimBoundary(ctx context.Context, task *model.Provider
 		if res.RowsAffected == 0 {
 			return nil // lost to a concurrent claimer — it owns the task now
 		}
+		won = true
 		var fresh model.ProviderTask
 		if err := tx.First(&fresh, task.ID).Error; err != nil {
 			return fmt.Errorf("tasks: reload cancelled task %d: %w", task.ID, err)
@@ -54,6 +56,16 @@ func (e *Engine) cancelAtClaimBoundary(ctx context.Context, task *model.Provider
 		return appendEvent(tx, fresh.ID, fresh.AttemptCount, TaskEventCancelled, e.cfg.WorkerID,
 			contract.JSONMap{"reason": "cancel_requested at claim boundary (§13.4)"})
 	})
+	if err != nil {
+		return err
+	}
+	// §18.2 F — 취소 종단도 duration 패밀리를 먹인다. 클레임은 이 경계의 커밋 안에서
+	// 일어났으므로 claim→terminal 원점이 now다(경계에서 무실행 취소 — 소요 ≈ 0).
+	// failure 패밀리는 대상 밖(가정 A4 — IncTaskFailure는 failed/timed_out 종단).
+	if won && e.Metrics != nil {
+		e.Metrics.ObserveTaskDuration(task.OperationName, TaskStatusCancelled, time.Since(now))
+	}
+	return nil
 }
 
 // Complete terminally succeeds the claimed task — transition, attempt closure
@@ -149,10 +161,29 @@ func (e *Engine) finishAttempt(ctx context.Context, claim *ClaimedTask, p finish
 	if err != nil {
 		return fmt.Errorf("tasks: complete attempt (task %d, attempt %d): %w", claim.Task.ID, claim.Attempt.AttemptNo, err)
 	}
+	// §18.2 F/G — 종단 커밋 확정 이후 계기(커밋 실패는 미가산). J6 훅과 같은
+	// 확정점이다: 계기는 훅 발화 여부와 무관하게 종단 커밋의 진위만 따른다.
+	e.observeTaskTerminal(claim, p)
 	// J6 — 종단 커밋 이후 훅 발화(종단 불변). 훅 실패는 여기서 처분되고
 	// 호출자에게 새어나가지 않는다(Complete/Fail의 반환은 종단 커밋의 진위만
 	// 말한다).
 	return e.fireTaskTerminal(ctx, claim, p)
+}
+
+// observeTaskTerminal feeds the §18.2 F/G families after a COMMITTED terminal:
+// provider_task_duration_seconds{operation,status} gets the claim→terminal
+// span — the attempt row's StartedAt is the claim clock (claimTask binds it in
+// the claim transaction) — and provider_task_failures_total{operation,code}
+// counts failed/timed_out terminals (가정 A4; cancelled는 failure 가산 밖).
+// Metrics nil = no-op (T-4 — 계기 부재가 종단을 바꾸지 않는다).
+func (e *Engine) observeTaskTerminal(claim *ClaimedTask, p finishParams) {
+	if e.Metrics == nil {
+		return
+	}
+	e.Metrics.ObserveTaskDuration(claim.Task.OperationName, p.status, time.Since(claim.Attempt.StartedAt))
+	if p.status == TaskStatusFailed || p.status == TaskStatusTimedOut {
+		e.Metrics.IncTaskFailure(claim.Task.OperationName, p.errorCode)
+	}
 }
 
 // fireTaskTerminal invokes OnTaskTerminal after the terminal commit (J6).
@@ -218,6 +249,12 @@ func (e *Engine) requeueForRetry(ctx context.Context, claim *ClaimedTask, code, 
 	})
 	if err != nil {
 		return fmt.Errorf("tasks: requeue attempt (task %d, attempt %d): %w", claim.Task.ID, claim.Attempt.AttemptNo, err)
+	}
+	// §18.2 H — 재큐 1가산. 재큐는 터미널이 아니다(§13.5 failed→queued 에지):
+	// duration·failure 패밀리는 대상 밖이며, 리퍼 재큐도 lease_expired 쪽이
+	// 담당한다(metrics 패키지 가정 A4 계약 — requeueForRetry만 발화).
+	if e.Metrics != nil {
+		e.Metrics.IncTaskRetry(claim.Task.OperationName)
 	}
 	return nil
 }

@@ -164,6 +164,10 @@ type TerminalAuditFunc func(ctx context.Context, db *gorm.DB, task model.Provide
 // event).
 func (s *Stack) BuildEngine(cfg tasks.Config, terminalAudit TerminalAuditFunc) *tasks.Engine {
 	engine := tasks.NewEngine(s.db, s.Registry, cfg)
+	// §18.2 M1 — 엔진·리퍼·폴 루프가 스택의 공유 Counters에 적립한다(어댑터 REST
+	// 래퍼·sync·broker와 같은 set — J6 계기면 공유 규약). /internal/metrics 렌더가
+	// task·worker 패밀리(F/G/H/I/J)를 함께 내보내는 배선점.
+	engine.Metrics = s.Counters
 	engine.OnTaskTerminal = func(ctx context.Context, task model.ProviderTask, status string, detail contract.JSONMap) error {
 		refreshErr := s.refreshObservation(ctx, task.ResourceUID)
 		var auditErr error
