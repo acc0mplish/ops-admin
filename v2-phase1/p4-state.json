@@ -53,5 +53,5 @@
   "reviewRound2": "라운드1 gap 2건 소거·신규 F1/F2 (tencent 표시 형식) — 최종 수정 진행",
   "reviewFinal": "라운드2 수정요청 F1/F2 → 6cfbeca 수정·메인 재실행 (RUN/PASS 40·29패키지) — 종결 (interim)",
   "gateEvidence": "issue #4 코멘트 5569375225",
-  "m1Remaining": "Phase 2 게이트 2·3일차 수동·실계정 승격 (§13-10)·M5 ceefc27 freeze 해소·§18.2 메트릭 앵커"
+  "m1Remaining": "Phase 2 게이트 3일차(09-09 예약)·M5 ceefc27 freeze 해소(09-09) — 클라우드 실계정 승격(§13-10)은 2026-09-08 사용자 확정으로 보류(Aliyun 지원 계획 없음·현시점 유지)·§18.2 메트릭은 PR #48로 충족"
 }
