@@ -42,6 +42,7 @@ type HealthSweeper struct {
 
 	mu       sync.Mutex
 	observed []string // 마지막 정상 sweep이 관측한 UID — DB 실패 회의 0 적립 대상
+	started  bool     // Start 경과 — Stop의 사전 호출 안전성(④리뷰 LOW)
 
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -66,6 +67,13 @@ func NewHealthSweeper(db *gorm.DB, reg *registry.Registry, broker *secrets.Broke
 // interval (ticker semantics — 부트 직후 실클라우드에 probe를 쏘지 않는
 // 것이 R2 완화). 테스트는 Start 없이 SweepOnce를 직접 드라이브한다.
 func (s *HealthSweeper) Start(ctx context.Context) {
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
+		return
+	}
+	s.started = true
+	s.mu.Unlock()
 	go func() {
 		defer close(s.done)
 		ticker := time.NewTicker(healthSweepInterval)
@@ -87,10 +95,17 @@ func (s *HealthSweeper) Start(ctx context.Context) {
 
 // Stop cancels the loop and waits for the goroutine to exit. nil 수신자는
 // no-op다 — 엔진 레인 부재(R11) 부트에서도 호출부가 가드 없이 잇는다.
-// Start 이전의 Stop은 done이 닫히지 않으므로 호출해서는 안 된다(engine.Stop
-// 과 같은 계약 — 기동 순서는 호출부가 소유한다).
+// Start 이전의 Stop도 안전(④리뷰 LOW — healthloop.go:92-100): started 플래그
+// 미상태면 done을 닫아 즉시 반환한다.
 func (s *HealthSweeper) Stop() {
 	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	started := s.started
+	s.mu.Unlock()
+	if !started {
+		s.stopOnce.Do(func() { close(s.done) })
 		return
 	}
 	s.stopOnce.Do(func() {
@@ -122,8 +137,34 @@ func (s *HealthSweeper) SweepOnce(ctx context.Context) error {
 			}
 		}
 	}
-	s.setObserved(uids)
+	previous := s.swapObserved(uids)
+	s.pruneVanished(previous, uids)
 	return errors.Join(join...)
+}
+
+// swapObserved — 관측 집합을 현재 UIDs로 교체하고 이전 집합을 돌려준다.
+// pruneVanished가 사라진 UID를 판정하는 기준값으로 쓴다.
+func (s *HealthSweeper) swapObserved(uids []string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.observed
+	s.observed = uids
+	return previous
+}
+
+// pruneVanished — 이전 관측 집합에는 있었으나 이번 sweep에 없는 커넥션(삭제된
+// 행)의 health 시리즈를 소거한다(④리뷰 LOW — gauge.go:10). 소거는 렌더 라인
+// 제거일 뿐 DB 접촉이 아니다.
+func (s *HealthSweeper) pruneVanished(previous, current []string) {
+	live := make(map[string]bool, len(current))
+	for _, uid := range current {
+		live[uid] = true
+	}
+	for _, uid := range previous {
+		if !live[uid] {
+			s.counters.RemoveHealth(uid)
+		}
+	}
 }
 
 // probe resolves the sweep's single provider leg: "inventory" 자재 해석 →

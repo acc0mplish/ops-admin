@@ -429,7 +429,7 @@ func leaseLowerBound(cfg Config, callTimeoutSeconds int, now time.Time) time.Tim
 func (e *Engine) QueueDepth(ctx context.Context) (int64, error) {
 	var depth int64
 	if err := e.db.WithContext(ctx).Model(&model.ProviderTask{}).
-		Where("status = ?", TaskStatusQueued).
+		Where("status = ? AND next_attempt_at <= ?", TaskStatusQueued, time.Now()).
 		Count(&depth).Error; err != nil {
 		return 0, fmt.Errorf("tasks: queue depth count: %w", err)
 	}
