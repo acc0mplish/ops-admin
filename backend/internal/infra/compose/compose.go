@@ -130,7 +130,10 @@ func Build(db *gorm.DB) (*Stack, error) {
 		return nil, err
 	}
 
-	broker := secrets.NewBroker(db)
+	// The broker shares the stack's counters so every successful Resolve feeds
+	// the §18.2 secret_access_total{purpose, backend} family (J6 — 계기면
+	// 공유 규약과 동일 형상).
+	broker := secrets.NewBrokerWithCounters(db, counters)
 	return &Stack{
 		db:       db,
 		Registry: reg,
