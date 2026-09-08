@@ -171,6 +171,8 @@ func (c *cvmClient) describeInstances(ctx context.Context, offset, limit int64) 
 //
 // 어느 경로의 에러 메시지에도 자격 물질은 진입하지 않는다(보존 제약 3).
 func (c *cvmClient) do(ctx context.Context, action string, body any, target any) error {
+	start := time.Now()
+	defer func() { c.metrics.ObserveAPILatency(ProviderName, "discover", time.Since(start)) }()
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 

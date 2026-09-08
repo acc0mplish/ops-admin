@@ -126,6 +126,8 @@ type aliyunRPCError struct {
 // 에러 메시지는 status·코드·action만 담는다 — 자격 값·서명 파라미터·응답
 // 본문 전문은 들어가지 않는다(보존 제약 3).
 func (c *ecsClient) request(ctx context.Context, action, region, op string, extra url.Values, target any) error {
+	start := time.Now()
+	defer func() { c.metrics.ObserveAPILatency(ProviderName, op, time.Since(start)) }()
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
