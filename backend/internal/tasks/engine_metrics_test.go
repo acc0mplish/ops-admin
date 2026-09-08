@@ -284,3 +284,30 @@ func TestMetricsNilKeepsEngineBehavior(t *testing.T) {
 		t.Fatalf("reaped status = %q, want queued — nil Metrics가 리프를 바꾸면 안 된다", got)
 	}
 }
+
+// MEDIUM-1(④리뷰) — Instrument는 내부 broker를 같은 카운터 set으로 재조립해
+// operations 목적 해석도 계기화한다(§18.2 "secret broker" 계기 규약 — J6).
+// 재조립 자체는 NewBrokerWithCounters의 broker_metrics_test 계약을 승계하고,
+// 여기서는 포인터 교체·nil 불변·Metrics 부착의 엔진측 계약만 단얫한다.
+func TestInstrumentRebindsBrokerWithCounters(t *testing.T) {
+	f := newEngineFixture(t, testConfig())
+	before := f.eng.broker
+	if before == nil {
+		t.Fatal("NewEngine must assemble a broker")
+	}
+
+	m := metrics.New()
+	f.eng.Instrument(m)
+	if f.eng.Metrics != m {
+		t.Fatal("Instrument must attach the shared counter set")
+	}
+	if f.eng.broker == before {
+		t.Fatal("Instrument must rebind the internal broker so operations-purpose resolves are counted")
+	}
+
+	// nil — 무계기 기본 동작 유지(T-4): broker를 되돌리지 않고 Metrics만 nil.
+	f.eng.Instrument(nil)
+	if f.eng.Metrics != nil {
+		t.Fatal("Instrument(nil) must clear Metrics")
+	}
+}

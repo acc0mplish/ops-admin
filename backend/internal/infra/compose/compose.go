@@ -166,8 +166,10 @@ func (s *Stack) BuildEngine(cfg tasks.Config, terminalAudit TerminalAuditFunc) *
 	engine := tasks.NewEngine(s.db, s.Registry, cfg)
 	// §18.2 M1 — 엔진·리퍼·폴 루프가 스택의 공유 Counters에 적립한다(어댑터 REST
 	// 래퍼·sync·broker와 같은 set — J6 계기면 공유 규약). /internal/metrics 렌더가
-	// task·worker 패밀리(F/G/H/I/J)를 함께 내보내는 배선점.
-	engine.Metrics = s.Counters
+	// task·worker 패밀리(F/G/H/I/J)를 함께 내보내는 배선점. Instrument는 내부
+	// broker도 같은 set으로 재조립해 operations 목적 해석을 계기화한다(④리뷰
+	// MEDIUM-1 — secret_access_total{purpose="operations"} 시리즈 완결성).
+	engine.Instrument(s.Counters)
 	engine.OnTaskTerminal = func(ctx context.Context, task model.ProviderTask, status string, detail contract.JSONMap) error {
 		refreshErr := s.refreshObservation(ctx, task.ResourceUID)
 		var auditErr error

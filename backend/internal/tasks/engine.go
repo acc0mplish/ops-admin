@@ -77,6 +77,17 @@ func NewEngine(db *gorm.DB, reg *registry.Registry, cfg Config) *Engine {
 	}
 }
 
+// Instrument — 공유 카운터 set을 엔진에 부착하고 내부 broker를 같은 set으로
+// 재조립한다(§18.2 계기 위치 "secret broker" — operations 목적 해석도
+// REST 래퍼·sync·compose broker와 동일 계기 규약, J6). compose가 BuildEngine
+// 직후 1회 호출한다. nil 전달 시 무계기 기본 동작(테스트 nil 가드 T-4 유지).
+func (e *Engine) Instrument(counters *metrics.Counters) {
+	e.Metrics = counters
+	if counters != nil {
+		e.broker = secrets.NewBrokerWithCounters(e.db, counters)
+	}
+}
+
 // SubmitInput — r2 T-10: there is deliberately NO RequiresApproval flag
 // here; the canonical source is the registry OperationDefinition the engine
 // snapshots at submit time.
