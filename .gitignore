@@ -24,3 +24,4 @@ web/e2e/playwright-report/
 # Phase5 PVE credentials (runtime-only, never commit)
 backend/data/
 web/test-results/
+docs/task-id/
