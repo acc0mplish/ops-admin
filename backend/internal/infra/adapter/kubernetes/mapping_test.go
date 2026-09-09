@@ -74,8 +74,8 @@ var coverageTable = map[string]string{
 	"overview.distribution": "dropped(v2-schema-absent)", "overview.certificates": "dropped(v2-schema-absent)",
 	// §4.3 nodes
 	"nodes.name": "mapped", "nodes.role": "mapped", "nodes.status": "mapped",
-	"nodes.version": "dropped(v2-schema-absent)", "nodes.internalIP": "dropped(v2-schema-absent)",
-	"nodes.os": "dropped(v2-schema-absent)", "nodes.cpu": "mapped", "nodes.memory": "mapped",
+	"nodes.version": "mapped", "nodes.internalIP": "mapped",
+	"nodes.os": "mapped", "nodes.cpu": "mapped", "nodes.memory": "mapped",
 	"nodes.pods": "dropped(v2-derived)",
 	// §4.4 namespaces
 	"namespaces.name": "mapped", "namespaces.status": "mapped", "namespaces.createdAt": "mapped",
@@ -85,23 +85,23 @@ var coverageTable = map[string]string{
 	"pods.name": "mapped", "pods.namespace": "mapped", "pods.status": "mapped",
 	"pods.node": "mapped(relationship)", "pods.restarts": "mapped",
 	"pods.workloadName": "dropped(v2-derived)", "pods.workloadType": "dropped(v2-derived)",
-	"pods.nodeIP": "dropped(v2-schema-absent)", "pods.ip": "dropped(v2-schema-absent)",
+	"pods.nodeIP": "mapped", "pods.ip": "mapped",
 	"pods.age": "dropped(volatile)",
 	// §4.6 workloads
 	"workloads.name": "mapped", "workloads.type": "mapped", "workloads.namespace": "mapped",
 	"workloads.ready": "mapped", "workloads.image(v2-only)": "v2-only",
-	"workloads.updated": "dropped(v2-schema-absent)", "workloads.available": "dropped(v2-schema-absent)",
-	"workloads.requests": "dropped(v2-schema-absent)", "workloads.limits": "dropped(v2-schema-absent)",
+	"workloads.updated": "mapped", "workloads.available": "mapped",
+	"workloads.requests": "mapped", "workloads.limits": "mapped",
 	"workloads.age": "dropped(volatile)",
 	// §4.7 network.services
 	"network.services.name": "mapped", "network.services.namespace": "mapped",
 	"network.services.type": "mapped", "network.services.clusterIP": "mapped",
-	"network.services.ports": "mapped", "network.services.externalIP": "dropped(v2-schema-absent)",
+	"network.services.ports": "mapped", "network.services.externalIP": "mapped",
 	"network.services.endpoints": "dropped(v2-derived)", "network.services.age": "dropped(volatile)",
 	// §4.7 network.ingresses
 	"network.ingresses.name": "mapped", "network.ingresses.namespace": "mapped",
-	"network.ingresses.host": "mapped", "network.ingresses.address": "dropped(v2-schema-absent)",
-	"network.ingresses.tls": "dropped(v2-schema-absent)", "network.ingresses.age": "dropped(volatile)",
+	"network.ingresses.host": "mapped", "network.ingresses.address": "mapped",
+	"network.ingresses.tls": "mapped", "network.ingresses.age": "dropped(volatile)",
 	// §4.8 advancedNetwork
 	"advancedNetwork.gatewayApiGateways": "dropped(v2-not-collected)",
 	"advancedNetwork.httpRoutes":         "dropped(v2-not-collected)",
@@ -118,12 +118,12 @@ var coverageTable = map[string]string{
 	"configStorage.storage.name": "mapped", "configStorage.storage.kind": "mapped",
 	"configStorage.storage.namespace": "mapped", "configStorage.storage.capacity": "mapped",
 	"configStorage.storage.storageClass": "mapped", "configStorage.storage.accessModes": "mapped",
-	"configStorage.storage.namespaceScope": "dropped(v2-derived)",
-	"configStorage.storage.status":         "dropped(v2-schema-absent)",
-	"configStorage.storage.sourceType":     "dropped(v2-schema-absent)",
-	"configStorage.storage.path":           "dropped(v2-schema-absent)",
-	"configStorage.storage.nfsServer":      "dropped(v2-schema-absent)",
-	"configStorage.storage.reclaimPolicy":  "dropped(v2-schema-absent)",
+	"configStorage.storage.namespaceScope": "mapped",
+	"configStorage.storage.status":         "mapped",
+	"configStorage.storage.sourceType":     "mapped",
+	"configStorage.storage.path":           "mapped",
+	"configStorage.storage.nfsServer":      "mapped",
+	"configStorage.storage.reclaimPolicy":  "mapped",
 }
 
 // T51 — coverage rule: every field the legacy API response serializes is
@@ -260,6 +260,12 @@ func normalizedKeyFor(coverageKey string) string {
 		return "normalized:roles"
 	case "nodes.status":
 		return "normalized:healthState"
+	case "nodes.version":
+		return "normalized:kubeletVersion"
+	case "nodes.internalIP":
+		return "normalized:internalIP"
+	case "nodes.os":
+		return "normalized:osImage"
 	case "nodes.cpu":
 		return "normalized:capacityCoresGB"
 	case "nodes.memory":
@@ -278,6 +284,10 @@ func normalizedKeyFor(coverageKey string) string {
 		return "raw:namespace"
 	case "pods.status":
 		return "normalized:phase"
+	case "pods.nodeIP":
+		return "normalized:hostIP"
+	case "pods.ip":
+		return "normalized:podIP"
 	case "pods.restarts":
 		return "normalized:restartCount"
 	// §4.6 workloads
@@ -289,6 +299,14 @@ func normalizedKeyFor(coverageKey string) string {
 		return "subtype"
 	case "workloads.ready":
 		return "normalized:readyReplicas"
+	case "workloads.updated":
+		return "normalized:updatedReplicas"
+	case "workloads.available":
+		return "normalized:availableReplicas"
+	case "workloads.requests", "workloads.limits":
+		// 원시량은 normalized.containers(milli/bytes 정수)로 저장 — legacy
+		// "500m / 1.0Gi" 포맷은 조립 P1-D의 포맷터 오라클이 소유한다.
+		return "normalized:containers"
 	// §4.7 network.services
 	case "network.services.name":
 		return "display"
@@ -298,6 +316,8 @@ func normalizedKeyFor(coverageKey string) string {
 		return "normalized:type"
 	case "network.services.clusterIP":
 		return "normalized:clusterIP"
+	case "network.services.externalIP":
+		return "normalized:externalIP"
 	case "network.services.ports":
 		return "normalized:ports"
 	// §4.7 network.ingresses
@@ -305,6 +325,10 @@ func normalizedKeyFor(coverageKey string) string {
 		return "display"
 	case "network.ingresses.namespace":
 		return "raw:namespace"
+	case "network.ingresses.address":
+		return "normalized:address"
+	case "network.ingresses.tls":
+		return "normalized:tls"
 	case "network.ingresses.host":
 		return "normalized:hosts"
 	// §4.9 configStorage.configMaps
@@ -330,8 +354,20 @@ func normalizedKeyFor(coverageKey string) string {
 		return "subtype"
 	case "configStorage.storage.namespace":
 		return "raw:namespace"
+	case "configStorage.storage.namespaceScope":
+		return "normalized:namespaceScope"
+	case "configStorage.storage.status":
+		return "normalized:phase"
 	case "configStorage.storage.capacity":
 		return "normalized:capacityGB"
+	case "configStorage.storage.sourceType":
+		return "normalized:sourceType"
+	case "configStorage.storage.path":
+		return "normalized:sourcePath"
+	case "configStorage.storage.nfsServer":
+		return "normalized:nfsServer"
+	case "configStorage.storage.reclaimPolicy":
+		return "normalized:reclaimPolicy"
 	case "configStorage.storage.storageClass":
 		return "normalized:storageClassName"
 	case "configStorage.storage.accessModes":
@@ -447,11 +483,11 @@ const mappingSeedVersion = "v1.29.4"
 // 싣지 않는다(보존 제약 #7 — 어댑터 경계 폐기 검증은 internal 테스트 소관).
 var mappingSeedBodies = map[string]string{
 	"/version":                   `{"gitVersion":"` + mappingSeedVersion + `","major":"1","minor":"29"}`,
-	"/api/v1/nodes":              `{"metadata":{"name":"node-1","uid":"node-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},"spec":{"taints":[{"key":"node-role.kubernetes.io/master","effect":"NoSchedule"}]},"status":{"conditions":[{"type":"Ready","status":"True"}],"capacity":{"cpu":"8","memory":"31457280Ki","pods":"110"},"allocatable":{"cpu":"7500m","memory":"31457280Ki"}}}`,
+	"/api/v1/nodes":              `{"metadata":{"name":"node-1","uid":"node-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},"spec":{"taints":[{"key":"node-role.kubernetes.io/master","effect":"NoSchedule"}],"podCIDRs":["10.244.0.0/24"]},"status":{"conditions":[{"type":"Ready","status":"True"}],"capacity":{"cpu":"8","memory":"31457280Ki","pods":"110"},"allocatable":{"cpu":"7500m","memory":"31457280Ki","pods":"110"},"nodeInfo":{"kubeletVersion":"v1.29.4","osImage":"Ubuntu 22.04"},"addresses":[{"type":"InternalIP","address":"192.168.10.2"}]}}`,
 	"/api/v1/namespaces":         `{"metadata":{"name":"default","uid":"ns-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Active"}}`,
-	"/api/v1/pods":               `{"metadata":{"name":"web-1","namespace":"default","uid":"pod-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Running","containerStatuses":[{"name":"app","restartCount":2,"ready":true}]}}`,
-	"/apis/apps/v1/deployments":  `{"metadata":{"name":"web","namespace":"default","uid":"dep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1"}]}}},"status":{"readyReplicas":3}}`,
-	"/apis/apps/v1/statefulsets": `{"metadata":{"name":"db","namespace":"default","uid":"sts-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":1,"template":{"spec":{"containers":[{"name":"pg","image":"postgres:16"}]}}},"status":{"readyReplicas":1}}`,
+	"/api/v1/pods":               `{"metadata":{"name":"web-1","namespace":"default","uid":"pod-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"containers":[{"name":"app","resources":{"requests":{"cpu":"500m","memory":"256Mi"},"limits":{"cpu":"1","memory":"1Gi"}}}]},"status":{"phase":"Running","hostIP":"192.168.10.2","podIP":"10.244.0.5","containerStatuses":[{"name":"app","restartCount":2,"ready":true}]}}`,
+	"/apis/apps/v1/deployments":  `{"metadata":{"name":"web","namespace":"default","uid":"dep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1","resources":{"requests":{"cpu":"250m","memory":"512Mi"},"limits":{"cpu":"2","memory":"2Gi"}}}]}}},"status":{"readyReplicas":3,"updatedReplicas":3,"availableReplicas":3}}`,
+	"/apis/apps/v1/statefulsets": `{"metadata":{"name":"db","namespace":"default","uid":"sts-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":1,"template":{"spec":{"containers":[{"name":"pg","image":"postgres:16"}]}}},"status":{"readyReplicas":1,"updatedReplicas":1,"availableReplicas":1}}`,
 	"/apis/apps/v1/daemonsets":   `{"metadata":{"name":"agent","namespace":"default","uid":"ds-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"agent","image":"agent:2"}]}}},"status":{"desiredNumberScheduled":2,"numberReady":2}}`,
 	// P1-A 확장 종 — Discover 워크가 통과하는 모든 섹션 경로를 서빙해야 한다
 	// (404는 일반 에러 신호 — J-P1-1 404-스킵은 P1-C1 client.go 소관).
@@ -459,11 +495,11 @@ var mappingSeedBodies = map[string]string{
 	"/apis/batch/v1/jobs":                    `{"metadata":{"name":"job-1","namespace":"default","uid":"job-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"app","image":"busybox:1"}]}}},"status":{"succeeded":1}}`,
 	"/apis/batch/v1/cronjobs":                `{"metadata":{"name":"cron-1","namespace":"default","uid":"cron-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"schedule":"*/5 * * * *"}}`,
 	"/api/v1/endpoints":                      `{"metadata":{"name":"web-svc","namespace":"default","uid":"ep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"subsets":[{"addresses":[{"ip":"10.244.0.5"},{"ip":"10.244.0.6"}]}]}`,
-	"/api/v1/services":                       `{"metadata":{"name":"web-svc","namespace":"default","uid":"svc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"type":"ClusterIP","clusterIP":"10.96.0.10","ports":[{"name":"http","port":80,"protocol":"TCP"}]}}`,
-	"/apis/networking.k8s.io/v1/ingresses":   `{"metadata":{"name":"web-ing","namespace":"default","uid":"ing-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"rules":[{"host":"app.example.com"}]}}`,
+	"/api/v1/services":                       `{"metadata":{"name":"web-svc","namespace":"default","uid":"svc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"type":"LoadBalancer","clusterIP":"10.96.0.10","ports":[{"name":"http","port":80,"protocol":"TCP"}],"externalIPs":["198.51.100.4"]},"status":{"loadBalancer":{"ingress":[{"ip":"203.0.113.7"}]}}}`,
+	"/apis/networking.k8s.io/v1/ingresses":   `{"metadata":{"name":"web-ing","namespace":"default","uid":"ing-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"rules":[{"host":"app.example.com"}],"tls":[{"hosts":["app.example.com"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"203.0.113.9"}]}}}`,
 	"/api/v1/configmaps":                     `{"metadata":{"name":"cm-1","namespace":"default","uid":"cm-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"data":{"k1":"v1","k2":"v2"}}`,
 	"/api/v1/secrets":                        `{"metadata":{"name":"sec-1","namespace":"default","uid":"sec-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"type":"Opaque","data":{"tk":"dg=="}}`,
-	"/api/v1/persistentvolumes":              `{"metadata":{"name":"pv-1","uid":"pv-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"storageClassName":"standard","accessModes":["ReadWriteOnce"],"capacity":{"storage":"1Gi"}}}`,
+	"/api/v1/persistentvolumes":              `{"metadata":{"name":"pv-1","uid":"pv-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","annotations":{"ops-admin.io/namespace-scope":"team-a"}},"spec":{"storageClassName":"nfs","accessModes":["ReadWriteMany"],"capacity":{"storage":"1Gi"},"nfs":{"server":"10.0.0.9","path":"/exports/team-a"},"persistentVolumeReclaimPolicy":"Retain"},"status":{"phase":"Bound"}},{"metadata":{"name":"pv-host","uid":"pv-uid-2","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"storageClassName":"standard","accessModes":["ReadWriteOnce"],"capacity":{"storage":"1Gi"},"hostPath":{"path":"/data"},"persistentVolumeReclaimPolicy":"Delete"},"status":{"phase":"Available"}}`,
 	"/api/v1/persistentvolumeclaims":         `{"metadata":{"name":"pvc-1","namespace":"default","uid":"pvc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"storageClassName":"standard","accessModes":["ReadWriteOnce"]},"status":{"phase":"Bound","capacity":{"storage":"1Gi"}}}`,
 	"/apis/storage.k8s.io/v1/storageclasses": `{"metadata":{"name":"standard","uid":"sc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"provisioner":"kubernetes.io/aws-ebs"}`,
 }

@@ -27,6 +27,8 @@ type objectMeta struct {
 	// P1-A (J-P1-3) — pod Raw ownerReferences: workloadName/Type 집계 체인
 	// (P1-D)이 역추적할 uid·kind·name 3성분만 보존한다.
 	OwnerReferences []ownerReference `json:"ownerReferences"`
+	// P1-B (J-P1-3) — storage[].namespaceScope의 annotation 원천(pv).
+	Annotations map[string]string `json:"annotations"`
 }
 
 // ownerReference is the metadata.ownerReferences subset Raw carries.
@@ -60,14 +62,7 @@ type nodeObject struct {
 		PodCIDRs []string `json:"podCIDRs"`
 		PodCIDR  string   `json:"podCIDR"`
 	} `json:"spec"`
-	Status struct {
-		Conditions []struct {
-			Type   string `json:"type"`
-			Status string `json:"status"`
-		} `json:"conditions"`
-		Capacity    map[string]string `json:"capacity"`
-		Allocatable map[string]string `json:"allocatable"`
-	} `json:"status"`
+	nodeStatusFields // P1-B 확장 포함 status — normalizer_batch.go (R-P3 분할)
 }
 
 type namespaceObject struct {
@@ -78,13 +73,8 @@ type namespaceObject struct {
 }
 
 type podObject struct {
-	Metadata objectMeta `json:"metadata"`
-	Status   struct {
-		Phase             string `json:"phase"`
-		ContainerStatuses []struct {
-			RestartCount int `json:"restartCount"`
-		} `json:"containerStatuses"`
-	} `json:"status"`
+	Metadata  objectMeta `json:"metadata"`
+	podFields            // P1-B 확장 포함 spec·status — normalizer_batch.go (R-P3 분할)
 }
 
 type workloadObject struct {
@@ -93,9 +83,7 @@ type workloadObject struct {
 		Replicas *int `json:"replicas"`
 		Template struct {
 			Spec struct {
-				Containers []struct {
-					Image string `json:"image"`
-				} `json:"containers"`
+				Containers []containerSpec `json:"containers"`
 			} `json:"spec"`
 		} `json:"template"`
 	} `json:"spec"`
@@ -103,29 +91,20 @@ type workloadObject struct {
 		ReadyReplicas          int `json:"readyReplicas"`
 		DesiredNumberScheduled int `json:"desiredNumberScheduled"`
 		NumberReady            int `json:"numberReady"`
+		// P1-B (J-P1-3) — legacy workloads.updated·available.
+		UpdatedReplicas   int `json:"updatedReplicas"`
+		AvailableReplicas int `json:"availableReplicas"`
 	} `json:"status"`
 }
 
 type serviceObject struct {
-	Metadata objectMeta `json:"metadata"`
-	Spec     struct {
-		Type      string `json:"type"`
-		ClusterIP string `json:"clusterIP"`
-		Ports     []struct {
-			Name     string `json:"name"`
-			Port     int    `json:"port"`
-			Protocol string `json:"protocol"`
-		} `json:"ports"`
-	} `json:"spec"`
+	Metadata      objectMeta `json:"metadata"`
+	serviceFields            // P1-B 확장 포함 spec·status — normalizer_batch.go (R-P3 분할)
 }
 
 type ingressObject struct {
-	Metadata objectMeta `json:"metadata"`
-	Spec     struct {
-		Rules []struct {
-			Host string `json:"host"`
-		} `json:"rules"`
-	} `json:"spec"`
+	Metadata      objectMeta `json:"metadata"`
+	ingressFields            // P1-B 확장 포함 spec·status — normalizer_batch.go (R-P3 분할)
 }
 
 type configMapObject struct {
@@ -141,15 +120,7 @@ type secretObject struct {
 
 type persistentVolumeObject struct {
 	Metadata objectMeta `json:"metadata"`
-	Spec     struct {
-		StorageClassName string            `json:"storageClassName"`
-		AccessModes      []string          `json:"accessModes"`
-		Capacity         map[string]string `json:"capacity"`
-	} `json:"spec"`
-	Status struct {
-		Phase    string            `json:"phase"`
-		Capacity map[string]string `json:"capacity"`
-	} `json:"status"`
+	pvFields            // P1-B 확장 포함 spec·status — normalizer_batch.go (R-P3 분할)
 }
 
 type persistentVolumeClaimObject struct {
@@ -429,6 +400,8 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		} else if o.Spec.PodCIDR != "" {
 			n["podCIDRs"] = []string{o.Spec.PodCIDR}
 		}
+		// P1-B (J-P1-3) — kubeletVersion·internalIP·osImage·allocatablePods.
+		applyNodeFieldKeys(n, o)
 		n["healthState"] = nodeHealthState(o.Status.Conditions)
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata),
@@ -455,14 +428,24 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		for _, cs := range o.Status.ContainerStatuses {
 			restarts += cs.RestartCount
 		}
+		n := contract.JSONMap{
+			"phase":          o.Status.Phase,
+			"lifecycleState": o.Status.Phase, // 상태 어휘: pod phase 그대로(mapping.md)
+			"restartCount":   restarts,
+		}
+		// P1-B (J-P1-3) — legacy nodeIP·ip + 컨테이너 원시량(milli/bytes).
+		if o.Status.HostIP != "" {
+			n["hostIP"] = o.Status.HostIP
+		}
+		if o.Status.PodIP != "" {
+			n["podIP"] = o.Status.PodIP
+		}
+		if cs := containerQuantities(o.Spec.Containers, false); cs != nil {
+			n["containers"] = cs
+		}
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw: buildRaw(o.Metadata),
-			Normalized: contract.JSONMap{
-				"phase":          o.Status.Phase,
-				"lifecycleState": o.Status.Phase, // 상태 어휘: pod phase 그대로(mapping.md)
-				"restartCount":   restarts,
-			},
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "deployments", "statefulsets", "daemonsets", "replicasets":
@@ -474,7 +457,7 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 
 	case "jobs", "cronjobs", "endpoints":
 		// P1-A 확장 종 — 디코드+키는 normalizer_batch.go에 분할(J-P1-1·R-P3 선제
-		// 분할). job·cronjob의 batch 고유 키는 P1-B(TestNormalizedKeySchema) 소관.
+		// 분할). batch 고유 키 확장은 P1-B 착지(J-P1-3).
 		var err error
 		if res, err = normalizeBatchSection(ctxID, km, section, raw); err != nil {
 			return contract.DiscoveredResource{}, err
@@ -493,16 +476,20 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			}
 			ports = append(ports, entry)
 		}
-		res = contract.DiscoveredResource{
-			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw: buildRaw(o.Metadata),
-			Normalized: contract.JSONMap{
-				"type":  o.Spec.Type,
-				"ports": ports,
-			},
+		n := contract.JSONMap{
+			"type":  o.Spec.Type,
+			"ports": ports,
 		}
 		if o.Spec.ClusterIP != "" {
-			res.Normalized["clusterIP"] = o.Spec.ClusterIP
+			n["clusterIP"] = o.Spec.ClusterIP
+		}
+		// P1-B (J-P1-3) — legacy externalIP(v1 serviceExternalIP 결합 의미론).
+		if v := serviceExternalIP(o); v != "" {
+			n["externalIP"] = v
+		}
+		res = contract.DiscoveredResource{
+			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "ingresses":
@@ -516,10 +503,19 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 				hosts = append(hosts, r.Host)
 			}
 		}
+		n := contract.JSONMap{"hosts": hosts} // V2-only field(mapping.md)
+		// P1-B (J-P1-3) — legacy address·tls(상태 어휘 Enabled/Disabled 그대로).
+		if v := ingressAddress(o); v != "" {
+			n["address"] = v
+		}
+		if len(o.Spec.TLS) > 0 {
+			n["tls"] = "Enabled"
+		} else {
+			n["tls"] = "Disabled"
+		}
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw:        buildRaw(o.Metadata),
-			Normalized: contract.JSONMap{"hosts": hosts}, // V2-only field(mapping.md)
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "configmaps":
@@ -555,10 +551,13 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		if len(capacity) == 0 {
 			capacity = o.Status.Capacity
 		}
+		n := volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes)
+		// P1-B (J-P1-3) — phase·namespaceScope(annotation)·sourceType·
+		// sourcePath·nfsServer·reclaimPolicy — legacy는 pv 행에만 채운다.
+		applyVolumeFieldKeys(n, o)
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw:        buildRaw(o.Metadata),
-			Normalized: volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes),
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "persistentvolumeclaims":
@@ -570,10 +569,15 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		if len(capacity) == 0 {
 			capacity = o.Spec.Resources.Requests
 		}
+		n := volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes)
+		// P1-B (J-P1-3) — pvc는 phase만(legacy pvc 행의 source·reclaimPolicy·
+		// namespaceScope는 공란 — 조립 P1-D가 행 형상을 소유).
+		if o.Status.Phase != "" {
+			n["phase"] = o.Status.Phase
+		}
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw:        buildRaw(o.Metadata),
-			Normalized: volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes),
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "storageclasses":
