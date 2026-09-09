@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -421,5 +422,116 @@ func charWantWorkloadDetail(t *testing.T, caseName string, got model.K8sWorkload
 	}
 	if want.yamlContains != "" && !strings.Contains(got.YAML, want.yamlContains) {
 		t.Errorf("%s: yaml에 %q 없음", caseName, want.yamlContains)
+	}
+}
+
+// ---- Z2 시나리오 픽스처 (istio·gatewayapi·transport 공용) ----
+
+// charObserved는 스텁이 관측한 HTTP 요청 원문이다.
+type charObserved struct {
+	Method, Path, Accept, Authorization, ContentType, Body string
+	Query                                                  url.Values
+}
+
+// charCaptureStub은 단일 응답을 내고 요청 원문을 observed에 기록한다(마지막 요청 기준).
+func charCaptureStub(t *testing.T, status int, body string, observed *charObserved) (*http.Client, kubeClusterRuntime) {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observed.Method = r.Method
+		observed.Path = r.URL.Path
+		observed.Query = r.URL.Query()
+		observed.Accept = r.Header.Get("Accept")
+		observed.Authorization = r.Header.Get("Authorization")
+		observed.ContentType = r.Header.Get("Content-Type")
+		raw, _ := io.ReadAll(r.Body)
+		observed.Body = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(ts.Close)
+	return ts.Client(), kubeClusterRuntime{Server: ts.URL}
+}
+
+func charIstioGateway(name, namespace string) kubeIstioGateway {
+	var gateway kubeIstioGateway
+	gateway.Metadata = charMeta(name, namespace)
+	return gateway
+}
+
+func charGatewayAPI(name, namespace string) kubeGatewayAPI {
+	var gateway kubeGatewayAPI
+	gateway.Metadata = charMeta(name, namespace)
+	return gateway
+}
+
+func charHTTPRoute(name, namespace string) kubeHTTPRoute {
+	var route kubeHTTPRoute
+	route.Metadata = charMeta(name, namespace)
+	return route
+}
+
+func charVirtualService(name, namespace string) kubeIstioVirtualService {
+	var service kubeIstioVirtualService
+	service.Metadata = charMeta(name, namespace)
+	return service
+}
+
+func charPV(name string) kubePersistentVolume {
+	return kubePersistentVolume{Metadata: charMeta(name, "")}
+}
+
+// charSelfSignedCertKeyPairPEM은 인증서·개인키 PEM 쌍(자체서명)을 만든다 — tls.X509KeyPair 입력용.
+func charSelfSignedCertKeyPairPEM(commonName string, notBefore, notAfter time.Time) (string, string) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	template := x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: commonName},
+		NotBefore: notBefore, NotAfter: notAfter, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true, IsCA: true}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		panic(err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		panic(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+}
+
+// charGatewayListener는 kubeGatewayAPI.Spec.Listeners 요소를 만든다.
+func charGatewayListener(hostname string, port int, protocol string) struct {
+	Name     string `json:"name"`
+	Hostname string `json:"hostname"`
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
+} {
+	return struct {
+		Name     string `json:"name"`
+		Hostname string `json:"hostname"`
+		Port     int    `json:"port"`
+		Protocol string `json:"protocol"`
+	}{Hostname: hostname, Port: port, Protocol: protocol}
+}
+
+// charGatewayAddress는 kubeGatewayAPI.Status.Addresses 요소를 만든다.
+func charGatewayAddress(value string) struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+} {
+	return struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	}{Value: value}
+}
+
+// charDecode는 JSON 픽스처를 대상 구조체(Spec 부분 경로 포함)로 디코딩한다 — 실패는 치명.
+func charDecode(t *testing.T, payload string, target any) {
+	t.Helper()
+	if err := json.Unmarshal([]byte(payload), target); err != nil {
+		t.Fatal(err)
 	}
 }
