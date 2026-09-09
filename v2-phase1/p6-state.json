@@ -18,6 +18,16 @@
       {"claim": "리뷰 MEDIUM 4 보강: trailingSlash·R18 3곳·unknown 페이즈·basic 자격", "status": "verified", "evidence": "메인 지점 실측(:583·:48/:411/:538·Unknown AlertCount 5·:73-82) + LOW#5 cert 불일치 :176. C7 전체 -race exit 0 (2026-09-09 20:xx)"}
     ]
   },
+  "z3": {
+    "phase": "implement-보강",
+    "claims": [
+      {"claim": "C45-Z3: 누적 TestChar 120 완성 (Z3 30개)", "status": "verified", "evidence": "구현·리뷰·메인 3중 실측 120, race exit 0"},
+      {"claim": "C46 종료: 순수 함수 120 전량 커버 — 미커버 0", "status": "verified", "evidence": "리뷰 — Z3 30함수 전부 >0%·char-exclude 41행으로 *Service만 제외"},
+      {"claim": "C47 baseline 생성", "status": "pending", "evidence": "120행 전 PASS·재생성 diff 0 리뷰 실증. 단 시간문자열 포함 MEDIUM — sed 절단 후 재생성 진행 중"},
+      {"claim": "C16-Z3: 649/118/31/548 ≤650", "status": "verified", "evidence": "리뷰 재검증"},
+      {"claim": "리뷰 MEDIUM: baseline 시간 문자열 제거 + 계획 C47 명령 2곳 sed 삽입", "status": "pending", "evidence": "z1-impl 보강 진행 중"}
+    ]
+  },
   "claims": [
     {"claim": "C44: k8s.go 순수 함수 모집단 120 고정", "status": "verified", "evidence": "grep -c '^func ' service/k8s.go=161, '^func (s \\*Service)'=41, 차=120 (2026-09-09 메인 실측)"},
     {"claim": "C21 선행조건: seed-cron 제거 후 compare baseline verdict=pass", "status": "verified", "evidence": "런북 §2 4단계 전부: waiver Passed=true(전) → cronjob/pod 삭제 → sync×3+compare verdict=pass → waiver Passed=true(후). 스테일 파드 flush에 sync 3사이클 필요했음"},
