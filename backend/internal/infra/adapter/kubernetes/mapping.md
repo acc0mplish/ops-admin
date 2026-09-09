@@ -26,10 +26,11 @@ URN 형식: `urn:k8s:{context}:{종}:{식별 성분}` — `{context}` = provider
 |---|---|---|---|---|
 | node | — | `{metadata.uid}` | uid | UID 신원 — name은 display 전용 |
 | namespace | — | `{name}` | name | 클러스터 스코프 고유 |
-| workload | deployment / statefulset / daemonset | `{namespace}/{k8s종}/{name}` | 동일 성분 | k8s종 = deployment·statefulset·daemonset (소문자) |
+| workload | deployment / statefulset / daemonset / replicaset / job / cronjob | `{namespace}/{k8s종}/{name}` | 동일 성분 | k8s종 = 소문자 subtype. replicaset·job·cronjob은 P 계획 J-P1-1(P1-A) 수집 확장 — job·cronjob 비교 합류는 P1-C2, replicaset은 스코프 외(I-P5) |
 | pod | — | `{metadata.uid}` | uid | pod 이름은 재생성된다 — UID 신원, name은 display. 페어링 키(§3)는 name 정합 |
 | service | service | `{namespace}/{name}` | 동일 성분 | |
 | ingress | ingress | `{namespace}/{name}` | 동일 성분 | |
+| endpoint | — | `{namespace}/{name}` | 동일 성분 | P1-A v2-only 보조종 — `network.endpoint`(Phase6ResourceKindExtensions), service.endpoints 집계 원천 |
 | configmap | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) |
 | secret | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) — **metadata 전용** |
 | pv | persistent_volume | `{name}` | name | |
@@ -44,8 +45,9 @@ URN 형식: `urn:k8s:{context}:{종}:{식별 성분}` — `{context}` = provider
 - Raw 크기 상한: `MaxRawBytes = 64 << 10` (64KiB — **계획 도입값, 스펙 §8.2는 수치 미정,
   가정 A12**). 초과 시 Raw는 `{"rawB64": <원본 JSON의 base64 접두>, "truncated": true}`로
   절단 보존 + `normalized["truncated"]=true` 마커. 코드: `applyRawLimit`.
-- Raw는 항상 metadata 부분집합(name·namespace·uid·creationTimestamp·labels)만 담는다.
-  secret·configmap의 data **값**은 Raw에 절대 진입하지 않는다(§5 보존 제약 #7).
+- Raw는 항상 metadata 부분집합(name·namespace·uid·creationTimestamp·labels·
+  ownerReferences의 uid/kind/name 3성분 — P1-A)만 담는다. secret·configmap의
+  data **값**은 Raw에 절대 진입하지 않는다(§5 보존 제약 #7).
 
 ## 3. 비교 프로토콜 표 (§3.5 — T51 동치 검증 대상)
 
@@ -73,11 +75,14 @@ legacy 직렬화에 `metadata.uid`가 전무(계획 §0.6 r2 실측)이므로, �
 | 종 | legacy | V2 discoverer | 처분 |
 |---|---|---|---|
 | node·namespace·pod·deployment·statefulset·daemonset·service·ingress·configmap·secret·pv·pvc | 수집 | 수집 | **비교 집합** — §4 coverage rule 적용 |
-| ReplicaSet | 수집(Deployment 파생 자동 등장) | 미수집 | 스코프 외 — legacy 단독 종 `dropped(v2-not-collected)` |
-| Job·CronJob | 수집 | 미수집 | 스코프 외 — 동일 처분 |
+| ReplicaSet | 수집(Deployment 파생 자동 등장) | 수집(P1-A) | 스코프 외 — V2 단독 종 `v2-only`. 구 처분 `dropped(v2-not-collected)`는 비교 엔진이 P1-C2 전까지 유지, 비교 합류 재판정은 I-P5 이월 |
+| Job·CronJob | 수집 | 수집(P1-A) | 스코프 외 — 수집은 비교 합류의 필요조건. **비교 집합 합류는 P1-C2 단일 착지점**(P 계획 J-P1-2·§9-10), 엔진은 P1-C2 전까지 구 처분 `dropped(v2-not-collected)` 유지 |
+| endpoints | 미수집(legacy 직렬화에 종 없음) | 수집(P1-A) | 스코프 외 — v2-only 보조종(`network.endpoint`), service.endpoints 집계 원천. 비교 합류는 I-P5 이월 |
 | storageclass | 미수집(속성 필드로만 존재) | 수집 | 스코프 외 — V2 단독 종 `v2-only`, 비교 대상 필드 없음 |
 
-V2의 Job·CronJob·ReplicaSet 수집 확장은 Phase 3(restart 대상 종 확정)·M2(완전성) 소관.
+P 계획(J-P1-1)에 따라 P1-A에서 V2 수집을 replicaset·job·cronjob·endpoints로
+확장했다 — 비교 엔진(`compare.go`)의 스코프 처분 변경은 P1-C2에서 단일 착지하며
+그 전까지 양측 스코프 외 종은 비교 집합에 오염되지 않는다.
 
 ## 4. 커버리지 표 — legacy 직렬화 전필드 (coverage rule)
 
@@ -119,6 +124,7 @@ connection/context 속성이다(백필 §3.4 매핑의 원천).
 | status | **mapped** | `normalized.healthState` (conditions Ready=True→healthy, 그 외 degraded) |
 | version | dropped(v2-schema-absent) | kubelet 버전 — §3.2 node 스키마에 없음 |
 | internalIP | dropped(v2-schema-absent) | 주소 — 관측 필요 시 Raw labels 확장으로 재검 |
+| (node) podCIDRs | **mapped** | `normalized.podCIDRs` (spec.podCIDRs + 단일 spec.podCIDR 폴백 — v2-only 필드, P1-A 수집) |
 | os | dropped(v2-schema-absent) | |
 | cpu | **mapped** | `normalized.capacityCoresGB` (quantityToCores) |
 | memory | **mapped** | `normalized.capacityMemoryGB` (Ki→GB) |
@@ -141,14 +147,14 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 | legacy 필드 | 처분 | V2 대응 / 사유 |
 |---|---|---|
 | name / namespace | **mapped** | DisplayName + 페어링 키 `{namespace}/{name}` (URN은 uid — §1) |
-| workloadName / workloadType | dropped(v2-derived) | ownerReferences 파생 — 관계 데이터(relationship) 도메인 |
+| workloadName / workloadType | dropped(v2-derived) | ownerReferences 파생 — 원천 Raw는 P1-A 수집(`Raw.ownerReferences` uid/kind/name), 집계는 P1-D(관계 데이터 도메인) |
 | status | **mapped** | `normalized.phase` 그대로(상태 어휘: pod phase) + `normalized.lifecycleState` 동일값 |
 | node | **mapped(relationship)** | pod→node `runs_on` 관계 — PR 21 relationship 적재 (리소스 필드 아님) |
 | nodeIP / ip | dropped(v2-schema-absent) | 주소 |
 | restarts | **mapped** | `normalized.restartCount` (containerStatuses 합계 — VOLATILE) |
 | age | dropped(volatile) | §15.3 VOLATILE |
 
-### 4.6 `workloads` 섹션 (`K8sWorkloadItem` — deploy/statefulset/daemonset 3종)
+### 4.6 `workloads` 섹션 (`K8sWorkloadItem` — deploy/statefulset/daemonset + P1-A 확장 replicaset/job/cronjob 동일 아이템 형면)
 
 | legacy 필드 | 처분 | V2 대응 / 사유 |
 |---|---|---|
@@ -174,7 +180,7 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 | clusterIP | **mapped** | `normalized.clusterIP` (None이면 생략) |
 | ports | **mapped** | `normalized.ports` (port·protocol·name 목록) |
 | externalIP | dropped(v2-schema-absent) | |
-| endpoints | dropped(v2-derived) | endpoints 객체 파생 카운트 |
+| endpoints | dropped(v2-derived) | endpoints 객체 파생 카운트 — 보조종 수집은 P1-A 착수(`network.endpoint` `normalized.readyAddresses`), 집계는 P1-D |
 | age | dropped(volatile) | |
 | (ingress) host | **mapped** | `normalized.hosts` (rules[].host 목록) — v2-only 필드 |
 | (ingress) address / tls | dropped(v2-schema-absent) | |

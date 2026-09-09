@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "review-PP0", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3 (c9fb54a·450줄) — r1 반려→r2→r2검증(조건부)→r3 확정. 판정: ①②(가)·③혼합 팀리드 확정(2026-09-10, 실측 기반) · ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)", "spawns": 1, "next": "z1-review PP-0 판정 → 검증 → PR. 카나리 C24·C31 사용자 권한 거부 2회(2026-09-09·10) — 세션 내 징수 불가, 이연 기록"},
+  "ptrack": {"phase": "implement-P1A", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3 (c9fb54a·450줄) — r1 반려→r2→r2검증(조건부)→r3 확정. 판정: ①②(가)·③혼합 팀리드 확정(2026-09-10) · ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)", "pp0": "#62 (a98e7ee) — G-P1b 38필드 실Discover 검증·어휘 4종·리뷰 C/H/M 0", "spawns": 2, "next": "p1a-impl(종 수집 3종+endpoints) 리포트 → 리뷰 → PR. 카나리 C24·C31 권한 거부 2회 — 이연"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",

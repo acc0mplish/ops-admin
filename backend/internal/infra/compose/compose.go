@@ -217,6 +217,7 @@ var kubernetesReadKinds = []string{
 	"orchestration.configmap",
 	"orchestration.secret",
 	"network.load_balancer",
+	"network.endpoint", // P1-A — v2-only 보조종(service.endpoints 집계 원천, Phase6ResourceKindExtensions)
 	"storage.volume",
 	"storage.pool",
 }

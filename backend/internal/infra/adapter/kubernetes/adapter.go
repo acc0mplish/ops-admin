@@ -180,9 +180,10 @@ func (a *Adapter) Health(ctx context.Context, conn contract.ConnectionView) cont
 
 // --- Discoverer — 섹션 커서 페이징 (§14.1 리소스 목록 순). ---
 
-// sectionTable is the fixed discovery section order — plan §3.1:
+// sectionTable is the fixed discovery section order — plan §3.1 base:
 // nodes→namespaces→pods→workloads(deploy/statefulset/daemonset)→services→
-// ingresses→configmaps→secrets→pv→pvc→storageclasses. path는 legacy
+// ingresses→configmaps→secrets→pv→pvc→storageclasses, extended by P 계획
+// J-P1-1 (P1-A: replicasets·jobs·cronjobs·endpoints). path는 legacy
 // fetchK8sData의 raw REST 경로와 동일하다.
 type sectionTable struct {
 	name string
@@ -196,7 +197,14 @@ var discoverSections = []sectionTable{
 	{"deployments", "/apis/apps/v1/deployments"},
 	{"statefulsets", "/apis/apps/v1/statefulsets"},
 	{"daemonsets", "/apis/apps/v1/daemonsets"},
+	// P1-A — replicaset은 pod→워크로드 역추적 체인 원천(J-P1-9 부수), job·cronjob
+	// 수집은 비교 집합 합류(P1-C2)의 필요조건이다(§9-10 — 스코프 변경은 P1-C2).
+	{"replicasets", "/apis/apps/v1/replicasets"},
+	{"jobs", "/apis/batch/v1/jobs"},
+	{"cronjobs", "/apis/batch/v1/cronjobs"},
 	{"services", "/api/v1/services"},
+	// P1-A — v2-only 보조종: service.endpoints 집계(J-P1-9)의 원천.
+	{"endpoints", "/api/v1/endpoints"},
 	{"ingresses", "/apis/networking.k8s.io/v1/ingresses"},
 	{"configmaps", "/api/v1/configmaps"},
 	{"secrets", "/api/v1/secrets"},
