@@ -1,11 +1,11 @@
 {
   "task": "v2-phase6-block1",
   "tier": "XL",
-  "phase": "implement",
-  "subphase": "D2 (임계경로 — 캡슐화)",
+  "phase": "done",
+  "subphase": "블록 1 완결 (Z #52-54 · A #55 · BCD #56 · D2 #57 · F #58 · E0 #59 · E2 #60 · E1 #61)",
   "round": {
     "adversary": 2,
-    "review": 0
+    "review": 1
   },
   "spawns": 5,
   "phaseA": {
@@ -61,5 +61,5 @@
     "opdef_coverage": "61.5%",
     "tag": "p6-Z1-base"
   },
-  "next": "p6-a-impl(core-xhigh) 리포트 → 리뷰 → 검증 → PR. A 계약: 그룹 생성·.Use()는 router.go 잔류, registerV2(v2Group,db,v2API)가 nil폴백+Register 이관 — T-11 'engine' 서술 vs §3.2 ':535,536 불변' 충돌의 C4 강제 해(팀리드 판정). 카나리 C24·C31·C32는 BCD/D2 PR 징수 이연",
+  "next": "블록 2(G·H·I)는 선행 과제 P 완료 대기 (parity-handover 게이트 10개). 카나리 C24·C31·C32 미징수 — 다음 코드 PR에서 징수 권장(C24는 2026-09-09 권한 거부 이력). E1 판정 기록: J4 계승(vocabularyInheritedFromV1) — §3.3·J4 충돌의 팀리드 해소(2026-09-10), 계승 맵 추가 어휘는 리뷰 필수"
 }
