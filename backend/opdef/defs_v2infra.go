@@ -8,7 +8,8 @@ import "net/http"
 // "assets:k8s:workload:restart" as the REPRESENTATIVE value — the enforced
 // permission is resolved per request from the registry OperationDefinition
 // (V2DynamicMiddleware); the representative is the canonical source for the
-// sensitive-routes golden and the seeder. Approve/reject/cancel reuse
+// sensitive-routes golden and the seeder. Sole owner of that vocabulary since
+// Phase 6 E1 removed the v1 restart def (2026-09-10). Approve/reject/cancel reuse
 // "ops:job:approve" verbatim (J4 — 승인자 인구 동일, 신규 문자열 0).
 //
 // The three GET v2 routes (GET resources/:uid/operations, GET tasks/:uid,

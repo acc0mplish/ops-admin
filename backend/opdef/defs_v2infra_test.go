@@ -42,9 +42,19 @@ func TestV2InfraDefsRegistered(t *testing.T) {
 	}
 }
 
+// vocabularyInheritedFromV1 lists permission strings whose v1 source row Phase
+// 6 E1 (2026-09-10) deleted. E1 removed the v1 restart opdef, so the sole owner
+// of "assets:k8s:workload:restart" is now the v2 plan/execute def below. This
+// is inheritance, not new vocabulary — J4's purpose (the v2 batch invents no
+// permission strings) still holds.
+var vocabularyInheritedFromV1 = map[string]struct{}{
+	"assets:k8s:workload:restart": {},
+}
+
 // TestV2InfraDefsReuseExistingVocabulary is the J4 preservation assertion
 // (claim 11): the v2 batch introduces zero new permission strings — every
-// permission it uses must already exist in the v1 table.
+// permission it uses must already exist in the v1 table or be a named
+// inheritance from a v1 row E1 removed.
 func TestV2InfraDefsReuseExistingVocabulary(t *testing.T) {
 	v1 := map[string]struct{}{}
 	for _, d := range All() {
@@ -57,7 +67,9 @@ func TestV2InfraDefsReuseExistingVocabulary(t *testing.T) {
 	}
 	for _, d := range v2infraDefs {
 		if _, ok := v1[d.Permission]; !ok {
-			t.Fatalf("%s %s introduces new permission %q — v2 reuse contract (J4) violated", d.Method, d.Path, d.Permission)
+			if _, inherited := vocabularyInheritedFromV1[d.Permission]; !inherited {
+				t.Fatalf("%s %s introduces new permission %q — v2 reuse contract (J4) violated", d.Method, d.Path, d.Permission)
+			}
 		}
 	}
 }

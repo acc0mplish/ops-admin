@@ -80,7 +80,6 @@ var monitorDefs = []Def{
 		Redaction: []string{"secret.data"}},
 	{Method: http.MethodGet, Path: "/k8s/pod/logs", Permission: "assets:k8s:pod", Risk: RiskLow},
 	{Method: http.MethodPost, Path: "/k8s/workload/scale", Permission: "assets:k8s:workload:scale", Mutating: true, Risk: RiskMedium},
-	{Method: http.MethodPost, Path: "/k8s/workload/restart", Permission: "assets:k8s:workload:restart", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/k8s/workload/images", Permission: "assets:k8s:workload:image", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPut, Path: "/k8s/workload/resources", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/k8s/istio/traffic", Permission: "assets:k8s:advancednetwork", Mutating: true, Risk: RiskMedium},
