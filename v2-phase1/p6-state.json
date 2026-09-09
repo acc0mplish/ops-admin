@@ -2,12 +2,23 @@
   "task": "v2-phase6-block1",
   "tier": "XL",
   "phase": "implement",
-  "subphase": "A (임계경로)",
+  "subphase": "BCD (9파일 분해·C47 대조 개시)",
   "round": {
     "adversary": 2,
     "review": 0
   },
-  "spawns": 3,
+  "spawns": 4,
+  "phaseA": {
+    "phase": "done",
+    "pr": "#55 (6574bb0)",
+    "evidence": "골든 2종 diff 0·C4 0매치·middleware 285·C7 -race 30패키지·리뷰 CRIT/HIGH/MED 0 — behavior-neutral 3중 증명(집합 sort-diff 0·순서 단조·v2/공개 바이트 동일)"
+  },
+  "bcd": {
+    "phase": "done",
+    "files": "k8s.go 5,062→1,265 (계획 §5 'BCD 후 ~1,272' 정합·D2가 4204-5062 해소) + 신규 10파일(types 430·types_mesh 205·metrics 348·mutate 259·workload 313·detail 598·fetch 414·overview 253 재분할·build_pod 531·build_net 566)",
+    "commits": "시맨별 10커밋 + 위생 1커밋(path_test 653→650)",
+    "evidence": "C47 CHAR_IDENTICAL(구현·리뷰·메인 3중)·심볼 보존 161/55/3·12블록 바이트 동일(리뷰 독립 재현)·C21 pass·C7 -race ok·C15/C16 신규 전부 ≤598·리뷰 CRIT/HIGH/MED 0. LOW 2: 측정 glob에 k8s*.go는 terminal·test 포함 주의(계약 문서 반영 예정)·path_test 위생 해소"
+  },
   "z2": {
     "phase": "implement-보강",
     "claims": [

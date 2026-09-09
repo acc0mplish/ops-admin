@@ -1,6 +1,5 @@
 // k8s_path_test.go — Phase Z3 characterization (k8s_path 시맨 순수 함수 25개).
-// 목적은 "옳음"이 아니라 "불변": 현재 동작을 그대로 기록해 B~D2 파일 분해의 유일한
-// 검출기이자 P의 V2 동치 오라클이 되게 한다 (계획 §J0·§12 #16, R18 — legacy 호출 1행).
+// "불변" 고정 — B~D2 분해의 검출기·P의 V2 동치 오라클 (§J0·§12 #16·R18 legacy 1행).
 package service
 
 import (
@@ -247,8 +246,7 @@ func TestCharFriendlyK8sYAMLError(t *testing.T) {
 	}
 }
 
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// GET·query 인코딩·Bearer 인증·바디 원문 반환, 응답 Content-Type은 무시(dust)하는 것이 현재 계약.
+// characterization: 현재 동작 고정 — GET·query·Bearer·바디 원문 반환·Content-Type 무시가 현재 계약.
 func TestCharK8sGetText(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -512,8 +510,7 @@ func TestCharFormatMemoryMB(t *testing.T) {
 }
 
 // characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// 시그니처가 now 주입 불가라 분기 커버는 now 상대 입력으로 현실 범위만 고정한다.
-// 미래 타임스탬프는 음수 duration이 "Just now"로 수렴하는 것까지 현재 계약.
+// now 주입 불가 시그니처 — now 상대 입력으로 현실 범위+미래→"Just now" 수렴까지 고정이 현재 계약.
 func TestCharHumanizeAge(t *testing.T) {
 	cases := []struct {
 		name      string
