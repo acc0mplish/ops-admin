@@ -1,13 +1,13 @@
 {
   "task": "v2-phase6-block1",
   "tier": "XL",
-  "phase": "done",
-  "subphase": "Phase Z 완결 (Z1 #52 · Z2 #53 · Z3 #54 — 120/120 + C47 baseline)",
+  "phase": "implement",
+  "subphase": "A (임계경로)",
   "round": {
     "adversary": 2,
     "review": 0
   },
-  "spawns": 2,
+  "spawns": 3,
   "z2": {
     "phase": "implement-보강",
     "claims": [
@@ -50,5 +50,5 @@
     "opdef_coverage": "61.5%",
     "tag": "p6-Z1-base"
   },
-  "next": "Phase A 착수 (라우트 등록 4분할·behavior-neutral·골든 diff 0·C1/C2/C4/C48/C6). 선행: 태그 p6-A-base·런북 §0 베이스라인. 카나리 C24·C31·C32는 BCD/D2 PR 징수로 이연 (C24는 2026-09-09 권한 거부)"
+  "next": "p6-a-impl(core-xhigh) 리포트 → 리뷰 → 검증 → PR. A 계약: 그룹 생성·.Use()는 router.go 잔류, registerV2(v2Group,db,v2API)가 nil폴백+Register 이관 — T-11 'engine' 서술 vs §3.2 ':535,536 불변' 충돌의 C4 강제 해(팀리드 판정). 카나리 C24·C31·C32는 BCD/D2 PR 징수 이연",
 }
