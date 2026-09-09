@@ -323,7 +323,7 @@ PC-N  [P 첫 코드 PR] 블록1 미징수 카나리 C24·C31·C32 징수(p6-stat
 --- PP-0 ---
 PC-K  cd backend && grep -c 'Phase6ResourceKindExtensions' internal/infra/contract/resource_kind.go → 1 이상 ·
       go test ./internal/infra/contract/ -count=1 → ok (M1 19종 불변·4종 인지 단얫)
-PC-0  cd backend && go test ./internal/infra/adapter/kubernetes/ -run TestMapping -count=1 → ok 이고
+PC-0  cd backend && go test ./internal/infra/adapter/kubernetes/ -run "TestMapping|TestMappedFields|TestComparisonScope|TestPairingKey" -count=1 → ok 이고
       grep -c 'normalizedKeyFor\|assertNormalizedKey' internal/infra/adapter/kubernetes/mapping_test.go → 2 이상
       (G-P1b — `-run TestMappingCoverage` 공허 통과 폐기·실명 교정)
 
@@ -354,7 +354,7 @@ PC-4  cd backend && R=$(grep -h -c '// legacy 1행' service/k8s_fetch_test.go se
         diff service/testdata/char-baseline.txt /tmp/char-p.txt && echo CHAR_IDENTICAL → CHAR_IDENTICAL
 
 --- P1-F / P2-E (게이트 총점검) ---
-PC-5  G-P1a: cd backend && go test ./internal/infra/adapter/kubernetes/ -run TestMapping -count=1 → ok (실명)
+PC-5  G-P1a: cd backend && go test ./internal/infra/adapter/kubernetes/ -run "TestMapping|TestMappedFields|TestComparisonScope|TestPairingKey" -count=1 → ok (실명)
       G-P1c: cd backend && grep -c 'dropped(v2-schema-absent)\|dropped(v2-not-collected)' \
         internal/infra/adapter/kubernetes/mapping.md → 0
       G-P1e(C21): kubectl --context kind-v2-p2 -n v2-seed get cronjob seed-cron → NotFound 확인 후 \

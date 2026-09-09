@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "plan-r2", "round": {"adversary": 1}, "verdict": "3렌즈(완전성·기술·위험) 반려 — C1+H6+M15+L11, 교차확인 2건(어휘·④A안). r2 개정 지시 전송(2026-09-10). 렌즈 4·5는 r2 검증에 투입", "spec": "v2-phase1/phase6-parity-handover.md r2"},
+  "ptrack": {"phase": "review-PP0", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3 (c9fb54a·450줄) — r1 반려→r2→r2검증(조건부)→r3 확정. 판정: ①②(가)·③혼합 팀리드 확정(2026-09-10, 실측 기반) · ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)", "spawns": 1, "next": "z1-review PP-0 판정 → 검증 → PR. 카나리 C24·C31 사용자 권한 거부 2회(2026-09-09·10) — 세션 내 징수 불가, 이연 기록"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
