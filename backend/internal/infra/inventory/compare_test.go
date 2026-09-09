@@ -28,7 +28,10 @@ func sampleLegacy(at time.Time) inventory.LegacyCapture {
 		},
 		Workloads: []inventory.LegacyWorkload{
 			{Name: "coredns", Type: "Deployment", Namespace: "kube-system", Ready: "2/2"},
-			{Name: "seed-job", Type: "Job", Namespace: "batch", Ready: "1/1"}, // 스코프 외 종
+			// P1-C2 합류 종 — job Ready는 buildWorkloadItems 동치(succeeded/total),
+			// cronjob Ready는 cronJobReadyText 텍스트로 splitReady 밖(신원 비교만).
+			{Name: "seed-job", Type: "Job", Namespace: "batch", Ready: "1/1"},
+			{Name: "seed-cron", Type: "CronJob", Namespace: "batch", Ready: "Scheduled"},
 		},
 		Services:   []inventory.LegacyService{{Name: "kubernetes", Namespace: "default", Type: "ClusterIP", ClusterIP: "10.96.0.1", Ports: "443/TCP"}},
 		Ingresses:  []inventory.LegacyIngress{{Name: "demo", Namespace: "default"}},
@@ -64,6 +67,14 @@ func sampleV2(at time.Time) inventory.ProjectedV2 {
 				contract.JSONMap{"phase": "Running", "restartCount": 0}, contract.JSONMap{"namespace": "kube-system"}),
 			v2res("orchestration.workload", "deployment", "coredns", "kube-system/deployment/coredns",
 				contract.JSONMap{"replicas": 2, "readyReplicas": 2, "image": "registry/coredns:v1"}, nil),
+			// P1-C2 합류 종 — replicas·readyReplicas는 batch 종에서 구조적 영값이고
+			// 엔진은 상태 키(completions·succeeded)에서 buildWorkloadItems 동치로
+			// 유도한다(ComparePair v2Entries job 분기). cronjob은 신원 비교만.
+			v2res("orchestration.workload", "job", "seed-job", "batch/job/seed-job",
+				contract.JSONMap{"replicas": 0, "readyReplicas": 0,
+					"completions": 1, "succeeded": 1, "failed": 0}, nil),
+			v2res("orchestration.workload", "cronjob", "seed-cron", "batch/cronjob/seed-cron",
+				contract.JSONMap{"replicas": 0, "readyReplicas": 0, "schedule": "0 2 * * *", "active": 0}, nil),
 			v2res("network.load_balancer", "service", "kubernetes", "default/kubernetes",
 				contract.JSONMap{"type": "ClusterIP", "clusterIP": "10.96.0.1",
 					"ports": []any{map[string]any{"port": 443, "protocol": "TCP"}}}, nil),
@@ -256,6 +267,8 @@ func TestComparePairExcludesOutOfScopeKinds(t *testing.T) {
 	if len(report.Absents) == 0 {
 		t.Fatalf("out-of-scope kinds must be logged as ABSENT, got none")
 	}
+	// P1-C2 — job·cronjob은 비교 집합 합류로 ABSENT ledger에서 빠지고, 남은
+	// 스코프 외 워크로드는 replicaset(이 픽스처에는 없다)과 storageclass뿐이다.
 	sawJob, sawStorageClass := false, false
 	for _, a := range report.Absents {
 		if a.Section == "job" {
@@ -265,8 +278,74 @@ func TestComparePairExcludesOutOfScopeKinds(t *testing.T) {
 			sawStorageClass = true
 		}
 	}
-	if !sawJob || !sawStorageClass {
+	if sawJob {
+		t.Fatalf("job joined the compare set in P1-C2 — must not be ABSENT: %+v", report.Absents)
+	}
+	if !sawStorageClass {
 		t.Fatalf("absent ledger incomplete: %+v", report.Absents)
+	}
+}
+
+// P1-C2 — job·cronjob의 비교 집합 합류는 실재한다(J-P1-2): 양측이 같은
+// job·cronjob을 실으면 pass고, V2가 cronjob을 놓치면 identity-sets-differ
+// BLOCKER다. 합류가 비공허임을 증명하는 단얫이다(R-P1).
+func TestComparePairJoinsBatchWorkloads(t *testing.T) {
+	at := time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC)
+
+	report := inventory.ComparePair(matchingPair(at))
+	if report.Verdict != inventory.VerdictPass {
+		t.Fatalf("batch kinds joined the compare set must not block: verdict = %q, blockers %v",
+			report.Verdict, blockerKeys(report.Blockers))
+	}
+	for _, m := range report.Volatiles {
+		if m.Section == "job" || m.Section == "cronjob" {
+			t.Errorf("batch sections produced volatiles — field surfaces must be symmetric: %+v", m)
+		}
+	}
+
+	// V2가 cronjob을 잃으면 합류 스코프에서 identity BLOCKER — 비공헌 증명.
+	in := matchingPair(at)
+	kept := in.V2.Resources[:0]
+	for _, r := range in.V2.Resources {
+		if r.Subtype != "cronjob" {
+			kept = append(kept, r)
+		}
+	}
+	in.V2.Resources = kept
+	report = inventory.ComparePair(in)
+	if report.Verdict != inventory.VerdictBlocker || !hasReason(report.Blockers, "identity-sets-differ") {
+		t.Fatalf("missing V2 cronjob must be an identity blocker after the join: verdict %q, %+v",
+			report.Verdict, report.Blockers)
+	}
+	for _, b := range report.Blockers {
+		if b.Section == "cronjob" && b.Key == "batch/cronjob/seed-cron" {
+			return
+		}
+	}
+	t.Fatalf("identity blocker for batch/cronjob/seed-cron not found: %+v", report.Blockers)
+}
+
+// P1-C2 — job의 replicas·readyReplicas는 buildWorkloadItems 동치 유다:
+// completions=0이면 active+succeeded+failed가 분모다. V2 상태 키와 legacy
+// Ready 파생이 같은 수치에 착지함을 단얫한다.
+func TestComparePairJobReadyDerivationMatchesLegacy(t *testing.T) {
+	at := time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC)
+	in := matchingPair(at)
+	for i := range in.V2.Resources {
+		if in.V2.Resources[i].Subtype == "job" {
+			// completions 부재 — legacy는 active+succeeded+failed로 분모를 만든다.
+			delete(in.V2.Resources[i].Normalized, "completions")
+			in.V2.Resources[i].Normalized["active"] = 1
+			in.V2.Resources[i].Normalized["succeeded"] = 1
+			in.V2.Resources[i].Normalized["failed"] = 0
+		}
+	}
+	// legacy 측도 동일 상태의 Ready "1/2" — total 2(active1+succeeded1).
+	in.Legacy.Workloads[1].Ready = "1/2"
+	report := inventory.ComparePair(in)
+	if report.Verdict != inventory.VerdictPass {
+		t.Fatalf("job ready derivation diverged from buildWorkloadItems: verdict %q, blockers %+v",
+			report.Verdict, blockerKeys(report.Blockers))
 	}
 }
 

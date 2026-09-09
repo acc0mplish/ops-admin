@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P1B", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3 (c9fb54a·450줄)", "pp0": "#62 (a98e7ee) — G-P1b 38필드 실Discover 검증·어휘 4종", "p1a": "#63 (344ea63) — 종 수집 3종+endpoints·compare 무오염 증명", "spawns": 3, "next": "p1b-impl(필드 19건·TestNormalizedKeySchema) → 리뷰 → PR. ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)·카나리 이연"},
+  "ptrack": {"phase": "implement-P1C", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "pp0": "#62", "p1a": "#63 (344ea63)", "p1b": "#64 (e4d0552) — 필드 19건·TestNormalizedKeySchema·pv else-if 동치", "spawns": 4, "next": "p1c-impl(C1 게이트웨이API+C2 스코프 합류) → 리뷰 → PR. ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)·카나리 이연"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",

@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -183,11 +184,22 @@ func (a *Adapter) Health(ctx context.Context, conn contract.ConnectionView) cont
 // sectionTable is the fixed discovery section order — plan §3.1 base:
 // nodes→namespaces→pods→workloads(deploy/statefulset/daemonset)→services→
 // ingresses→configmaps→secrets→pv→pvc→storageclasses, extended by P 계획
-// J-P1-1 (P1-A: replicasets·jobs·cronjobs·endpoints). path는 legacy
-// fetchK8sData의 raw REST 경로와 동일하다.
+// J-P1-1 (P1-A: replicasets·jobs·cronjobs·endpoints, P1-C1: gateways·
+// httproutes). path는 legacy fetchK8sData의 raw REST 경로와 동일하다.
 type sectionTable struct {
 	name string
 	path string
+}
+
+// sectionFallbacks holds the alternate API versions tried in order when the
+// primary path answers 404 — the GatewayAPI multi-version 폴백(J-P1-1, legacy
+// buildGatewayAPIResourcePathsWithPreferred k8s_transport.go:279 의미론: v1
+// 선호, 404 시 v1beta1). 전 후보가 404면 CRD 미설치 섹션(M-6)이라 스킵한다.
+// 404 외 오류(401/403/429/전송)는 기존 신호 분류 그대로다. 표 밖 분리는 기존
+// sectionTable 위치 리터럴 15행을 무Touch로 유지하기 위함이다.
+var sectionFallbacks = map[string][]string{
+	"gateways":   {"/apis/gateway.networking.k8s.io/v1beta1/gateways"},
+	"httproutes": {"/apis/gateway.networking.k8s.io/v1beta1/httproutes"},
 }
 
 var discoverSections = []sectionTable{
@@ -202,6 +214,11 @@ var discoverSections = []sectionTable{
 	{"replicasets", "/apis/apps/v1/replicasets"},
 	{"jobs", "/apis/batch/v1/jobs"},
 	{"cronjobs", "/apis/batch/v1/cronjobs"},
+	// P1-C1 — GatewayAPI 수집(GatewayAPI CRD group gateway.networking.k8s.io).
+	// v1 선호 → v1beta1 폴백(sectionFallbacks — J-P1-1). CRD 부재 클러스터에서는
+	// 전 버전 404로 섹션 스킵(공허 녹색 — M-6·J-P1-8), 비교 집합 불참(I-P5 이월).
+	{"gateways", "/apis/gateway.networking.k8s.io/v1/gateways"},
+	{"httproutes", "/apis/gateway.networking.k8s.io/v1/httproutes"},
 	{"services", "/api/v1/services"},
 	// P1-A — v2-only 보조종: service.endpoints 집계(J-P1-9)의 원천.
 	{"endpoints", "/api/v1/endpoints"},
@@ -231,6 +248,38 @@ func splitCursor(cursor string) (section, token string, err error) {
 		}
 	}
 	return "", "", fmt.Errorf("kubernetes: unknown cursor section %q", section)
+}
+
+// sectionPaths lists the candidate paths of one section in fallback order —
+// the primary path first, then the version fallbacks (J-P1-1).
+func sectionPaths(s sectionTable) []string {
+	fallback := sectionFallbacks[s.name]
+	paths := make([]string, 0, 1+len(fallback))
+	paths = append(paths, s.path)
+	paths = append(paths, fallback...)
+	return paths
+}
+
+// fetchSectionPage lists one page trying each candidate path in order. A 404
+// on a candidate advances to the next version (buildGatewayAPIResourcePaths
+// 의미론); when every candidate 404s the section is ABSENT on the cluster
+// (GatewayAPI CRD 미설치 — M-6) and the sentinel returns so the walk can skip
+// it — 404는 섹션 스킵 신호고 그 외 오류(401/403/429/전송)는 기존 신호 분류
+// 그대로 상위로 전파한다. 폴백은 호출 단위 재판정이다(커서는 섹션|토큰 형식
+// 계약이라 버전을 실을 수 없다 — v1 404 1회가 페이지마다 재발한다, 비용 미미).
+func fetchSectionPage(ctx context.Context, client *k8sClient, paths []string, query map[string]string) (listEnvelope, error) {
+	for _, path := range paths {
+		var envelope listEnvelope
+		err := client.getJSON(ctx, path, query, &envelope)
+		if err == nil {
+			return envelope, nil
+		}
+		if errors.Is(err, errNotFound) {
+			continue
+		}
+		return listEnvelope{}, err
+	}
+	return listEnvelope{}, errNotFound
 }
 
 // Discover returns one page of resources, delegating pagination to the K8s
@@ -263,12 +312,17 @@ func (a *Adapter) Discover(ctx context.Context, req contract.DiscoverRequest) (c
 			if limit <= 0 {
 				break
 			}
-			var envelope listEnvelope
-			if err := client.getJSON(ctx, discoverSections[idx].path, map[string]string{
+			envelope, err := fetchSectionPage(ctx, client, sectionPaths(discoverSections[idx]), map[string]string{
 				"limit":    strconv.Itoa(limit),
 				"continue": token,
-			}, &envelope); err != nil {
+			})
+			if err != nil && !errors.Is(err, errNotFound) {
 				return contract.DiscoverPage{}, err
+			}
+			if errors.Is(err, errNotFound) {
+				// 전 후보 경로 404 — 섹션 부재(CRD 미설치). 공허 엔벨로프로 흘려
+				// 보내면 기존 섹션 소진 로직이 그대로 다음 섹션으로 전진한다.
+				envelope = listEnvelope{}
 			}
 			for _, item := range envelope.Items {
 				res, err := normalizeSection(req.ContextID, section, item)

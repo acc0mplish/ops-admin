@@ -14,10 +14,67 @@
 # executor의 workload 3종(deployment/statefulset/daemonset) 중 2종이 시드에
 # 없던 갭 보험 — slice-b E2E의 종별 커버 (phase3-plan N17 판정식 승계).
 # apply 멱등 — run-fixture.sh 재실행으로 수렴 확인.
+#
+# P1-C2 (P 계획 J-P1-2·§9-10) 추가: Job 1·CronJob 1 — job·cronjob 비교 집합
+# 합류의 양측 비공헌 시드(R-P1). churn 안전 장치(R-P10):
+#   - CronJob은 suspend: true — 스케줄 시점에 Job을 자동 생성하지 않는다(회전
+#     자원 churn 차이 재발 차단). 재판정 재개(I-P5·PC-5)까지 수동 유지.
+#   - Job은 completions: 1 단회 실행 — 완료 후 status가 고정된다(재실행 없음).
+#   - 본 시드는 저장소 선언이지 클러스터 현재 상태의 스냅숏이 아니다 —
+#     클러스터 재시딩 전 비교 판정은 실행 클러스터 상태를 따른다.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: v3-seed
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-job
+  namespace: v3-seed
+  labels:
+    app: seed-job
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: seed-job
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: busy
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "echo seed-job done"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seed-cron
+  namespace: v3-seed
+  labels:
+    app: seed-cron
+spec:
+  schedule: "0 3 * * *"
+  suspend: true # R-P10 — 중단 상태 유지(자원 회전 없음), 재판정 시점에 해제
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: seed-cron
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: busy
+              image: busybox:1.36
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-c", "echo seed-cron done"]
 ---
 apiVersion: apps/v1
 kind: Deployment
