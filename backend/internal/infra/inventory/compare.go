@@ -45,16 +45,17 @@ const (
 
 // scopeDispositions maps a legacy/V2 section to its comparison disposition:
 // "compare" (both sides collect it), "dropped(v2-not-collected)" (legacy-only
-// kind — ReplicaSet/Job/CronJob), "v2-only" (storageclass — no compared
-// fields). Single-side kinds never pollute the identity sets (§3.5 r2).
+// kind — ReplicaSet), "v2-only" (storageclass — no compared fields).
+// Single-side kinds never pollute the identity sets (§3.5 r2). job·cronjob의
+// 비교 집합 합류는 P1-C2 단일 착지점이다(J-P1-2·§9-10 — gateway·httproute·
+// replicaset·endpoint·virtualservice는 I-P5 승인 전 불가).
 var scopeDispositions = map[string]string{
 	"node": "compare", "namespace": "compare", "pod": "compare",
 	"deployment": "compare", "statefulset": "compare", "daemonset": "compare",
+	"job": "compare", "cronjob": "compare", // P1-C2 합류 — legacy Workloads 목록이 Type과 함께 실는다(main_compare.go:256 실측)
 	"service": "compare", "ingress": "compare",
 	"configmap": "compare", "secret": "compare", "pv": "compare", "pvc": "compare",
 	"replicaset":   "dropped(v2-not-collected)",
-	"job":          "dropped(v2-not-collected)",
-	"cronjob":      "dropped(v2-not-collected)",
 	"storageclass": "v2-only",
 }
 
@@ -70,6 +71,7 @@ var pairingKeyShapes = map[string]string{
 	"node": "name", "namespace": "name",
 	"pod":        "namespace/name",
 	"deployment": "{namespace}/{k8s종}/{name}", "statefulset": "{namespace}/{k8s종}/{name}", "daemonset": "{namespace}/{k8s종}/{name}",
+	"job": "{namespace}/{k8s종}/{name}", "cronjob": "{namespace}/{k8s종}/{name}", // P1-C2 합류 — ExternalID {ns}/{subtype}/{name}과 동일 성분
 	"service": "namespace/name", "ingress": "namespace/name",
 	"configmap": "namespace/name", "secret": "namespace/name", "pvc": "namespace/name",
 	"pv": "name", "storageclass": "name",
@@ -202,8 +204,9 @@ func ComparePair(in PairInput) CompareReport {
 	v2, v2Only := v2Entries(in.V2)
 
 	// ABSENT ledger (§15.3 — 한쪽만 + mapping 표 dropped → 로그만). Aggregated
-	// per out-of-scope kind so the report stays bounded.
-	for _, section := range []string{"replicaset", "job", "cronjob"} {
+	// per out-of-scope kind so the report stays bounded. P1-C2로 job·cronjob이
+	// 비교 집합에 합류해 남은 스코프 외 워크로드는 replicaset뿐이다(J-P1-2).
+	for _, section := range []string{"replicaset"} {
 		if n := legacyOutOfScopeCounts(in.Legacy)[section]; n > 0 {
 			report.Absents = append(report.Absents, Mismatch{
 				Section: section, Kind: "orchestration.workload", Key: fmt.Sprintf("%d entries", n),
@@ -453,7 +456,7 @@ func legacyEntries(c LegacyCapture) map[string]map[string]sideEntry {
 	for _, w := range c.Workloads {
 		sub := strings.ToLower(strings.TrimSpace(w.Type))
 		if ScopeDisposition(sub) != "compare" {
-			continue // job/cronjob/replicaset — ledger 경로
+			continue // replicaset — ledger 경로 (job·cronjob은 P1-C2 합류)
 		}
 		fields := map[string]cmpValue{}
 		if ready, replicas, ok := splitReady(w.Ready); ok {
@@ -510,8 +513,8 @@ func legacyEntries(c LegacyCapture) map[string]map[string]sideEntry {
 	return out
 }
 
-// legacyOutOfScopeCounts tallies the legacy-only workload kinds (ReplicaSet /
-// Job / CronJob) for the ABSENT ledger.
+// legacyOutOfScopeCounts tallies the legacy-only workload kinds (ReplicaSet —
+// job·cronjob은 P1-C2 합류로 compare라 계수되지 않는다) for the ABSENT ledger.
 func legacyOutOfScopeCounts(c LegacyCapture) map[string]int {
 	counts := map[string]int{}
 	for _, w := range c.Workloads {
@@ -573,11 +576,33 @@ func v2Entries(p ProjectedV2) (map[string]map[string]sideEntry, map[string]int) 
 				continue
 			}
 			fields := map[string]cmpValue{}
-			if n, ok := jsonFloat(r.Normalized["replicas"]); ok {
-				fields["replicas"] = numeric(n, true)
-			}
-			if n, ok := jsonFloat(r.Normalized["readyReplicas"]); ok {
-				fields["readyReplicas"] = numeric(n, true)
+			switch sub {
+			case "job":
+				// P1-C2 — legacy buildWorkloadItems(k8s_build_pod.go) Ready 동치:
+				// job의 Ready는 succeeded/total이고 total은 completions(0이면
+				// active+succeeded+failed)다. normalized의 replicas·readyReplicas는
+				// batch 종에서 구조적 영값이라 원천이 아니며, 상태 키
+				// (completions·active·succeeded·failed — J-P1-3)에서 유도한다.
+				active, _ := jsonFloat(r.Normalized["active"])
+				succeeded, _ := jsonFloat(r.Normalized["succeeded"])
+				failed, _ := jsonFloat(r.Normalized["failed"])
+				total, _ := jsonFloat(r.Normalized["completions"])
+				if total <= 0 {
+					total = active + succeeded + failed
+				}
+				fields["replicas"] = numeric(total, true)
+				fields["readyReplicas"] = numeric(succeeded, true)
+			case "cronjob":
+				// legacy Ready는 cronJobReadyText 텍스트("Scheduled"/"Suspended"/
+				// "N Active")라 splitReady가 실패해 legacy 측 필드가 비어 있다 —
+				// V2도 필드 없이 신원 비교만 둔다(양측 동치, 무비교).
+			default:
+				if n, ok := jsonFloat(r.Normalized["replicas"]); ok {
+					fields["replicas"] = numeric(n, true)
+				}
+				if n, ok := jsonFloat(r.Normalized["readyReplicas"]); ok {
+					fields["readyReplicas"] = numeric(n, true)
+				}
 			}
 			put(sub, r.ExternalID, "orchestration.workload", fields, nil)
 

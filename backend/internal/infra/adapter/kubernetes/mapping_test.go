@@ -12,9 +12,6 @@ package kubernetes_test
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -102,9 +99,10 @@ var coverageTable = map[string]string{
 	"network.ingresses.name": "mapped", "network.ingresses.namespace": "mapped",
 	"network.ingresses.host": "mapped", "network.ingresses.address": "mapped",
 	"network.ingresses.tls": "mapped", "network.ingresses.age": "dropped(volatile)",
-	// §4.8 advancedNetwork
-	"advancedNetwork.gatewayApiGateways": "dropped(v2-not-collected)",
-	"advancedNetwork.httpRoutes":         "dropped(v2-not-collected)",
+	// §4.8 advancedNetwork — P1-C1 수집 착지로 mapped 전환(P1-C2 단일 착지점에서
+	// doc+표 동시 전환). 비교 집합 불참은 §3.2 스코프 표(I-P5 이월)가 담당한다.
+	"advancedNetwork.gatewayApiGateways": "mapped",
+	"advancedNetwork.httpRoutes":         "mapped",
 	// §4.9 configStorage.configMaps
 	"configStorage.configMaps.name": "mapped", "configStorage.configMaps.namespace": "mapped",
 	"configStorage.configMaps.keys": "mapped", "configStorage.configMaps.age": "dropped(volatile)",
@@ -168,12 +166,14 @@ func TestMappingTableCoversLegacyFields(t *testing.T) {
 }
 
 // T51 — comparison scope table (mapping.md §3.2) matches the engine's
-// dispositions: 12 comparable kinds, 4 single-side kinds.
+// dispositions: 14 comparable kinds (P1-C2로 job·cronjob 합류), 2 single-side
+// kinds.
 func TestComparisonScopeTableMatchesEngine(t *testing.T) {
 	doc := mappingDoc(t)
 
 	comparable := []string{
 		"node", "namespace", "pod", "deployment", "statefulset", "daemonset",
+		"job", "cronjob", // P1-C2 비교 집합 합류(J-P1-2)
 		"service", "ingress", "configmap", "secret", "pv", "pvc",
 	}
 	for _, section := range comparable {
@@ -183,8 +183,6 @@ func TestComparisonScopeTableMatchesEngine(t *testing.T) {
 	}
 	legacyOnly := map[string]string{
 		"replicaset": "dropped(v2-not-collected)",
-		"job":        "dropped(v2-not-collected)",
-		"cronjob":    "dropped(v2-not-collected)",
 		// storageclass는 v2-only이지만 legacy 표기의 처분 어휘도 §3.2 표에 있다.
 		"storageclass": "v2-only",
 	}
@@ -194,7 +192,7 @@ func TestComparisonScopeTableMatchesEngine(t *testing.T) {
 		}
 	}
 
-	// mapping.md documents all four single-side rows.
+	// mapping.md documents all single-side rows.
 	for _, token := range []string{"ReplicaSet", "Job", "CronJob", "storageclass", "dropped(v2-not-collected)", "v2-only"} {
 		if !strings.Contains(doc, token) {
 			t.Errorf("scope token %q absent from mapping.md §3.2", token)
@@ -331,6 +329,13 @@ func normalizedKeyFor(coverageKey string) string {
 		return "normalized:tls"
 	case "network.ingresses.host":
 		return "normalized:hosts"
+	// §4.8 advancedNetwork — P1-C1 수집 종의 J-P1-3 normalized 키. 섹션 배열의
+	// 대표 랜딩 스폿은 gateway hosts·httproute parents다(전필드 대응은 mapping.md
+	// §4.8 표가 소유 — 기계 단얫은 at-least-one).
+	case "advancedNetwork.gatewayApiGateways":
+		return "normalized:hosts"
+	case "advancedNetwork.httpRoutes":
+		return "normalized:parents"
 	// §4.9 configStorage.configMaps
 	case "configStorage.configMaps.name":
 		return "display"
@@ -396,6 +401,10 @@ func normalizedKeyFamily(coverageKey string) (kind, subtype string) {
 		return "network.load_balancer", "service"
 	case strings.HasPrefix(coverageKey, "network.ingresses."):
 		return "network.load_balancer", "ingress"
+	case strings.HasPrefix(coverageKey, "advancedNetwork.gatewayApiGateways"):
+		return "network.gateway", "" // P1-C1 — GatewayAPI Gateway 수집 종
+	case strings.HasPrefix(coverageKey, "advancedNetwork.httpRoutes"):
+		return "network.http_route", "" // P1-C1 — GatewayAPI HTTPRoute 수집 종
 	case strings.HasPrefix(coverageKey, "configStorage.configMaps."):
 		return "orchestration.configmap", ""
 	case strings.HasPrefix(coverageKey, "configStorage.secrets."):
@@ -471,113 +480,6 @@ func assertNormalizedKey(t *testing.T, coverageKey string, family []contract.Dis
 		}
 	}
 	t.Errorf("coverage key %q: landing spot %q produced by none of %d %s resources — collect first, classify second (G-P1b)", coverageKey, target, len(family), kind)
-}
-
-// mappingSeedVersion is the /version GitVersion the mock serves — the
-// cluster.version landing spot (§4.1) asserts against it.
-const mappingSeedVersion = "v1.29.4"
-
-// mappingSeedBodies maps a discovery section path to ONE representative object
-// with every mapped field populated. Values are literal JSON — the envelope
-// wrapping lives in mappingMock's handler. configmap·secret은 data "값"을
-// 싣지 않는다(보존 제약 #7 — 어댑터 경계 폐기 검증은 internal 테스트 소관).
-var mappingSeedBodies = map[string]string{
-	"/version":                   `{"gitVersion":"` + mappingSeedVersion + `","major":"1","minor":"29"}`,
-	"/api/v1/nodes":              `{"metadata":{"name":"node-1","uid":"node-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},"spec":{"taints":[{"key":"node-role.kubernetes.io/master","effect":"NoSchedule"}],"podCIDRs":["10.244.0.0/24"]},"status":{"conditions":[{"type":"Ready","status":"True"}],"capacity":{"cpu":"8","memory":"31457280Ki","pods":"110"},"allocatable":{"cpu":"7500m","memory":"31457280Ki","pods":"110"},"nodeInfo":{"kubeletVersion":"v1.29.4","osImage":"Ubuntu 22.04"},"addresses":[{"type":"InternalIP","address":"192.168.10.2"}]}}`,
-	"/api/v1/namespaces":         `{"metadata":{"name":"default","uid":"ns-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Active"}}`,
-	"/api/v1/pods":               `{"metadata":{"name":"web-1","namespace":"default","uid":"pod-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"containers":[{"name":"app","resources":{"requests":{"cpu":"500m","memory":"256Mi"},"limits":{"cpu":"1","memory":"1Gi"}}}]},"status":{"phase":"Running","hostIP":"192.168.10.2","podIP":"10.244.0.5","containerStatuses":[{"name":"app","restartCount":2,"ready":true}]}}`,
-	"/apis/apps/v1/deployments":  `{"metadata":{"name":"web","namespace":"default","uid":"dep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1","resources":{"requests":{"cpu":"250m","memory":"512Mi"},"limits":{"cpu":"2","memory":"2Gi"}}}]}}},"status":{"readyReplicas":3,"updatedReplicas":3,"availableReplicas":3}}`,
-	"/apis/apps/v1/statefulsets": `{"metadata":{"name":"db","namespace":"default","uid":"sts-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":1,"template":{"spec":{"containers":[{"name":"pg","image":"postgres:16"}]}}},"status":{"readyReplicas":1,"updatedReplicas":1,"availableReplicas":1}}`,
-	"/apis/apps/v1/daemonsets":   `{"metadata":{"name":"agent","namespace":"default","uid":"ds-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"agent","image":"agent:2"}]}}},"status":{"desiredNumberScheduled":2,"numberReady":2}}`,
-	// P1-A 확장 종 — Discover 워크가 통과하는 모든 섹션 경로를 서빙해야 한다
-	// (404는 일반 에러 신호 — J-P1-1 404-스킵은 P1-C1 client.go 소관).
-	"/apis/apps/v1/replicasets":              `{"metadata":{"name":"rs-1","namespace":"default","uid":"rs-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","ownerReferences":[{"uid":"dep-uid-1","kind":"Deployment","name":"web"}]},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1"}]}}},"status":{"readyReplicas":3}}`,
-	"/apis/batch/v1/jobs":                    `{"metadata":{"name":"job-1","namespace":"default","uid":"job-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"app","image":"busybox:1"}]}}},"status":{"succeeded":1}}`,
-	"/apis/batch/v1/cronjobs":                `{"metadata":{"name":"cron-1","namespace":"default","uid":"cron-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"schedule":"*/5 * * * *"}}`,
-	"/api/v1/endpoints":                      `{"metadata":{"name":"web-svc","namespace":"default","uid":"ep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"subsets":[{"addresses":[{"ip":"10.244.0.5"},{"ip":"10.244.0.6"}]}]}`,
-	"/api/v1/services":                       `{"metadata":{"name":"web-svc","namespace":"default","uid":"svc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"type":"LoadBalancer","clusterIP":"10.96.0.10","ports":[{"name":"http","port":80,"protocol":"TCP"}],"externalIPs":["198.51.100.4"]},"status":{"loadBalancer":{"ingress":[{"ip":"203.0.113.7"}]}}}`,
-	"/apis/networking.k8s.io/v1/ingresses":   `{"metadata":{"name":"web-ing","namespace":"default","uid":"ing-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"rules":[{"host":"app.example.com"}],"tls":[{"hosts":["app.example.com"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"203.0.113.9"}]}}}`,
-	"/api/v1/configmaps":                     `{"metadata":{"name":"cm-1","namespace":"default","uid":"cm-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"data":{"k1":"v1","k2":"v2"}}`,
-	"/api/v1/secrets":                        `{"metadata":{"name":"sec-1","namespace":"default","uid":"sec-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"type":"Opaque","data":{"tk":"dg=="}}`,
-	"/api/v1/persistentvolumes":              `{"metadata":{"name":"pv-1","uid":"pv-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","annotations":{"ops-admin.io/namespace-scope":"team-a"}},"spec":{"storageClassName":"nfs","accessModes":["ReadWriteMany"],"capacity":{"storage":"1Gi"},"nfs":{"server":"10.0.0.9","path":"/exports/team-a"},"persistentVolumeReclaimPolicy":"Retain"},"status":{"phase":"Bound"}},{"metadata":{"name":"pv-host","uid":"pv-uid-2","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"storageClassName":"standard","accessModes":["ReadWriteOnce"],"capacity":{"storage":"1Gi"},"hostPath":{"path":"/data"},"persistentVolumeReclaimPolicy":"Delete"},"status":{"phase":"Available"}}`,
-	"/api/v1/persistentvolumeclaims":         `{"metadata":{"name":"pvc-1","namespace":"default","uid":"pvc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"storageClassName":"standard","accessModes":["ReadWriteOnce"]},"status":{"phase":"Bound","capacity":{"storage":"1Gi"}}}`,
-	"/apis/storage.k8s.io/v1/storageclasses": `{"metadata":{"name":"standard","uid":"sc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"provisioner":"kubernetes.io/aws-ebs"}`,
-}
-
-// mappingMock serves the discovery section paths (single page, continue "") —
-// the §14.1 raw REST envelope the adapter's client decodes. 404는 일반 에러
-// 신호라 17개 섹션 경로를 전부 서빙해야 한다(storageclasses·P1-A 확장 4종
-// 포함 — storageclass는 mapped 필드가 없지만 Discover 워크가 통과한다).
-type mappingMock struct {
-	srv *httptest.Server
-}
-
-func newMappingMock(t *testing.T) *mappingMock {
-	m := &mappingMock{}
-	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, ok := mappingSeedBodies[r.URL.Path]
-		if !ok {
-			http.Error(w, "mapping mock: no seed for "+r.URL.Path, http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/version" {
-			_, _ = w.Write([]byte(body))
-			return
-		}
-		_, _ = w.Write([]byte(`{"metadata":{"continue":"","resourceVersion":"1"},"items":[` + body + `]}`))
-	}))
-	t.Cleanup(m.srv.Close)
-	return m
-}
-
-// mappingKubeconfig — the minimal kubeconfig the parser resolves (내부 테스트의
-// kubeconfigFor와 무의존 재현 — external test package라 내부 mock에 접근 불가).
-func mappingKubeconfig(server string) string {
-	return fmt.Sprintf(`apiVersion: v1
-kind: Config
-current-context: mapping-test
-clusters:
-  - name: test
-    cluster:
-      server: %s
-contexts:
-  - name: mapping-test
-    context:
-      cluster: test
-      user: test
-users:
-  - name: test
-    user:
-      token: test-token
-`, server)
-}
-
-// discoverForNormalization walks the adapter's full cursor chain against the
-// mock and returns every discovered resource — the normalization output G-P1b
-// asserts against.
-func discoverForNormalization(t *testing.T, adapter *kubernetes.Adapter, conn contract.ConnectionView) []contract.DiscoveredResource {
-	t.Helper()
-	resources := make([]contract.DiscoveredResource, 0, 16)
-	cursor := ""
-	for pages := 0; ; pages++ {
-		if pages > 64 { // 17 섹션 상한의 방어 여유 — 커서 루프 비정상 반복 조기 적색
-			t.Fatalf("discoverForNormalization: cursor chain exceeded 64 pages — non-terminating walk")
-		}
-		page, err := adapter.Discover(context.Background(), contract.DiscoverRequest{
-			ContextID:  1,
-			Cursor:     cursor,
-			Connection: conn,
-		})
-		if err != nil {
-			t.Fatalf("Discover(cursor=%q): %v", cursor, err)
-		}
-		resources = append(resources, page.Resources...)
-		if page.NextCursor == "" {
-			return resources
-		}
-		cursor = page.NextCursor
-	}
 }
 
 // TestMappedFieldsProduceNormalizedKeys — G-P1b (V-4 상환, 명명 고정): every

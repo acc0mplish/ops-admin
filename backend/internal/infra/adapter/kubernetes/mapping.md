@@ -26,11 +26,13 @@ URN 형식: `urn:k8s:{context}:{종}:{식별 성분}` — `{context}` = provider
 |---|---|---|---|---|
 | node | — | `{metadata.uid}` | uid | UID 신원 — name은 display 전용 |
 | namespace | — | `{name}` | name | 클러스터 스코프 고유 |
-| workload | deployment / statefulset / daemonset / replicaset / job / cronjob | `{namespace}/{k8s종}/{name}` | 동일 성분 | k8s종 = 소문자 subtype. replicaset·job·cronjob은 P 계획 J-P1-1(P1-A) 수집 확장 — job·cronjob 비교 합류는 P1-C2, replicaset은 스코프 외(I-P5) |
+| workload | deployment / statefulset / daemonset / replicaset / job / cronjob | `{namespace}/{k8s종}/{name}` | 동일 성분 | k8s종 = 소문자 subtype. replicaset·job·cronjob은 P 계획 J-P1-1(P1-A) 수집 확장 — job·cronjob 비교 합류는 P1-C2 착지(§3.2), replicaset은 스코프 외(I-P5) |
 | pod | — | `{metadata.uid}` | uid | pod 이름은 재생성된다 — UID 신원, name은 display. 페어링 키(§3)는 name 정합 |
 | service | service | `{namespace}/{name}` | 동일 성분 | |
 | ingress | ingress | `{namespace}/{name}` | 동일 성분 | |
 | endpoint | — | `{namespace}/{name}` | 동일 성분 | P1-A v2-only 보조종 — `network.endpoint`(Phase6ResourceKindExtensions), service.endpoints 집계 원천 |
+| gateway | — | `{namespace}/{name}` | 동일 성분 | P1-C1 — `network.gateway`(Phase6ResourceKindExtensions), GatewayAPI Gateway(v1 선호·v1beta1 폴백 — J-P1-1). 비교 집합 불참(§3.2 — I-P5 이월) |
+| httproute | — | `{namespace}/{name}` | 동일 성분 | P1-C1 — `network.http_route`, GatewayAPI HTTPRoute(동일 폴백·불참) |
 | configmap | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) |
 | secret | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) — **metadata 전용** |
 | pv | persistent_volume | `{name}` | name | |
@@ -61,7 +63,7 @@ legacy 직렬화에 `metadata.uid`가 전무(계획 §0.6 r2 실측)이므로, �
 |---|---|---|
 | node | `name` | URN은 `{uid}` — 매핑 키로 name ↔ V2 DisplayName 대조 |
 | namespace | `name` | URN `{name}` — 일치 |
-| workload(deployment/statefulset/daemonset) | `{namespace}/{k8s종}/{name}` | URN과 동일 성분 |
+| workload(deployment/statefulset/daemonset/job/cronjob) | `{namespace}/{k8s종}/{name}` | URN과 동일 성분 — job·cronjob은 P1-C2 합류(P1-C2 pairingKeyShapes 착지) |
 | pod | `{namespace}/{name}` | URN은 `{uid}` — 매핑 키로 name 대조(재생성 pod은 name 정합) |
 | service/ingress/configmap/secret/pvc | `{namespace}/{name}` | URN과 동일 성분 |
 | pv/storageclass | `{name}` | URN과 동일 성분 |
@@ -75,9 +77,10 @@ legacy 직렬화에 `metadata.uid`가 전무(계획 §0.6 r2 실측)이므로, �
 | 종 | legacy | V2 discoverer | 처분 |
 |---|---|---|---|
 | node·namespace·pod·deployment·statefulset·daemonset·service·ingress·configmap·secret·pv·pvc | 수집 | 수집 | **비교 집합** — §4 coverage rule 적용 |
-| ReplicaSet | 수집(Deployment 파생 자동 등장) | 수집(P1-A) | 스코프 외 — V2 단독 종 `v2-only`. 구 처분 `dropped(v2-not-collected)`는 비교 엔진이 P1-C2 전까지 유지, 비교 합류 재판정은 I-P5 이월 |
-| Job·CronJob | 수집 | 수집(P1-A) | 스코프 외 — 수집은 비교 합류의 필요조건. **비교 집합 합류는 P1-C2 단일 착지점**(P 계획 J-P1-2·§9-10), 엔진은 P1-C2 전까지 구 처분 `dropped(v2-not-collected)` 유지 |
+| ReplicaSet | 수집(Deployment 파생 자동 등장) | 수집(P1-A) | 스코프 외 — V2 단독 종 `v2-only`. 구 처분 `dropped(v2-not-collected)`는 비교 엔진이 I-P5 재판정까지 유지(P1-C2는 job·cronjob만 합류 — §9-10 단일 착지점) |
+| Job·CronJob | 수집(Workloads 목록 — Type 문자열 실음, main_compare.go:256 실측) | 수집(P1-A) | **비교 집합(P1-C2 착지 — J-P1-2)** — 페어링 키 `{namespace}/{k8s종}/{name}`. job 필드는 buildWorkloadItems Ready 동치 유도(엔진이 succeeded/completions에서 분모·분자 재구성), cronjob은 Ready가 텍스트(cronJobReadyText)라 신원 비교만. 필드 수준 v2-only 키(schedule 등)는 §4.6 참조 |
 | endpoints | 미수집(legacy 직렬화에 종 없음) | 수집(P1-A) | 스코프 외 — v2-only 보조종(`network.endpoint`), service.endpoints 집계 원천. 비교 합류는 I-P5 이월 |
+| Gateway·HTTPRoute | 수집(advancedNetwork 섹션 — `K8sIstioResourceItem`) | 수집(P1-C1 — `network.gateway`·`network.http_route`, v1→v1beta1 폴백·CRD 부재 시 섹션 스킵) | 스코프 외 — legacy 캡처(LegacyCapture)에 gatewayApiGateways·httpRoutes 섹션 부재(main_compare.go 실측 — J-P1-2 H4)라 합류 시 V2 단독 종·identity-sets-differ BLOCKER. 비교 합류는 I-P5 이월. normalized 키는 §4.8 전환 참조 |
 | storageclass | 미수집(속성 필드로만 존재) | 수집 | 스코프 외 — V2 단독 종 `v2-only`, 비교 대상 필드 없음 |
 
 P 계획(J-P1-1)에 따라 P1-A에서 V2 수집을 replicaset·job·cronjob·endpoints로
@@ -168,7 +171,11 @@ creationTimestamp 포함 — 비교 집합은 §3.2 규칙 따름).
 **batch 고유 키는 v2-only**(legacy 직렬화에 부재 — job: `completions`·`parallelism`·`active`·
 `succeeded`·`failed`, cronjob: `schedule`·`active`(JobReference 배열 카운트)·jobTemplate 경계의
 completions·parallelism·containers. 구조적 부재는 키 생략으로 구분 — P1-B 수집, Z 테이블
-최소면은 buildWorkloadItems 동치).
+최소면은 buildWorkloadItems 동치). **P1-C2 비교 합류 후 필드 유도 규칙**: job의 ready는
+legacy `succeeded/total`(total = completions, 0이면 active+succeeded+failed)이므로 비교 엔진이
+normalized 상태 키에서 이를 재구성한다 — normalized의 `replicas`·`readyReplicas`는 batch 종에서
+구조적 영값이라 원천이 아니다. cronjob은 legacy Ready가 텍스트(cronJobReadyText —
+"Scheduled"/"Suspended"/"N Active")라 양측 모두 수치 필드 없이 신원 비교만 한다.
 
 **`workload.image`는 v2-only**: legacy **리스트** 직렬화(`K8sWorkloadItem`)에 image 필드가
 없다(계획 §0.6 r2 실측 — §15.3 BLOCKER 예시의 "image tag"는 상세 DTO
@@ -195,9 +202,20 @@ completions·parallelism·containers. 구조적 부재는 키 생략으로 구�
 
 ### 4.8 `advancedNetwork` 섹션 (`K8sAdvancedNetworkSection` — GatewayAPI/Istio)
 
-| legacy 필드 | 처분 | 사유 |
+P1-C1에서 GatewayAPI 2종(`network.gateway`·`network.http_route`)의 V2 수집이 착지했다 —
+P1-C2 단일 착지점에서 커버리지 처분을 `mapped`로 전환한다. 비교 집합 불참은 §3.2 스코프 표의
+소관(legacy 캡처에 섹션 부재 — I-P5 이월)이고, 본 표는 필드 수준 대응만 담는다.
+
+| legacy 필드 (`K8sIstioResourceItem`) | 처분 | V2 대응 |
 |---|---|---|
-| gatewayApiGateways[] / httpRoutes[] (전체) | dropped(v2-not-collected) | Istio·GatewayAPI 수집은 Phase 2 V2 어댑터 스코프 밖 — legacy 단독 수집 영역. §13 이월 대장(비교 스코프 표 §3.2와 동일 논리, 섹션 단위) |
+| gatewayApiGateways[] | **mapped** | `network.gateway` 종 — `normalized.gatewayClassName`·`hosts`·`addresses`·`ports`(J-P1-3). item.hosts→hosts, item.address→addresses, item.ports→ports 유도(legacy `collectGatewayAPIHosts/Ports/Addresses` 동치) |
+| httpRoutes[] | **mapped** | `network.http_route` 종 — `normalized.parents`·`targets`(J-P1-3). item.gateways→parents, item.target→targets 유도(legacy `collectHTTPRouteParents/Targets` 동치) |
+| (item) age | dropped(volatile) | §15.3 VOLATILE |
+| (item) name / namespace / kind | **mapped** | DisplayName + Raw namespace + 종 판정(`network.gateway`·`network.http_route`) |
+
+비교 집합 불참 사유(§3.2): legacy 캡처(`LegacyCapture`)에는 gatewayApiGateways·httpRoutes
+섹션이 없다(main_compare.go 실측 — J-P1-2 H4). 합류는 I-P5(LegacyCapture 섹션 확장 + GatewayAPI
+CRD 실클러스터 설치와 함께)로 이월된다.
 
 ### 4.9 `configStorage` 섹션 (`K8sConfigStorageSection`)
 

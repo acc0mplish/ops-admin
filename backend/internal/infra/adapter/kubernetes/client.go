@@ -195,6 +195,12 @@ func newK8sClient(rt clusterRuntime, dialContext func(ctx context.Context, netwo
 	return &k8sClient{http: hc, rt: rt, metrics: m}, nil
 }
 
+// errNotFound marks a provider-side 404 — doJSON이 404를 식별 가능한 형태로
+// 반환하게 한 최소 수정(J-P1-1). GatewayAPI 섹션의 버전 폴백은 이 센티넬로만
+// "해당 API 버전 부재"를 판정하고(404는 섹션 스킵 신호), 401/403/429/전송은
+// 기존 ProviderSignalError 분류를 그대로 유지한다. errors.Is로만 소비한다.
+var errNotFound = errors.New("kubernetes: not found (404)")
+
 // getJSON fetches one JSON endpoint on the discovery path — the metrics op
 // label stays "discover" (기존 계약 무변경, Phase 2 PR 20). Signal mapping lives
 // in doJSON.
@@ -230,6 +236,8 @@ func (c *k8sClient) patchJSON(ctx context.Context, path string, patch any, op st
 //	429            → rate_limited (계측: IncRateLimit)
 //	401/403        → permission_denied (계측: IncAPIError)
 //	transport fail → unreachable (계측: IncAPIError)
+//	404            → errNotFound (계측: IncAPIError — 버전 폴백·섹션 스킵 소비자,
+//	                 J-P1-1. 신호 분류는 기존 그대로다)
 //	기타 비-2xx     → 일반 error (계측: IncAPIError)
 func (c *k8sClient) doJSON(ctx context.Context, method, path string, query map[string]string, contentType string, body any, op string, target any) error {
 	start := time.Now()
@@ -297,6 +305,12 @@ func (c *k8sClient) doJSON(ctx context.Context, method, path string, query map[s
 				Kind:    contract.SignalPermissionDenied,
 				Message: fmt.Sprintf("permission denied (status %d)", resp.StatusCode),
 			}
+		case http.StatusNotFound:
+			// 404는 섹션 부재 신호다(J-P1-1 — GatewayAPI CRD 미설치 클러스터의
+			// 버전 폴백 판정). 계측은 기존 "기타 비-2xx" 경로와 동일하게 유지해
+			// 최소 수정을 지킨다 — 소비자가 errors.Is로 스킵을 판정한다.
+			c.metrics.IncAPIError(ProviderName, op, strconv.Itoa(resp.StatusCode))
+			return errNotFound
 		}
 		c.metrics.IncAPIError(ProviderName, op, strconv.Itoa(resp.StatusCode))
 		if snippet != "" {

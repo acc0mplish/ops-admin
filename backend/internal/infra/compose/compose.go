@@ -217,7 +217,9 @@ var kubernetesReadKinds = []string{
 	"orchestration.configmap",
 	"orchestration.secret",
 	"network.load_balancer",
-	"network.endpoint", // P1-A — v2-only 보조종(service.endpoints 집계 원천, Phase6ResourceKindExtensions)
+	"network.endpoint",   // P1-A — v2-only 보조종(service.endpoints 집계 원천, Phase6ResourceKindExtensions)
+	"network.gateway",    // P1-C1 — GatewayAPI Gateway(P1-C1 수집기, 비교 집합 불참 I-P5)
+	"network.http_route", // P1-C1 — GatewayAPI HTTPRoute(동일 — J-P1-2)
 	"storage.volume",
 	"storage.pool",
 }
