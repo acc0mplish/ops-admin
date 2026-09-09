@@ -2,7 +2,7 @@
   "task": "v2-phase6-block1",
   "tier": "XL",
   "phase": "done",
-  "subphase": "Z1 (Z2·Z3 잔여)",
+  "subphase": "Phase Z 완결 (Z1 #52 · Z2 #53 · Z3 #54 — 120/120 + C47 baseline)",
   "round": {
     "adversary": 2,
     "review": 0
@@ -23,9 +23,9 @@
     "claims": [
       {"claim": "C45-Z3: 누적 TestChar 120 완성 (Z3 30개)", "status": "verified", "evidence": "구현·리뷰·메인 3중 실측 120, race exit 0"},
       {"claim": "C46 종료: 순수 함수 120 전량 커버 — 미커버 0", "status": "verified", "evidence": "리뷰 — Z3 30함수 전부 >0%·char-exclude 41행으로 *Service만 제외"},
-      {"claim": "C47 baseline 생성", "status": "pending", "evidence": "120행 전 PASS·재생성 diff 0 리뷰 실증. 단 시간문자열 포함 MEDIUM — sed 절단 후 재생성 진행 중"},
+      {"claim": "C47 baseline 생성", "status": "verified", "evidence": "120행 전 PASS·재생성 diff 0 (메인 REGEN-MATCH 실측)·시간문자열 0 — sed 절단본. 리뷰 MEDIUM 보강 완료"},
       {"claim": "C16-Z3: 649/118/31/548 ≤650", "status": "verified", "evidence": "리뷰 재검증"},
-      {"claim": "리뷰 MEDIUM: baseline 시간 문자열 제거 + 계획 C47 명령 2곳 sed 삽입", "status": "pending", "evidence": "z1-impl 보강 진행 중"}
+      {"claim": "리뷰 MEDIUM: baseline 시간 문자열 제거 + 계획 C47 명령 2곳 sed 삽입", "status": "verified", "evidence": "메인 실측 — 계획 :442-443 sed 반영·REGEN-MATCH·backend/backend 102MB 삭제"}
     ]
   },
   "claims": [
@@ -50,5 +50,5 @@
     "opdef_coverage": "61.5%",
     "tag": "p6-Z1-base"
   },
-  "next": "Z2 리뷰·검증·PR → Z3(+char-baseline C47). 카나리 C24·C31·C32는 블록1 1회 claims — 2026-09-09 세션에서 C24 실행 권한 거부됨, BCD/D2 PR에서 징수로 이연"
+  "next": "Phase A 착수 (라우트 등록 4분할·behavior-neutral·골든 diff 0·C1/C2/C4/C48/C6). 선행: 태그 p6-A-base·런북 §0 베이스라인. 카나리 C24·C31·C32는 BCD/D2 PR 징수로 이연 (C24는 2026-09-09 권한 거부)"
 }
