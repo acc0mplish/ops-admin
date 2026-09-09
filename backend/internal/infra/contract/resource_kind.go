@@ -34,6 +34,19 @@ var Phase2ResourceKindExtensions = []string{
 	"orchestration.secret",
 }
 
+// Phase6ResourceKindExtensions — P 계획 J-P1-0(r3)이 등재하는 kind 어휘 확장
+// 4종. Phase2ResourceKindExtensions과 같은 reviewed-diff 경로(§8.5 어휘 확장)
+// 으로 착지하며 M1ResourceKinds는 19종 verbatim 보존 계약(T1)이라 건드리지
+// 않는다 — IsKnownResourceKind가 확장 슬라이스를 함께 조회하는 구조를 승계한다.
+// 게이트웨이·HTTPRoute는 P1-C1 수집기, endpoint는 service.endpoints 집계 원천,
+// virtualservice는 P2-D istio 오퍼레이션 uid 앵커다(비교 집합 불참 — I-P5 이월).
+var Phase6ResourceKindExtensions = []string{
+	"network.gateway",
+	"network.http_route",
+	"network.endpoint",
+	"network.virtual_service",
+}
+
 // IsKnownResourceKind reports whether kind is in the closed M1 vocabulary
 // (§8.5) or its reviewed extension slices — not as unguarded registrations
 // (A9).
@@ -44,6 +57,11 @@ func IsKnownResourceKind(kind string) bool {
 		}
 	}
 	for _, k := range Phase2ResourceKindExtensions {
+		if k == kind {
+			return true
+		}
+	}
+	for _, k := range Phase6ResourceKindExtensions {
 		if k == kind {
 			return true
 		}

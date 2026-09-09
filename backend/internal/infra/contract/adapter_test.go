@@ -58,3 +58,31 @@ func TestPhase2ResourceKindExtensionRecognized(t *testing.T) {
 		}
 	}
 }
+
+func TestPhase6ResourceKindExtensionRecognized(t *testing.T) {
+	// P 계획 J-P1-0 — 어휘 확장 4종(network.gateway·http_route·endpoint·
+	// virtual_service). Phase2 순회 패턴 승계: IsKnownResourceKind 인지 +
+	// M1 19종·Phase2 2종과 교차 없음(§8.5 verbatim 계약 무충돌).
+	for _, kind := range Phase6ResourceKindExtensions {
+		if !IsKnownResourceKind(kind) {
+			t.Errorf("extension kind %q not recognized by IsKnownResourceKind", kind)
+		}
+		if IsKnownResourceKind("network.unknown") {
+			t.Errorf("unknown kind recognized — vocabulary is not closed")
+		}
+	}
+	for _, k := range M1ResourceKinds {
+		for _, ext := range Phase6ResourceKindExtensions {
+			if k == ext {
+				t.Errorf("extension kind %q leaked into M1ResourceKinds (§8.5 verbatim 계약 위반)", ext)
+			}
+		}
+	}
+	for _, k := range Phase2ResourceKindExtensions {
+		for _, ext := range Phase6ResourceKindExtensions {
+			if k == ext {
+				t.Errorf("extension kind %q duplicated across extension slices", ext)
+			}
+		}
+	}
+}
