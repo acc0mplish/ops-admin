@@ -185,6 +185,27 @@ func (m *mockK8s) seedLists() {
 		},
 		"status": map[string]any{"desiredNumberScheduled": 1, "numberReady": 1},
 	})}
+	// P1-A 확장 종 — job·cronjob은 비교 합류(P1-C2) 전 수집 체인만 진입,
+	// replicaset은 pod→워크로드 역추적 체인 원천, endpoints는 v2-only 보조종.
+	m.lists["/apis/apps/v1/replicasets"] = []map[string]any{m.obj(map[string]any{
+		"metadata": meta("web-rs", "default", "rs-uid-1"),
+		"spec": map[string]any{
+			"replicas": 3,
+			"template": map[string]any{"spec": map[string]any{"containers": workloadContainers}},
+		},
+		"status": map[string]any{"readyReplicas": 3},
+	})}
+	m.lists["/apis/batch/v1/jobs"] = []map[string]any{m.obj(map[string]any{
+		"metadata": meta("nightly", "default", "job-uid-1"),
+		"spec": map[string]any{
+			"template": map[string]any{"spec": map[string]any{"containers": workloadContainers}},
+		},
+		"status": map[string]any{"succeeded": 1},
+	})}
+	m.lists["/apis/batch/v1/cronjobs"] = []map[string]any{m.obj(map[string]any{
+		"metadata": meta("nightly-cron", "default", "cron-uid-1"),
+		"spec":     map[string]any{"schedule": "0 2 * * *"},
+	})}
 	m.lists["/api/v1/services"] = []map[string]any{
 		m.obj(map[string]any{
 			"metadata": meta("kubernetes", "default", "svc-uid-1"),
@@ -231,6 +252,10 @@ func (m *mockK8s) seedLists() {
 			"resources": map[string]any{"requests": map[string]string{"storage": "5Gi"}},
 		},
 		"status": map[string]any{"phase": "Bound", "capacity": map[string]string{"storage": "5Gi"}},
+	})}
+	m.lists["/api/v1/endpoints"] = []map[string]any{m.obj(map[string]any{
+		"metadata": meta("web-svc", "default", "ep-uid-1"),
+		"subsets":  []map[string]any{{"addresses": []map[string]string{{"ip": "10.244.0.5"}, {"ip": "10.244.0.6"}}}},
 	})}
 	m.lists["/apis/storage.k8s.io/v1/storageclasses"] = []map[string]any{m.obj(map[string]any{
 		"metadata":      meta("standard", "", "sc-uid-1"),
@@ -290,8 +315,12 @@ func (f *k8sFixture) Seed() []contract.DiscoveredResource {
 		{ExternalURN: "urn:k8s:1:workload:default/deployment/web", Kind: "orchestration.workload"},
 		{ExternalURN: "urn:k8s:1:workload:default/statefulset/db", Kind: "orchestration.workload"},
 		{ExternalURN: "urn:k8s:1:workload:default/daemonset/agent", Kind: "orchestration.workload"},
+		{ExternalURN: "urn:k8s:1:workload:default/replicaset/web-rs", Kind: "orchestration.workload"},
+		{ExternalURN: "urn:k8s:1:workload:default/job/nightly", Kind: "orchestration.workload"},
+		{ExternalURN: "urn:k8s:1:workload:default/cronjob/nightly-cron", Kind: "orchestration.workload"},
 		{ExternalURN: "urn:k8s:1:service:default/kubernetes", Kind: "network.load_balancer"},
 		{ExternalURN: "urn:k8s:1:service:default/web-svc", Kind: "network.load_balancer"},
+		{ExternalURN: "urn:k8s:1:endpoint:default/web-svc", Kind: "network.endpoint"},
 		{ExternalURN: "urn:k8s:1:ingress:default/web-ing", Kind: "network.load_balancer"},
 		{ExternalURN: "urn:k8s:1:configmap:default/cm-1", Kind: "orchestration.configmap"},
 		{ExternalURN: "urn:k8s:1:configmap:default/cm-2", Kind: "orchestration.configmap"},

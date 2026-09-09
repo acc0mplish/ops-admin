@@ -446,13 +446,19 @@ const mappingSeedVersion = "v1.29.4"
 // wrapping lives in mappingMock's handler. configmap·secret은 data "값"을
 // 싣지 않는다(보존 제약 #7 — 어댑터 경계 폐기 검증은 internal 테스트 소관).
 var mappingSeedBodies = map[string]string{
-	"/version":                               `{"gitVersion":"` + mappingSeedVersion + `","major":"1","minor":"29"}`,
-	"/api/v1/nodes":                          `{"metadata":{"name":"node-1","uid":"node-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},"spec":{"taints":[{"key":"node-role.kubernetes.io/master","effect":"NoSchedule"}]},"status":{"conditions":[{"type":"Ready","status":"True"}],"capacity":{"cpu":"8","memory":"31457280Ki","pods":"110"},"allocatable":{"cpu":"7500m","memory":"31457280Ki"}}}`,
-	"/api/v1/namespaces":                     `{"metadata":{"name":"default","uid":"ns-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Active"}}`,
-	"/api/v1/pods":                           `{"metadata":{"name":"web-1","namespace":"default","uid":"pod-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Running","containerStatuses":[{"name":"app","restartCount":2,"ready":true}]}}`,
-	"/apis/apps/v1/deployments":              `{"metadata":{"name":"web","namespace":"default","uid":"dep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1"}]}}},"status":{"readyReplicas":3}}`,
-	"/apis/apps/v1/statefulsets":             `{"metadata":{"name":"db","namespace":"default","uid":"sts-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":1,"template":{"spec":{"containers":[{"name":"pg","image":"postgres:16"}]}}},"status":{"readyReplicas":1}}`,
-	"/apis/apps/v1/daemonsets":               `{"metadata":{"name":"agent","namespace":"default","uid":"ds-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"agent","image":"agent:2"}]}}},"status":{"desiredNumberScheduled":2,"numberReady":2}}`,
+	"/version":                   `{"gitVersion":"` + mappingSeedVersion + `","major":"1","minor":"29"}`,
+	"/api/v1/nodes":              `{"metadata":{"name":"node-1","uid":"node-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","labels":{"node-role.kubernetes.io/control-plane":""}},"spec":{"taints":[{"key":"node-role.kubernetes.io/master","effect":"NoSchedule"}]},"status":{"conditions":[{"type":"Ready","status":"True"}],"capacity":{"cpu":"8","memory":"31457280Ki","pods":"110"},"allocatable":{"cpu":"7500m","memory":"31457280Ki"}}}`,
+	"/api/v1/namespaces":         `{"metadata":{"name":"default","uid":"ns-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Active"}}`,
+	"/api/v1/pods":               `{"metadata":{"name":"web-1","namespace":"default","uid":"pod-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"status":{"phase":"Running","containerStatuses":[{"name":"app","restartCount":2,"ready":true}]}}`,
+	"/apis/apps/v1/deployments":  `{"metadata":{"name":"web","namespace":"default","uid":"dep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1"}]}}},"status":{"readyReplicas":3}}`,
+	"/apis/apps/v1/statefulsets": `{"metadata":{"name":"db","namespace":"default","uid":"sts-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"replicas":1,"template":{"spec":{"containers":[{"name":"pg","image":"postgres:16"}]}}},"status":{"readyReplicas":1}}`,
+	"/apis/apps/v1/daemonsets":   `{"metadata":{"name":"agent","namespace":"default","uid":"ds-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"agent","image":"agent:2"}]}}},"status":{"desiredNumberScheduled":2,"numberReady":2}}`,
+	// P1-A 확장 종 — Discover 워크가 통과하는 모든 섹션 경로를 서빙해야 한다
+	// (404는 일반 에러 신호 — J-P1-1 404-스킵은 P1-C1 client.go 소관).
+	"/apis/apps/v1/replicasets":              `{"metadata":{"name":"rs-1","namespace":"default","uid":"rs-uid-1","creationTimestamp":"2026-09-01T00:00:00Z","ownerReferences":[{"uid":"dep-uid-1","kind":"Deployment","name":"web"}]},"spec":{"replicas":3,"template":{"spec":{"containers":[{"name":"app","image":"nginx:1"}]}}},"status":{"readyReplicas":3}}`,
+	"/apis/batch/v1/jobs":                    `{"metadata":{"name":"job-1","namespace":"default","uid":"job-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"template":{"spec":{"containers":[{"name":"app","image":"busybox:1"}]}}},"status":{"succeeded":1}}`,
+	"/apis/batch/v1/cronjobs":                `{"metadata":{"name":"cron-1","namespace":"default","uid":"cron-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"schedule":"*/5 * * * *"}}`,
+	"/api/v1/endpoints":                      `{"metadata":{"name":"web-svc","namespace":"default","uid":"ep-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"subsets":[{"addresses":[{"ip":"10.244.0.5"},{"ip":"10.244.0.6"}]}]}`,
 	"/api/v1/services":                       `{"metadata":{"name":"web-svc","namespace":"default","uid":"svc-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"type":"ClusterIP","clusterIP":"10.96.0.10","ports":[{"name":"http","port":80,"protocol":"TCP"}]}}`,
 	"/apis/networking.k8s.io/v1/ingresses":   `{"metadata":{"name":"web-ing","namespace":"default","uid":"ing-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"spec":{"rules":[{"host":"app.example.com"}]}}`,
 	"/api/v1/configmaps":                     `{"metadata":{"name":"cm-1","namespace":"default","uid":"cm-uid-1","creationTimestamp":"2026-09-01T00:00:00Z"},"data":{"k1":"v1","k2":"v2"}}`,
@@ -464,8 +470,8 @@ var mappingSeedBodies = map[string]string{
 
 // mappingMock serves the discovery section paths (single page, continue "") —
 // the §14.1 raw REST envelope the adapter's client decodes. 404는 일반 에러
-// 신호라 13개 섹션 경로를 전부 서빙해야 한다(storageclasses 포함 — mapped
-// 필드는 없지만 Discover 워크가 통과한다).
+// 신호라 17개 섹션 경로를 전부 서빙해야 한다(storageclasses·P1-A 확장 4종
+// 포함 — storageclass는 mapped 필드가 없지만 Discover 워크가 통과한다).
 type mappingMock struct {
 	srv *httptest.Server
 }
@@ -519,7 +525,7 @@ func discoverForNormalization(t *testing.T, adapter *kubernetes.Adapter, conn co
 	resources := make([]contract.DiscoveredResource, 0, 16)
 	cursor := ""
 	for pages := 0; ; pages++ {
-		if pages > 64 { // 13 섹션 상한의 방어 여유 — 커서 루프 비정상 반복 조기 적색
+		if pages > 64 { // 17 섹션 상한의 방어 여유 — 커서 루프 비정상 반복 조기 적색
 			t.Fatalf("discoverForNormalization: cursor chain exceeded 64 pages — non-terminating walk")
 		}
 		page, err := adapter.Discover(context.Background(), contract.DiscoverRequest{
@@ -582,10 +588,11 @@ func TestMappedFieldsProduceNormalizedKeys(t *testing.T) {
 		t.Errorf("cluster.version: Health message %q does not surface the seeded GitVersion %q — /version landing spot broke", health.Message, mappingSeedVersion)
 	}
 
-	// Subtype 완전성 — the seed's 3 workload kinds + 2 volume kinds anchor the
-	// §4.6 type row and §4.9 kind row (at-least-one 단얫의 근거가 되는 기수).
+	// Subtype 완전성 — the seed's workload kinds (P1-A 확장: replicaset·job·
+	// cronjob 포함) + 2 volume kinds anchor the §4.6 type row and §4.9 kind
+	// row (at-least-one 단얫의 근거가 되는 기수).
 	wantSubtypes := map[string][]string{
-		"orchestration.workload": {"deployment", "statefulset", "daemonset"},
+		"orchestration.workload": {"deployment", "statefulset", "daemonset", "replicaset", "job", "cronjob"},
 		"storage.volume":         {"persistent_volume", "pvc"},
 	}
 	for kind, wants := range wantSubtypes {

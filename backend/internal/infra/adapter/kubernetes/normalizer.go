@@ -24,6 +24,16 @@ type objectMeta struct {
 	UID               string            `json:"uid"`
 	CreationTimestamp string            `json:"creationTimestamp"`
 	Labels            map[string]string `json:"labels"`
+	// P1-A (J-P1-3) — pod Raw ownerReferences: workloadName/Type 집계 체인
+	// (P1-D)이 역추적할 uid·kind·name 3성분만 보존한다.
+	OwnerReferences []ownerReference `json:"ownerReferences"`
+}
+
+// ownerReference is the metadata.ownerReferences subset Raw carries.
+type ownerReference struct {
+	UID  string `json:"uid"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 // listMeta/listEnvelope is the Kubernetes collection shape — the continue
@@ -46,6 +56,9 @@ type nodeObject struct {
 			Key    string `json:"key"`
 			Effect string `json:"effect"`
 		} `json:"taints"`
+		// P1-A (J-P1-3) — podCIDRs(단일 podCIDR 폴백 포함).
+		PodCIDRs []string `json:"podCIDRs"`
+		PodCIDR  string   `json:"podCIDR"`
 	} `json:"spec"`
 	Status struct {
 		Conditions []struct {
@@ -247,7 +260,8 @@ func sectionKind(section string) kindMapping {
 		return kindMapping{kind: "orchestration.namespace", singular: "namespace"}
 	case "pods":
 		return kindMapping{kind: "orchestration.pod", singular: "pod"}
-	case "deployments", "statefulsets", "daemonsets":
+	case "deployments", "statefulsets", "daemonsets",
+		"replicasets", "jobs", "cronjobs": // P1-A 확장 — orchestration.workload subtype 계열(J-P1-0: 어휘 슬라이스 불필요)
 		return kindMapping{kind: "orchestration.workload", subtype: strings.TrimSuffix(section, "s"), singular: "workload"}
 	case "services":
 		return kindMapping{kind: "network.load_balancer", subtype: "service", singular: "service"}
@@ -263,6 +277,9 @@ func sectionKind(section string) kindMapping {
 		return kindMapping{kind: "storage.volume", subtype: "pvc", singular: "pvc"}
 	case "storageclasses":
 		return kindMapping{kind: "storage.pool", subtype: "storage_class", singular: "storageclass"}
+	case "endpoints":
+		// P1-A — Phase6ResourceKindExtensions "network.endpoint"(v2-only 보조종).
+		return kindMapping{kind: "network.endpoint", singular: "endpoint"}
 	default:
 		return kindMapping{}
 	}
@@ -318,6 +335,11 @@ func buildRaw(meta objectMeta) contract.JSONMap {
 	}
 	if len(meta.Labels) > 0 {
 		raw["labels"] = meta.Labels
+	}
+	if len(meta.OwnerReferences) > 0 {
+		owners := make([]ownerReference, len(meta.OwnerReferences))
+		copy(owners, meta.OwnerReferences)
+		raw["ownerReferences"] = owners
 	}
 	return raw
 }
@@ -399,6 +421,14 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			taints = append(taints, t.Key+":"+t.Effect)
 		}
 		n["taints"] = taints
+		// P1-A (J-P1-3) — podCIDRs, 단일 podCIDR 폴백. 부재 시 키 생략.
+		if len(o.Spec.PodCIDRs) > 0 {
+			cidrs := make([]string, len(o.Spec.PodCIDRs))
+			copy(cidrs, o.Spec.PodCIDRs)
+			n["podCIDRs"] = cidrs
+		} else if o.Spec.PodCIDR != "" {
+			n["podCIDRs"] = []string{o.Spec.PodCIDR}
+		}
 		n["healthState"] = nodeHealthState(o.Status.Conditions)
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata),
@@ -435,35 +465,19 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			},
 		}
 
-	case "deployments", "statefulsets", "daemonsets":
+	case "deployments", "statefulsets", "daemonsets", "replicasets":
 		var o workloadObject
 		if err := json.Unmarshal(raw, &o); err != nil {
 			return res, fmt.Errorf("kubernetes: workload decode: %w", err)
 		}
-		var replicas, ready int
-		if section == "daemonsets" {
-			replicas = o.Status.DesiredNumberScheduled
-			ready = o.Status.NumberReady
-		} else {
-			if o.Spec.Replicas != nil {
-				replicas = *o.Spec.Replicas
-			}
-			ready = o.Status.ReadyReplicas
-		}
-		image := ""
-		if len(o.Spec.Template.Spec.Containers) > 0 {
-			image = o.Spec.Template.Spec.Containers[0].Image
-		}
-		res = contract.DiscoveredResource{
-			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw: buildRaw(o.Metadata),
-			Normalized: contract.JSONMap{
-				"replicas":      replicas,
-				"readyReplicas": ready,
-				// V2-only field: legacy 리스트 직렬화(K8sWorkloadItem)에 image가
-				// 없어 비교 집합 밖(mapping.md dropped(v2-only)).
-				"image": image,
-			},
+		res = workloadResource(ctxID, km, section, o)
+
+	case "jobs", "cronjobs", "endpoints":
+		// P1-A 확장 종 — 디코드+키는 normalizer_batch.go에 분할(J-P1-1·R-P3 선제
+		// 분할). job·cronjob의 batch 고유 키는 P1-B(TestNormalizedKeySchema) 소관.
+		var err error
+		if res, err = normalizeBatchSection(ctxID, km, section, raw); err != nil {
+			return contract.DiscoveredResource{}, err
 		}
 
 	case "services":
