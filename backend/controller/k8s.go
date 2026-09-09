@@ -383,20 +383,6 @@ func (ctl *Controller) ScaleK8sWorkload(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
-func (ctl *Controller) RestartK8sWorkload(c *gin.Context) {
-	var payload model.K8sWorkloadActionPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid workload payload")
-		return
-	}
-	data, err := ctl.service.RestartK8sWorkload(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
 func (ctl *Controller) UpdateK8sResourceYAML(c *gin.Context) {
 	var payload model.K8sResourceYAMLPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

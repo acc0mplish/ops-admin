@@ -127,8 +127,8 @@ func writeOrCompareArtifact(t *testing.T, name string, header []string, lines []
 func TestRouteInventoryArtifact(t *testing.T) {
 	engine, _ := newArtifactEngine(t)
 	lines := routeInventoryLines(engine)
-	if len(lines) != 450 {
-		t.Fatalf("route inventory holds %d routes, contract is 450", len(lines))
+	if len(lines) != 449 {
+		t.Fatalf("route inventory holds %d routes, contract is 449", len(lines))
 	}
 	header := artifactHeader(
 		"Route inventory generated from the live gin engine",
