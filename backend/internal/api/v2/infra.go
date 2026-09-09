@@ -273,6 +273,15 @@ func (a *InfraAPI) ListResources(c *gin.Context) {
 	if prefix := c.Query("kindPrefix"); prefix != "" {
 		query = query.Where("infra_resource.kind LIKE ? ESCAPE '!'", escapeLike(prefix)+"%")
 	}
+	// connectionUid (Phase 6 E0 — plan §J4 E-1 (가)): read-only scoping filter
+	// so the frontend can resolve a V2 operation's opaque resource uid from a
+	// legacy cluster id (GET /provider-connections exposes sourceModel/
+	// sourceId). The liveResources JOIN already carries provider_connection
+	// pconn, so the scope is one WHERE. Existing filters and the response
+	// shape are unchanged (claim C51).
+	if uid := c.Query("connectionUid"); uid != "" {
+		query = query.Where("pconn.uid = ?", uid)
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		httpx.Failed(c, http.StatusInternalServerError, err.Error())
