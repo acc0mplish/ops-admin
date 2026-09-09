@@ -9,7 +9,7 @@
 | Phase -1~4 | ✅ 종결 (interim — 실계정 증명 일부 보류) |
 | Phase 5 Proxmox | ✅ **완전 종결** — read-only+guarded ops·실엔드포인트 게이트 전 항 실증·실게스트 power/snapshot 라이브 실증 (PR #42~#49) |
 | §18.2 메트릭 | ✅ 14종 전부 (PR #48·#49) — M1의 마지막 기술 병목 해소 |
-| Phase 6 (legacy cutover) | ⏸ **진입 불가 — 조건부 대기** (`phase6-entry-assessment.md`) |
+| Phase 6 (legacy cutover) | 🔄 **블록 1 진행중** — Z1·Z2·Z3(characterization 120+#52~#54)·A(라우터 분할 #55)·BCD(k8s.go 13분해 #56)·D2(캡슐화·k8s.go 390줄 #57)·F(스펙 조건화) 완료 · 잔여 E0→E2→E1(step 4a) · 블록 2(G·H·I)는 선행 과제 P 대기 (`p6-state.json`) |
 | Phase 7-9 (vCenter 등) | 예약 — M3 (진입 전제 미충족) |
 
 ## 확정 결정 (사용자)

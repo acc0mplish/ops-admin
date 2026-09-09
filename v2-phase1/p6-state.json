@@ -2,12 +2,12 @@
   "task": "v2-phase6-block1",
   "tier": "XL",
   "phase": "implement",
-  "subphase": "BCD (9파일 분해·C47 대조 개시)",
+  "subphase": "D2 (임계경로 — 캡슐화)",
   "round": {
     "adversary": 2,
     "review": 0
   },
-  "spawns": 4,
+  "spawns": 5,
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
