@@ -7,7 +7,8 @@
     "adversary": 2,
     "review": 1
   },
-  "spawns": 5,
+  "spawns": 6,
+  "ptrack": {"phase": "plan-r2", "round": {"adversary": 1}, "verdict": "3렌즈(완전성·기술·위험) 반려 — C1+H6+M15+L11, 교차확인 2건(어휘·④A안). r2 개정 지시 전송(2026-09-10). 렌즈 4·5는 r2 검증에 투입", "spec": "v2-phase1/phase6-parity-handover.md r2"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
