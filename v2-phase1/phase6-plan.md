@@ -439,8 +439,8 @@ C44 [Z] 모집단 고정: `cd backend && echo $(( $(grep -c '^func ' service/k8s
 C45 [Z 종료] 커버 수: `cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -c '^=== RUN   TestChar'` → 120 이상
 C46 [Z 종료] 미커버 0: `cd backend && go test ./service/ -run TestChar -coverprofile=/tmp/z.out -count=1 >/dev/null && go tool cover -func=/tmp/z.out | grep '/service/k8s.go:' | awk '$3=="0.0%"{print $2}' | grep -vFf service/testdata/char-exclude.txt | wc -l` → `0` (`service/testdata/char-exclude.txt` = `*Service` 메서드 41개 이름 — **Z1에서 생성해 커밋**)
 C47 [BCD·D2] **이동 무결성 — B~D2의 유일한 검출기** (L-1 상환 — 기계 판정): Z3 종료 시 베이스라인을 커밋해 둔다 —
-      `cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -E '^(--- )?(PASS|FAIL): TestChar' | sort > service/testdata/char-baseline.txt`
-      BCD·D2 종료 시: `cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -E '^(--- )?(PASS|FAIL): TestChar' | sort > /tmp/char-now.txt && diff service/testdata/char-baseline.txt /tmp/char-now.txt && echo CHAR_IDENTICAL` → `CHAR_IDENTICAL` (diff 0행)
+      `cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -E '^(--- )?(PASS|FAIL): TestChar' | sed 's/ ([0-9.]*s)$//' | sort > service/testdata/char-baseline.txt`
+      BCD·D2 종료 시: `cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -E '^(--- )?(PASS|FAIL): TestChar' | sed 's/ ([0-9.]*s)$//' | sort > /tmp/char-now.txt && diff service/testdata/char-baseline.txt /tmp/char-now.txt && echo CHAR_IDENTICAL` → `CHAR_IDENTICAL` (diff 0행)
 
 --- Phase A ---
 C4  [A] 그룹 미들웨어 불변 (**T-4 상환 — 디렉터리 전체**): `git diff p6-A-base -- backend/router/ | grep -E '^[-+].*(UseRawPath|engine\.Use\(|\.Group\(|authGroup\.Use\(|v2Group\.Use\()'` → 출력 0행

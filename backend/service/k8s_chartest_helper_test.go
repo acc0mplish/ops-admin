@@ -535,3 +535,14 @@ func charDecode(t *testing.T, payload string, target any) {
 		t.Fatal(err)
 	}
 }
+
+// charNodeAddress는 kubeNode.Status.Addresses 요소를 만든다.
+func charNodeAddress(addressType, value string) struct {
+	Type    string `json:"type"`
+	Address string `json:"address"`
+} {
+	return struct {
+		Type    string `json:"type"`
+		Address string `json:"address"`
+	}{Type: addressType, Address: value}
+}
