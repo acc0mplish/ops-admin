@@ -199,22 +199,22 @@ func (s *Service) dialThroughGateway(ctx context.Context, gatewayID uint, networ
 }
 
 func (s *Service) sharedGatewaySSHClient(gatewayID uint) (*ssh.Client, error) {
-	s.gatewaySSHMu.Lock()
-	defer s.gatewaySSHMu.Unlock()
-	if client := s.gatewaySSHClients[gatewayID]; client != nil { return client, nil }
+	s.k8sState.gatewaySSHMu.Lock()
+	defer s.k8sState.gatewaySSHMu.Unlock()
+	if client := s.k8sState.gatewaySSHClients[gatewayID]; client != nil { return client, nil }
 	gateway, err := s.getAssetGatewayWithCredential(gatewayID)
 	if err != nil { return nil, err }
 	client, err := s.newGatewaySSHClient(*gateway)
 	if err != nil { return nil, err }
-	s.gatewaySSHClients[gatewayID] = client
+	s.k8sState.gatewaySSHClients[gatewayID] = client
 	return client, nil
 }
 
 func (s *Service) invalidateGatewaySSHClient(gatewayID uint, expected *ssh.Client) {
-	s.gatewaySSHMu.Lock()
-	defer s.gatewaySSHMu.Unlock()
-	if current := s.gatewaySSHClients[gatewayID]; current == expected {
-		delete(s.gatewaySSHClients, gatewayID)
+	s.k8sState.gatewaySSHMu.Lock()
+	defer s.k8sState.gatewaySSHMu.Unlock()
+	if current := s.k8sState.gatewaySSHClients[gatewayID]; current == expected {
+		delete(s.k8sState.gatewaySSHClients, gatewayID)
 		_ = current.Close()
 	}
 }
