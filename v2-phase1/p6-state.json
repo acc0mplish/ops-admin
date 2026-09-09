@@ -8,6 +8,16 @@
     "review": 0
   },
   "spawns": 2,
+  "z2": {
+    "phase": "implement-보강",
+    "claims": [
+      {"claim": "C45-Z2: 누적 TestChar 90 (Z2 45개)", "status": "verified", "evidence": "구현·리뷰·메인 3중 실측 90, race exit 0"},
+      {"claim": "C16-Z2: build_net 646·transport 604·helper 529 ≤650", "status": "verified", "evidence": "리뷰 재검증"},
+      {"claim": "마커 24/21/26/19=90", "status": "verified", "evidence": "메인 선검증 일치"},
+      {"claim": "C44-Z2: k8s.go·기존 파일 무변경", "status": "verified", "evidence": "리뷰 — name-only로 helper+_test만. 측정 grep은 --name-only 재작성 권고(LOW#7)"},
+      {"claim": "리뷰 MEDIUM 4 보강: trailingSlash·R18 3곳·unknown 페이즈·basic 자격", "status": "verified", "evidence": "메인 지점 실측(:583·:48/:411/:538·Unknown AlertCount 5·:73-82) + LOW#5 cert 불일치 :176. C7 전체 -race exit 0 (2026-09-09 20:xx)"}
+    ]
+  },
   "claims": [
     {"claim": "C44: k8s.go 순수 함수 모집단 120 고정", "status": "verified", "evidence": "grep -c '^func ' service/k8s.go=161, '^func (s \\*Service)'=41, 차=120 (2026-09-09 메인 실측)"},
     {"claim": "C21 선행조건: seed-cron 제거 후 compare baseline verdict=pass", "status": "verified", "evidence": "런북 §2 4단계 전부: waiver Passed=true(전) → cronjob/pod 삭제 → sync×3+compare verdict=pass → waiver Passed=true(후). 스테일 파드 flush에 sync 3사이클 필요했음"},
@@ -30,5 +40,5 @@
     "opdef_coverage": "61.5%",
     "tag": "p6-Z1-base"
   },
-  "next": "커밋·PR·merge 후 Z2 착수 (k8s_build_net 26 + k8s_transport 19). 잔여 블록1 1회 claims: C24·C31·C32 카나리"
+  "next": "Z2 리뷰·검증·PR → Z3(+char-baseline C47). 카나리 C24·C31·C32는 블록1 1회 claims — 2026-09-09 세션에서 C24 실행 권한 거부됨, BCD/D2 PR에서 징수로 이연"
 }
