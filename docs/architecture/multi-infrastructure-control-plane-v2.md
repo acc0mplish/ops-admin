@@ -1521,6 +1521,8 @@ Migration requirements:
 
 r1 put irreversible schema removal and the God-service decomposition (2,833-line service, monolithic router) in a one-line-rollback final phase—the single riskiest moment of the whole program. r2 contracts it:
 
+**Applicability (M1 development stage).** ops-admin has no production deployment in the M1 stage, so clauses below that presuppose live traffic (dual-run authority, observation periods, log-verified zero-traffic gates, weekly comparison cadence, dark-path retention) carry an inline `deviation recorded` line and apply only once a production deployment exists. They are conditioned, not deleted — removing them would leave no basis for restoring them when the premise returns.
+
 ```text
 preconditions (all must be green):
   - shadow comparisons passing per §15.4 for every family being cut over
@@ -1534,26 +1536,43 @@ authority during dual-run:
   - V1 remains authoritative for: everything in §3 REMAIN, and for the
     legacy write paths still in service
   - conflicts resolve toward V1; shadow discrepancies are §15 BLOCKERs
+    deviation recorded: 2026-09-10 — no production deployment; no dual-run
+    traffic exists (Applicability above)
 
 decomposition order (each step is a separately revertible PR):
   1. route registration splits per module (router only; behavior-neutral)
   2. provider/k8s/cloud client state moves out of Service into adapters
      (behavior-neutral, covered by §15 comparisons re-run after each step)
   3. legacy read paths for migrated families flip to V2 projections
+     deviation recorded: 2026-09-10 — the flip is limited to reads an
+     inventory projection can serve; live passthrough reads (logs, events,
+     metrics, terminal, live YAML detail) stay on v1 indefinitely
   4. legacy write paths stop (per §3.3 families, by decision)
   5. legacy columns/tables drop only after one release-cycle observation
      with zero legacy-path traffic (log-verified)
+     deviation recorded: 2026-09-10 — no production traffic exists to
+     log-verify; §15.4 comparisons plus characterization tests are the
+     working substitute until a deployment exists
 
 observation period: one release cycle per family, minimum
+  deviation recorded: 2026-09-10 — observation target cannot exist without
+  a deployment; conditioned (Applicability above)
 
 rollback:
   - steps 1-2: revert the PR (behavior-neutral by construction)
   - step 3: flip reads back (config flag per family, retained one cycle)
+    deviation recorded: 2026-09-10 — the flag shrinks to a temporary
+    verification env (V2_READ_SOURCE_K8S) that lives and dies inside the
+    read-flip PR
   - step 4: re-enable legacy writes (paths retained but dark for one cycle)
+    deviation recorded: 2026-09-10 — dark retention strengthened to
+    deletion; no traffic can be dark-served in M1
   - step 5: restore from the rehearsed backup if data loss is discovered
   - shadow-read discontinuation criterion: two consecutive weekly
     comparisons with zero BLOCKERs, or the flag-based read flip is
     considered unproven and stays dual
+    deviation recorded: 2026-09-10 — weekly cadence presumes operations;
+    per-change §15.4 comparisons substitute in M1
 ```
 
 
@@ -1627,7 +1646,7 @@ Full definition in §14.3 — status changed from conditional to committed (r2.1
 
 ### Phase 6 (M2, conditional): Legacy cutover and decomposition
 
-Scope and rollback per §19.1. Gate: per-family §15.4 pass; restore rehearsal completed; observation period elapsed with zero legacy-path traffic before drops.
+Scope and rollback per §19.1. Gate: per-family §15.4 pass; restore rehearsal completed; observation period elapsed with zero legacy-path traffic before drops. (deviation recorded: 2026-09-10 — the observation clause is conditioned on a production deployment; see the Applicability paragraph in §19.1.)
 
 ### Phase 7–9 (M3, reserved): vCenter · CloudStack · OpenStack
 
