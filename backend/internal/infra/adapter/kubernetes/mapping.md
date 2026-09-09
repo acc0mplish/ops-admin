@@ -122,16 +122,17 @@ connection/context 속성이다(백필 §3.4 매핑의 원천).
 | name | **mapped** | DisplayName + 페어링 키(§3.1) |
 | role | **mapped** | `normalized.roles` (`node-role.kubernetes.io/*` 라벨 파생) |
 | status | **mapped** | `normalized.healthState` (conditions Ready=True→healthy, 그 외 degraded) |
-| version | dropped(v2-schema-absent) | kubelet 버전 — §3.2 node 스키마에 없음 |
-| internalIP | dropped(v2-schema-absent) | 주소 — 관측 필요 시 Raw labels 확장으로 재검 |
+| version | **mapped** | `normalized.kubeletVersion` (status.nodeInfo.kubeletVersion — 부재 시 키 생략) |
+| internalIP | **mapped** | `normalized.internalIP` (status.addresses 중 type=InternalIP 첫 주소 — 부재 시 키 생략, legacy "-" 포맷은 조립 P1-D 소유) |
 | (node) podCIDRs | **mapped** | `normalized.podCIDRs` (spec.podCIDRs + 단일 spec.podCIDR 폴백 — v2-only 필드, P1-A 수집) |
-| os | dropped(v2-schema-absent) | |
+| os | **mapped** | `normalized.osImage` (status.nodeInfo.osImage — 부재 시 키 생략) |
 | cpu | **mapped** | `normalized.capacityCoresGB` (quantityToCores) |
 | memory | **mapped** | `normalized.capacityMemoryGB` (Ki→GB) |
 | pods | dropped(v2-derived) | 파생 카운트 — read side 집계 |
 
-V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`taints`·
-`healthState` (Raw의 uid·labels·creationTimestamp 포함 — 비교 집합은 §3.2 규칙 따름).
+V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`allocatablePods`
+(allocatable["pods"] 개수 정수 — P1-B)·`podCIDRs`·`taints`·`healthState` (Raw의 uid·labels·
+creationTimestamp 포함 — 비교 집합은 §3.2 규칙 따름).
 
 ### 4.4 `namespaces` 섹션 (`K8sNamespaceItem`)
 
@@ -150,7 +151,7 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 | workloadName / workloadType | dropped(v2-derived) | ownerReferences 파생 — 원천 Raw는 P1-A 수집(`Raw.ownerReferences` uid/kind/name), 집계는 P1-D(관계 데이터 도메인) |
 | status | **mapped** | `normalized.phase` 그대로(상태 어휘: pod phase) + `normalized.lifecycleState` 동일값 |
 | node | **mapped(relationship)** | pod→node `runs_on` 관계 — PR 21 relationship 적재 (리소스 필드 아님) |
-| nodeIP / ip | dropped(v2-schema-absent) | 주소 |
+| nodeIP / ip | **mapped** | `normalized.hostIP` / `normalized.podIP` (status.hostIP·status.podIP — 부재 시 키 생략) |
 | restarts | **mapped** | `normalized.restartCount` (containerStatuses 합계 — VOLATILE) |
 | age | dropped(volatile) | §15.3 VOLATILE |
 
@@ -160,9 +161,14 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 |---|---|---|
 | name / namespace / type | **mapped** | DisplayName + Subtype(deployment/statefulset/daemonset) + 페어링 키 |
 | ready | **mapped** | `normalized.readyReplicas` ("1/3" 형식 → 수치 분리: legacy는 `Ready` 문자열, V2는 수치 — 변환 규칙: 분모=replicas·분자=readyReplicas) |
-| updated / available | dropped(v2-schema-absent) | §3.2 workload 스키마(replicas·readyReplicas·image)에 없음 |
+| updated / available | **mapped** | `normalized.updatedReplicas` / `normalized.availableReplicas` (status — apps 계열 전용. batch 종은 구조적 부재로 키 생략 — legacy는 job의 active·succeeded에서 파생, 조립 P1-D) |
 | age | dropped(volatile) | |
-| requests / limits | dropped(v2-schema-absent) | 컨테이너 자원 요약 — Phase 3 재검 후보 |
+| requests / limits | **mapped** | `normalized.containers`[{name, image, requests{cpuMilli, memBytes}, limits{…}}] — **양은 milli·bytes 정수로 저장, legacy "500m / 1.0Gi" 포맷은 조립 P1-D의 포맷터 오라클**(`formatWorkloadResourceSummary`·`formatCPUMilli`·`formatMemoryBytes`) |
+
+**batch 고유 키는 v2-only**(legacy 직렬화에 부재 — job: `completions`·`parallelism`·`active`·
+`succeeded`·`failed`, cronjob: `schedule`·`active`(JobReference 배열 카운트)·jobTemplate 경계의
+completions·parallelism·containers. 구조적 부재는 키 생략으로 구분 — P1-B 수집, Z 테이블
+최소면은 buildWorkloadItems 동치).
 
 **`workload.image`는 v2-only**: legacy **리스트** 직렬화(`K8sWorkloadItem`)에 image 필드가
 없다(계획 §0.6 r2 실측 — §15.3 BLOCKER 예시의 "image tag"는 상세 DTO
@@ -179,11 +185,12 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 | type | **mapped** | `normalized.type` (Subtype "service") |
 | clusterIP | **mapped** | `normalized.clusterIP` (None이면 생략) |
 | ports | **mapped** | `normalized.ports` (port·protocol·name 목록) |
-| externalIP | dropped(v2-schema-absent) | |
+| externalIP | **mapped** | `normalized.externalIP` (spec.externalIPs + status.loadBalancer.ingress — IP 우선·hostname 대체, ", " 결합. legacy `serviceExternalIP` 동치 — 공백 시 키 생략, "<none>" 포맷은 조립 P1-D) |
 | endpoints | dropped(v2-derived) | endpoints 객체 파생 카운트 — 보조종 수집은 P1-A 착수(`network.endpoint` `normalized.readyAddresses`), 집계는 P1-D |
 | age | dropped(volatile) | |
 | (ingress) host | **mapped** | `normalized.hosts` (rules[].host 목록) — v2-only 필드 |
-| (ingress) address / tls | dropped(v2-schema-absent) | |
+| (ingress) address | **mapped** | `normalized.address` (status.loadBalancer.ingress[0] IP 우선 — 부재 시 키 생략, legacy "-" 포맷은 조립 P1-D) |
+| (ingress) tls | **mapped** | `normalized.tls` (spec.tls 유무 → "Enabled"/"Disabled" — legacy 상태 어휘 그대로) |
 | (ingress) age | dropped(volatile) | |
 
 ### 4.8 `advancedNetwork` 섹션 (`K8sAdvancedNetworkSection` — GatewayAPI/Istio)
@@ -202,13 +209,13 @@ V2-only: `capacityMemoryGB` 외 `allocatableCoresGB`·`allocatableMemoryGB`·`ta
 | secrets[].type | **mapped** | `normalized.type` |
 | secrets[].keys | **mapped** | `normalized.dataKeys` (키 이름만 — **§14.1 "secret metadata", 데이터 값 절대 미수집**) |
 | storage[].name / kind / namespace | **mapped** | pv→`persistent_volume`·pvc→`pvc` Subtype + 페어링 키 |
-| storage[].namespaceScope | dropped(v2-derived) | Subtype으로 흡수 |
-| storage[].status | dropped(v2-schema-absent) | pv/pvc phase — §3.2 volume 스키마에 없음 |
+| storage[].namespaceScope | **mapped** | `normalized.namespaceScope` — pv: annotation `ops-admin.io/namespace-scope`, 기본 "Cluster-scoped"(legacy `storageNamespaceScope` 동치). pvc 행은 legacy 공란 — pvc는 키 생략(행 형상은 조립 P1-D 소유) |
+| storage[].status | **mapped** | `normalized.phase` (pv/pvc status.phase) |
 | storage[].capacity | **mapped** | `normalized.capacityGB` |
 | storage[].storageClass | **mapped** | `normalized.storageClassName` |
-| storage[].sourceType / path / nfsServer | dropped(v2-schema-absent) | 볼륨 소스 상세 — 필요 시 Raw 확장 재검 |
+| storage[].sourceType / path / nfsServer | **mapped** | `normalized.sourceType`·`normalized.sourcePath`·`normalized.nfsServer` — spec.persistentVolumeSource(hostPath→"hostPath"+path, nfs→"NFS"+path+server, 그 외 키 생략). legacy `persistentVolumeSource` 동치(pv 한정 — pvc는 소스 없음) |
 | storage[].accessModes | **mapped** | `normalized.accessModes` |
-| storage[].reclaimPolicy | dropped(v2-schema-absent) | |
+| storage[].reclaimPolicy | **mapped** | `normalized.reclaimPolicy` (spec.persistentVolumeReclaimPolicy — pv 한정, 부재 시 키 생략) |
 | configMaps[].age / secrets[].age / storage 상세(YAML 등) | dropped(volatile) | |
 
 **storageclass는 v2-only 종**: legacy는 storageclasses 객체 목록을 수집하지 않는다
