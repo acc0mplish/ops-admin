@@ -1,4 +1,5 @@
 import http from './http'
+import { executeInfraOperation, listInfraProviderConnections, listInfraResources, planInfraOperation } from './infra'
 
 export const queryK8sClusterList = () => http.get('/api/v1/k8s/cluster/list')
 
@@ -70,7 +71,77 @@ export const queryK8sWorkloadDetail = (clusterId, namespace, workloadType, workl
 
 export const scaleK8sWorkload = (data) => http.post('/api/v1/k8s/workload/scale', data)
 
-export const restartK8sWorkload = (data) => http.post('/api/v1/k8s/workload/restart', data)
+// ---- V2 workload restart (plan §3.5 / Phase E2 — 4-step operation flow) ----
+// The v1 direct call is gone (E1 deletes the backend route); restarts go through
+// plan → execute(Idempotency-Key) → approve → poll as §16.2 tasks.
+const RESTART_OPERATION = 'k8s.workload.restart'
+const RESTART_RESOURCE_KIND = 'orchestration.workload'
+// §13.5 closed 9-state vocabulary — the terminal set mirrors TaskDetail.vue.
+export const K8S_RESTART_TASK_TERMINAL_STATUSES = ['succeeded', 'failed', 'timed_out', 'cancelled']
+
+// E2 §3.5: provider-connections → the row whose sourceModel is k8s_cluster and
+// sourceId is the cluster id exposes the connection uid the E0 filter needs.
+export async function resolveK8sClusterConnectionUid(clusterId) {
+  const connections = await listInfraProviderConnections()
+  const match = (connections?.items || []).find(
+    (row) => row.sourceModel === 'k8s_cluster' && String(row.sourceId) === String(clusterId)
+  )
+  if (!match?.uid) {
+    throw new Error(`k8s_cluster provider connection not found (clusterId=${clusterId})`)
+  }
+  return match.uid
+}
+
+// E0 connectionUid filter narrows to one cluster; the URN tail
+// `:workload:{ns}/{type}/{name}` is unique inside that cluster (§J4).
+export async function resolveK8sWorkloadResourceUid(connectionUid, namespace, workloadType, workloadName) {
+  const response = await listInfraResources({ kind: RESTART_RESOURCE_KIND, connectionUid, pageSize: 100 })
+  const tail = `:workload:${namespace}/${workloadType}/${workloadName}`
+  const match = (response?.items || []).find(
+    (row) => typeof row.externalUrn === 'string' && row.externalUrn.endsWith(tail)
+  )
+  if (!match?.uid) {
+    throw new Error(`workload resource not found in V2 inventory: ${tail}`)
+  }
+  return match.uid
+}
+
+// §3.5: one key per `<resourceUid>:restart:<submit timestamp(ms)>`; repeated
+// clicks on the same button reuse the key so replays never spawn new tasks
+// (the §13.4 unique index is the server-side last line of defense).
+const restartIdempotencyKeys = new Map()
+export function k8sRestartIdempotencyKey(resourceUid) {
+  let key = restartIdempotencyKeys.get(resourceUid)
+  if (!key) {
+    key = `${resourceUid}:restart:${Date.now()}`
+    restartIdempotencyKeys.set(resourceUid, key)
+  }
+  return key
+}
+
+// The server replays a finished task for a known key regardless of state, so a
+// spent key must be dropped the moment its task reaches a terminal state —
+// otherwise a later re-fire would replay the old task and report success
+// without touching the cluster. In-flight double clicks still reuse the key.
+export function clearK8sRestartIdempotencyKey(resourceUid) {
+  restartIdempotencyKeys.delete(resourceUid)
+}
+
+// plan → execute with the §3.5 key. Returns the task uid plus the plan's
+// permission string so the caller can decide whether this user may approve.
+export async function createK8sWorkloadRestartTask(resourceUid, idempotencyKey) {
+  const plan = await planInfraOperation(resourceUid, RESTART_OPERATION)
+  const payload = { restartedAt: plan.restartedAt }
+  if (plan.resourceRevision !== null && plan.resourceRevision !== undefined) {
+    payload.resourceRevision = plan.resourceRevision
+  }
+  const response = await executeInfraOperation(resourceUid, plan.operation || RESTART_OPERATION, payload, idempotencyKey)
+  const taskUid = response?.task?.uid
+  if (!taskUid) {
+    throw new Error('restart execution returned no task uid')
+  }
+  return { taskUid, permission: plan.permission || '' }
+}
 
 export const updateK8sWorkloadImages = (data) => http.post('/api/v1/k8s/workload/images', data)
 

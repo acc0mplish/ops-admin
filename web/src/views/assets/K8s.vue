@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { Connection, Grid, Histogram, Monitor, Promotion, SetUp } from '@element-plus/icons-vue'
@@ -29,7 +29,12 @@ import {
   queryK8sSecretDetail,
   queryK8sStorageDetail,
   scaleK8sWorkload,
-  restartK8sWorkload,
+  clearK8sRestartIdempotencyKey,
+  createK8sWorkloadRestartTask,
+  k8sRestartIdempotencyKey,
+  resolveK8sClusterConnectionUid,
+  resolveK8sWorkloadResourceUid,
+  K8S_RESTART_TASK_TERMINAL_STATUSES,
   updateK8sWorkloadImages,
 	updateK8sWorkloadResources,
   updateK8sIstioTraffic,
@@ -38,7 +43,9 @@ import {
   deleteK8sResource,
   updateK8sResourceYAML
 } from '../../api/k8s'
+import { approveInfraTask, getInfraTask } from '../../api/infra'
 import { kt } from '../../utils/k8s-extra-i18n'
+import { getPermissions } from '../../utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -205,6 +212,150 @@ const scaleForm = reactive({
 const batchScaleDialogVisible = ref(false)
 const batchScaleSaving = ref(false)
 const batchScaleForm = reactive({ replicas: 1 })
+
+// ---- V2 restart 진행 상황 (plan §3.5 — N건 분해·행별 상태·5분 폴링 예산) ----
+// 흐름: POST /api/v2/infra/operations/k8s.workload.restart/plan → …/execute → /tasks/:uid/approve → GET /tasks/:uid
+// (호출 상세는 api/k8s.js — infra.js operations API 관례 재사용)
+const RESTART_POLL_INTERVAL_MS = 2000
+const RESTART_POLL_BUDGET_MS = 5 * 60 * 1000
+const restartProgressVisible = ref(false)
+const restartProgressRows = ref([])
+const restartFinishHooks = []
+let restartPollTimer = null
+let restartPollStartedAt = 0
+
+const restartProgressPercent = computed(() => {
+  const rows = restartProgressRows.value
+  if (!rows.length) return 0
+  const done = rows.filter((row) => K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status)).length
+  return Math.round((done / rows.length) * 100)
+})
+
+function restartStatusText(status) {
+  const keys = {
+    pending: 'restartTaskPending',
+    awaiting_approval: 'restartTaskAwaitingApproval',
+    running: 'restartTaskRunning',
+    succeeded: 'restartTaskSucceeded',
+    failed: 'restartTaskFailed',
+    timed_out: 'restartTaskFailed',
+    cancelled: 'restartTaskCancelled',
+    timeout: 'restartTaskTimeout'
+  }
+  return kt(keys[status] || 'restartTaskPending')
+}
+
+function restartStatusTagType(status) {
+  if (status === 'succeeded') return 'success'
+  if (status === 'failed' || status === 'timed_out' || status === 'timeout') return 'danger'
+  if (status === 'running') return 'warning'
+  return 'info'
+}
+
+function stopRestartPolling() {
+  if (restartPollTimer) {
+    window.clearInterval(restartPollTimer)
+    restartPollTimer = null
+  }
+}
+
+function startRestartPolling() {
+  stopRestartPolling()
+  restartPollTimer = window.setInterval(async () => {
+    const active = restartProgressRows.value.filter((row) => row.taskUid && !K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status))
+    if (!active.length) {
+      finishRestartProgress()
+      return
+    }
+    if (Date.now() - restartPollStartedAt > RESTART_POLL_BUDGET_MS) {
+      active.forEach((row) => { row.status = 'timeout' })
+      finishRestartProgress()
+      return
+    }
+    for (const row of active) {
+      try {
+        const task = await getInfraTask(row.taskUid)
+        if (task?.status) {
+          const wasActive = !K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status)
+          row.status = task.status
+          // 종단 전환 시점에 소진된 키를 폐기한다 — 이후 재발화는 새 키 → 새 태스크.
+          // (서버는 상태 무관 리플레이를 반환하므로 남은 키는 가짜 성공을 낳는다)
+          if (wasActive && K8S_RESTART_TASK_TERMINAL_STATUSES.includes(task.status)) {
+            clearK8sRestartIdempotencyKey(row.resourceUid)
+          }
+        }
+      } catch {
+        // 일시적 조회 실패는 다음 폴링에서 재시도한다
+      }
+    }
+    if (restartProgressRows.value.every((row) => K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status))) {
+      finishRestartProgress()
+    }
+  }, RESTART_POLL_INTERVAL_MS)
+}
+
+async function finishRestartProgress() {
+  stopRestartPolling()
+  const rows = restartProgressRows.value
+  const failed = rows.filter((row) => row.status === 'failed' || row.status === 'timed_out' || row.status === 'timeout')
+  if (!failed.length) {
+    ElMessage.success(kt('restartTaskAllSucceeded', { count: rows.length }))
+  } else {
+    ElMessage.warning(kt('restartTaskPartialFailure', { count: failed.length, names: failed.map((row) => `${row.namespace}/${row.name}`).join(', ') }))
+  }
+  await refreshCurrentClusterData()
+  while (restartFinishHooks.length) {
+    restartFinishHooks.pop()()
+  }
+}
+
+async function runRestartTasks(targets) {
+  restartProgressRows.value = targets.map((item) => ({
+    key: `${item.namespace}/${item.type}/${item.name}`,
+    namespace: item.namespace,
+    type: item.type,
+    name: item.name,
+    status: 'pending',
+    taskUid: '',
+    notice: ''
+  }))
+  restartProgressVisible.value = true
+  stopRestartPolling()
+  restartPollStartedAt = Date.now()
+  const permissions = getPermissions()
+  try {
+    const connectionUid = await resolveK8sClusterConnectionUid(cluster.value.id)
+    for (const row of restartProgressRows.value) {
+      try {
+        const resourceUid = await resolveK8sWorkloadResourceUid(connectionUid, row.namespace, row.type, row.name)
+        row.resourceUid = resourceUid
+        const { taskUid, permission } = await createK8sWorkloadRestartTask(resourceUid, k8sRestartIdempotencyKey(resourceUid))
+        row.taskUid = taskUid
+        row.status = 'awaiting_approval'
+        if (!permission || permissions.includes(permission)) {
+          try {
+            await approveInfraTask(taskUid)
+            row.status = 'running'
+          } catch {
+            row.notice = 'restartTaskApprovalFailed'
+          }
+        } else {
+          row.notice = 'restartTaskAwaitingExternal'
+        }
+      } catch {
+        row.status = 'failed'
+      }
+    }
+  } catch {
+    // 연결 uid 해석 실패 — 미제출 행을 전부 실패로 표기한다
+    restartProgressRows.value.forEach((row) => {
+      if (row.status === 'pending') row.status = 'failed'
+    })
+  }
+  startRestartPolling()
+}
+
+onBeforeUnmount(stopRestartPolling)
 
 const imageVersionDialogVisible = ref(false)
 const imageVersionSaving = ref(false)
@@ -690,10 +841,8 @@ async function submitBatchWorkloadRestart() {
   } catch {
     return
   }
-  await Promise.all(targets.map((item) => restartK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name })))
-  ElMessage.success(kt('batchRestartSubmitted', { count: targets.length }))
   selectedWorkloads.value = []
-  await refreshCurrentClusterData()
+  await runRestartTasks(targets.map((item) => ({ namespace: item.namespace, type: item.type, name: item.name })))
 }
 
 async function handleDeleteWorkload(row) {
@@ -1226,17 +1375,12 @@ async function handleRestartWorkload(row) {
   await ElMessageBox.confirm(kt('k8sConfirmRestartMessage', { type: row.type, name: row.name }), kt('k8sConfirmRestartTitle'), {
     type: 'warning'
   })
-  await restartK8sWorkload({
-    clusterId: cluster.value.id,
-    namespace: row.namespace,
-    workloadType: row.type,
-    workloadName: row.name
+  restartFinishHooks.push(() => {
+    if (workloadDrawerVisible.value && workloadDetail.value?.name === row.name) {
+      queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name).then((detail) => { workloadDetail.value = detail })
+    }
   })
-  ElMessage.success(kt('k8sWorkloadRestartedSuccess'))
-  await refreshCurrentClusterData()
-  if (workloadDrawerVisible.value && workloadDetail.value?.name === row.name) {
-    workloadDetail.value = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
-  }
+  await runRestartTasks([{ namespace: row.namespace, type: row.type, name: row.name }])
 }
 
 async function openPodDetail(row) {
@@ -2748,5 +2892,28 @@ watch(filteredPods, () => {
     </K8sConsoleLayout>
     <K8sDrawers :page="page" />
     <K8sDialogs :page="page" />
+    <el-dialog v-model="restartProgressVisible" :title="kt('restartTaskProgressTitle')" width="720px" destroy-on-close @close="stopRestartPolling">
+      <el-progress :percentage="restartProgressPercent" :status="restartProgressPercent === 100 ? 'success' : undefined" />
+      <el-table :data="restartProgressRows" size="small">
+        <el-table-column prop="namespace" label="Namespace" min-width="120" />
+        <el-table-column min-width="180">
+          <template #header>{{ kt('workloadType') }}</template>
+          <template #default="{ row }">{{ row.type }}/{{ row.name }}</template>
+        </el-table-column>
+        <el-table-column :label="kt('k8sStatus')" min-width="130">
+          <template #default="{ row }">
+            <el-tag :type="restartStatusTagType(row.status)" size="small">{{ restartStatusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="kt('restartTaskNoticeCol')" min-width="220">
+          <template #default="{ row }">
+            <span v-if="row.status === 'timeout' || row.status === 'timed_out'">{{ kt('restartTaskTimeout') }}
+              <router-link to="/infra/tasks">{{ kt('restartTaskDetailLink') }}</router-link>
+            </span>
+            <span v-else-if="row.notice">{{ kt(row.notice) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
