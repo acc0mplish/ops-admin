@@ -164,9 +164,14 @@ func gatewayResource(ctxID uint, km kindMapping, o gatewayObject) contract.Disco
 
 // httpRouteResource normalizes one HTTPRoute item. parents는 parentRefs의
 // [namespace/]name, targets은 rules[].backendRefs의 [ns/]name[:port]
-// [" (W%)"] 목록이다(legacy collectHTTPRouteParents/Targets 동치).
+// [" (W%)"] 목록이다(legacy collectHTTPRouteParents/Targets 동치). hostnames는
+// P1-D 조립 원천 — legacy K8sIstioResourceItem.Hosts(joinAndLimit(spec.hostnames,
+// 3) buildAdvancedNetworkSection)의 원천이다.
 func httpRouteResource(ctxID uint, km kindMapping, o httpRouteObject) contract.DiscoveredResource {
 	n := contract.JSONMap{}
+	if h := uniqueNonEmptyStrings(o.Spec.Hostnames); len(h) > 0 {
+		n["hostnames"] = h
+	}
 	parents := make([]string, 0, len(o.Spec.ParentRefs))
 	for _, ref := range o.Spec.ParentRefs {
 		if ns := strings.TrimSpace(ref.Namespace); ns != "" {

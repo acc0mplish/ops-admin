@@ -112,9 +112,14 @@ func TestNormalizeGatewayAPISections(t *testing.T) {
 			targets[0] != "svc-a:8080 (90%)" || targets[1] != "team-b/svc-b:9090 (10%)" || targets[2] != "svc-c" {
 			t.Errorf("targets = %#v, want legacy collectHTTPRouteTargets 형식", targets)
 		}
-		// hostnames는 유도 키가 아니다(J-P1-3 httproute 행 = parents·targets 2키).
-		if _, present := res.Normalized["hostnames"]; present {
-			t.Errorf("normalized[hostnames] must not land (J-P1-3 — v2 키는 parents·targets)")
+		// hostnames는 P1-D 조립 원천으로 확장됐다(판단 기록 P1-D-2): legacy
+		// K8sIstioResourceItem.Hosts = joinAndLimit(spec.hostnames, 3)가 v1
+		// 특성 표(buildAdvancedNetworkSection)로 고정돼 있어 J-P1-3의
+		// parents·targets 2키만으로는 조립 동치가 불성립한다. mapping.md §4.8
+		// 과 계획 J-P1-3 각주에 같은 근거로 기록된다.
+		hostnames, ok := res.Normalized["hostnames"].([]string)
+		if !ok || len(hostnames) != 1 || hostnames[0] != "route.example.com" {
+			t.Errorf("hostnames = %#v, want [route.example.com] (P1-D 조립 원천 확장)", hostnames)
 		}
 	})
 }

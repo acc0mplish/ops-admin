@@ -37,7 +37,7 @@
 | ①② | `requestRate`·`alertCount`(및 `healthScore`·usage 3종) | **(가) V2 인벤토리 흡수 — 전부 집계.** 실측상 모니터링 도메인이 아니다(§1-1) |
 | ③ | `monitorDatasourceId`·`Name` | **혼합** — Id는 `provider_connection.ConfigJSON` 흡수(등록 경로), Name은 조립 시 monitor_datasource 조인(§3.2 row 19 REMAIN 무충돌) |
 | ④ | `certificates[]` 보안 경계 | **분석만 제공(§3)** — 권고 A′안 2변형(HealthResult.Observation + healthloop 기록). ④ 결착 전 착수 금지 유지 |
-| ⑤〔신설〕 | `distribution[]`의 serviceCIDR 원천 | kubeadm-config **data 값**이 필요한데 보존 제약 #7이 configmap 값 수집을 금지 — 2키 화이트리스트 예외(권고) 또는 Unknown 이관 안 함 |
+| ⑤〔신설〕 | `distribution[]`의 serviceCIDR 원천 | **확정(사용자 승인 2026-09-10): (b) kubeadm-config 2키 화이트리스트 예외** — 보존 제약 #7이 configmap 값 수집을 금지하나 2키 한정 예외로 distribution 재현 |
 
 ---
 
@@ -68,10 +68,10 @@
 - **Name**: 조립 시(`k8sassembly.go`) `monitor_datasource` 읽기 전용 조인 — 개체 소유는 모니터링 도메인(REMAIN 정합).
 - **대안 배제**: (가) 전면 흡수는 이름 이중 저장(변경이 sync에 묶임)·(나) 전면 조회는 Id 저장소가 Phase I 이후 소멸.
 
-### ⑤〔신설〕 `distribution[]` serviceCIDR — 권고: **(b) kubeadm-config 1종·2키 한정 예외** (대안 (a) Unknown 이관 안 함)
+### ⑤〔신설〕 `distribution[]` serviceCIDR — **확정: (b) kubeadm-config 1종·2키 한정 예외** (사용자 승인 2026-09-10)
 
 - **쟁점**: serviceCIDR은 kubeadm-config data 값에서만 나온다(v1 주석 `k8s_overview.go:27-30` 자인). 조립은 저장된 관측에서 일어나므로 저장이 필요 → 보존 제약 #7과 정면 충돌.
-- **(b) 권고안**: mapping.md에 예외 조항 신설 — `kube-system/kubeadm-config` 1종, `serviceSubnet`·`podSubnet` 2키(네트워크 위상, 비밀 아님). 어댑터에 **화이트리스트 상수**로 하드코딩, 나머지 data 값은 계속 폐기(contracttest 카나리가 방어).
+- **(b) 확정안**: mapping.md에 예외 조항 신설 — `kube-system/kubeadm-config` 1종, `serviceSubnet`·`podSubnet` 2키(네트워크 위상, 비밀 아님). 어댑터에 **화이트리스트 상수**로 하드코딩, 나머지 data 값은 계속 폐기(contracttest 카나리 + `TestKubeadmConfigWhitelist`가 방어). **이 2키 한정·확장은 리뷰 승인**을 전제로 하고 mapping.md §2·§6에 봉인 문언을 둔다. P1-D 착지 — normalized 키는 `serviceCIDR`·`podSubnetCIDR`(J-P1-3).
 - **(a) 대안**: serviceCIDR 항상 "Unknown"(k3s에서 v1도 Unknown). podCIDR 성분만 수집으로 동치 — Z 오라클 `buildOverviewDistribution`은 부분 승계로 약화.
 - **판정과 무관한 진행분**: `node.spec.podCIDRs` 수집(단일 `podCIDR` 필드 폴백 포함 — v1 `resolveK8sNetworkCIDRs`:57-80 의미론)은 양안 공통 전제로 P1-B에 포함.
 
@@ -151,7 +151,7 @@ var Phase6ResourceKindExtensions = []string{
 | httproute | `parents`·`targets` | spec.parentRefs·rules.backends(`collectHTTPRouteParents/Targets` :239,262 계열) | P1-C1 |
 | job/cronjob | `completions`·`parallelism`·`schedule`·`active`·`succeeded`·`failed` | spec·status | buildWorkloadItems 동치 최소면(Z 테이블 확정) |
 | endpoints | `readyAddresses`(서비스별 subset 주소 수) | subsets | v2-only |
-| configmap(kubeadm-config 한정) | `serviceCIDR`·`podSubnetCIDR` | data 2키 | **판정 ⑤ (b) 채택 시만** |
+| configmap(kubeadm-config 한정) | `serviceCIDR`·`podSubnetCIDR` | data 2키 | **판정 ⑤ (b) 확정(사용자 승인 2026-09-10) — P1-D 착지** |
 
 **age 6건·VOLATILE 4건은 수집하지 않는다** — Raw `creationTimestamp`에서 조립 시 포맷(§15.3 정합).
 
@@ -230,6 +230,7 @@ plan/execute는 파라미터 라우트 2개(`sensitive-routes.txt:157-158`)에 �
 | cluster: nodeCount (1) / statusText·gatewayName (2) / monitorDatasourceId·Name (1엔트리) | 집계 / 조립 / 판정③(Id 등록 흡수·Name 조립 조인) | P1-D 전부 |
 
 부수(본표 외): `allocatable.pods` 1키(P1-B)·pod/workload 컨테이너 원시량(J-P1-3)·ownerReferences Raw(P1-A)·endpoints·RS 앵커 수집(P1-A)·gateway/httproute 종(P1-C1·비교 불참).
+**P1-D 조립 원천 확장(P1-D 판단 기록 — v1 특성 표가 원천 필드를 고정해 조립 동치에 필요)**: node `readyCondition`·`unschedulable`·`capacityPods`·roles v1 어휘 확정(빈 접미→worker·부재→["worker"]), pod `nodeName`, workload/job `selector`, daemonset updated·available 원천 필드(UpdatedNumberScheduled·NumberAvailable), cronjob `suspend`, service ports `nodePort`, httproute `hostnames`, pv/pvc `capacityRaw`(+pvc capacityGB requests-우선 정정), configmap dataKeys에 binaryData 키 합산 — mapping.md §4 각 행과 동기화 완료.
 
 ---
 
@@ -299,7 +300,7 @@ PP-0 ─▶ P1-A ─▶ P1-B ─▶ P1-C1 ─▶ P1-C2 ─▶ P1-D ─▶ P1-E1 
 
 **임계경로(직렬 신중)**: PP-0(어휘·검출기 — 없으면 이후 전부 공허) → P1-A/B(normalizer 분할 경계) → P1-D(집계 산식 = Z 오라클 대응 구현과 동일 파일) — 세 지점 직렬. P2-A~C 병행, P2-D는 P1-C1 후.
 **단순성 셀프검증**: 15 Phase는 병합 시 전부 6파일 초과(P1-C1+C2=9·G1+G2=10·E1+E2=10)하는 경계들 — 분할이 규칙의 결과다. ④ 2분할(G1/G2)은 결착 시점 분리 원칙의 산물.
-**착수 대 분리(지시 8호)**: certificates 제외 42필드는 P1-A~F로 ④ 무관 완결. 판정 ①②③⑤는 P1-D 전, ④는 P1-G1 전 결착. G-P1f가 ④ 미결착 상태 인증서 구현 부재를 기계 판정.
+**착수 대 분리(지시 8호)**: certificates 제외 42필드는 P1-A~F로 ④ 무관 완결. **판정 ①②③⑤ 확정(P1-D 전 — 사용자 승인 2026-09-10: ①② (가)·③ 혼합·⑤ (b))**, ④는 P1-G1 전 결착. G-P1f가 ④ 미결착 상태 인증서 구현 부재를 기계 판정.
 
 ---
 
@@ -437,7 +438,7 @@ PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapte
 
 **미해결 (판정 대기 — 결정권: 리뷰/사용자)**
 
-1. **판정 ①②③⑤ 승인** — P1-D 전. ①② (가)·③ 혼합·⑤는 (b) 예외(보존 제약 인접 — 명시 승인).
+1. **판정 ①②③⑤ 승인 — 확정(사용자 승인 2026-09-10)**: ①② (가) V2 인벤토리 흡수(전부 집계)·③ 혼합(Id는 등록 경로 ConfigJSON 흡수, Name은 조립 조인)·⑤ (b) kubeadm-config 2키 화이트리스트 예외(보존 제약 인접 — 명시 승인). P1-D 착지 완료. **④만 대기.**
 2. **판정 ④ 결착** — P1-G1 전. 권고 A′-1(HealthResult.Observation + healthloop 기록).
 3. **kind 어휘 최종 명칭** — `network.gateway`·`network.http_route`·`network.endpoint`·`network.virtual_service` 리뷰 확정(PP-0 착지 전).
 4. **apply·delete 권한 검토 결론** — 권고: v1 문자열 재사용 + high/승인 상향. 분리 권한은 하드닝. P2-C 전.
@@ -452,3 +453,4 @@ PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapte
 - kind 어휘 = `Phase6ResourceKindExtensions` 4종(contract 슬라이스 선례 준수) · 비교 합류 = job·cronjob만(gateway 계열은 I-P5) · ④ = A′-1 변형(arch rule 2 정합).
 - 집계/조립 = `inventory/k8sassembly.go` 신규 · P2 = `api/v2` 무변경 · 권한·라우트 신설 0(골든 불변) · pod 컨테이너 원시량 수집(milli/bytes 정수).
 - **G-P2c 등재처 재해석 확정(P2-E)** — 10종 등재처는 코드+`TestOperationDefTable`(plan·execute는 파라미터 라우트라 골든 등재는 물리적 불가 — J-P1-7)·대표행 정합(sensitive-routes.txt:157-158 ↔ restart def)은 표 테스트 단얫으로 착지. G-P2a·PC-8 등록 계수 게이트는 P2-C 분할 실측(compose.go 4+compose_k8s_ops.go 9)으로 2파일 합산 문언 갱신.
+- **판정 ⑤ 확정(사용자 승인 2026-09-10) — P1-D 착지**: kubeadm-config(`kube-system/kubeadm-config` 1종)의 `serviceSubnet`·`podSubnet` 2키만 화이트리스트 수집 → normalized `serviceCIDR`·`podSubnetCIDR`. mapping.md §2·§6에 "이 2키 한정·확장은 리뷰 승인" 봉인 문언. 보존 제약 #7(mapping.md 원문 번호)의 유일 예외. 어댑터 화이트리스트 상수 + `TestKubeadmConfigWhitelist` 카나리 방어.

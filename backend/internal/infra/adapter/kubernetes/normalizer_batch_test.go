@@ -6,6 +6,8 @@ package kubernetes
 // (kind/subtype/URN/Raw/Normalized 키)만 단얫하고 비교 필드는 다루지 않는다.
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"ops-admin/backend/internal/infra/contract"
@@ -472,4 +474,56 @@ func TestNormalizedKeySchema(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestKubeadmConfigWhitelist — 판정 ⑤ (b)의 수집 경계(R-P4 완화). 사용자 승인
+// 2026-09-10: kube-system/kubeadm-config 1종, 소스 YAML 키 serviceSubnet·
+// podSubnet 2키만 data 값에서 추출된다(→ normalized serviceCIDR·podSubnetCIDR).
+// 주석·따옴표 제거는 legacy resolveK8sNetworkCIDRs 수집측 승계고, 이 외의
+// 어떤 data 값도 정규화에 진입하지 않는다(보존 제약 #7의 유일 예외 — 키 확장은
+// 리뷰 승인 전제, mapping.md §2·§6 봉인).
+func TestKubeadmConfigWhitelist(t *testing.T) {
+	res, err := normalizeSection(7, "configmaps", []byte(`{
+		"metadata": {"name": "kubeadm-config", "namespace": "kube-system", "uid": "u-kubeadm"},
+		"data": {
+			"ClusterConfiguration": "apiServer: {}\nnetworking:\n  serviceSubnet: 10.96.0.0/12 # cluster\n  podSubnet: \"10.244.0.0/16\"\n  dnsDomain: cluster.local\n",
+			"ClusterStatus": "apiEndpoints:\n  host: 10.0.0.1\n"
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("normalizeSection(configmaps): %v", err)
+	}
+	if v := res.Normalized["serviceCIDR"]; v != "10.96.0.0/12" {
+		t.Errorf("serviceCIDR = %v, want 10.96.0.0/12 (주석 제거)", v)
+	}
+	if v := res.Normalized["podSubnetCIDR"]; v != "10.244.0.0/16" {
+		t.Errorf("podSubnetCIDR = %v, want 10.244.0.0/16 (따옴표 제거)", v)
+	}
+	// 화이트리스트 밖 값(dnsDomain 등)은 키든 값이든 어디에도 남지 않는다.
+	for _, key := range []string{"dnsDomain", "cluster.local", "apiServer"} {
+		if _, present := res.Normalized[key]; present {
+			t.Errorf("normalized[%q] must not land (화이트리스트 밖)", key)
+		}
+	}
+	raw, err := json.Marshal(res.Normalized)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, forbidden := range []string{"dnsDomain", "cluster.local"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Errorf("normalized에 화이트리스트 밖 값 %q 잔류: %s", forbidden, raw)
+		}
+	}
+
+	// 이름·네임스페이스가 다른 configmap은 같은 텍스트를 담아도 폐기된다.
+	other, err := normalizeSection(7, "configmaps", []byte(`{
+		"metadata": {"name": "other-cm", "namespace": "default", "uid": "u-other"},
+		"data": {"ClusterConfiguration": "serviceSubnet: 10.96.0.0/12\npodSubnet: 10.244.0.0/16\n"}
+	}`))
+	if err != nil {
+		t.Fatalf("normalizeSection(other): %v", err)
+	}
+	if _, present := other.Normalized["serviceCIDR"]; present {
+		t.Errorf("kube-system/kubeadm-config 외의 configmap은 2키를 얻지 않는다")
+	}
 }
