@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P1C", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "pp0": "#62", "p1a": "#63 (344ea63)", "p1b": "#64 (e4d0552) — 필드 19건·TestNormalizedKeySchema·pv else-if 동치", "spawns": 4, "next": "p1c-impl(C1 게이트웨이API+C2 스코프 합류) → 리뷰 → PR. ⑤④ 사용자 대기(⑤ P1-D 전·④ P1-G 전)·카나리 이연"},
+  "ptrack": {"phase": "implement-P2A", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 (a030953)", "spawns": 5, "next": "p2a-impl(오퍼레이션 등록) → 리뷰 → PR. P1-D는 ⑤ 판정(kubeadm serviceCIDR 예외 승인) 사용자 대기 — 대기질: 사용자 귀환 시 ⑤ 질의 필요. ④ P1-G 전. 카나리 이연"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",

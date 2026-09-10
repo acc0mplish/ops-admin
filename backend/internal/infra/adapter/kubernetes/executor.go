@@ -1,5 +1,7 @@
-// executor.go — Phase 3 B(N1): k8s workload restart의 OperationExecutor·
-// TaskPoller 구현(§14.3 비동기 듀얼 모드). 계약(J1/J2/J12 — 계획 r2 §3.2):
+// executor.go — Phase 3 B(N1): k8s workload restart leg + operation dispatch
+// (§14.3 비동기 듀얼 모드). P2-A(계획 r3 §J-P1-6)에서 dispatch가 operation-name
+// switch로 일반화되어 workload mutation 3종(executor_workload.go)과 4종이
+// rollout handle·Poll을 공유한다. 계약(J1/J2/J12 — 계획 r2 §3.2):
 //
 //   - Execute: 서버가 동결한 restartedAt(Payload — RFC3339 문자열)를 pod template
 //     어노테이션으로 strategic-merge-patch 1회 발행. 동일 payload 재실행(크래시 →
@@ -203,13 +205,36 @@ func frozenRestartedAt(payload contract.JSONMap) (string, error) {
 	return value, nil
 }
 
-// Execute — 검증(왕복 0회) → PATCH 1회 → ProviderRef 반환. expectGeneration은
-// patch 응답의 metadata.generation이다(J2): 이 시점 롤아웃은 관측 전이므로
-// Succeeded가 아니라 항상 handle(비동기)을 반환한다.
+// servedOperations — dispatch가 수용하는 operation name set(오류 메시지용 —
+// P2-A에서 3종 확장, §J-P1-6 확정표).
+var servedOperations = []string{
+	RestartOperationName,
+	ScaleOperationName,
+	ImageUpdateOperationName,
+	ResourcesUpdateOperationName,
+}
+
+// Execute — operation-name dispatch(§J-P1-6: restart 1종 검사문의 일반화).
+// 각 leg는 동일 검증 순서(URN → payload → UID·client — executionClient)를
+// 유지하고, 4종 모두 rollout handle·Poll을 공유한다.
 func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (contract.OperationHandle, error) {
-	if req.OperationName != RestartOperationName {
-		return contract.OperationHandle{}, fmt.Errorf("kubernetes: operation %q is not served by this executor (serves %q only)", req.OperationName, RestartOperationName)
+	switch req.OperationName {
+	case RestartOperationName:
+		return a.executeRestart(ctx, req)
+	case ScaleOperationName:
+		return a.executeScale(ctx, req)
+	case ImageUpdateOperationName:
+		return a.executeImageUpdate(ctx, req)
+	case ResourcesUpdateOperationName:
+		return a.executeResourcesUpdate(ctx, req)
 	}
+	return contract.OperationHandle{}, fmt.Errorf("kubernetes: operation %q is not served by this executor (serves %s)", req.OperationName, strings.Join(servedOperations, ", "))
+}
+
+// executeRestart — restart leg(J1/J2): 검증(왕복 0회) → PATCH 1회 → ProviderRef
+// 반환. expectGeneration은 patch 응답의 metadata.generation이다(J2): 이 시점
+// 롤아웃은 관측 전이므로 Succeeded가 아니라 항상 handle(비동기)을 반환한다.
+func (a *Adapter) executeRestart(ctx context.Context, req contract.OperationRequest) (contract.OperationHandle, error) {
 	target, err := parseWorkloadURN(req.ResourceURN)
 	if err != nil {
 		return contract.OperationHandle{}, err
@@ -218,10 +243,7 @@ func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (c
 	if err != nil {
 		return contract.OperationHandle{}, err
 	}
-	if req.Connection.UID == "" {
-		return contract.OperationHandle{}, fmt.Errorf("kubernetes: execution connection carries no UID — the rollout handle must encode the connection it targets (J12)")
-	}
-	client, err := a.buildExecutorClient(req.Connection)
+	client, err := a.executionClient(req)
 	if err != nil {
 		return contract.OperationHandle{}, err
 	}
