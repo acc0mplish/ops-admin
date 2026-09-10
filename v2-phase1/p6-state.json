@@ -160,13 +160,14 @@
     "phase": "adversary",
     "round": {
       "adversary": 0,
-      "review": 0
+      "review": 1
     },
     "plan": "v2-phase1/phase6-plan.md r4.1 (646행 — r4 529행 + 5렌즈 상환 F11·R19, S6·S7·C69·C40 신설·§15 처분표)",
-    "spawns": 7,
+    "spawns": 8,
     "adversary_r1": "종결 — 5렌즈 C0·H11(dedupe)·M31·L21 전 조건부 승인 → F1~F11 전부 적용·R-A 기각(플래그 운용 절차 보강으로 실체화)·R-B~R-S 채택. 병합: v2-phase1/p6-block2-adversary-r1.md. 메인 검증 통과(잔여 오기 0·마커 33·C24 앵커 실측 유일·646행)",
     "scope": "G(읽기 3건 전환·C36) → H(register-k8s CLI·쓰기 12건 삭제+create 존치 I10·C37~C40) → I(k8s_cluster drop·C34·C35·C41) + 이월 I3·I8-b·S5~S7",
-    "next": "계획 확정 — 사용자 G0 착수 판정 대기. §14.2 승인 4건 중 G0 전 필수: AI 도구 동반 전환 인지(ListK8sClusters+detail :966)"
+    "phase_g0": "done — ④리뷰 C0/H1/M2/L3 수정요청 → gap 2건(#1 에러 전파·#2 플래그 정규화) 수정·메인 재실측(신규 6테스트 PASS·TestChar 120·C7 30패키지 -race 0FAIL·캡 247/431/405/609). 자판 설계 3건 승인(ID 공간 legacy source_id 노출·미공개 생략·List N+1 관찰). C53 compare pass(2026-09-11/001756)",
+    "next": "G0 커밋·PR·merge → G1(legacy 소스 제거·C36②·C54·C55·C56) 착수"
   },
   "next": "Phase 6 블록 2(G·H·I) — 계획 r4 작성 중(plan-xhigh 스폰). 완료 후 5렌즈 적대검토"
 }

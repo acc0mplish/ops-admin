@@ -14,6 +14,13 @@ import (
 )
 
 func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
+	// V2_READ_SOURCE_K8S — G0 전환 검증 플래그(phase6-plan §J8·§12 #12). 정규화
+	// 판정(k8sReadSourceV2 — ""·"0"·"false"는 OFF)으로 ON이면 읽기 소스를 V2
+	// 인벤토리 투영으로 전환한다. 기본값은 legacy(§11 롤백 계약)이며
+	// 플래그와 legacy 분기는 G1에서 함께 제거된다(C36 2단).
+	if k8sReadSourceV2("V2_READ_SOURCE_K8S") {
+		return s.projectK8sClusterList()
+	}
 	var list []model.K8sCluster
 	if err := s.db.Preload("Gateway").Preload("MonitorDatasource").Order("id asc").Find(&list).Error; err != nil {
 		return nil, err
@@ -140,6 +147,14 @@ func (s *Service) DeleteK8sCluster(id uint) error {
 }
 
 func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
+	// V2_READ_SOURCE_K8S — G0 읽기 소스 전환(phase6-plan §J8). 정규화 판정은
+	// k8sReadSourceV2 단일 헬퍼. 캐시·singleflight 껍질과 키(legacy 클러스터 id)는
+	// 무변경이고 singleflight 본문 소스만 교체한다. 기본값은 legacy(§11 롤백 계약)이며
+	// G1에서 legacy 분기가 제거된다(C36 2단).
+	source := s.getK8sClusterDetailUncached
+	if k8sReadSourceV2("V2_READ_SOURCE_K8S") {
+		source = s.projectK8sClusterDetail
+	}
 	if detail, ok := s.cachedK8sClusterDetail(clusterID); ok {
 		return detail, nil
 	}
@@ -147,7 +162,7 @@ func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, e
 		if detail, ok := s.cachedK8sClusterDetail(clusterID); ok {
 			return detail, nil
 		}
-		detail, err := s.getK8sClusterDetailUncached(clusterID)
+		detail, err := source(clusterID)
 		if err != nil {
 			return model.K8sClusterDetail{}, err
 		}
