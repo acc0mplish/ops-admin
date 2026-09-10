@@ -29,7 +29,10 @@ func (ctl *Controller) GetK8sClusterInfo(c *gin.Context) {
 		httpx.Failed(c, http.StatusBadRequest, "invalid cluster id")
 		return
 	}
-	data, err := ctl.service.GetK8sCluster(query.ID)
+	// cluster/info — G0 착지점(phase6-plan §J8): V2_READ_SOURCE_K8S 설정 시 V2
+	// 투영에서 조립한다. 기본값은 legacy GetK8sCluster 행 그대로다. GetK8sCluster
+	// 자체는 소비 12곳(S5)이 평문 kubeconfig에 의존하므로 여기서만 교체한다.
+	data, err := ctl.service.ProjectK8sClusterInfo(query.ID)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return
