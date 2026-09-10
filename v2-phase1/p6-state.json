@@ -167,8 +167,9 @@
     "adversary_r1": "종결 — 5렌즈 C0·H11(dedupe)·M31·L21 전 조건부 승인 → F1~F11 전부 적용·R-A 기각(플래그 운용 절차 보강으로 실체화)·R-B~R-S 채택. 병합: v2-phase1/p6-block2-adversary-r1.md. 메인 검증 통과(잔여 오기 0·마커 33·C24 앵커 실측 유일·646행)",
     "scope": "G(읽기 3건 전환·C36) → H(register-k8s CLI·쓰기 12건 삭제+create 존치 I10·C37~C40) → I(k8s_cluster drop·C34·C35·C41) + 이월 I3·I8-b·S5~S7",
     "phase_g0": "done — ④리뷰 C0/H1/M2/L3 수정요청 → gap 2건(#1 에러 전파·#2 플래그 정규화) 수정·메인 재실측(신규 6테스트 PASS·TestChar 120·C7 30패키지 -race 0FAIL·캡 247/431/405/609). 자판 설계 3건 승인(ID 공간 legacy source_id 노출·미공개 생략·List N+1 관찰). C53 compare pass(2026-09-11/001756)",
-    "phase_g1": "implement — 태그 p6-G1-base(5606f3c·PR #75 merge 후). g1-impl 스폰(플래그 제거·uncached 제거·compare CLI 종결)",
-    "next": "G1 진행 중 — 완료 시 verify→리뷰→커밋·PR·merge → H0(register-k8s CLI)"
+    "phase_g1": "done — PR #76 merge(8e2eb46). C36② 0행·uncached 제거·compare CLI 종결(D-16 등재)·리뷰 승인(HIGH#1 CI compare 스텝 폐지 동반·LOW dead code 3함수 후속 sweep·controller 주석 팀리드 승인). §19.1 step 3 완결(G0 #75+G1 #76)",
+    "phase_h0": "done — 리뷰 승인(C/H/M 0·LOW 4: pve 베리바임 70행 I-a 통합 검토·name trim·status 비대칭·gateway_id str→uint I-a 착지). C39′ 실왕복(uid 3c248bef…·sync created=53·infra_resource 53행 DB 실측)·규약 7행 충족",
+    "next": "H1 전 사용자 확인 대기: K8sClusterManage CRUD UI 제거 확정(§14.2-2) → H1(프론트 전환)·H2(쓰기 12건 삭제)"
   },
   "next": "Phase 6 블록 2(G·H·I) — 계획 r4 작성 중(plan-xhigh 스폰). 완료 후 5렌즈 적대검토"
 }
