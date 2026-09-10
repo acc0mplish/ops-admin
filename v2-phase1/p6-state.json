@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P2E", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A #66 · P2-B #67 · P2-C #68 · P2-D #69 (d08a028, 오퍼레이션 10종·Roundtrip 10)", "spawns": 9, "next": "p2e-impl(게이트 종결·DefTable·문언 갱신) → 리뷰 → PR. P2 완결 후 잔여: P1-D(⑤ 사용자 대기)·P1-E1/E2·P1-F·P1-G(④)·카나리 이연"},
+  "ptrack": {"phase": "blocked-⑤", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A~E #66-#70 (492be66) — P2 트랙 완결(오퍼레이션 10종·DefTable 잠금)", "spawns": 10, "next": "판정 ⑤(kubeadm-config serviceCIDR·podCIDR 2키 수집 화이트리스트 예외 — 보존 제약 #7 인접) 사용자 승인 대기. 승인 시 P1-D(조립 라이브러리)→P1-E1/E2(Z 스왑 29)→P1-F(읽기 게이트 종결)→P1-G(④ certificates) 순. ④도 사용자 판정"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
