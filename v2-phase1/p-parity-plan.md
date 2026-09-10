@@ -26,17 +26,17 @@
 
 ## 0. BLUF
 
-**P1** = `K8sClusterDetail` **43필드** 중 `certificates[]` 1엔트리 분리 계상 → **42필드 즉시** + 수집기 6섹션(RS·Job·CronJob·Gateway·HTTPRoute·Endpoints) + kind 어휘 **4종**(`Phase6ResourceKindExtensions` — 제안명 `network.gateway`·`network.http_route`·`network.endpoint`·`network.virtual_service`) + 조립 라이브러리(`internal/infra/inventory/k8sassembly.go` 신규) + **Z 오라클 승계 스왑 29마커**(④ 대기 4 제외).
+**P1** = `K8sClusterDetail` **43필드** 중 `certificates[]` 1엔트리 분리 계상 → **42필드 즉시** + 수집기 6섹션(RS·Job·CronJob·Gateway·HTTPRoute·Endpoints) + kind 어휘 **4종**(`Phase6ResourceKindExtensions` — 제안명 `network.gateway`·`network.http_route`·`network.endpoint`·`network.virtual_service`) + 조립 라이브러리(`internal/infra/inventory/k8sassembly.go` 신규) + **Z 오라클 승계 스왑 24마커 착지**(사유 5·④ 대기 4 제외 — P1-F 문언 갱신).
 **P2** = 오퍼레이션 **신규 9종**(restart 포함 총 10종) — `internal/api/v2/` **무변경 설계**(payload는 실행기 자체 검증).
 **Phase 15개**: PP-0 → P1-A·B·C1·C2·D·E1·E2·F(→ G1·G2는 ④ 결착 후) ∥ P2-A~E. 각 ≤5파일.
 
-판정 제안 요약(§2·§3 — 결정권은 리뷰/사용자):
+판정 요약(§2·§3 — ①②③⑤ 확정(사용자 승인 2026-09-10)·④ pending 유지):
 
-| # | 항목 | 권고 |
+| # | 항목 | 판정 |
 |---|---|---|
-| ①② | `requestRate`·`alertCount`(및 `healthScore`·usage 3종) | **(가) V2 인벤토리 흡수 — 전부 집계.** 실측상 모니터링 도메인이 아니다(§1-1) |
-| ③ | `monitorDatasourceId`·`Name` | **혼합** — Id는 `provider_connection.ConfigJSON` 흡수(등록 경로), Name은 조립 시 monitor_datasource 조인(§3.2 row 19 REMAIN 무충돌) |
-| ④ | `certificates[]` 보안 경계 | **분석만 제공(§3)** — 권고 A′안 2변형(HealthResult.Observation + healthloop 기록). ④ 결착 전 착수 금지 유지 |
+| ①② | `requestRate`·`alertCount`(및 `healthScore`·usage 3종) | **확정 (가) — V2 인벤토리 흡수, 전부 집계.** 실측상 모니터링 도메인이 아니다(§1-1) |
+| ③ | `monitorDatasourceId`·`Name` | **확정 혼합** — Id는 `provider_connection.ConfigJSON` 흡수(등록 경로), Name은 조립 시 monitor_datasource 조인(§3.2 row 19 REMAIN 무충돌) |
+| ④ | `certificates[]` 보안 경계 | **pending(사용자 판정 대기)** — 분석만 제공(§3), 권고 A′안 2변형(HealthResult.Observation + healthloop 기록). 결착 전 착수 금지 유지(G-P1f) |
 | ⑤〔신설〕 | `distribution[]`의 serviceCIDR 원천 | **확정(사용자 승인 2026-09-10): (b) kubeadm-config 2키 화이트리스트 예외** — 보존 제약 #7이 configmap 값 수집을 금지하나 2키 한정 예외로 distribution 재현 |
 
 ---
@@ -53,16 +53,16 @@
 
 ---
 
-## 2. 판정 제안 ①②③ + ⑤ (결정: 리뷰/사용자)
+## 2. 판정 ①②③ + ⑤ — 확정(사용자 승인 2026-09-10)·④는 §3 pending
 
-### ① `overview.requestRate` · ② `overview.alertCount` — 권고: **(가) V2 인벤토리 흡수(집계)**
+### ① `overview.requestRate` · ② `overview.alertCount` — 확정: **(가) V2 인벤토리 흡수(집계)** (사용자 승인 2026-09-10)
 
 - **근거 1 (사실)**: §1-1 — 둘 다 인벤토리 파생. (나)는 조회할 모니터링 경로가 v1에 존재하지 않는다.
 - **근거 2 (row 19 정합)**: §3.2 row 19(Monitor = REMAIN)와 무충돌 — 흡수 대상은 인벤토리 집계.
 - **근거 3 (mapping.md 정정)**: §4.2의 `dropped(monitoring-derived)` 행들은 사실 오기. P1-D가 전부 `mapped(집계)`로 전환하고 Z 오라클(`calculateK8sAggregateMetrics`·`calculateHealthScore`·`formatUsagePercent`)이 산식 동치를 잠근다.
 - **파급**: 없음 — 순수 승리.
 
-### ③ `cluster.monitorDatasourceId`·`monitorDatasourceName` — 권고: **혼합 (Id 흡수 + Name 조인)**
+### ③ `cluster.monitorDatasourceId`·`monitorDatasourceName` — 확정: **혼합 (Id 흡수 + Name 조인)** (사용자 승인 2026-09-10)
 
 - **Id**: `provider_connection.ConfigJSON["monitor_datasource_id"]`(`internal/infra/model/provider.go:18` — JSON 칼럼, 마이그레이션 0). 인계 §4 register-k8s 규약 `--monitor-datasource-id`가 이 형상을 전제. `k8s_cluster` drop(Phase I) 이후 유일 생존 저장소.
 - **Name**: 조립 시(`k8sassembly.go`) `monitor_datasource` 읽기 전용 조인 — 개체 소유는 모니터링 도메인(REMAIN 정합).
@@ -163,7 +163,7 @@ var Phase6ResourceKindExtensions = []string{
 
 ### J-P1-5 Z 오라클 승계 구조 (G-P1g) — 원장 33종 〔r2 재산출〕
 
-**승계 원장 33종**(전부 각 1마커 실측): 인계 §5 명기 18종 + r1 계열 헬퍼 13종 + **r2 추가 2종(`collectGatewayAPIAddresses`·`resolveGatewayAPIAddress` — `k8s_build_net.go:197,205`, 마커 각 1)**. 이 중 **④ 대기 4종**(인증서) 제외 **29종**이 P1-E 즉시 스왑. 단일 원천 = `service/testdata/v2-swap-ledger.txt` — **원장은 순수 함수명 행만 기록한다(헤더·주석·빈행 금지 — `wc -l`이 곧 스왑 수 L이 되어 R+L=총수 불식식을 보존한다)**.
+**승계 원장 33종**(전부 각 1마커 실측): 인계 §5 명기 18종 + r1 계열 헬퍼 13종 + **r2 추가 2종(`collectGatewayAPIAddresses`·`resolveGatewayAPIAddress` — `k8s_build_net.go:197,205`, 마커 각 1)**. 이 중 **④ 대기 4종**(인증서) 제외 **29종**이 P1-E 즉시 스왑 대상이었고 **P1-E 착지 실측은 스왑 24종**(직접 6+글루 18 — #72) + **사유 5종**: `buildJobDetail`·`buildCronJobDetail`(v1 상세 뷰 — 43필드 스코프 밖)·`buildHTTPRouteTrafficItems`(lossy 문자열 비교 불가)·`flattenGatewayHosts`·`flattenGatewayPorts`(**원장표 GatewayAPI 오분류 — 실제 입력은 Istio Gateway**, 유일 소비자 `GetK8sIstioResourceDetail`) + ④ 4종 대기 = 33. 단일 원천 = `service/testdata/v2-swap-ledger.txt` — **원장은 순수 함수명 행만 기록한다(헤더·주석·빈행 금지 — `wc -l`이 곧 스왑 수 L이 되어 R+L=총수 불식식을 보존한다)**.
 
 **마커 소속 실측 (r3 — E1/E2 배분의 근거)**: fetch 9(④ 4 포함)·build_net 10·build_pod 6·transport 2·path 6 = 33. **metrics·detail 테스트 파일에는 승계 마커가 0개** — 해당 2파일(마커 5개는 전부 비승계 함수)은 P가 건드리지 않는다.
 
@@ -246,7 +246,8 @@ plan/execute는 파라미터 라우트 2개(`sensitive-routes.txt:157-158`)에 �
 | `internal/infra/adapter/kubernetes/executor_{workload,config,resource,traffic}.go`(+각 _test) | P2-A~D | 오퍼레이션 9종 — `TestOperationContractRoundtrip`(왕복)·`TestExecute*`·`TestPoll*` 명명 고정 |
 | `internal/infra/contracttest/opharness.go`(+_test) | P2-A | 오퍼레이션 왕복 하네스(adapter 비의존 seam) |
 | `internal/infra/contracttest/opdef_table_test.go` | P2-E | `TestOperationDefTable` — 10종 def 확정표 단얫 |
-| `service/testdata/v2-swap-ledger.txt` | P1-E1 | 승계 원장(33종 최종) |
+| `service/testdata/v2-swap-ledger.txt` | P1-E1 | 승계 원장(착지 24행 — 사유 5·④ 4 제외, P1-F 갱신) |
+| `service/k8s_v2glue_test.go` | P1-E1·E2 | Z 스왑 글루 분할 파일 — 800캡 분할(P1-E: glue 269·helper 548 복원). `NormalizeSection` export 래퍼 경유 JSON 왕복 글루 |
 | `v2-phase1/k8s-fixture/seed.yaml` 확장 | P1-C2 | Job 1·CronJob 1 시드(비교 합류 비공허화 — batch CRD는 kind 내장) |
 
 **수정**
@@ -263,7 +264,7 @@ plan/execute는 파라미터 라우트 2개(`sensitive-routes.txt:157-158`)에 �
 | `adapter/kubernetes/mapping.md` | P1 전 Phase·P2-E | §1 종표·§2 예외(⑤)·§3.2·§4 전필드 전환·§6 예외 |
 | `internal/infra/contract/adapter.go` | P1-G1 | `HealthResult.Observation` 필드(additive) |
 | `internal/infra/compose/healthloop.go`(+_test) | P1-G1 | 관측 ConfigJSON 기록(`markLastHealthAt` 패턴) |
-| `service/k8s_*_test.go` 5종(fetch·build_pod·build_net·transport·path)·`k8s_chartest_helper_test.go` | P1-E1·E2·G2 | 승계 유일 허용 변경 — 29+4마커 스왑 + 글루. **metrics·detail 테스트는 승계 마커 0 — 무변경** |
+| `service/k8s_*_test.go` 5종(fetch·build_pod·build_net·transport·path)·`k8s_chartest_helper_test.go` | P1-E1·E2·G2 | 승계 유일 허용 변경 — 24마커 스왑(사유 5·④ 4 제외 — P1-F 갱신) + 글루. **metrics·detail 테스트는 승계 마커 0 — 무변경** |
 | `v2-phase1/RESUME.md` | 각 Phase | 진행 갱신 |
 
 **불변**: `internal/api/v2/**`·`internal/infra/metrics/**`·`inventory/projection.go`·**`backend/main_compare.go`**(I-P5 이월 — 비교 캡처 확장은 P 기간 무변경)·`service/*.go`(비테스트)·`router/**`·골든 2종·DB 스키마(신규 칼럼 0).
@@ -349,7 +350,7 @@ PC-4  cd backend && R=$(grep -h -c '// legacy 1행' service/k8s_fetch_test.go se
         service/k8s_metrics_test.go service/k8s_detail_test.go | awk -F: '{s+=$NF} END {print s}') ·
       L=$(wc -l < service/testdata/v2-swap-ledger.txt) · echo $((R + L)) → 120
       (잔여+원장=총수 — 계획 실측 120. 구현 최초 스왑 시 재검하여 지시문 121과 상충하면 실측·원장으로 확정 후 본 기대값과 §1-6을 함께 정정)
-      L ≥ 29 (E2 종료 시점) · grep -h -c '// v2 oracle' service/k8s_*_test.go | awk -F: '{s+=$NF} END {print s}' → L 과 일치
+      L ≥ 24 (E2 종료 시점 — P1-F 문언 갱신: 착지 24 = 33 − 사유 5 − ④ 4, P1-E LOW 이월) · grep -h -c '// v2 oracle' service/k8s_*_test.go | awk -F: '{s+=$NF} END {print s}' → L 과 일치
       cd backend && go test ./service/ -run TestChar -count=1 -v 2>&1 | grep -E '^(--- )?(PASS|FAIL): TestChar' \
         | sed 's/ ([0-9.]*s)$//' | sort > /tmp/char-p.txt && \
         diff service/testdata/char-baseline.txt /tmp/char-p.txt && echo CHAR_IDENTICAL → CHAR_IDENTICAL
@@ -448,7 +449,7 @@ PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapte
 
 ## 11. 결정 기록
 
-- 모집단 = `K8sClusterDetail` 43필드(§J-P1-9 대응표 — 수집 19·집계 13·조립 9·판정 2엔트리) · certificates 분리 계상 · Z 원장 **33종**(즉시 29·④ 후 4) 실측.
+- 모집단 = `K8sClusterDetail` 43필드(§J-P1-9 대응표 — 수집 19·집계 13·조립 9·판정 2엔트리) · certificates 분리 계상 · Z 원장 **33종**(스왑 착지 24·사유 5·④ 후 4 — P1-F 갱신) 실측.
 - 사실 정정 7건(§1) — 인계 ①② 전제·distribution 원천·create 부적합·게이트 공허·**마커 총수 120(지시문 121과 불일치 — 불식식으로 자기검증)**·인용 2건.
 - kind 어휘 = `Phase6ResourceKindExtensions` 4종(contract 슬라이스 선례 준수) · 비교 합류 = job·cronjob만(gateway 계열은 I-P5) · ④ = A′-1 변형(arch rule 2 정합).
 - 집계/조립 = `inventory/k8sassembly.go` 신규 · P2 = `api/v2` 무변경 · 권한·라우트 신설 0(골든 불변) · pod 컨테이너 원시량 수집(milli/bytes 정수).

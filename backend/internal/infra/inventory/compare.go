@@ -44,8 +44,10 @@ const (
 // --- 비교 스코프 규칙 (mapping.md §3.2 — T51 동치 검증 대상). ---
 
 // scopeDispositions maps a legacy/V2 section to its comparison disposition:
-// "compare" (both sides collect it), "dropped(v2-not-collected)" (legacy-only
-// kind — ReplicaSet), "v2-only" (storageclass — no compared fields).
+// "compare" (both sides collect it), "v2-only" (out of the comparison set —
+// storageclass has no compared fields; ReplicaSet is collected by both sides
+// since P1-A but legacy appearances are Deployment-derived artifacts, so its
+// comparison promotion stays deferred to I-P5 — mapping.md §3.2, P1-F).
 // Single-side kinds never pollute the identity sets (§3.5 r2). job·cronjob의
 // 비교 집합 합류는 P1-C2 단일 착지점이다(J-P1-2·§9-10 — gateway·httproute·
 // replicaset·endpoint·virtualservice는 I-P5 승인 전 불가).
@@ -55,7 +57,7 @@ var scopeDispositions = map[string]string{
 	"job": "compare", "cronjob": "compare", // P1-C2 합류 — legacy Workloads 목록이 Type과 함께 실는다(main_compare.go:256 실측)
 	"service": "compare", "ingress": "compare",
 	"configmap": "compare", "secret": "compare", "pv": "compare", "pvc": "compare",
-	"replicaset":   "dropped(v2-not-collected)",
+	"replicaset":   "v2-only", // P1-F: P1-A 수집 착지 — 구 dropped(v2-not-collected)는 사실과 어긋난 표기
 	"storageclass": "v2-only",
 }
 

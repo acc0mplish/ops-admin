@@ -86,7 +86,7 @@ legacy 직렬화에 `metadata.uid`가 전무(계획 §0.6 r2 실측)이므로, �
 | 종 | legacy | V2 discoverer | 처분 |
 |---|---|---|---|
 | node·namespace·pod·deployment·statefulset·daemonset·service·ingress·configmap·secret·pv·pvc | 수집 | 수집 | **비교 집합** — §4 coverage rule 적용 |
-| ReplicaSet | 수집(Deployment 파생 자동 등장) | 수집(P1-A) | 스코프 외 — V2 단독 종 `v2-only`. 구 처분 `dropped(v2-not-collected)`는 비교 엔진이 I-P5 재판정까지 유지(P1-C2는 job·cronjob만 합류 — §9-10 단일 착지점) |
+| ReplicaSet | 수집(Deployment 파생 자동 등장) | 수집(P1-A) | 스코프 외 — 비교 승격 **이관 안 함**, I-P5 재판정까지 보류. 양측 수집이나 legacy측 등장은 Deployment 파생이라 독립 신원 부재 → 처분 `v2-only`(P1-A 수집 착지에 따른 P1-F 처분 정정. P1-C2는 job·cronjob만 합류 — §9-10 단일 착지점) |
 | Job·CronJob | 수집(Workloads 목록 — Type 문자열 실음, main_compare.go:256 실측) | 수집(P1-A) | **비교 집합(P1-C2 착지 — J-P1-2)** — 페어링 키 `{namespace}/{k8s종}/{name}`. job 필드는 buildWorkloadItems Ready 동치 유도(엔진이 succeeded/completions에서 분모·분자 재구성), cronjob은 Ready가 텍스트(cronJobReadyText)라 신원 비교만. 필드 수준 v2-only 키(schedule 등)는 §4.6 참조 |
 | endpoints | 미수집(legacy 직렬화에 종 없음) | 수집(P1-A) | 스코프 외 — v2-only 보조종(`network.endpoint`), service.endpoints 집계 원천. 비교 합류는 I-P5 이월 |
 | Gateway·HTTPRoute | 수집(advancedNetwork 섹션 — `K8sIstioResourceItem`) | 수집(P1-C1 — `network.gateway`·`network.http_route`, v1→v1beta1 폴백·CRD 부재 시 섹션 스킵) | 스코프 외 — legacy 캡처(LegacyCapture)에 gatewayApiGateways·httpRoutes 섹션 부재(main_compare.go 실측 — J-P1-2 H4)라 합류 시 V2 단독 종·identity-sets-differ BLOCKER. 비교 합류는 I-P5 이월. normalized 키는 §4.8 전환 참조 |
@@ -99,7 +99,8 @@ P 계획(J-P1-1)에 따라 P1-A에서 V2 수집을 replicaset·job·cronjob·end
 ## 4. 커버리지 표 — legacy 직렬화 전필드 (coverage rule)
 
 처분 어휘: **mapped** = V2 정규화 필드로 대응 · **dropped(사유)** = 미이관 ·
-**v2-only** = V2 단독 필드(비교 집합 외 또는 종 단독).
+**v2-only** = V2 단독 필드(비교 집합 외 또는 종 단독) · **pending(사유)** = 도메인
+판정 대기 보류(현재 1건 — certificates ④ 보안판정, 결착 전 커밋 부재가 G-P1f).
 
 ### 4.1 `cluster` 섹션 (`K8sClusterView`) — 클러스터 자체는 리소스 행이 아니라
 connection/context 속성이다(백필 §3.4 매핑의 원천).
@@ -129,7 +130,7 @@ connection/context 속성이다(백필 §3.4 매핑의 원천).
 | podUsage / requestRate | **mapped(집계·P1-D)** | pod 행 수 "N Pods"·워크로드(5종) 행 수 "N Workloads" |
 | alertCount | **mapped(집계·P1-D)** | not-Ready(`readyCondition`≠True)·`unschedulable` 노드 + failed/pending/unknown pod(v1 `calculateK8sAggregateMetrics` 동치) |
 | distribution[] | **mapped(조립·판정⑤)** | 5행 고정 라벨 — Service CIDR은 kubeadm-config 2키(§2 예외), Pod Network은 node `podCIDRs` 폴백(정렬·"、"), 부재는 Unknown(추측 금지) |
-| certificates[] | dropped(v2-schema-absent) | 인증서 만료 관측 — 판정 ④ 결착 전 착수 금지(G-P1f·P1-F에서 `pending(④)` 전환) |
+| certificates[] | **pending(④-보안판정)** | 인증서 만료 관측 — ④ 결착 대기로 분리 계상(선행조건: 결착 전 착수·커밋 금지 G-P1f — P1-F 전환, 착수는 P1-G1·G2) |
 
 ### 4.3 `nodes` 섹션 (`K8sNodeItem`)
 

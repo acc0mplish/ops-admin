@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P1E", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A~E #66-#70 · P1-D #71 (d0076cd, ⑤ 승인 이행·조립 라이브러리)", "spawns": 11, "next": "p1e-impl(Z 스왑 29마커·G-P1g 동치) → 리뷰 → PR → P1-F(읽기 게이트 종결) → P1-G(④ 사용자 대기)"},
+  "ptrack": {"phase": "implement-P1F", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A~E #66-#70 · P1-D #71 · P1-E #72 (a1568bd, 스왑 24·결함 2 포획)", "spawns": 12, "next": "p1f-impl(읽기 게이트 종결·문언 갱신) → 리뷰 → PR → P1-G(④ certificates — 사용자 판정 대기)"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
