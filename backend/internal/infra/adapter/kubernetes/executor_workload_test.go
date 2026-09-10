@@ -14,11 +14,11 @@ import (
 	"ops-admin/backend/internal/infra/contracttest"
 )
 
-// TestOperationContractRoundtrip — G-P2b deliverable(계획 r3 §J-P1-6·§7): P2-A
-// 4종(restart + workload 3종)의 Execute→Poll 왕복을 공용 하네스
-// (contracttest.RunOperationRoundtrip)로 운영한다. image fixture는 running 1경유
-// 로 수렴해 폴 순회 경로도 왕복한다. P2-B~D가 나머지 6종을 같은 표로 확장한다
-// (10종 왕복).
+// TestOperationContractRoundtrip — G-P2b deliverable(계획 r3 §J-P1-6·§7): 오퍼레이션
+// Execute→Poll 왕복을 공용 하네스(contracttest.RunOperationRoundtrip)로 운영한다.
+// P2-A 4종(restart + workload 3종 — image fixture는 running 1경유로 수렴해 폴
+// 순회 경로도 왕복한다)과 P2-B state-convergent 2종을 같은 표로 운영한다.
+// P2-C~D가 나머지 4종을 확장한다(10종 왕복).
 func TestOperationContractRoundtrip(t *testing.T) {
 	adapter := NewAdapter()
 	for _, op := range []string{
@@ -26,13 +26,18 @@ func TestOperationContractRoundtrip(t *testing.T) {
 		ScaleOperationName,
 		ImageUpdateOperationName,
 		ResourcesUpdateOperationName,
+		NodeLabelsUpdateOperationName,
+		ServiceUpdateOperationName,
 	} {
 		t.Run(op, func(t *testing.T) {
-			f := newWorkloadFixtures(t)[op]
-			if op == ImageUpdateOperationName {
-				f.mock.runningGET = 1
+			if f, ok := newWorkloadFixtures(t)[op]; ok {
+				if op == ImageUpdateOperationName {
+					f.mock.runningGET = 1
+				}
+				contracttest.RunOperationRoundtrip(t, adapter, f)
+				return
 			}
-			contracttest.RunOperationRoundtrip(t, adapter, f)
+			contracttest.RunOperationRoundtrip(t, adapter, newConfigFixtures(t)[op])
 		})
 	}
 }
