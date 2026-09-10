@@ -1,7 +1,9 @@
-// k8s_projection_test.go — G0 읽기 3건 소스 전환 검증(phase6-plan §3.1·§J8,
-// claims C52·C53·C69). 기대값 원천: flag OFF = legacy 동작(k8s.go 특성),
-// flag ON = P 트랙이 3회 compare pass로 잠근 조립 계약(k8sassembly_test.go
-// fixture를 관측 입력으로 재단). 응답 형상(§12 #1)은 반환 타입 자체
+// k8s_projection_test.go — G0 읽기 3건 소스 전환 검증, G1 단일 경로화
+// (phase6-plan §3.1·§J8, claims C52·C53·C69·C54). 기대값 원천: P 트랙이
+// 3회 compare pass로 잠근 조립 계약(k8sassembly_test.go fixture를 관측
+// 입력으로 재단). G1부터 전환 플래그 없이 V2가 유일 소스다 — fixture DB에
+// k8s_cluster 테이블 자체를 두지 않아 legacy 우회 부재까지 단얫한다.
+// 응답 형상(§12 #1)은 반환 타입 자체
 // (K8sClusterView·K8sClusterDetail·K8sCluster)으로 고정되므로 본 테스트는
 // 값 매핑과 ID 공간을 단얫한다.
 package service
@@ -23,9 +25,10 @@ import (
 	"ops-admin/backend/model"
 )
 
-// newProjectionDB — G0 투영 경로가 읽는 테이블만 갖춘 sqlite 인메모리 DB.
+// newProjectionDB — 투영 경로가 읽는 테이블만 갖춘 sqlite 인메모리 DB.
 // V2 테이블 5종(P 산출물 소비) + legacy 조인 대상(asset_gateway·
-// monitor_datasource) + legacy 소스 행(k8s_cluster).
+// monitor_datasource). k8s_cluster는 G1 단일 경로화(C36 2단)로 소스에서
+// 제외됐다 — 테이블 결여 자체가 legacy 우회 부재의 음의 증명이다.
 func newProjectionDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -44,7 +47,6 @@ func newProjectionDB(t *testing.T) *gorm.DB {
 		&infraModel.InventorySyncRun{},
 		&infraModel.InfraResource{},
 		&infraModel.ResourceObservation{},
-		&model.K8sCluster{},
 		&model.AssetGateway{},
 		&model.MonitorDatasource{},
 	); err != nil {
@@ -54,7 +56,7 @@ func newProjectionDB(t *testing.T) *gorm.DB {
 }
 
 // newProjectionService — k8sState를 New()와 동일하게 채운 Service. 캐시·
-// singleflight 껍질(GetK8sClusterDetail)을 지나는 분기 검증에 필요하다
+// singleflight 껍질을 지나는 GetK8sClusterDetail 검증에 필요하다
 // (k8s_clientstate.go 구성 계약 — D2 review MEDIUM #1).
 func newProjectionService(t *testing.T) *Service {
 	return &Service{
@@ -196,26 +198,12 @@ func seedV2K8sCluster(t *testing.T, db *gorm.DB, legacyID uint, opts func(*infra
 	return conn.ID, pctx.ID
 }
 
-// seedLegacyK8sCluster — flag OFF 회귀 비교용 legacy 행.
-func seedLegacyK8sCluster(t *testing.T, db *gorm.DB, name, kubeconfig string) model.K8sCluster {
-	t.Helper()
-	cluster := model.K8sCluster{
-		Name: name, Status: "running", APIServer: "https://legacy:6443",
-		Version: "v1.28.0", Env: "dev", KubeConfig: kubeconfig,
-	}
-	if err := db.Create(&cluster).Error; err != nil {
-		t.Fatal(err)
-	}
-	return cluster
-}
-
-// TestProjectK8sClusterList — cluster/list V2 소스: 백필 체인만 source_id
+// TestProjectK8sClusterList — cluster/list V2 단일 소스(G1): 백필 체인만 source_id
 // 오름차순(legacy Order("id asc") 대응)으로 노출하고, 뷰의 id는 conn.ID가
 // 아니라 legacy source_id다(ID 공간 판단 — k8s_projection.go 패키지 문서).
 // stale 커넥션(§5.4c)과 source 쌍이 없는 커넥션(register-k8s 체인 — I-a S5
 // 전까지 목록 제외 판정)은 부재로 읽힌다.
 func TestProjectK8sClusterList(t *testing.T) {
-	t.Setenv("V2_READ_SOURCE_K8S", "1")
 	svc := newProjectionService(t)
 
 	// 일부러 conn.ID 오름차순과 어긋나게: legacy 5 → 2 순서로 심는다.
@@ -260,10 +248,9 @@ func TestProjectK8sClusterList(t *testing.T) {
 
 // TestProjectK8sClusterInfo — cluster/info 착지점(컨트롤러 :32 직접 호출).
 // C69: V2 소스에서 kubeConfig는 항상 빈 값으로 직렬화된다(마스킹 계약 —
-// §J8 R-I·§12 #1 유일 예외). flag OFF면 legacy 행을 그대로 돌려 기본 소스가
-// legacy임을 고정한다(§11 롤백 계약).
+// §J8 R-I·§12 #1 유일 예외). G1 단일 경로: V2 체인 결손은 안내 에러로
+// 끝난다 — legacy k8s_cluster 행 우회는 없다.
 func TestProjectK8sClusterInfo(t *testing.T) {
-	t.Setenv("V2_READ_SOURCE_K8S", "1")
 	svc := newProjectionService(t)
 	seedV2K8sCluster(t, svc.db, 3, nil)
 
@@ -287,15 +274,9 @@ func TestProjectK8sClusterInfo(t *testing.T) {
 		t.Fatalf("conn 속성 승계 누락: %+v", cluster)
 	}
 
-	// flag OFF — 기본 legacy: 같은 id로 legacy 행을 돌려준다(마스킹 없음).
-	legacy := seedLegacyK8sCluster(t, svc.db, "legacy-info", "apiVersion: v1\nkind: Config")
-	t.Setenv("V2_READ_SOURCE_K8S", "")
-	got, err := svc.ProjectK8sClusterInfo(legacy.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != legacy.ID || got.Name != "legacy-info" || got.KubeConfig != "apiVersion: v1\nkind: Config" {
-		t.Fatalf("flag OFF가 legacy 소스를 대체했다: %+v", got)
+	// 단일 경로(G1) — V2 체인 결손: 안내 에러로 끝난다(legacy 우회 부재).
+	if _, err := svc.ProjectK8sClusterInfo(404); err == nil || !strings.Contains(err.Error(), "sync-inventory") {
+		t.Fatalf("미동기화 커넥션 에러 = %v, want sync-inventory 안내", err)
 	}
 }
 
@@ -303,7 +284,6 @@ func TestProjectK8sClusterInfo(t *testing.T) {
 // 승격(degraded 노드 → warning), cluster.id의 legacy 공간 회복, 미공개
 // generation 커넥션의 안내 에러를 단얫한다.
 func TestProjectK8sClusterDetail(t *testing.T) {
-	t.Setenv("V2_READ_SOURCE_K8S", "1")
 	svc := newProjectionService(t)
 	seedV2K8sCluster(t, svc.db, 4, nil)
 
@@ -328,27 +308,6 @@ func TestProjectK8sClusterDetail(t *testing.T) {
 	// 공개 generation이 없는 커넥션 — detail은 안내 에러로 끝난다.
 	if _, err := svc.GetK8sClusterDetail(404); err == nil || !strings.Contains(err.Error(), "sync-inventory") {
 		t.Fatalf("미동기화 커넥션 에러 = %v, want sync-inventory 안내", err)
-	}
-}
-
-// TestK8sReadSourceFlagDefaultLegacy — 플래그 부재 기본값은 legacy(§11): list는
-// k8s_cluster 행을, detail은 legacy 라이브 경로(kubeconfig 파싱 에러로 관측)를
-// 쓴다. G1이 제거할 legacy 분기가 G0에서 그대로 보존됨을 고정한다(C36① 전제).
-func TestK8sReadSourceFlagDefaultLegacy(t *testing.T) {
-	svc := newProjectionService(t)
-	legacy := seedLegacyK8sCluster(t, svc.db, "legacy-a", "not-a-valid-kubeconfig")
-	seedV2K8sCluster(t, svc.db, 21, nil)
-
-	list, err := svc.ListK8sClusters()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 1 || list[0].ID != legacy.ID || list[0].Name != "legacy-a" {
-		t.Fatalf("flag OFF list = %+v, want legacy 행만", list)
-	}
-
-	if _, err := svc.GetK8sClusterDetail(legacy.ID); err == nil || !strings.Contains(err.Error(), "failed to parse kubeconfig") {
-		t.Fatalf("flag OFF detail 에러 = %v, want legacy uncached 파싱 실패", err)
 	}
 }
 
@@ -392,40 +351,5 @@ func TestK8sClusterFromProjectionDBErrorPropagation(t *testing.T) {
 	}
 	if cluster.ID != 6 || cluster.Name != "seed-6" || cluster.Gateway.Name != "" || cluster.MonitorDatasource.Name != "" {
 		t.Fatalf("행 부재 용인 경로가 값을 훼손했다: %+v", cluster)
-	}
-}
-
-// TestK8sReadSourceFlagValues — 리뷰 MEDIUM 수정 단얫: 플래그 판정은
-// trim·lower 정규화(k8sReadSourceV2)로 ""·"0"·"false" 전부 OFF(legacy 소스),
-// "1"만 ON(V2 소스)이다. 세 착지점(list·detail·info)이 같은 판정을 쓴다.
-func TestK8sReadSourceFlagValues(t *testing.T) {
-	svc := newProjectionService(t)
-	legacy := seedLegacyK8sCluster(t, svc.db, "legacy-f", "not-a-valid-kubeconfig")
-
-	for _, value := range []string{"", "0", "false", " 0 ", "FALSE"} {
-		t.Setenv("V2_READ_SOURCE_K8S", value)
-		list, err := svc.ListK8sClusters()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(list) != 1 || list[0].ID != legacy.ID {
-			t.Fatalf("flag %q list = %+v, want legacy 소스(k8s_cluster 행)", value, list)
-		}
-		if _, err := svc.GetK8sClusterDetail(legacy.ID); err == nil || !strings.Contains(err.Error(), "failed to parse kubeconfig") {
-			t.Fatalf("flag %q detail = %v, want legacy uncached 경로", value, err)
-		}
-		info, err := svc.ProjectK8sClusterInfo(legacy.ID)
-		if err != nil || info.ID != legacy.ID || info.Name != "legacy-f" {
-			t.Fatalf("flag %q info = %+v/%v, want legacy 행", value, info, err)
-		}
-	}
-
-	// ON — "1": 같은 id가 V2 소스로 해상된다(V2 커넥션 부재 → 안내 에러).
-	t.Setenv("V2_READ_SOURCE_K8S", "1")
-	if _, err := svc.ProjectK8sClusterInfo(legacy.ID); err == nil || !strings.Contains(err.Error(), "no live V2 source") {
-		t.Fatalf("flag 1 info = %v, want V2 소스 해상", err)
-	}
-	if list, err := svc.ListK8sClusters(); err != nil || len(list) != 0 {
-		t.Fatalf("flag 1 list = %+v/%v, want V2 소스(빈 목록)", list, err)
 	}
 }

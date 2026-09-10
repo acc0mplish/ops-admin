@@ -326,20 +326,10 @@ jobs:
         run: |
           kubectl --context "$SLICEA_CONTEXT" apply -f v2-phase1/k8s-fixture/seed.yaml
           kubectl --context "$SLICEA_CONTEXT" -n v3-seed rollout status deploy/restart-target --timeout=180s
-      - name: Register the cluster, sync, and capture the §15 comparison (non-BLOCKER)
-        working-directory: web
-        env:
-          E2E_SCHEMA: ops_admin_p3ci
-        run: |
-          bash e2e/stack.sh compare
-          bash e2e/stack.sh down
-      - name: Upload the compare-inventory report artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compare-inventory-report
-          path: web/e2e/.stack/data/
-          if-no-files-found: error
+      # compare-inventory k8s pairing closed in V2 Phase 6 G1 (D-16) — the
+      # step and its artifact upload are retired; later steps in this job do
+      # not depend on it (Go trace E2E self-registers via its harness,
+      # Playwright webServer owns its own stack).
       - name: Go trace E2E — crash injection + §25 trace (dedicated schema VK-7)
         working-directory: backend
         run: |
