@@ -4,9 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
-	"strconv"
 	"strings"
 
 	"ops-admin/backend/internal/infra/contract"
@@ -61,6 +59,9 @@ type nodeObject struct {
 		// P1-A (J-P1-3) — podCIDRs(단일 podCIDR 폴백 포함).
 		PodCIDRs []string `json:"podCIDRs"`
 		PodCIDR  string   `json:"podCIDR"`
+		// P1-D 조립 원천 — legacy 경보 판정(unschedulable 노드 알림,
+		// calculateK8sAggregateMetrics k8s_build_net.go:512)의 원천.
+		Unschedulable bool `json:"unschedulable"`
 	} `json:"spec"`
 	nodeStatusFields // P1-B 확장 포함 status — normalizer_batch.go (R-P3 분할)
 }
@@ -81,6 +82,11 @@ type workloadObject struct {
 	Metadata objectMeta `json:"metadata"`
 	Spec     struct {
 		Replicas *int `json:"replicas"`
+		// P1-D 조립 원천 — ownerReferences 부재 pod의 셀렉터 매칭 폴백
+		// (legacy buildPodItemsWithWorkloads assignBySelector)의 원천.
+		Selector *struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
 		Template struct {
 			Spec struct {
 				Containers []containerSpec `json:"containers"`
@@ -94,6 +100,11 @@ type workloadObject struct {
 		// P1-B (J-P1-3) — legacy workloads.updated·available.
 		UpdatedReplicas   int `json:"updatedReplicas"`
 		AvailableReplicas int `json:"availableReplicas"`
+		// P1-D 조립 원천 — daemonset만 legacy updated·available의 원천이
+		// 다르다(UpdatedNumberScheduled·NumberAvailable — buildWorkloadItems
+		// k8s_build_pod.go:214-215). apps 나머지는 위 두 필드가 원천.
+		UpdatedNumberScheduled int `json:"updatedNumberScheduled"`
+		NumberAvailable        int `json:"numberAvailable"`
 	} `json:"status"`
 }
 
@@ -110,6 +121,9 @@ type ingressObject struct {
 type configMapObject struct {
 	Metadata objectMeta        `json:"metadata"`
 	Data     map[string]string `json:"data"`
+	// legacy Keys = len(Data)+len(Binary)(K8sConfigMapItem) — 바이너리는 키
+	// 이름만 dataKeys 목록에 합류하고 값은 여전히 폐기된다(보존 제약 #7).
+	BinaryData map[string]string `json:"binaryData"`
 }
 
 type secretObject struct {
@@ -142,77 +156,6 @@ type storageClassObject struct {
 	Metadata    objectMeta `json:"metadata"`
 	Provisioner string     `json:"provisioner"`
 }
-
-// --- 단위 정규화 (§3.2 — Ki→GB, 코어 소수) ---
-
-const (
-	kib = 1024.0
-	mib = 1024.0 * 1024.0
-	gib = 1024.0 * 1024.0 * 1024.0
-)
-
-// parseQuantityBytes parses a Kubernetes storage quantity (Ki/Mi/Gi/Ti or
-// plain bytes) into bytes.
-func parseQuantityBytes(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, false
-	}
-	lower := strings.ToLower(s)
-	suffixes := []struct {
-		suffix     string
-		multiplier float64
-	}{
-		{"ki", kib}, {"mi", mib}, {"gi", gib},
-		{"ti", gib * 1024}, {"k", 1000}, {"m", 1e6}, {"g", 1e9},
-	}
-	for _, sf := range suffixes {
-		if strings.HasSuffix(lower, sf.suffix) {
-			n, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(lower, sf.suffix)), 64)
-			if err != nil {
-				return 0, false
-			}
-			return n * sf.multiplier, true
-		}
-	}
-	n, err := strconv.ParseFloat(lower, 64)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-// quantityToGB converts a storage quantity to GB (GiB-scale, 3 decimals) —
-// mapping.md 단위 규칙과 동치(T51 검증 대상).
-func quantityToGB(s string) (float64, bool) {
-	bytes, ok := parseQuantityBytes(s)
-	if !ok {
-		return 0, false
-	}
-	return round3(bytes / gib), true
-}
-
-// quantityToCores parses a CPU quantity ("8", "7500m") into cores.
-func quantityToCores(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, false
-	}
-	if strings.HasSuffix(s, "m") {
-		n, err := strconv.ParseFloat(strings.TrimSuffix(s, "m"), 64)
-		if err != nil {
-			return 0, false
-		}
-		return round3(n / 1000), true
-	}
-	n, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
-	return round3(n), true
-}
-
-func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
 
 // --- 종별 매핑 (§3.1 kind 매핑 + J9 어휘) — mapping.md와 동치(T51 검증 대상). ---
 
@@ -348,11 +291,24 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		if v, ok := quantityToGB(o.Status.Allocatable["memory"]); ok {
 			n["allocatableMemoryGB"] = v
 		}
+		// 역할은 legacy joinNodeRoles(k8s_path.go:375)의 수집측 승계다: 접두
+		// 라벨의 접미가 역할이되 빈 접미 키는 "worker", 역할 라벨이 아예 없는
+		// 노드도 ["worker"] 1개다(TestCharJoinNodeRoles 계약 — 조립 P1-D 판단
+		// 기록: 표시 어휘를 healthState·roles[] 어휘에 흡수시켰다). 중복 제거는
+		// 하지 않는다 — legacy도 하지 않는다.
 		roles := make([]string, 0)
 		for label := range o.Metadata.Labels {
-			if role, ok := strings.CutPrefix(label, "node-role.kubernetes.io/"); ok && role != "" {
-				roles = append(roles, role)
+			role, ok := strings.CutPrefix(label, "node-role.kubernetes.io/")
+			if !ok {
+				continue
 			}
+			if role == "" {
+				role = "worker"
+			}
+			roles = append(roles, role)
+		}
+		if len(roles) == 0 {
+			roles = append(roles, "worker")
 		}
 		sort.Strings(roles)
 		n["roles"] = roles
@@ -371,6 +327,23 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		}
 		// P1-B (J-P1-3) — kubeletVersion·internalIP·osImage·allocatablePods.
 		applyNodeFieldKeys(n, o)
+		// P1-D 조립 원천(J-P1-9) — legacy 표시 3치 상태(Ready/NotReady/Unknown,
+		// TestCharNodeReadyStatus "조건 없음 → Unknown" 계약)와 경보 판정
+		// (unschedulable 노드 알림), 파드 카운트 분모(Status.Capacity["pods"] —
+		// TestCharBuildNodeItems "2/110")는 healthState 단일 키로 재현 불가라
+		// 상태 원천을 함께 보존한다(P1-D 판단 기록).
+		for _, c := range o.Status.Conditions {
+			if c.Type == "Ready" {
+				n["readyCondition"] = c.Status
+				break
+			}
+		}
+		if o.Spec.Unschedulable {
+			n["unschedulable"] = true
+		}
+		if v, ok := quantityToCount(o.Status.Capacity["pods"]); ok {
+			n["capacityPods"] = v
+		}
 		n["healthState"] = nodeHealthState(o.Status.Conditions)
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata),
@@ -401,6 +374,12 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			"phase":          o.Status.Phase,
 			"lifecycleState": o.Status.Phase, // 상태 어휘: pod phase 그대로(mapping.md)
 			"restartCount":   restarts,
+		}
+		// P1-D 조립 원천 — legacy K8sPodItem.Node와 노드별 파드 카운트의
+		// 원천. pod→node는 runs_on 관계로도 적재되지만 조립은 관측 행만으로
+		// 순수하게 돌아야 한다(R-P8 — P1-D 판단 기록).
+		if o.Spec.NodeName != "" {
+			n["nodeName"] = o.Spec.NodeName
 		}
 		// P1-B (J-P1-3) — legacy nodeIP·ip + 컨테이너 원시량(milli/bytes).
 		if o.Status.HostIP != "" {
@@ -459,6 +438,12 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			if p.Name != "" {
 				entry["name"] = p.Name
 			}
+			// P1-D 조립 원천 — legacy formatServiceListPort 표시("80:30080/TCP")
+			// 의 원천. nodePort>0일 때만 싣는다(v1 표시 분기와 동일; 비교 엔진은
+			// port/proto만 읽어 무영향 — compare canonicalV2Ports).
+			if p.NodePort > 0 {
+				entry["nodePort"] = p.NodePort
+			}
 			ports = append(ports, entry)
 		}
 		n := contract.JSONMap{
@@ -508,10 +493,23 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		if err := json.Unmarshal(raw, &o); err != nil {
 			return res, fmt.Errorf("kubernetes: configmap decode: %w", err)
 		}
+		dataKeys := sortedKeys(o.Data)
+		if len(o.BinaryData) > 0 {
+			// legacy Keys = len(Data)+len(Binary)(K8sConfigMapItem) — 바이너리
+			// 키 이름만 목록에 합류한다(값은 폐기 — 보존 제약 #7).
+			dataKeys = append(append(make([]string, 0, len(o.Data)+len(o.BinaryData)), dataKeys...), sortedKeys(o.BinaryData)...)
+			sort.Strings(dataKeys)
+		}
+		n := contract.JSONMap{"dataKeys": dataKeys} // 키 목록만 — 값 미수집
+		// 판정 ⑤ (b) — kube-system/kubeadm-config 1종의 네트워크 위상 2키만
+		// data 값에서 추출한다(사용자 승인 2026-09-10 — 보존 제약 #7의 유일
+		// 예외). 확장은 리뷰 승인 전제(mapping.md §2·§6).
+		if o.Metadata.Namespace == kubeadmConfigNamespace && o.Metadata.Name == kubeadmConfigName {
+			applyKubeadmNetworkKeys(n, o.Data)
+		}
 		res = contract.DiscoveredResource{
 			ExternalID: externalID(km, o.Metadata), ExternalURN: buildURN(ctxID, km, o.Metadata), DisplayName: o.Metadata.Name,
-			Raw:        buildRaw(o.Metadata),
-			Normalized: contract.JSONMap{"dataKeys": sortedKeys(o.Data)}, // 키 목록만 — 값 미수집
+			Raw: buildRaw(o.Metadata), Normalized: n,
 		}
 
 	case "secrets":
@@ -537,6 +535,12 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			capacity = o.Status.Capacity
 		}
 		n := volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes)
+		// P1-D 조립 원천 — legacy K8sStorageItem.Capacity(pv) 표시는 status
+		// 우선 원문량 문자열(k8s_build_net.go:477). GB 역변환은 원문을 복원하지
+		// 못하므로("5Gi" vs "5120Mi") 표시 원천을 별도 보존한다(P1-D 판단 기록).
+		if v := firstQuantityText(o.Status.Capacity["storage"], o.Spec.Capacity["storage"]); v != "" {
+			n["capacityRaw"] = v
+		}
 		// P1-B (J-P1-3) — phase·namespaceScope(annotation)·sourceType·
 		// sourcePath·nfsServer·reclaimPolicy — legacy는 pv 행에만 채운다.
 		applyVolumeFieldKeys(n, o)
@@ -550,11 +554,19 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		if err := json.Unmarshal(raw, &o); err != nil {
 			return res, fmt.Errorf("kubernetes: pvc decode: %w", err)
 		}
-		capacity := o.Status.Capacity
+		// legacy K8sStorageItem.Capacity(pvc)는 requests 우선("Prefer requested
+		// capacity" 주석 — k8s_build_net.go:463)이고 비교 엔진의 legacy측 원천도
+		// 그 표시 문자열이므로 capacityGB·capacityRaw 모두 동일 우선순위로 승계
+		// 한다(P1-D 판단 기록 — 기존 status 우선은 표시 원문과 갈리는 우선순위).
+		capacity := o.Spec.Resources.Requests
 		if len(capacity) == 0 {
-			capacity = o.Spec.Resources.Requests
+			capacity = o.Status.Capacity
 		}
 		n := volumeNormalized(capacity, o.Spec.StorageClassName, o.Spec.AccessModes)
+		// legacy pvc 행 Capacity 표시 원문량 — requests 우선(위와 동일 근거).
+		if v := firstQuantityText(o.Spec.Resources.Requests["storage"], o.Status.Capacity["storage"]); v != "" {
+			n["capacityRaw"] = v
+		}
 		// P1-B (J-P1-3) — pvc는 phase만(legacy pvc 행의 source·reclaimPolicy·
 		// namespaceScope는 공란 — 조립 P1-D가 행 형상을 소유).
 		if o.Status.Phase != "" {

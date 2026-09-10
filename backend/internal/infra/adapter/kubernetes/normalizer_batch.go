@@ -62,6 +62,9 @@ type nodeStatusFields struct {
 type podFields struct {
 	Spec struct {
 		Containers []containerSpec `json:"containers"`
+		// P1-D 조립 원천 — legacy K8sPodItem.Node·노드별 파드 카운트의 원천
+		// (조립은 관측 행만으로 순수하게 돈다 — R-P8, P1-D 판단 기록).
+		NodeName string `json:"nodeName"`
 	} `json:"spec"`
 	Status struct {
 		Phase             string `json:"phase"`
@@ -84,6 +87,9 @@ type serviceFields struct {
 			Name     string `json:"name"`
 			Port     int    `json:"port"`
 			Protocol string `json:"protocol"`
+			// P1-D 조립 원천 — legacy formatServiceListPort("80:30080/TCP")의
+			// 원천. 조립이 0보다 클 때만 표시에 반영한다(v1 분기 동일).
+			NodePort int `json:"nodePort"`
 		} `json:"ports"`
 	} `json:"spec"`
 	Status struct {
@@ -349,7 +355,14 @@ type batchWorkloadObject struct {
 		Completions *int   `json:"completions"`
 		Parallelism *int   `json:"parallelism"`
 		Schedule    string `json:"schedule"`
-		Template    struct {
+		// P1-D 조립 원천 — job의 셀렉터 매칭 폴백(legacy buildPodItemsWithWorkloads
+		// assignBySelector — job은 selector 부재 시 {"job-name": name} 합성이
+		// 조립 소유)과 cronjob의 suspend("Suspended" 표시 원천 — cronJobReadyText).
+		Selector *struct {
+			MatchLabels map[string]string `json:"matchLabels"`
+		} `json:"selector"`
+		Suspend  *bool `json:"suspend"`
+		Template struct {
 			Spec struct {
 				Containers []containerSpec `json:"containers"`
 			} `json:"spec"`
@@ -455,6 +468,15 @@ func batchWorkloadResource(ctxID uint, km kindMapping, section string, o batchWo
 	}
 	if section == "cronjobs" {
 		n["schedule"] = o.Spec.Schedule
+		// P1-D 조립 원천 — cronJobReadyText의 "Suspended" 분기. true일 때만
+		// 키를 싣는다(nil·false는 legacy에서도 무중단 동치).
+		if o.Spec.Suspend != nil && *o.Spec.Suspend {
+			n["suspend"] = true
+		}
+	}
+	if o.Spec.Selector != nil && len(o.Spec.Selector.MatchLabels) > 0 {
+		// P1-D 조립 원천 — ownerReferences 부재 pod의 셀렉터 매칭 폴백.
+		n["selector"] = o.Spec.Selector.MatchLabels
 	}
 	if active, ok := activeCount(o.Status.Active); ok {
 		n["active"] = active
@@ -498,9 +520,21 @@ func workloadResource(ctxID uint, km kindMapping, section string, o workloadObje
 		// 없어 비교 집합 밖(mapping.md dropped(v2-only)).
 		"image": image,
 	}
-	// P1-B (J-P1-3) — updated·available은 apps 계열 status 전용.
-	n["updatedReplicas"] = o.Status.UpdatedReplicas
-	n["availableReplicas"] = o.Status.AvailableReplicas
+	// P1-B (J-P1-3) — updated·available은 apps 계열 status 전용. daemonset만
+	// 원천 필드가 다르다(UpdatedNumberScheduled·NumberAvailable — legacy
+	// buildWorkloadItems k8s_build_pod.go:214-215 동치, P1-D 조립 원천).
+	if section == "daemonsets" {
+		n["updatedReplicas"] = o.Status.UpdatedNumberScheduled
+		n["availableReplicas"] = o.Status.NumberAvailable
+	} else {
+		n["updatedReplicas"] = o.Status.UpdatedReplicas
+		n["availableReplicas"] = o.Status.AvailableReplicas
+	}
+	if o.Spec.Selector != nil && len(o.Spec.Selector.MatchLabels) > 0 {
+		// P1-D 조립 원천 — ownerReferences 부재 pod의 셀렉터 매칭 폴백
+		// (legacy buildPodItemsWithWorkloads assignBySelector).
+		n["selector"] = o.Spec.Selector.MatchLabels
+	}
 	if cs := containerQuantities(o.Spec.Template.Spec.Containers, true); cs != nil {
 		n["containers"] = cs
 	}

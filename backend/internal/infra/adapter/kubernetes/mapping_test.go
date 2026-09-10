@@ -56,62 +56,62 @@ func legacyFieldNames(t *testing.T, item any) []string {
 var coverageTable = map[string]string{
 	// §4.1 cluster
 	"cluster.id": "dropped(v2-source-key)", "cluster.name": "dropped(v2-source-key)",
-	"cluster.status": "dropped(v2-source-key)", "cluster.statusText": "dropped(v2-source-key)",
+	"cluster.status": "mapped(조립·P1-D)", "cluster.statusText": "mapped(조립·P1-D)",
 	"cluster.apiServer": "dropped(v2-source-key)", "cluster.version": "mapped",
-	"cluster.nodeCount": "dropped(v2-derived)", "cluster.env": "dropped(v2-source-key)",
-	"cluster.tags": "dropped(v2-source-key)", "cluster.connectionMode": "dropped(v2-source-key)",
-	"cluster.gatewayId": "dropped(v2-source-key)", "cluster.gatewayName": "dropped(v2-source-key)",
-	"cluster.monitorDatasourceId": "dropped(monitoring-domain)", "cluster.monitorDatasourceName": "dropped(monitoring-domain)",
+	"cluster.nodeCount": "mapped(조립·P1-D)", "cluster.env": "dropped(v2-source-key)",
+	"cluster.tags": "dropped(v2-source-key)", "cluster.connectionMode": "mapped(조립·P1-D)",
+	"cluster.gatewayId": "mapped(조립·P1-D)", "cluster.gatewayName": "mapped(조립·P1-D)",
+	"cluster.monitorDatasourceId": "mapped(판정③ — 조립 P1-D)", "cluster.monitorDatasourceName": "mapped(판정③ — 조립 P1-D)",
 	"cluster.description": "dropped(v2-source-key)", "cluster.lastSyncAt": "dropped(volatile)",
 	"cluster.createTime": "dropped(volatile)", "cluster.updateTime": "dropped(volatile)",
 	// §4.2 overview
-	"overview.healthScore": "dropped(monitoring-derived)", "overview.cpuUsage": "dropped(monitoring-derived)",
-	"overview.memoryUsage": "dropped(monitoring-derived)", "overview.podUsage": "dropped(monitoring-derived)",
-	"overview.requestRate": "dropped(monitoring-derived)", "overview.alertCount": "dropped(monitoring-derived)",
-	"overview.distribution": "dropped(v2-schema-absent)", "overview.certificates": "dropped(v2-schema-absent)",
+	"overview.healthScore": "mapped(집계·P1-D)", "overview.cpuUsage": "mapped(집계·P1-D)",
+	"overview.memoryUsage": "mapped(집계·P1-D)", "overview.podUsage": "mapped(집계·P1-D)",
+	"overview.requestRate": "mapped(집계·P1-D)", "overview.alertCount": "mapped(집계·P1-D)",
+	"overview.distribution": "mapped(조립·판정⑤)", "overview.certificates": "dropped(v2-schema-absent)",
 	// §4.3 nodes
 	"nodes.name": "mapped", "nodes.role": "mapped", "nodes.status": "mapped",
 	"nodes.version": "mapped", "nodes.internalIP": "mapped",
 	"nodes.os": "mapped", "nodes.cpu": "mapped", "nodes.memory": "mapped",
-	"nodes.pods": "dropped(v2-derived)",
+	"nodes.pods": "mapped(집계·P1-D)",
 	// §4.4 namespaces
 	"namespaces.name": "mapped", "namespaces.status": "mapped", "namespaces.createdAt": "mapped",
-	"namespaces.pods": "dropped(v2-derived)", "namespaces.services": "dropped(v2-derived)",
-	"namespaces.workloads": "dropped(v2-derived)",
+	"namespaces.pods": "mapped(집계·P1-D)", "namespaces.services": "mapped(집계·P1-D)",
+	"namespaces.workloads": "mapped(집계·P1-D)",
 	// §4.5 pods
 	"pods.name": "mapped", "pods.namespace": "mapped", "pods.status": "mapped",
 	"pods.node": "mapped(relationship)", "pods.restarts": "mapped",
-	"pods.workloadName": "dropped(v2-derived)", "pods.workloadType": "dropped(v2-derived)",
+	"pods.workloadName": "mapped(집계·P1-D)", "pods.workloadType": "mapped(집계·P1-D)",
 	"pods.nodeIP": "mapped", "pods.ip": "mapped",
-	"pods.age": "dropped(volatile)",
+	"pods.age": "mapped(조립·P1-D)",
 	// §4.6 workloads
 	"workloads.name": "mapped", "workloads.type": "mapped", "workloads.namespace": "mapped",
 	"workloads.ready": "mapped", "workloads.image(v2-only)": "v2-only",
 	"workloads.updated": "mapped", "workloads.available": "mapped",
 	"workloads.requests": "mapped", "workloads.limits": "mapped",
-	"workloads.age": "dropped(volatile)",
+	"workloads.age": "mapped(조립·P1-D)",
 	// §4.7 network.services
 	"network.services.name": "mapped", "network.services.namespace": "mapped",
 	"network.services.type": "mapped", "network.services.clusterIP": "mapped",
 	"network.services.ports": "mapped", "network.services.externalIP": "mapped",
-	"network.services.endpoints": "dropped(v2-derived)", "network.services.age": "dropped(volatile)",
+	"network.services.endpoints": "mapped(집계·P1-D)", "network.services.age": "mapped(조립·P1-D)",
 	// §4.7 network.ingresses
 	"network.ingresses.name": "mapped", "network.ingresses.namespace": "mapped",
 	"network.ingresses.host": "mapped", "network.ingresses.address": "mapped",
-	"network.ingresses.tls": "mapped", "network.ingresses.age": "dropped(volatile)",
+	"network.ingresses.tls": "mapped", "network.ingresses.age": "mapped(조립·P1-D)",
 	// §4.8 advancedNetwork — P1-C1 수집 착지로 mapped 전환(P1-C2 단일 착지점에서
 	// doc+표 동시 전환). 비교 집합 불참은 §3.2 스코프 표(I-P5 이월)가 담당한다.
 	"advancedNetwork.gatewayApiGateways": "mapped",
 	"advancedNetwork.httpRoutes":         "mapped",
 	// §4.9 configStorage.configMaps
 	"configStorage.configMaps.name": "mapped", "configStorage.configMaps.namespace": "mapped",
-	"configStorage.configMaps.keys": "mapped", "configStorage.configMaps.age": "dropped(volatile)",
+	"configStorage.configMaps.keys": "mapped", "configStorage.configMaps.age": "mapped(조립·P1-D)",
 	// §4.9 configStorage.secrets — the legacy LIST item serializes
 	// name/namespace/type/age only; dataKeys는 v2-only (리스트에 keys 필드 부재 —
 	// 실측 정정).
 	"configStorage.secrets.name": "mapped", "configStorage.secrets.namespace": "mapped",
 	"configStorage.secrets.type": "mapped", "configStorage.secrets.keys": "v2-only",
-	"configStorage.secrets.age": "dropped(volatile)",
+	"configStorage.secrets.age": "mapped(조립·P1-D)",
 	// §4.9 configStorage.storage
 	"configStorage.storage.name": "mapped", "configStorage.storage.kind": "mapped",
 	"configStorage.storage.namespace": "mapped", "configStorage.storage.capacity": "mapped",
