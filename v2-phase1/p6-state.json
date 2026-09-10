@@ -156,5 +156,17 @@
     "opdef_coverage": "61.5%",
     "tag": "p6-Z1-base"
   },
-  "next": "Phase 6 블록 2(G·H·I) — 선행 과제 P 완결로 진입 조건 충족. 계획 r4 블록 2 상세 분해(I2) 후 착수"
+  "block2": {
+    "phase": "adversary",
+    "round": {
+      "adversary": 0,
+      "review": 0
+    },
+    "plan": "v2-phase1/phase6-plan.md r4.1 (646행 — r4 529행 + 5렌즈 상환 F11·R19, S6·S7·C69·C40 신설·§15 처분표)",
+    "spawns": 7,
+    "adversary_r1": "종결 — 5렌즈 C0·H11(dedupe)·M31·L21 전 조건부 승인 → F1~F11 전부 적용·R-A 기각(플래그 운용 절차 보강으로 실체화)·R-B~R-S 채택. 병합: v2-phase1/p6-block2-adversary-r1.md. 메인 검증 통과(잔여 오기 0·마커 33·C24 앵커 실측 유일·646행)",
+    "scope": "G(읽기 3건 전환·C36) → H(register-k8s CLI·쓰기 12건 삭제+create 존치 I10·C37~C40) → I(k8s_cluster drop·C34·C35·C41) + 이월 I3·I8-b·S5~S7",
+    "next": "계획 확정 — 사용자 G0 착수 판정 대기. §14.2 승인 4건 중 G0 전 필수: AI 도구 동반 전환 인지(ListK8sClusters+detail :966)"
+  },
+  "next": "Phase 6 블록 2(G·H·I) — 계획 r4 작성 중(plan-xhigh 스폰). 완료 후 5렌즈 적대검토"
 }
