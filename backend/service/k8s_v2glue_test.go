@@ -7,6 +7,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"ops-admin/backend/internal/infra/adapter/kubernetes"
 	"ops-admin/backend/internal/infra/contract"
@@ -266,4 +267,61 @@ func v2CollectHTTPRouteParents(route kubeHTTPRoute) []string {
 
 func v2CollectHTTPRouteTargets(route kubeHTTPRoute) []string {
 	return v2StrList(v2Row("httproutes", route), "targets")
+}
+
+// --- P1-G2 (④ A′-1 결착 — 인증서 4마커 승계) --------------------------------
+
+// v2KubeconfigMaterial — runtime 인증서 성분을 kubeconfig 자재로 재조립한다
+// (글루 전용). V2 도출 경로는 실제 kubeconfig 파싱(parseKubeConfig)에서
+// 시작하므로 character 테이블의 인증서 성분을 자재 형상으로 싣는다. base64
+// 인코딩 성분은 YAML 이스케이프 불요다.
+func v2KubeconfigMaterial(caData, clientCertData string) string {
+	return fmt.Sprintf(`apiVersion: v1
+kind: Config
+current-context: oracle
+clusters:
+  - name: oracle
+    cluster:
+      server: https://oracle.invalid:6443
+      certificate-authority-data: %s
+contexts:
+  - name: oracle
+    context:
+      cluster: oracle
+      user: oracle
+users:
+  - name: oracle
+    user:
+      client-certificate-data: %s
+`, caData, clientCertData)
+}
+
+// v2BuildOverviewCertificates — buildOverviewCertificates 승계: runtime 인증서
+// 성분을 자재로 통과시켜 프로덕션 도출 경로(DeriveCertificateObservation →
+// ConfigJSON 관측 → BuildOverviewCertificates 조립)의 산물로 닫는다. 관측
+// 부재(도출 0장)는 조립 동치의 빈 슬라이스다.
+func v2BuildOverviewCertificates(runtime kubeClusterRuntime) []model.K8sCertificate {
+	observation := kubernetes.DeriveCertificateObservation(v2KubeconfigMaterial(runtime.CertificateAuthority, runtime.ClientCertificateData))
+	if observation == nil {
+		return []model.K8sCertificate{}
+	}
+	return inventory.BuildOverviewCertificates(contract.JSONMap{"health_observation": observation})
+}
+
+// v2ParseOverviewCertificate — parseOverviewCertificate 승계: 단일 인증서 입력을
+// CA 자재로 통과시켜 같은 도출 경로의 유일 엔트리로 닫는다. v1의 이름·타입
+// 인자는 호출부 리터럴 계약이고 V2에서는 도출이 고정 어휘를 산출하므로
+// 글루는 인자를 무시한다(테이블이 넘기는 리터럴과 동일 — "CA Certificate").
+func v2ParseOverviewCertificate(name string, certType string, encoded string) (model.K8sCertificate, bool) {
+	_ = name
+	_ = certType
+	observation := kubernetes.DeriveCertificateObservation(v2KubeconfigMaterial(encoded, ""))
+	if observation == nil {
+		return model.K8sCertificate{}, false
+	}
+	certificates := inventory.BuildOverviewCertificates(contract.JSONMap{"health_observation": observation})
+	if len(certificates) == 0 {
+		return model.K8sCertificate{}, false
+	}
+	return certificates[0], true
 }

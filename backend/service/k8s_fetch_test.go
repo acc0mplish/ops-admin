@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"ops-admin/backend/internal/infra/adapter/kubernetes"
 	"ops-admin/backend/model"
 )
 
@@ -332,7 +333,7 @@ func TestCharBuildOverviewCertificates(t *testing.T) {
 		{name: "빈 런타임 → 0장", runtime: kubeClusterRuntime{}, want: []wantCert{}},
 	}
 	for _, tc := range cases {
-		certificates := buildOverviewCertificates(tc.runtime) // legacy 1행
+		certificates := v2BuildOverviewCertificates(tc.runtime) // v2 oracle
 		if len(certificates) != len(tc.want) {
 			t.Fatalf("%s: count = %d, want %d", tc.name, len(certificates), len(tc.want))
 		}
@@ -365,7 +366,7 @@ func TestCharParseOverviewCertificate(t *testing.T) {
 		{name: "PEM 아님(base64만)", encoded: "aGVsbG8=", wantOK: false},
 	}
 	for _, tc := range cases {
-		certificate, ok := parseOverviewCertificate("CA Certificate", "certificate-authority", tc.encoded) // legacy 1행
+		certificate, ok := v2ParseOverviewCertificate("CA Certificate", "certificate-authority", tc.encoded) // v2 oracle
 		if ok != tc.wantOK {
 			t.Errorf("%s: ok = %v, want %v", tc.name, ok, tc.wantOK)
 			continue
@@ -394,7 +395,7 @@ func TestCharCertificateCommonName(t *testing.T) {
 		{name: "빈 fallback → -", commonName: "", fallback: "", want: "-"},
 	}
 	for _, tc := range cases {
-		if got := certificateCommonName(tc.commonName, tc.fallback); got != tc.want { // legacy 1행
+		if got := kubernetes.CertificateCommonName(tc.commonName, tc.fallback); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -417,7 +418,7 @@ func TestCharK8sCertificateStatus(t *testing.T) {
 		{name: "31일 → valid", notAfter: now.Add(31 * 24 * time.Hour), wantStatus: "valid", wantStatusText: "Valid"},
 	}
 	for _, tc := range cases {
-		status, statusText := k8sCertificateStatus(tc.notAfter) // legacy 1행
+		status, statusText := kubernetes.CertificateStatus(tc.notAfter) // v2 oracle
 		if status != tc.wantStatus || statusText != tc.wantStatusText {
 			t.Errorf("%s: = (%q, %q), want (%q, %q)", tc.name, status, statusText, tc.wantStatus, tc.wantStatusText)
 		}

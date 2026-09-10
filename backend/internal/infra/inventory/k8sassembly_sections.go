@@ -22,7 +22,8 @@ import (
 // node_count/monitor_datasource_id)의 원천이다. db는 gateway 이름·③
 // monitor_datasource 이름 조인에만 쓴다.
 //
-// certificates[]는 판정 ④ 결착 전 부재다(G-P1f — 착수 금지).
+// certificates[]는 ④ A′-1 결착(P1-G1·G2 — 사용자 승인 2026-09-10)에 따라
+// ConfigJSON의 health_observation 관측에서 조립된다(BuildOverviewCertificates).
 func AssembleK8sClusterDetail(db *gorm.DB, conn *model.ProviderConnection, rows []ProjectedResource) (v1model.K8sClusterDetail, error) {
 	if conn == nil {
 		return v1model.K8sClusterDetail{}, fmt.Errorf("inventory: assemble k8s cluster detail: nil connection")
@@ -66,7 +67,8 @@ func AssembleK8sClusterDetail(db *gorm.DB, conn *model.ProviderConnection, rows 
 	})
 	endpointCounts := BuildEndpointCounts(endpointRows)
 
-	// ④ 결착 전 — Certificates는 영값(nil)으로 둔다(G-P1f 기계 판정 대상 외).
+	// ④ A′-1 결착 — Certificates는 conn.ConfigJSON의 health_observation
+	// 관측에서 조립된다(관측 부재는 빈 슬라이스 — v1 동치).
 	return v1model.K8sClusterDetail{
 		Cluster: cluster,
 		Overview: v1model.K8sOverview{
@@ -77,7 +79,7 @@ func AssembleK8sClusterDetail(db *gorm.DB, conn *model.ProviderConnection, rows 
 			RequestRate:  fmt.Sprintf("%d Workloads", len(workloads)),
 			AlertCount:   metrics.AlertCount,
 			Distribution: BuildOverviewDistribution(cluster, nodeRows, configMapRows),
-			Certificates: nil,
+			Certificates: BuildOverviewCertificates(conn.ConfigJSON),
 		},
 		Nodes:           BuildNodeItems(nodeRows, podRows),
 		Namespaces:      BuildNamespaceItems(namespaceRows, BuildNamespaceCounts(rows)),

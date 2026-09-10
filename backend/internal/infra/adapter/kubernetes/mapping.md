@@ -100,7 +100,8 @@ P 계획(J-P1-1)에 따라 P1-A에서 V2 수집을 replicaset·job·cronjob·end
 
 처분 어휘: **mapped** = V2 정규화 필드로 대응 · **dropped(사유)** = 미이관 ·
 **v2-only** = V2 단독 필드(비교 집합 외 또는 종 단독) · **pending(사유)** = 도메인
-판정 대기 보류(현재 1건 — certificates ④ 보안판정, 결착 전 커밋 부재가 G-P1f).
+판정 대기 보류(현재 0건 — certificates ④는 A′-1로 결착(P1-G1·G2 착지, 사용자 승인
+2026-09-10)해 mapped로 전환됐고, 어휘는 향후 판정 분리 계상용으로 유지한다).
 
 ### 4.1 `cluster` 섹션 (`K8sClusterView`) — 클러스터 자체는 리소스 행이 아니라
 connection/context 속성이다(백필 §3.4 매핑의 원천).
@@ -130,7 +131,7 @@ connection/context 속성이다(백필 §3.4 매핑의 원천).
 | podUsage / requestRate | **mapped(집계·P1-D)** | pod 행 수 "N Pods"·워크로드(5종) 행 수 "N Workloads" |
 | alertCount | **mapped(집계·P1-D)** | not-Ready(`readyCondition`≠True)·`unschedulable` 노드 + failed/pending/unknown pod(v1 `calculateK8sAggregateMetrics` 동치) |
 | distribution[] | **mapped(조립·판정⑤)** | 5행 고정 라벨 — Service CIDR은 kubeadm-config 2키(§2 예외), Pod Network은 node `podCIDRs` 폴백(정렬·"、"), 부재는 Unknown(추측 금지) |
-| certificates[] | **pending(④-보안판정)** | 인증서 만료 관측 — ④ 결착 대기로 분리 계상(선행조건: 결착 전 착수·커밋 금지 G-P1f — P1-F 전환, 착수는 P1-G1·G2) |
+| certificates[] | **mapped(관측·판정④ A′-1)** | kubeconfig 인증서 성분의 **파생 메타데이터만**(K8sCertificate 9필드 — 원본 인증서·개인키·자재 문자열 미포함). 도출은 어댑터 Health(`certificateObservation` — v1 `parseOverviewCertificate` 동치, clusterRuntime 재파싱 0)·기록은 sweep(`provider_connection.ConfigJSON["health_observation"]` — markLastHealthAt 패턴)·조립은 `BuildOverviewCertificates`(JSON 어휘 통과). 관측 부재는 빈 슬라이스(v1 동치). P1-G1·G2 착지 — 사용자 승인 2026-09-10 |
 
 ### 4.3 `nodes` 섹션 (`K8sNodeItem`)
 
@@ -276,6 +277,15 @@ CRD 실클러스터 설치와 함께)로 이월된다.
 - kubeconfig는 `DiscoverRequest.Connection.Material["inventory"]`(브로커 purpose
   `inventory` Resolve 산물)로만 진입 — 로그·에러·Raw·Normalized·아티팩트 어디에도
   노출 금지. 에러 메시지는 신호 종류+상태 코드만 담는다.
+- **인증서 파생 관측(판정 ④ A′-1 결착 — 사용자 승인 2026-09-10)**: 어댑터 Health는
+  kubeconfig의 `certificate-authority-data`·`client-certificate-data`를 x509로
+  파싱해 **파생 메타데이터 9필드만**(name·type·subject·issuer·notBefore·notAfter·
+  daysRemaining·status·statusText — v1 `parseOverviewCertificate`와 동일 어휘)
+  `HealthResult.Observation`으로 반환하고, sweep이 `provider_connection.ConfigJSON`
+  `health_observation` 키에 기록한다. 원본 인증서·개인키(`client-key-data` 미취급)·
+  kubeconfig 문자열은 관측 어디에도 실리지 않는다 — 봉인 대상은 재사용 가능한
+  **물질**이고 만료일·CN은 관측이다. 기록 소비는 `BuildOverviewCertificates`
+  조립이 유일하다.
 - secret은 metadata(type + data **키 이름 목록**)만, configmap은 data **키 이름 목록**만
   정규화에 진입한다 — 값은 어댑터 경계에서 폐기. **유일한 예외는 판정 ⑤ (b)의
   kubeadm-config 2키다**(§2 — `serviceSubnet`·`podSubnet`, 사용자 승인

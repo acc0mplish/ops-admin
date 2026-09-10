@@ -163,7 +163,7 @@ v1 `formatWorkloadResourceSummary`:3578·`formatCPUMilli`:3608·`formatMemoryByt
 | ① | `overview.requestRate` | mapping.md `dropped(monitoring-derived)`. §3.2 row 19(Monitor=REMAIN) 소유일 수 있다 |
 | ② | `overview.alertCount` | 동일 |
 | ③ 〔r2 신설〕 | `cluster.monitorDatasourceId`·`Name` | mapping.md §4.1 `dropped(monitoring-domain)`. row 19와의 정합 |
-| ④ | `overview.certificates[]` **보안 경계** | v1은 **kubeconfig의 인증서 성분을 파싱**한다(k8s.go:2963). mapping.md §6이 "kubeconfig는 Material로만 진입 — 로그·에러·Raw·Normalized 어디에도 노출 금지"라고 못 박았다. **보안 계약 위반 가능성** |
+| ④ | `overview.certificates[]` **보안 경계** | **결착: A′-1 채택(사용자 승인 2026-09-10 — P1-G1·G2 착지).** v1은 **kubeconfig의 인증서 성분을 파싱**한다(k8s.go:2963). mapping.md §6이 "kubeconfig는 Material로만 진입 — 로그·에러·Raw·Normalized 어디에도 노출 금지"라고 못 박았다. **보안 계약 위반 가능성**. → 판정: 봉인 대상은 재사용 가능한 **물질**(원본 인증서·개인키·kubeconfig 문자열)이고 만료일·CN 등 파생 메타데이터는 관측이다. 어댑터는 `HealthResult.Observation`(contract additive 필드)으로 **9필드 파생 메타데이터만** 반환(v1 `parseOverviewCertificate` 동치 — arch rule 2 준수, 어댑터 DB 무소속)·sweep이 `provider_connection.ConfigJSON["health_observation"]`에 기록(markLastHealthAt 패턴)·조립이 소비. `client-key-data`는 v1과 동일하게 미취급. 착지 검증: PC-6(`TestHealthSweepRecordsObservation` exact)·PC-4(원장 28행·92+28=120·char baseline 동일)·G-P1f 조건 소멸(mapping.md pending(④) 0행) |
 
 > **선행조건 (팀리드 지시 2026-09-09)**: **④ 판정이 끝나기 전에는 P1에서 `certificates[]`를
 > 착수하지 않는다.** 다른 42개 필드는 ④와 무관하게 진행할 수 있다. 게이트 `G-P1c`의 dropped

@@ -10,9 +10,12 @@ import (
 
 	"ops-admin/backend/internal/infra/adapter/fake"
 	"ops-admin/backend/internal/infra/compose"
-	"ops-admin/backend/internal/infra/migrate"
+	"ops-admin/backend/internal/infra/contract"
 	"ops-admin/backend/internal/infra/metrics"
+	"ops-admin/backend/internal/infra/migrate"
 	"ops-admin/backend/internal/infra/model"
+	"ops-admin/backend/internal/infra/registry"
+	"ops-admin/backend/internal/infra/secrets"
 	"ops-admin/backend/internal/testutil"
 	"ops-admin/backend/util"
 )
@@ -208,5 +211,108 @@ func TestStopBeforeStartIsSafe(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Stop before Start must not block")
+	}
+}
+
+// observationAdapter — 관측 보고 어댑터(compose_test 한정, ④ A′-1 P1-G1).
+// Health가 Healthy + 파생 관측 고정치를 반환한다. "fake"는 M1 어휘의 유일한
+// 테스트 슬롯이라 새 레지스트리에 이 어댑터로 등록한다(compose.Build의 stack
+// 레지스트리는 fake를 점유 — 재등록은 중복 에러).
+type observationAdapter struct{}
+
+func (observationAdapter) Descriptor() contract.ProviderTypeDescriptor {
+	return contract.ProviderTypeDescriptor{Type: fake.ProviderName, AdapterVersion: "test", ProtocolVersion: "test"}
+}
+
+func (observationAdapter) Validate(_ context.Context, _ contract.ConnectionView) error { return nil }
+
+func (observationAdapter) Health(_ context.Context, _ contract.ConnectionView) contract.HealthResult {
+	return contract.HealthResult{
+		Healthy: true,
+		Message: "observation fixture",
+		Observation: contract.JSONMap{"certificates": []contract.JSONMap{
+			{"name": "CA Certificate", "type": "certificate-authority", "subject": "sweep-ca", "daysRemaining": 364},
+		}},
+	}
+}
+
+func (observationAdapter) Close() error { return nil }
+
+// newObservationSweepStack — observationAdapter를 등록한 새 레지스트리로 조립한
+// sweeper다. 생성자는 compose.Build와 같은 계약(registry.New·secrets.NewBroker·
+// metrics.New)이다.
+func newObservationSweepStack(t *testing.T, db *gorm.DB) *compose.HealthSweeper {
+	t.Helper()
+	counters := metrics.New()
+	reg := registry.New()
+	adapter := observationAdapter{}
+	if err := reg.RegisterProviderType(adapter.Descriptor(), adapter); err != nil {
+		t.Fatalf("register observationAdapter: %v", err)
+	}
+	return compose.NewHealthSweeper(db, reg, secrets.NewBroker(db), counters)
+}
+
+// P1-G1 (④ A′-1): sweep이 어댑터 관측을 provider_connection.ConfigJSON의
+// health_observation 키에 병합 기록한다 — 기존 ConfigJSON 키는 보존되고
+// last_health_at도 같은 회에 기록된다(markLastHealthAt와 같은 쓰기 패턴).
+func TestHealthSweepRecordsObservation(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	if err := migrate.Run(context.Background(), db); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+	sweeper := newObservationSweepStack(t, db)
+	seedHealthChain(t, db, "conn-observed", true)
+	if err := db.Model(&model.ProviderConnection{}).Where("uid = ?", "conn-observed").
+		Select("config_json").Updates(model.ProviderConnection{ConfigJSON: contract.JSONMap{"monitor_datasource_id": "ds-1", "node_count": 3}}).Error; err != nil {
+		t.Fatalf("seed config_json: %v", err)
+	}
+
+	if err := sweeper.SweepOnce(context.Background()); err != nil {
+		t.Fatalf("SweepOnce: %v", err)
+	}
+
+	var conn model.ProviderConnection
+	if err := db.Where("uid = ?", "conn-observed").First(&conn).Error; err != nil {
+		t.Fatalf("reload connection: %v", err)
+	}
+	observation, ok := conn.ConfigJSON["health_observation"].(map[string]any)
+	if !ok {
+		t.Fatalf("config_json = %#v, want health_observation key", conn.ConfigJSON)
+	}
+	entries, ok := observation["certificates"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("observation = %#v, want 1 certificate entry", observation)
+	}
+	entry, _ := entries[0].(map[string]any)
+	if entry["name"] != "CA Certificate" || entry["subject"] != "sweep-ca" {
+		t.Errorf("certificate entry = %#v, want CA Certificate/sweep-ca", entry)
+	}
+	// 병합 — 기존 키는 보존된다(관측 전용 키 덮어쓰기가 ConfigJSON을 몰아내지 않는다).
+	if conn.ConfigJSON["monitor_datasource_id"] != "ds-1" {
+		t.Errorf("monitor_datasource_id = %v, want preserved", conn.ConfigJSON["monitor_datasource_id"])
+	}
+	if conn.LastHealthAt == nil {
+		t.Error("last_health_at not recorded — observation and stamp share the healthy sweep")
+	}
+}
+
+// 관측 미산출 어댑터(stack의 fake — Observation nil)는 키를 기록하지 않는다.
+func TestHealthSweepWithoutObservationLeavesConfigUntouched(t *testing.T) {
+	testutil.PinSecretKeys(t)
+	db := testutil.OpenMemoryDB(t)
+	sweeper, _ := newSweepStack(t, db)
+	seedHealthChain(t, db, "conn-no-obs", true)
+
+	if err := sweeper.SweepOnce(context.Background()); err != nil {
+		t.Fatalf("SweepOnce: %v", err)
+	}
+
+	var conn model.ProviderConnection
+	if err := db.Where("uid = ?", "conn-no-obs").First(&conn).Error; err != nil {
+		t.Fatalf("reload connection: %v", err)
+	}
+	if _, exists := conn.ConfigJSON["health_observation"]; exists {
+		t.Errorf("config_json = %#v, want no health_observation key from an observation-less adapter", conn.ConfigJSON)
 	}
 }

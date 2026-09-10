@@ -22,3 +22,7 @@ nodeReadyStatus
 joinNodeRoles
 formatTimestamp
 fallbackText
+buildOverviewCertificates
+parseOverviewCertificate
+k8sCertificateStatus
+certificateCommonName
