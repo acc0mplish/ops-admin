@@ -162,7 +162,10 @@ func (a *Adapter) Validate(ctx context.Context, conn contract.ConnectionView) er
 	return nil
 }
 
-// Health — /version 도달성 + distribution 판정(Message로 보고).
+// Health — /version 도달성 + distribution 판정(Message로 보고). ④ A′-1(P1-G1):
+// probe 성공 시 kubeconfig 인증서 성분의 파생 관측을 Observation으로 실는다 —
+// 베스트 에포트로, 자재 재해석 실패 시에도 healthy 판정은 유지하고 관측만
+// 생략한다. 기록은 sweep 소관이다(compose/healthloop.go — arch rule 2).
 func (a *Adapter) Health(ctx context.Context, conn contract.ConnectionView) contract.HealthResult {
 	client, err := a.buildClient(conn)
 	if err != nil {
@@ -173,10 +176,14 @@ func (a *Adapter) Health(ctx context.Context, conn contract.ConnectionView) cont
 		return contract.HealthResult{Healthy: false, Message: fmt.Sprintf("kubernetes: version probe failed: %v", err)}
 	}
 	dist := detectDistribution(v.GitVersion)
-	return contract.HealthResult{
+	result := contract.HealthResult{
 		Healthy: true,
 		Message: fmt.Sprintf("kubernetes %s (distribution: %s)", v.GitVersion, dist),
 	}
+	if rt, rtErr := resolveRuntime(conn); rtErr == nil {
+		result.Observation = certificateObservation(rt)
+	}
+	return result
 }
 
 // --- Discoverer — 섹션 커서 페이징 (§14.1 리소스 목록 순). ---

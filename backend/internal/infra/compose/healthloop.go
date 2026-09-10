@@ -27,6 +27,13 @@ const healthSweepInterval = 5 * time.Minute
 // ConnectionView 조립(resolveConnectionView)과 같은 §7.4 어휘다.
 const healthPurpose = "inventory"
 
+// healthObservationKey — 어댑터 관측(HealthResult.Observation, ④ A′-1)의
+// provider_connection.ConfigJSON 저장 키. 스위퍼는 프로바이더 무관 계층이라
+// 관측 어휘(k8s certificates 등)를 모른다 — 단일 예약 키에 latest-wins로
+// 기록하고 나머지 ConfigJSON 키는 보존한다. 조립 측 소비는
+// inventory.BuildOverviewCertificates다.
+const healthObservationKey = "health_observation"
+
 // HealthSweeper is the §18.2 provider_health gauge circuit (P6): 주기마다
 // provider_connection 행 순회 → "inventory" 목적 자재 해석 → registry
 // 어댑터 Health → SetHealth(uid, healthy). 바인딩 부재·어댑터 미등록·DB
@@ -129,11 +136,16 @@ func (s *HealthSweeper) SweepOnce(ctx context.Context) error {
 	var join []error
 	for _, conn := range conns {
 		uids = append(uids, conn.UID)
-		healthy := s.probe(ctx, conn)
+		healthy, observation := s.probe(ctx, conn)
 		s.counters.SetHealth(conn.UID, healthy)
 		if healthy {
 			if err := s.markLastHealthAt(ctx, conn.UID); err != nil {
 				join = append(join, err)
+			}
+			if len(observation) > 0 {
+				if err := s.markObservation(ctx, conn.UID, observation); err != nil {
+					join = append(join, err)
+				}
 			}
 		}
 	}
@@ -171,14 +183,16 @@ func (s *HealthSweeper) pruneVanished(previous, current []string) {
 // 등록 어댑터 → Health. healthy는 false가 기본 — 해석 실패(바인딩 부재)와
 // 어댑터 미등록은 gauge 0 적립으로 소화된다(claim 10). ConnectionView는
 // resolveConnectionView와 동일 형상이다(UID 미채움 — 발견 경로 계약 유지).
-func (s *HealthSweeper) probe(ctx context.Context, conn model.ProviderConnection) bool {
+// ④ A′-1(P1-G1): 어댑터가 실어 온 파생 관측도 함께 돌려준다 — 기록 주체는
+// 이 스위퍼다(어댑터는 DB 핸들 무소유, arch rule 2).
+func (s *HealthSweeper) probe(ctx context.Context, conn model.ProviderConnection) (bool, contract.JSONMap) {
 	resolved, err := s.broker.Resolve(ctx, conn.UID, healthPurpose)
 	if err != nil {
-		return false
+		return false, nil
 	}
 	_, adapter, ok := s.registry.ProviderType(conn.ProviderType)
 	if !ok {
-		return false
+		return false, nil
 	}
 	view := contract.ConnectionView{
 		ProviderType: conn.ProviderType,
@@ -186,7 +200,8 @@ func (s *HealthSweeper) probe(ctx context.Context, conn model.ProviderConnection
 		Config:       conn.ConfigJSON,
 		Material:     map[string]string{healthPurpose: resolved.Value},
 	}
-	return adapter.Health(ctx, view).Healthy
+	result := adapter.Health(ctx, view)
+	return result.Healthy, result.Observation
 }
 
 // markLastHealthAt — health 성공 시 provider_connection.last_health_at을
@@ -197,6 +212,31 @@ func (s *HealthSweeper) markLastHealthAt(ctx context.Context, uid string) error 
 	if err := s.db.WithContext(ctx).Model(&model.ProviderConnection{}).
 		Where("uid = ?", uid).Update("last_health_at", now).Error; err != nil {
 		return fmt.Errorf("compose: health sweep last_health_at update for %q: %w", uid, err)
+	}
+	return nil
+}
+
+// markObservation — healthy 회에서 어댑터가 실어 온 파생 관측(④ A′-1)을
+// provider_connection.ConfigJSON에 병합 기록한다. markLastHealthAt와 같은
+// 쓰기 패턴 — gauge는 이미 적립된 뒤 호출되므로 기록 실패는 측정값을 바꾸지
+// 않고 SweepOnce의 error join에만 흘린다. 단일 예약 키(healthObservationKey)
+// latest-wins이고 기존 ConfigJSON 키는 불변 사본을 만들어 보존한다.
+func (s *HealthSweeper) markObservation(ctx context.Context, uid string, observation contract.JSONMap) error {
+	var conn model.ProviderConnection
+	if err := s.db.WithContext(ctx).Select("uid", "config_json").Where("uid = ?", uid).First(&conn).Error; err != nil {
+		return fmt.Errorf("compose: health sweep observation load for %q: %w", uid, err)
+	}
+	config := make(contract.JSONMap, len(conn.ConfigJSON)+1)
+	for key, value := range conn.ConfigJSON {
+		config[key] = value
+	}
+	config[healthObservationKey] = observation
+	// Struct + Select — config_json의 칼럼 serializer는 모델 필드 쓰기에만
+	// 적용된다(map 값 Update는 JSON 텍스트를 이중 인코딩한다 — backfill.go 선례).
+	patch := model.ProviderConnection{ConfigJSON: config}
+	if err := s.db.WithContext(ctx).Model(&model.ProviderConnection{}).
+		Where("uid = ?", uid).Select("config_json").Updates(patch).Error; err != nil {
+		return fmt.Errorf("compose: health sweep observation update for %q: %w", uid, err)
 	}
 	return nil
 }

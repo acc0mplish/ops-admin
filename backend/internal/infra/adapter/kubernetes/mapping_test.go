@@ -68,7 +68,7 @@ var coverageTable = map[string]string{
 	"overview.healthScore": "mapped(집계·P1-D)", "overview.cpuUsage": "mapped(집계·P1-D)",
 	"overview.memoryUsage": "mapped(집계·P1-D)", "overview.podUsage": "mapped(집계·P1-D)",
 	"overview.requestRate": "mapped(집계·P1-D)", "overview.alertCount": "mapped(집계·P1-D)",
-	"overview.distribution": "mapped(조립·판정⑤)", "overview.certificates": "pending(④-보안판정)",
+	"overview.distribution": "mapped(조립·판정⑤)", "overview.certificates": "mapped(관측·판정④ A′-1)",
 	// §4.3 nodes
 	"nodes.name": "mapped", "nodes.role": "mapped", "nodes.status": "mapped",
 	"nodes.version": "mapped", "nodes.internalIP": "mapped",

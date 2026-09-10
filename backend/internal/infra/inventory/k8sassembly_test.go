@@ -57,6 +57,15 @@ func TestAssembleK8sClusterDetail(t *testing.T) {
 			"env": "prod", "tags": []any{"edge", "seed"}, "connection_mode": "gateway",
 			"version": "v1.29.4", "node_count": 2, "description": "seed",
 			"monitor_datasource_id": 3, // 판정 ③ — 등록 경로 흡수(Id), Name은 조인.
+			// ④ A′-1 — P1-G1이 기록한 관측(DB 왕복 형상: []any·float64).
+			"health_observation": contract.JSONMap{"certificates": []any{
+				map[string]any{"name": "CA Certificate", "type": "certificate-authority", "subject": "seed-ca",
+					"issuer": "seed-ca", "notBefore": "2025-01-01 00:00:00", "notAfter": "2026-01-01 00:00:00",
+					"daysRemaining": 364.0, "status": "valid", "statusText": "Valid"},
+				map[string]any{"name": "Client Certificate", "type": "client-certificate", "subject": "seed-client",
+					"issuer": "seed-ca", "notBefore": "2025-01-01 00:00:00", "notAfter": "2026-01-01 00:00:00",
+					"daysRemaining": 12.0, "status": "warning", "statusText": "Expiring Soon"},
+			}},
 		},
 	}
 
@@ -180,8 +189,17 @@ func TestAssembleK8sClusterDetail(t *testing.T) {
 			t.Errorf("distribution[%d] = %q/%q, want %q/%q", i, got.Label, got.Value, pair[0], pair[1])
 		}
 	}
-	if overview.Certificates != nil {
-		t.Errorf("certificates = %v, want nil (판정 ④ 결착 전 부재)", overview.Certificates)
+	// --- certificates (④ A′-1 — 관측 디코드, P1-G2) ---
+	if len(overview.Certificates) != 2 {
+		t.Fatalf("certificates = %d entries, want 2", len(overview.Certificates))
+	}
+	if got := overview.Certificates[0]; got.Name != "CA Certificate" || got.Type != "certificate-authority" ||
+		got.Subject != "seed-ca" || got.Issuer != "seed-ca" || got.NotBefore != "2025-01-01 00:00:00" ||
+		got.NotAfter != "2026-01-01 00:00:00" || got.DaysRemaining != 364 || got.Status != "valid" || got.StatusText != "Valid" {
+		t.Errorf("certificates[0] = %+v", got)
+	}
+	if got := overview.Certificates[1]; got.Status != "warning" || got.StatusText != "Expiring Soon" || got.DaysRemaining != 12 {
+		t.Errorf("certificates[1] = %+v", got)
 	}
 
 	// --- nodes (3치 상태·worker 기본·MB 반올림·파드 카운트) ---

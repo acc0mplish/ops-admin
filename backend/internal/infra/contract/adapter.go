@@ -53,6 +53,14 @@ type ConnectionView struct {
 type HealthResult struct {
 	Healthy bool
 	Message string
+	// Observation — 어댑터가 Health 도중 이미 파싱한 자격 성분에서 도출한
+	// 파생 관측(④ A′-1 확정 — 사용자 승인 2026-09-10). 어댑터는 DB 핸들이
+	// 없으므로(arch rule 2) 관측은 이 필드로 흐르고, sweep이 provider_connection
+	// ConfigJSON에 기록한다(compose/healthloop.go markObservation —
+	// markLastHealthAt와 같은 쓰기 패턴). 내용은 파생 메타데이터만 — 원본
+	// 인증서·개인키·자격 물질은 절대 실리지 않는다(보존 제약 #7 · mapping.md §6).
+	// 영값(nil) 호환 — 관측 미산출 어댑터는 기존 시그니처 그대로다.
+	Observation JSONMap
 }
 
 // DiscoverRequest — §9.1/9.2에서 도출 — 커서 페이징. 리소스 초안 레코드 정규화
