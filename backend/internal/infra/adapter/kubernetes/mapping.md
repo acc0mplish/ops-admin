@@ -33,6 +33,7 @@ URN 형식: `urn:k8s:{context}:{종}:{식별 성분}` — `{context}` = provider
 | endpoint | — | `{namespace}/{name}` | 동일 성분 | P1-A v2-only 보조종 — `network.endpoint`(Phase6ResourceKindExtensions), service.endpoints 집계 원천 |
 | gateway | — | `{namespace}/{name}` | 동일 성분 | P1-C1 — `network.gateway`(Phase6ResourceKindExtensions), GatewayAPI Gateway(v1 선호·v1beta1 폴백 — J-P1-1). 비교 집합 불참(§3.2 — I-P5 이월) |
 | httproute | — | `{namespace}/{name}` | 동일 성분 | P1-C1 — `network.http_route`, GatewayAPI HTTPRoute(동일 폴백·불참) |
+| virtualservice | — | `{namespace}/{name}` | 동일 성분 | P2-D — `network.virtual_service`(Phase6ResourceKindExtensions), istio 오퍼레이션(`k8s.istio.traffic_update`) uid 앵커(J-P1-1). 앵커 최소형 — Raw metadata 신원만, Normalized 키 없음. 비교 집합 불참(§3.2 — I-P5 이월·R-P6) |
 | configmap | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) |
 | secret | — | `{namespace}/{name}` | 동일 성분 | 어휘 확장 2종(J9) — **metadata 전용** |
 | pv | persistent_volume | `{name}` | name | |

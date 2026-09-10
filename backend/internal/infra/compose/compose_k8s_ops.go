@@ -60,7 +60,13 @@ func registerKubernetesMutations(reg *registry.Registry) error {
 	if err := reg.RegisterOperation(resourceApplyOperation); err != nil {
 		return err
 	}
-	return reg.RegisterOperation(resourceDeleteOperation)
+	if err := reg.RegisterOperation(resourceDeleteOperation); err != nil {
+		return err
+	}
+	if err := reg.RegisterOperation(istioTrafficUpdateOperation); err != nil {
+		return err
+	}
+	return reg.RegisterOperation(httpRouteTrafficUpdateOperation)
 }
 
 // rolloutResultRedaction — rollout 4종(restart 포함)이 공유하는 결과 detail 허용
@@ -257,4 +263,47 @@ var resourceDeleteOperation = contract.OperationDefinition{
 	TimeoutSeconds:     30,
 	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
 	Redaction:          func() any { return deleteResultRedaction{} },
+}
+
+// traffic mutation 2종 opdef(P2-D — 계획 r3 §J-P1-6 확정표). 확정표 행 그대로:
+// 권한 assets:k8s:advancednetwork(v1 재사용 — sensitive-routes.txt:180-181
+// httproute·istio traffic 라인, 신규 문자열 0 — 보존 제약 #6)·risk medium·승인
+// 필수·provider_frozen_payload. handle·poll은 확정표 "발행+poll 1회"대로 state
+// handle 가족(executor_state.go — 동결 엔트리 위치·가중치의 에코 판정)이고
+// detail은 stateResultRedaction 2키다. RetryPolicy는 restart 선례 — 동일 가중치
+// 배열의 재 PUT은 실변경이 없으면 무증가다(provider_frozen_payload).
+
+// istioTrafficUpdateOperation — k8s.istio.traffic_update(v1 k8s_mutate.go:151).
+// VirtualService의 첫 조정 가능 http 항목 경로에 위치 가중치 splice PUT.
+var istioTrafficUpdateOperation = contract.OperationDefinition{
+	Name:               kubernetes.IstioTrafficUpdateOperationName,
+	Version:            "1",
+	RequiredPermission: "assets:k8s:advancednetwork", // v1 sensitive-routes.txt:181
+	RequiredCapability: "orchestration.kubernetes.apply",
+	ResourceKinds:      []string{"network.virtual_service"},
+	Mutating:           true,
+	RiskLevel:          "medium",
+	RequiresApproval:   true,
+	IdempotencyPolicy:  "provider_frozen_payload",
+	TimeoutSeconds:     30,
+	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
+	Redaction:          func() any { return stateResultRedaction{} },
+}
+
+// httpRouteTrafficUpdateOperation — k8s.httproute.traffic_update(v1
+// k8s_mutate.go:202). HTTPRoute의 첫 조정 가능 rule backendRefs에 위치 가중치
+// splice PUT.
+var httpRouteTrafficUpdateOperation = contract.OperationDefinition{
+	Name:               kubernetes.HTTPRouteTrafficUpdateOperationName,
+	Version:            "1",
+	RequiredPermission: "assets:k8s:advancednetwork", // v1 sensitive-routes.txt:180
+	RequiredCapability: "orchestration.kubernetes.apply",
+	ResourceKinds:      []string{"network.http_route"},
+	Mutating:           true,
+	RiskLevel:          "medium",
+	RequiresApproval:   true,
+	IdempotencyPolicy:  "provider_frozen_payload",
+	TimeoutSeconds:     30,
+	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
+	Redaction:          func() any { return stateResultRedaction{} },
 }
