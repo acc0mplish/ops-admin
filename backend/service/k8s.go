@@ -4,33 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
 	"ops-admin/backend/model"
-
-	"gorm.io/gorm"
 )
 
 func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
-	// V2_READ_SOURCE_K8S — G0 전환 검증 플래그(phase6-plan §J8·§12 #12). 정규화
-	// 판정(k8sReadSourceV2 — ""·"0"·"false"는 OFF)으로 ON이면 읽기 소스를 V2
-	// 인벤토리 투영으로 전환한다. 기본값은 legacy(§11 롤백 계약)이며
-	// 플래그와 legacy 분기는 G1에서 함께 제거된다(C36 2단).
-	if k8sReadSourceV2("V2_READ_SOURCE_K8S") {
-		return s.projectK8sClusterList()
-	}
-	var list []model.K8sCluster
-	if err := s.db.Preload("Gateway").Preload("MonitorDatasource").Order("id asc").Find(&list).Error; err != nil {
-		return nil, err
-	}
-
-	result := make([]model.K8sClusterView, 0, len(list))
-	for _, item := range list {
-		result = append(result, toK8sClusterView(item))
-	}
-	return result, nil
+	// G1 단일 경로(phase6-plan §J8·C36 2단): cluster/list의 소스는 V2 인벤토리
+	// 투영뿐이다. G0의 전환 플래그와 legacy k8s_cluster 조회 분기는 같은 PR에서
+	// 제거됐다 — 응답 형상(K8sClusterView)은 소스와 무관하게 동일하다(§12 #1).
+	return s.projectK8sClusterList()
 }
 
 func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
@@ -147,14 +131,11 @@ func (s *Service) DeleteK8sCluster(id uint) error {
 }
 
 func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
-	// V2_READ_SOURCE_K8S — G0 읽기 소스 전환(phase6-plan §J8). 정규화 판정은
-	// k8sReadSourceV2 단일 헬퍼. 캐시·singleflight 껍질과 키(legacy 클러스터 id)는
-	// 무변경이고 singleflight 본문 소스만 교체한다. 기본값은 legacy(§11 롤백 계약)이며
-	// G1에서 legacy 분기가 제거된다(C36 2단).
-	source := s.getK8sClusterDetailUncached
-	if k8sReadSourceV2("V2_READ_SOURCE_K8S") {
-		source = s.projectK8sClusterDetail
-	}
+	// G1 단일 경로(phase6-plan §J8·C36 2단): singleflight 본문 소스는 V2 조립
+	// (projectK8sClusterDetail)뿐이다. 캐시·singleflight 껍질과 키(legacy 클러스터
+	// id)는 무변경(§J8 캐시 승계)이고 legacy 라이브 소스(kubeconfig 파싱 → k8s API
+	// fetch 경로)는 제거됐다 — §15 compare 페어링(S2)도 같은 PR에서 종결됐다(D-16).
+	source := s.projectK8sClusterDetail
 	if detail, ok := s.cachedK8sClusterDetail(clusterID); ok {
 		return detail, nil
 	}
@@ -194,80 +175,6 @@ func (s *Service) invalidateK8sClusterDetailCache(clusterID uint) {
 	s.k8sState.k8sOverviewMu.Lock()
 	delete(s.k8sState.k8sOverviewCache, clusterID)
 	s.k8sState.k8sOverviewMu.Unlock()
-}
-
-func (s *Service) getK8sClusterDetailUncached(clusterID uint) (model.K8sClusterDetail, error) {
-	cluster, err := s.GetK8sCluster(clusterID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.K8sClusterDetail{}, errors.New("k8s cluster not found")
-		}
-		return model.K8sClusterDetail{}, err
-	}
-
-	runtime, err := parseKubeConfig(cluster.KubeConfig)
-	if err != nil {
-		return model.K8sClusterDetail{}, fmt.Errorf("failed to parse kubeconfig: %w", err)
-	}
-	// Cluster details must use a client that matches the configured connection mode.
-	// In gateway mode, the client connects to the gateway before accessing the private Kubernetes API;
-	// the Ops Admin host must not dial the private kubeconfig address directly.
-	client, cleanup, err := s.newK8sHTTPClientForCluster(cluster, runtime)
-	if err != nil {
-		return model.K8sClusterDetail{}, fmt.Errorf("failed to create Kubernetes API client: %w", err)
-	}
-	defer cleanup()
-
-	data, err := fetchK8sData(client, runtime)
-	if err != nil {
-		route := "direct connection"
-		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
-			route = "gateway relay"
-		}
-		return model.K8sClusterDetail{}, fmt.Errorf("failed to retrieve Kubernetes cluster details through %s: %w", route, err)
-	}
-
-	metrics := calculateK8sAggregateMetrics(data.Nodes, data.Pods)
-	detailCluster := toK8sClusterView(cluster)
-	if metrics.AlertCount > 0 {
-		detailCluster.Status = "warning"
-		detailCluster.StatusText = k8sStatusText("warning")
-	}
-
-	namespaceCounts := buildNamespaceCounts(data)
-	endpointCounts := buildEndpointCounts(data.Endpoints)
-	workloads := buildWorkloadItems(data)
-	sort.Slice(workloads, func(i, j int) bool {
-		if workloads[i].Namespace == workloads[j].Namespace {
-			return workloads[i].Name < workloads[j].Name
-		}
-		return workloads[i].Namespace < workloads[j].Namespace
-	})
-
-	return model.K8sClusterDetail{
-		Cluster: detailCluster,
-		Overview: model.K8sOverview{
-			HealthScore:  calculateHealthScore(metrics.AlertCount),
-			CPUUsage:     formatUsagePercent(metrics.TotalReqCPUMilli, metrics.TotalAllocCPUMilli),
-			MemoryUsage:  formatUsagePercent(metrics.TotalReqMemoryBytes, metrics.TotalAllocMemoryBytes),
-			PodUsage:     fmt.Sprintf("%d Pods", len(data.Pods)),
-			RequestRate:  fmt.Sprintf("%d Workloads", len(workloads)),
-			AlertCount:   metrics.AlertCount,
-			Distribution: buildOverviewDistribution(detailCluster, data.Nodes, data.ConfigMaps),
-			Certificates: buildOverviewCertificates(runtime),
-		},
-		Nodes:      buildNodeItems(data.Nodes, data.Pods),
-		Namespaces: buildNamespaceItems(data.Namespaces, namespaceCounts),
-		Pods:       buildPodItemsWithWorkloads(data),
-		Workloads:  workloads,
-		Network:    buildNetworkSection(data.Services, data.Ingresses, endpointCounts),
-		AdvancedNetwork: buildAdvancedNetworkSection(
-			data.GatewayAPIGateways,
-			data.HTTPRoutes,
-			data.Services,
-		),
-		ConfigStorage: buildConfigStorageSection(data.ConfigMaps, data.Secrets, data.PVCs, data.PVs),
-	}, nil
 }
 
 func (s *Service) GetK8sNodeDetail(clusterID uint, nodeName string) (model.K8sNodeDetail, error) {

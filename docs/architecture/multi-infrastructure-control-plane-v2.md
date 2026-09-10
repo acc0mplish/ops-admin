@@ -1543,11 +1543,17 @@ decomposition order (each step is a separately revertible PR):
   1. route registration splits per module (router only; behavior-neutral)
   2. provider/k8s/cloud client state moves out of Service into adapters
      (behavior-neutral, covered by §15 comparisons re-run after each step)
+     deviation recorded: 2026-09-10 — the k8s compare pairing closes at the
+     read-flip (Phase 6 G1): its legacy capture source no longer exists, so
+     later steps are verified by V2 round-trip claims instead (D-16)
   3. legacy read paths for migrated families flip to V2 projections
      deviation recorded: 2026-09-10 — the flip is limited to reads an
      inventory projection can serve; live passthrough reads (logs, events,
      metrics, terminal, live YAML detail) stay on v1 indefinitely
   4. legacy write paths stop (per §3.3 families, by decision)
+     deviation recorded: 2026-09-10 — k8s arbitrary-kind create stays on the
+     v1 path; the uid-scope operation model does not fit free-form YAML
+     creation, carried as I10 (D-15)
   5. legacy columns/tables drop only after one release-cycle observation
      with zero legacy-path traffic (log-verified)
      deviation recorded: 2026-09-10 — no production traffic exists to

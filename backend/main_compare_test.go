@@ -1,89 +1,68 @@
 package main
 
 import (
+	"io"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
-	"time"
-
-	"ops-admin/backend/internal/infra/inventory"
-	"ops-admin/backend/model"
 )
 
-// The v1 DTO → engine capture conversion copies only the compared sections
-// and never carries credential-shaped fields.
-func TestLegacyCaptureFromDetail(t *testing.T) {
-	detail := model.K8sClusterDetail{
-		Cluster: model.K8sClusterView{ID: 7, Name: "kind-seed", Version: "v1.31.0"},
-		Nodes:   []model.K8sNodeItem{{Name: "kind-control", Role: "control-plane", Status: "Ready", CPU: "8", Memory: "32660 MB"}},
-		Pods:    []model.K8sPodItem{{Name: "coredns-abc", Namespace: "kube-system", Status: "Running", Restarts: 3}},
-		Workloads: []model.K8sWorkloadItem{
-			{Name: "coredns", Type: "Deployment", Namespace: "kube-system", Ready: "2/2"},
-			{Name: "seed", Type: "Job", Namespace: "batch", Ready: "1/1"},
-		},
-		ConfigStorage: model.K8sConfigStorageSection{
-			Storage: []model.K8sStorageItem{{Name: "pvc-1", Kind: "PV", Capacity: "10Gi", StorageClass: "standard", AccessModes: "RWO"}},
-		},
+// captureStderr swaps os.Stderr for a pipe, runs fn, and returns what was
+// written — the closure notice is the primary observable of the closed CLI.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	capture := legacyCaptureFromDetail(detail, time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC))
+	orig := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+	done := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	fn()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out := <-done
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
 
-	if capture.CapturedAt.IsZero() {
-		t.Fatalf("capture timestamp not set")
-	}
-	if len(capture.Nodes) != 1 || capture.Nodes[0].Name != "kind-control" {
-		t.Fatalf("nodes not copied: %+v", capture.Nodes)
-	}
-	if len(capture.Workloads) != 2 || capture.Workloads[1].Type != "Job" {
-		t.Fatalf("workloads not copied: %+v", capture.Workloads)
-	}
-	if len(capture.Storage) != 1 || capture.Storage[0].Kind != "PV" {
-		t.Fatalf("storage not copied: %+v", capture.Storage)
-	}
-	if capture.Pods[0].Restarts != 3 {
-		t.Fatalf("pod restarts not copied: %+v", capture.Pods)
+// compare-inventory was closed in G1 (phase6-plan §J8·§12 #5): the §15 k8s
+// pairing ended with the C53 verdict, and removing the legacy read source
+// left the capture with nothing to pair against. The dispatch in main.go
+// survives, so the command answers with a deprecation notice and a non-zero
+// exit for every argument shape — no database access, no capture, no gate.
+func TestRunCompareInventoryClosed(t *testing.T) {
+	for _, args := range [][]string{
+		{},
+		{"--cluster", "1"},
+		{"--gate", "--cluster", "7", "--data", t.TempDir()},
+	} {
+		if code := runCompareInventory(args); code != 1 {
+			t.Fatalf("args %v: exit code = %d, want 1 (CLI closed in G1)", args, code)
+		}
 	}
 }
 
-// --cluster is mandatory for the capture path.
-func TestRunCompareInventoryRequiresCluster(t *testing.T) {
-	if code := runCompareInventory([]string{}); code != 1 {
-		t.Fatalf("exit code = %d, want 1 for missing --cluster", code)
+// The closure notice names the command and its replacement path so an
+// operator hitting the old command learns why it is gone.
+func TestRunCompareInventoryClosedNotice(t *testing.T) {
+	notice := captureStderr(t, func() {
+		if code := runCompareInventory([]string{"--cluster", "1"}); code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+	})
+	if !strings.Contains(notice, "compare-inventory") {
+		t.Fatalf("notice = %q, want the command name in the closure notice", notice)
 	}
-}
-
-// --gate evaluates the artifacts under the data directory: an empty
-// directory fails the gate (exit 1) without touching the database.
-func TestRunCompareInventoryGateEmptyDirectory(t *testing.T) {
-	dir := t.TempDir()
-	if code := runCompareInventory([]string{"--gate", "--cluster", "7", "--data", dir}); code != 1 {
-		t.Fatalf("exit code = %d, want 1 for an empty artifact directory", code)
-	}
-}
-
-// --gate passes (exit 0) on three pass artifacts over three distinct days of
-// one cluster.
-func TestRunCompareInventoryGatePassesOnThreeDistinctDays(t *testing.T) {
-	dir := t.TempDir()
-	clusterDir := filepath.Join(dir, "compare", "7")
-	for _, d := range []int{1, 2, 3} {
-		at := time.Date(2026, 9, d, 8, 0, 0, 0, time.UTC)
-		artifact := inventory.CompareArtifact{
-			ArtifactSchema: inventory.CompareArtifactSchema, ClusterName: "kind-seed",
-			Verdict: inventory.VerdictPass, LegacyCapturedAt: at, V2SyncedAt: at,
-		}
-		b, err := inventory.MarshalArtifact(artifact)
-		if err != nil {
-			t.Fatalf("MarshalArtifact: %v", err)
-		}
-		path := filepath.Join(clusterDir, at.Format("2006-01-02"), at.Format("150405")+".json")
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		if err := os.WriteFile(path, b, 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-	if code := runCompareInventory([]string{"--gate", "--cluster", "7", "--data", dir}); code != 0 {
-		t.Fatalf("exit code = %d, want 0 for a cleared gate", code)
+	if !strings.Contains(notice, "sync-inventory") {
+		t.Fatalf("notice = %q, want the V2 replacement (sync-inventory) mentioned", notice)
 	}
 }

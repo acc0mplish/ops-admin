@@ -1,8 +1,8 @@
 // k8s_projection.go — G0 읽기 3건(cluster/list·info·detail)의 V2 소스 전환
-// 착지점(phase6-plan §3.1·§J8). P 트랙 산출물인
+// 착지점, G1에서 단일 경로 고정(phase6-plan §3.1·§J8·C36 2단). P 트랙 산출물인
 // inventory.AssembleK8sClusterDetail·inventory.ProjectResources를 소비만
-// 한다(보존 제약 #6 — internal/infra 무변경). 임시 플래그 V2_READ_SOURCE_K8S는
-// 전환 검증·롤백용 장치(#12)로 G1에서 legacy 분기와 함께 제거된다.
+// 한다(보존 제약 #6 — internal/infra 무변경). G0의 전환 검증·롤백용 임시
+// 플래그(#12)는 G1에서 legacy 분기와 함께 제거됐다 — V2가 유일 소스다.
 //
 // ID 공간 판단(구현 판정 기록 — 2026-09-11): V2 투영 뷰의 응답 id는
 // conn.ID가 아니라 legacy source_id(k8s_cluster.id)로 되돌려 노출한다. 근거 —
@@ -11,9 +11,9 @@
 // 같은 id 공간을 공유해야 한다. ② §J8이 info를 컨트롤러 착지점으로 분리한
 // 이유 자체가 GetK8sCluster 소비 12곳(S5)이 legacy id 공간을 계속 쓰기
 // 때문이다. ③ C53 compare의 페어링(--cluster <legacy id>)이
-// source_model/source_id 조회(main_compare.go:83)로 성립한다. 조립물 내부의
+// source_model/source_id 조회(구 main_compare.go:83 — G1 제거)로 성립한다. 조립물 내부의
 // Cluster.ID(conn.ID)는 응답 직전 source_id로 되돌린다 — compare 집합은
-// cluster 뷰 필드를 제외하므로(legacyCaptureFromDetail은 섹션만 캡처) P가
+// cluster 뷰 필드를 제외하므로 P가
 // 잠근 패리티 계약과 충돌하지 않는다.
 //
 // register-k8s 체인(H0 신설 — source 쌍 없는 커넥션)은 I-a S5가
@@ -24,8 +24,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 
 	"gorm.io/gorm"
 
@@ -33,18 +31,6 @@ import (
 	infraModel "ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/model"
 )
-
-// k8sReadSourceV2 — 전환 플래그 판정의 단일 헬퍼: 값을 trim·소문자 정규화해
-// ""·"0"·"false"는 OFF(§11 기본 legacy), 그 외는 ON으로 읽는다. 호출부는 env
-// 이름을 인자로 넘겨 3착지점(k8s.go 2분기·info)이 같은 정규화를 공유한다.
-func k8sReadSourceV2(env string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(env))) {
-	case "", "0", "false":
-		return false
-	default:
-		return true
-	}
-}
 
 // G0 투영의 소스 해상은 백필 체인(source_model/source_id 쌍)에 한정한다.
 const (
@@ -78,23 +64,20 @@ func (s *Service) projectK8sClusterList() ([]model.K8sClusterView, error) {
 }
 
 // ProjectK8sClusterInfo — cluster/info의 V2 착지점(컨트롤러 k8s.go:32가 직접
-// 호출 — §J8). 플래그 기본값은 legacy(§11 롤백 계약)라 분기는 본 함수 안에
-// 둔다. V2 소스에는 평문 kubeconfig를 채울 수단이 없다(봉인 계약 §12 #16) —
-// 해당 필드는 영값(빈 문자열)으로 직렬화된다(C69·R-I — §12 #1의 유일 예외).
+// 호출 — §J8). G1 단일 경로: legacy 행 위임 분기는 제거됐다. V2 소스에는
+// 평문 kubeconfig를 채울 수단이 없다(봉인 계약 §12 #16) — 해당 필드는
+// 영값(빈 문자열)으로 직렬화된다(C69·R-I — §12 #1의 유일 예외).
 func (s *Service) ProjectK8sClusterInfo(clusterID uint) (model.K8sCluster, error) {
-	if k8sReadSourceV2("V2_READ_SOURCE_K8S") {
-		view, err := s.projectK8sClusterInfoView(clusterID)
-		if err != nil {
-			return model.K8sCluster{}, err
-		}
-		return s.k8sClusterFromProjection(view)
+	view, err := s.projectK8sClusterInfoView(clusterID)
+	if err != nil {
+		return model.K8sCluster{}, err
 	}
-	return s.GetK8sCluster(clusterID)
+	return s.k8sClusterFromProjection(view)
 }
 
 // projectK8sClusterDetail — cluster/detail의 V2 소스(GetK8sClusterDetail의
-// singleflight 본문에서 분기). 캐시 구조·TTL은 무변경(§J8 캐시 승계)이며
-// 캐시 키는 양 분기 모두 legacy 클러스터 id다.
+// singleflight 본문이 호출). 캐시 구조·TTL은 무변경(§J8 캐시 승계)이며
+// 캐시 키는 legacy 클러스터 id다.
 func (s *Service) projectK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
 	conn, err := s.resolveK8sProjectionConnection(clusterID)
 	if err != nil {
@@ -188,7 +171,7 @@ func (s *Service) k8sClusterFromProjection(view model.K8sClusterView) (model.K8s
 }
 
 // resolveK8sProjectionConnection — legacy 클러스터 id를 백필 체인 커넥션으로
-// 해상한다(C53 페어링과 동일 조건 — main_compare.go:83). stale 행은 부재다.
+// 해상한다(C53 페어링과 동일 조건 — 구 main_compare.go:83, G1 제거). stale 행은 부재다.
 func (s *Service) resolveK8sProjectionConnection(clusterID uint) (*infraModel.ProviderConnection, error) {
 	var conn infraModel.ProviderConnection
 	err := s.db.Where("provider_type = ? AND source_model = ? AND source_id = ? AND stale_source = ?",
