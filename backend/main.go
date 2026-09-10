@@ -51,9 +51,10 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "sync-inventory" {
 		os.Exit(runSyncInventory(os.Args[2:]))
 	}
-	// V2 compare subcommand (Phase 2 PR 22): the §15 paired run + the dated
-	// artifact + the 3-day gate check, dispatched before any server startup
-	// path.
+	// compare-inventory was closed in V2 Phase 6 G1 (D-16): the §15 k8s
+	// pairing ended with the C53 verdict, so this dispatch only answers the
+	// closure notice — kept so stale invocations fail loudly instead of
+	// silently falling through to server startup.
 	if len(os.Args) >= 2 && os.Args[1] == "compare-inventory" {
 		os.Exit(runCompareInventory(os.Args[2:]))
 	}
@@ -70,6 +71,13 @@ func main() {
 	// path.
 	if len(os.Args) >= 2 && os.Args[1] == "register-pve" {
 		os.Exit(runRegisterPVE(os.Args[2:]))
+	}
+	// V2 Phase 6 H0 (plan §3.2): the Kubernetes cluster registration CLI —
+	// validate /version, upsert the connection/context/sealed-kubeconfig/
+	// inventory-binding chain, then exit. Dispatched before any server
+	// startup path.
+	if len(os.Args) >= 2 && os.Args[1] == "register-k8s" {
+		os.Exit(runRegisterK8s(os.Args[2:]))
 	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
