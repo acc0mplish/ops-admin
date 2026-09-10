@@ -317,13 +317,18 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 			taints = append(taints, t.Key+":"+t.Effect)
 		}
 		n["taints"] = taints
-		// P1-A (J-P1-3) — podCIDRs, 단일 podCIDR 폴백. 부재 시 키 생략.
-		if len(o.Spec.PodCIDRs) > 0 {
-			cidrs := make([]string, len(o.Spec.PodCIDRs))
-			copy(cidrs, o.Spec.PodCIDRs)
+		// P1-A (J-P1-3) — podCIDRs. legacy 폴백(k8s_overview.go:55)은 PodCIDRs와
+		// 단일 podCIDR의 합집합을 수집하고 중복 제거는 조립 소관이다 — either/or가
+		// 아니라 항상 단일 값을 뒤에 붙는다(양쪽 모두 채워진 관측에서 1개를
+		// 유실하는 결함은 P1-E 승계 스왑 TestCharResolveK8sNetworkCIDRs로 검출,
+		// R-P2 구현 수정 처분).
+		cidrs := make([]string, 0, len(o.Spec.PodCIDRs)+1)
+		cidrs = append(cidrs, o.Spec.PodCIDRs...)
+		if o.Spec.PodCIDR != "" {
+			cidrs = append(cidrs, o.Spec.PodCIDR)
+		}
+		if len(cidrs) > 0 {
 			n["podCIDRs"] = cidrs
-		} else if o.Spec.PodCIDR != "" {
-			n["podCIDRs"] = []string{o.Spec.PodCIDR}
 		}
 		// P1-B (J-P1-3) — kubeletVersion·internalIP·osImage·allocatablePods.
 		applyNodeFieldKeys(n, o)

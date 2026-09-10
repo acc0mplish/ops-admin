@@ -269,6 +269,9 @@ func TestCharFlattenGatewayHosts(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"servers":[{"hosts":["a.example","b.example"]},{"hosts":["b.example","","-"]}]}`), &gateway.Spec); err != nil {
 		t.Fatal(err)
 	}
+	// v2 미대응 사유 처분(J-P1-5 (iii)): 입력이 Istio Gateway(kubeIstioGateway,
+	// Spec.Servers)다 — V2 섹션 "gateways"는 GatewayAPI 전용이고 istio는 앵커
+	// 최소형(Normalized 비움)이라 대응 구현이 없어 교체 불가.
 	if got := flattenGatewayHosts(gateway); !reflect.DeepEqual(got, []string{"a.example", "b.example"}) { // legacy 1행
 		t.Errorf("hosts = %v, want [a.example b.example]", got)
 	}
@@ -281,6 +284,8 @@ func TestCharFlattenGatewayPorts(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"servers":[{"port":{"number":80,"protocol":"HTTP"}},{"port":{"number":443,"protocol":"HTTPS"}},{"port":{}}]}`), &gateway.Spec); err != nil {
 		t.Fatal(err)
 	}
+	// v2 미대응 사유 처분(J-P1-5 (iii)): 위 hosts와 같은 Istio Gateway 입력 —
+	// V2 대응 구현 부재로 교체 불가.
 	if got := flattenGatewayPorts(gateway); !reflect.DeepEqual(got, []string{"80/HTTP", "443/HTTPS"}) { // legacy 1행
 		t.Errorf("ports = %v, want [80/HTTP 443/HTTPS]", got)
 	}

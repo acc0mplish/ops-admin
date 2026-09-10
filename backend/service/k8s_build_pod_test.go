@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"ops-admin/backend/internal/infra/inventory"
 	"ops-admin/backend/model"
 )
 
@@ -147,6 +148,9 @@ func TestCharBuildJobDetail(t *testing.T) {
 	}
 	for _, tc := range cases {
 		client, runtime := tc.setup(t)
+		// v2 미대응 사유 처분(J-P1-5 (iii)): job 상세는 YAML·컨테이너·파드를
+		// 지니는 v1 전용 뷰다 — V2 43필드 스코프(J-P1-9)에 상세 조립이 없고
+		// 원장 관측(Raw는 metadata 한정)으로 YAML을 재구성할 수 없어 교체 불가.
 		got := buildJobDetail(client, runtime, tc.item) // legacy 1행
 		charWantWorkloadDetail(t, tc.name, got, tc.want)
 	}
@@ -177,6 +181,8 @@ func TestCharBuildCronJobDetail(t *testing.T) {
 	}
 	for _, tc := range cases {
 		client, runtime := tc.setup(t)
+		// v2 미대응 사유 처분(J-P1-5 (iii)): cronjob 상세도 job 상세와 같은 v1
+		// 전용 뷰 — V2 스코프 밖 상세 조립 부재로 교체 불가(위 job 주석 참조).
 		got := buildCronJobDetail(client, runtime, tc.item) // legacy 1행
 		charWantWorkloadDetail(t, tc.name, got, tc.want)
 	}
@@ -296,7 +302,7 @@ func TestCharFormatCPUMilli(t *testing.T) {
 		{2000, "2 cores"}, {1500, "1500m"}, {1000, "1 cores"}, {0, "0m"}, {999, "999m"}, {-1000, "-1000m"},
 	}
 	for _, tc := range cases {
-		if got := formatCPUMilli(tc.value); got != tc.want { // legacy 1행
+		if got := inventory.FormatCPUMilli(tc.value); got != tc.want { // v2 oracle
 			t.Errorf("%d: = %q, want %q", tc.value, got, tc.want)
 		}
 	}
@@ -313,7 +319,7 @@ func TestCharFormatMemoryBytes(t *testing.T) {
 		{2 * gib, "2.0Gi"}, {gib + gib/2, "1.5Gi"}, {128 * 1024 * 1024, "128Mi"}, {0, "0Mi"}, {gib - 1, "1024Mi"},
 	}
 	for _, tc := range cases {
-		if got := formatMemoryBytes(tc.value); got != tc.want { // legacy 1행
+		if got := inventory.FormatMemoryBytes(tc.value); got != tc.want { // v2 oracle
 			t.Errorf("%d: = %q, want %q", tc.value, got, tc.want)
 		}
 	}
@@ -411,7 +417,7 @@ func TestCharFormatWorkloadResourceSummary(t *testing.T) {
 		{name: "memory만(limits)", containers: []kubeContainer{res(nil, map[string]string{"memory": "2Gi"})}, requests: false, want: "2.0Gi"},
 	}
 	for _, tc := range cases {
-		if got := formatWorkloadResourceSummary(tc.containers, tc.requests); got != tc.want { // legacy 1행
+		if got := v2FormatWorkloadResourceSummary(tc.containers, tc.requests); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -502,7 +508,7 @@ func TestCharServiceExternalIP(t *testing.T) {
 				Hostname string `json:"hostname"`
 			}{Hostname: hostname})
 		}
-		if got := serviceExternalIP(svc); got != tc.want { // legacy 1행
+		if got := v2ServiceExternalIP(svc); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}

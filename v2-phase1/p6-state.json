@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "blocked-⑤", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A~E #66-#70 (492be66) — P2 트랙 완결(오퍼레이션 10종·DefTable 잠금)", "spawns": 10, "next": "판정 ⑤(kubeadm-config serviceCIDR·podCIDR 2키 수집 화이트리스트 예외 — 보존 제약 #7 인접) 사용자 승인 대기. 승인 시 P1-D(조립 라이브러리)→P1-E1/E2(Z 스왑 29)→P1-F(읽기 게이트 종결)→P1-G(④ certificates) 순. ④도 사용자 판정"},
+  "ptrack": {"phase": "implement-P1E", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A~E #66-#70 · P1-D #71 (d0076cd, ⑤ 승인 이행·조립 라이브러리)", "spawns": 11, "next": "p1e-impl(Z 스왑 29마커·G-P1g 동치) → 리뷰 → PR → P1-F(읽기 게이트 종결) → P1-G(④ 사용자 대기)"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",

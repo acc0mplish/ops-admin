@@ -90,9 +90,22 @@ func jsonObjectList(v any) []contract.JSONMap {
 	return nil
 }
 
+// jsonStrMap absorbs map[string]string (in-memory) and map[string]any (DB
+// JSON) — the shape of normalized.selector. 파일 상단 흡수 계약(두 형상 모두)에
+// 맞춘다 — P1-E 글루가 발견한 갭(DB JSON 왕복 형상에서 셀렉터 매칭이 공백이
+// 되는 결함, 승계 스왑 동치 실패로 검출).
 func jsonStrMap(v any) map[string]string {
-	m, _ := v.(map[string]string)
-	return m
+	if m, ok := v.(map[string]string); ok {
+		return m
+	}
+	if m, ok := v.(map[string]any); ok {
+		out := make(map[string]string, len(m))
+		for key, value := range m {
+			out[key] = jsonString(value)
+		}
+		return out
+	}
+	return nil
 }
 
 func jsonAnyMap(v any) map[string]any {

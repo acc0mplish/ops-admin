@@ -278,7 +278,7 @@ func TestCharBuildOverviewDistribution(t *testing.T) {
 		{name: "serviceSubnet만 → pod는 노드 CIDR", nodes: []kubeNode{node}, cms: []kubeConfigMap{charKubeadmConfigMap("serviceSubnet: 10.96.0.0/12")}, want: [][2]string{{"Cluster Status", ""}, {"Cluster Version", "-"}, {"Node Count", "0 nodes"}, {"Service CIDR", "10.96.0.0/12"}, {"Pod Network", "10.244.1.0/24"}}},
 	}
 	for _, tc := range cases {
-		items := buildOverviewDistribution(tc.cluster, tc.nodes, tc.cms) // legacy 1행
+		items := v2BuildOverviewDistribution(tc.cluster, tc.nodes, tc.cms) // v2 oracle
 		if len(items) != len(tc.want) {
 			t.Fatalf("%s: items = %d, want %d", tc.name, len(items), len(tc.want))
 		}
@@ -308,7 +308,7 @@ func TestCharResolveK8sNetworkCIDRs(t *testing.T) {
 		{name: "configmap에 키 없음 → service는 Unknown, pod는 노드에서", nodes: []kubeNode{charCIDRNode("10.244.1.0/24")}, cms: []kubeConfigMap{charKubeadmConfigMap("dnsDomain: cluster.local")}, wantService: "Unknown", wantPodNetwork: "10.244.1.0/24"},
 	}
 	for _, tc := range cases {
-		serviceCIDR, podCIDR := resolveK8sNetworkCIDRs(tc.nodes, tc.cms) // legacy 1행
+		serviceCIDR, podCIDR := v2ResolveK8sNetworkCIDRs(tc.nodes, tc.cms) // v2 oracle
 		if serviceCIDR != tc.wantService || podCIDR != tc.wantPodNetwork {
 			t.Errorf("%s: = (%q, %q), want (%q, %q)", tc.name, serviceCIDR, podCIDR, tc.wantService, tc.wantPodNetwork)
 		}
@@ -452,7 +452,7 @@ func TestCharBuildNamespaceCounts(t *testing.T) {
 		Deployments: []kubeDeployment{charDeployment("d", "team-a")},
 		CronJobs:    []kubeCronJob{charCronJob("c", "team-b")},
 	}
-	counts := buildNamespaceCounts(data) // legacy 1행
+	counts := v2BuildNamespaceCounts(data) // v2 oracle
 	want := map[string][3]int{"team-a": {2, 1, 1}, "team-b": {1, 0, 1}, "없는-네임스페이스": {0, 0, 0}}
 	for namespace, triple := range want {
 		stat := counts[namespace]
@@ -535,7 +535,7 @@ func TestCharBuildPodItemsWithWorkloads(t *testing.T) {
 		{name: "아무 근거 없음 → 빈 워크로드", data: k8sFetchedData{Pods: []kubePod{charPod("orphan", "default")}}, pod: "orphan", wantName: "", wantType: ""},
 	}
 	for _, tc := range cases {
-		items := buildPodItemsWithWorkloads(tc.data) // legacy 1행
+		items := v2BuildPodItemsWithWorkloads(tc.data) // v2 oracle
 		for _, item := range items {
 			if item.Name != tc.pod {
 				continue
@@ -642,7 +642,7 @@ func TestCharBuildEndpointCounts(t *testing.T) {
 		{name: "빈 입력", endpoints: nil, want: map[string]int{}},
 	}
 	for _, tc := range cases {
-		if counts := buildEndpointCounts(tc.endpoints); !reflect.DeepEqual(counts, tc.want) { // legacy 1행
+		if counts := v2BuildEndpointCounts(tc.endpoints); !reflect.DeepEqual(counts, tc.want) { // v2 oracle
 			t.Errorf("%s: counts = %v, want %v", tc.name, counts, tc.want)
 		}
 	}

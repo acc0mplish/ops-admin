@@ -275,8 +275,7 @@ func BuildWorkloadItems(rows []ProjectedResource) []v1model.K8sWorkloadItem {
 // formatWorkloadResourceSummary mirrors legacy formatWorkloadResourceSummary —
 // 컨테이너 합(값 관측 컨테이너만 — 수집측 quantityPair가 키 생략으로 흡수) 후
 // "CPU / MEM" 결합, 전부 무관측이면 "-".
-func formatWorkloadResourceSummary(containers []containerEntry, requests bool) string {
-	var cpuMilli, memoryBytes int64
+func formatWorkloadResourceSummary(containers []containerEntry, requests bool) string {	var cpuMilli, memoryBytes int64
 	hasCPU, hasMemory := false, false
 	for _, container := range containers {
 		values := jsonAnyMap(container["limits"])
@@ -303,6 +302,13 @@ func formatWorkloadResourceSummary(containers []containerEntry, requests bool) s
 		return "-"
 	}
 	return strings.Join(parts, " / ")
+}
+
+// FormatWorkloadResourceSummary exports formatWorkloadResourceSummary for the
+// Z oracle glue (P1-E, J-P1-5 직접 대응형) — containerEntry는 contract.JSONMap
+// 별칭이라 위임 외 로직이 없다.
+func FormatWorkloadResourceSummary(containers []contract.JSONMap, requests bool) string {
+	return formatWorkloadResourceSummary(containers, requests)
 }
 
 // --- network 섹션 (집계: endpoints · 조립: age·"<none>"·nodePort 포맷) ---
