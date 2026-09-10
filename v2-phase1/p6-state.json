@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P2D", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A #66 · P2-B #67 · P2-C #68 (1898e50)", "spawns": 8, "next": "p2d-impl(traffic 2종+VS 앵커+state 분할) → 리뷰 → PR → P2-E(게이트 종결·G-P2a 문언 갱신·TestOperationDefTable). P1-D ⑤ 대기·④ P1-G 전·카나리 이연"},
+  "ptrack": {"phase": "implement-P2E", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A #66 · P2-B #67 · P2-C #68 · P2-D #69 (d08a028, 오퍼레이션 10종·Roundtrip 10)", "spawns": 9, "next": "p2e-impl(게이트 종결·DefTable·문언 갱신) → 리뷰 → PR. P2 완결 후 잔여: P1-D(⑤ 사용자 대기)·P1-E1/E2·P1-F·P1-G(④)·카나리 이연"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",
