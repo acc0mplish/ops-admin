@@ -222,46 +222,8 @@ type kindMapping struct {
 	singular string // URN 성분
 }
 
-// sectionKind maps a discovery section name to its kind/subtype/URN segment.
-func sectionKind(section string) kindMapping {
-	switch section {
-	case "nodes":
-		return kindMapping{kind: "orchestration.node", singular: "node"}
-	case "namespaces":
-		return kindMapping{kind: "orchestration.namespace", singular: "namespace"}
-	case "pods":
-		return kindMapping{kind: "orchestration.pod", singular: "pod"}
-	case "deployments", "statefulsets", "daemonsets",
-		"replicasets", "jobs", "cronjobs": // P1-A 확장 — orchestration.workload subtype 계열(J-P1-0: 어휘 슬라이스 불필요)
-		return kindMapping{kind: "orchestration.workload", subtype: strings.TrimSuffix(section, "s"), singular: "workload"}
-	case "services":
-		return kindMapping{kind: "network.load_balancer", subtype: "service", singular: "service"}
-	case "ingresses":
-		return kindMapping{kind: "network.load_balancer", subtype: "ingress", singular: "ingress"}
-	case "configmaps":
-		return kindMapping{kind: "orchestration.configmap", singular: "configmap"}
-	case "secrets":
-		return kindMapping{kind: "orchestration.secret", singular: "secret"}
-	case "persistentvolumes":
-		return kindMapping{kind: "storage.volume", subtype: "persistent_volume", singular: "pv"}
-	case "persistentvolumeclaims":
-		return kindMapping{kind: "storage.volume", subtype: "pvc", singular: "pvc"}
-	case "storageclasses":
-		return kindMapping{kind: "storage.pool", subtype: "storage_class", singular: "storageclass"}
-	case "endpoints":
-		// P1-A — Phase6ResourceKindExtensions "network.endpoint"(v2-only 보조종).
-		return kindMapping{kind: "network.endpoint", singular: "endpoint"}
-	case "gateways":
-		// P1-C1 — Phase6ResourceKindExtensions "network.gateway". Gateway·
-		// HTTPRoute는 네임스페이스 소속 종이라 URN은 default 분기
-		// {namespace}/{name} 성분을 따른다.
-		return kindMapping{kind: "network.gateway", singular: "gateway"}
-	case "httproutes":
-		return kindMapping{kind: "network.http_route", singular: "httproute"}
-	default:
-		return kindMapping{}
-	}
-}
+// sectionKind — P2-D 분할로 normalizer_sections.go로 옮겨졌다(섹션 → kind 표 +
+// istio 앵커 디코드가 같은 봉합선이다 — R-P3 동반 분할).
 
 // buildURN assembles §8.1 "enough native scope to avoid collisions" URNs —
 // 규칙은 mapping.md의 identity 표와 동치다:
@@ -475,6 +437,14 @@ func normalizeSection(ctxID uint, section string, raw json.RawMessage) (contract
 		// 비교 집합 불참(I-P5 이월 — J-P1-2).
 		var err error
 		if res, err = normalizeGWSection(ctxID, km, section, raw); err != nil {
+			return contract.DiscoveredResource{}, err
+		}
+
+	case "virtualservices":
+		// P2-D — istio 앵커(J-P1-1 — 스코프 외 종, 비교 집합 불참 R-P6).
+		// 디코드는 normalizer_sections.go로 분할(R-P3 동반 — 본 파일 650행 계약).
+		var err error
+		if res, err = normalizeAnchorSection(ctxID, km, raw); err != nil {
 			return contract.DiscoveredResource{}, err
 		}
 

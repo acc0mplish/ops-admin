@@ -2,16 +2,8 @@
 // k8s.service.update)의 OperationExecutor leg(계획 r3 §J-P1-6 확정표 — k8s.go:308
 // UpdateK8sNodeLabels·k8s_detail.go:74 UpdateK8sService의 v1 원천 2라인). 이 2종은
 // rollout이 없다 — 확정표의 handle·poll 형태 "발행+poll 1회"를 state handle
-// 가족으로 착지한다:
-//
-//	state|<connUID>|<apiPath>|<base64url(expectation JSON)>
-//
-// handle은 동결된 기대 상태(node 레이블 집합·service type/selector/ports)를
-// 자기서술하고, Poll은 GET 1회로 관측 상태가 기대를 포함하는지 판정한다(상태
-// 에코). generation·resourceVersion을 수렴 신호로 쓰지 않는 것이 설계 판단이다:
-// node의 metadata patch는 generation을 증가시키지 않을 수 있고, resourceVersion은
-// 노드 하트비트만으로도 떠돈다 — 상태 에코만이 두 종 모두에서 단조 판정면이다.
-// P2-C apply(provider_frozen_manifest)·P2-D traffic 2종이 같은 가족을 승계한다.
+// 가족으로 착지한다. handle encode/decode·관측 디코드·satisfiedBy·pollStateRef는
+// P2-D 분할로 executor_state.go로 옮겨졌다(가족 공용면 — P2-C 권고 상환).
 //
 //   - node labels_update: LIST /api/v1/nodes 1회 → merge-patch 1회. V2 node URN은
 //     uid 신원이다(buildURN — node·pod → uid; 이름은 display) — k8s API는 uid
@@ -33,8 +25,6 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -45,96 +35,12 @@ import (
 	"ops-admin/backend/internal/infra/contract"
 )
 
-// operation names — compose.go opdef 등록과 dispatch(executor.go)가 공유하는
-// 단일 원천(§J-P1-6 — descriptors are code).
+// operation names — compose_k8s_ops.go opdef 등록과 dispatch(executor.go)가
+// 공유하는 단일 원천(§J-P1-6 — descriptors are code).
 const (
 	NodeLabelsUpdateOperationName = "k8s.node.labels_update"
 	ServiceUpdateOperationName    = "k8s.service.update"
 )
-
-// --- state handle — 발행+poll 1회 가족의 ProviderRef(§J-P1-6 확정표). ---
-
-// stateHandleMarker — rollout 가족(rollout|…)과 구별되는 ProviderRef 첫 세그먼트:
-//
-//	state|<connUID>|<apiPath>|<base64url(expectation)>
-//
-// base64url(RFC 4648 unpadded)을 쓰는 이유 — expectation JSON에는 '|'가 들어갈 수
-// 있고 handle은 '|'-구분 세그먼트 계약이라다. connUID·apiPath는 공개 값이다
-// (자격 물질 아님 — 보존 제약 #7).
-const stateHandleMarker = "state"
-
-// stateExpectation — handle이 운반하는 동결 기대 상태. Resource가 두 종을 가르는
-// 판별자다. json.Marshal의 필드 순서 고정 + 맵 키 정렬로 인코딩이 결정적이다 —
-// 동일 payload 재실행은 동일 handle이다(J1 전송 계약의 state 가족 형태).
-type stateExpectation struct {
-	Resource     string                 `json:"resource"` // node | service | manifest | delete
-	Labels       map[string]string      `json:"labels,omitempty"`
-	Type         string                 `json:"type,omitempty"`
-	ExternalName string                 `json:"externalName,omitempty"`
-	Selector     map[string]string      `json:"selector,omitempty"`
-	Ports        []statePortExpectation `json:"ports,omitempty"`
-	// Manifest — P2-C apply(provider_frozen_manifest)가 동결하는 목표 manifest.
-	// 판정은 종별 디코드 없이 부분집합 에코(manifestSubsumes —
-	// executor_resource.go)라 typed 성분이 없다.
-	Manifest map[string]any `json:"manifest,omitempty"`
-}
-
-// statePortExpectation — targetPort는 정규형(숫자는 10진 문자열)으로 동결한다 —
-// 관측값(intOrString)과의 비교를 문자열 동치 하나로 만든다.
-type statePortExpectation struct {
-	Port       int    `json:"port"`
-	Protocol   string `json:"protocol"`
-	TargetPort string `json:"targetPort"`
-}
-
-// stateHandle — decodeStateRef의 결과.
-type stateHandle struct {
-	ConnectionUID string
-	APIPath       string
-	Expectation   stateExpectation
-}
-
-func encodeStateRef(connUID, apiPath string, expectation stateExpectation) (string, error) {
-	raw, err := json.Marshal(expectation)
-	if err != nil {
-		return "", fmt.Errorf("kubernetes: state expectation encode: %w", err)
-	}
-	return strings.Join([]string{
-		stateHandleMarker, connUID, apiPath, base64.RawURLEncoding.EncodeToString(raw),
-	}, "|"), nil
-}
-
-func decodeStateRef(ref string) (stateHandle, error) {
-	parts := strings.Split(ref, "|")
-	if len(parts) != 4 || parts[0] != stateHandleMarker {
-		return stateHandle{}, fmt.Errorf("kubernetes: handle %q is not a state handle (want state|<connUID>|<apiPath>|<expectation>)", ref)
-	}
-	if parts[1] == "" {
-		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries no connection uid", ref)
-	}
-	// apiPath 가드 — "/api" 접두(core 그룹 /api/v1/…·그룹 /apis/<group>/… 양쪽).
-	// P2-C resource 가족이 /apis/… 경로(workload·GatewayAPI apply)를 도입하며
-	// "/api/"에서 완화했다 — garbage("notaapi" 등)는 계속 거부된다(판단 기록).
-	if !strings.HasPrefix(parts[2], "/api") {
-		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries a malformed apiPath %q", ref, parts[2])
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(parts[3])
-	if err != nil {
-		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries an undecodable expectation: %w", ref, err)
-	}
-	var expectation stateExpectation
-	if err := json.Unmarshal(raw, &expectation); err != nil {
-		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries a malformed expectation: %w", ref, err)
-	}
-	// resource 화이트리스트 — node·service는 satisfiedBy(executor_config.go),
-	// manifest·delete는 별도 폴 leg(pollManifestRef·pollAbsentRef —
-	// executor_resource.go)가 판정한다.
-	if expectation.Resource != "node" && expectation.Resource != "service" &&
-		expectation.Resource != "manifest" && expectation.Resource != "delete" {
-		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries an unknown expectation resource %q", ref, expectation.Resource)
-	}
-	return stateHandle{ConnectionUID: parts[1], APIPath: parts[2], Expectation: expectation}, nil
-}
 
 // --- URN 파싱 — node는 uid 신원, service는 ns/name 성분(buildURN §8.1). ---
 
@@ -504,143 +410,4 @@ func (a *Adapter) executeServiceUpdate(ctx context.Context, req contract.Operati
 		return contract.OperationHandle{}, err
 	}
 	return contract.OperationHandle{ProviderRef: ref}, nil
-}
-
-// --- Poll — state handle 가족의 발행+poll 1회 판정면. ---
-
-// stateObservation — node·service 공용 GET 디코드 형태. 어느 종의 응답에도 없는
-// 필드는 영값으로 디코드된다(workloadRolloutStatus 선례).
-type stateObservation struct {
-	Metadata struct {
-		Generation int64             `json:"generation"`
-		Labels     map[string]string `json:"labels"`
-	} `json:"metadata"`
-	Spec struct {
-		Type         string                `json:"type"`
-		ExternalName string                `json:"externalName"`
-		Selector     map[string]string     `json:"selector"`
-		Ports        []observedServicePort `json:"ports"`
-	} `json:"spec"`
-}
-
-// observedServicePort — targetPort는 intOrString이라 원시 JSON으로 받아 정규형으로
-// 비교한다.
-type observedServicePort struct {
-	Port       int             `json:"port"`
-	Protocol   string          `json:"protocol"`
-	TargetPort json.RawMessage `json:"targetPort"`
-}
-
-// canonicalTargetPort — 기대측 정규형(숫자 → 10진 문자열, 문자열 → trim).
-func canonicalTargetPort(value any) string {
-	switch typed := value.(type) {
-	case int:
-		return strconv.Itoa(typed)
-	case string:
-		return strings.TrimSpace(typed)
-	}
-	return fmt.Sprintf("%v", value)
-}
-
-func canonicalObservedTargetPort(raw json.RawMessage) string {
-	var asInt int
-	if err := json.Unmarshal(raw, &asInt); err == nil {
-		return strconv.Itoa(asInt)
-	}
-	var asString string
-	if err := json.Unmarshal(raw, &asString); err == nil {
-		return strings.TrimSpace(asString)
-	}
-	return string(raw)
-}
-
-// labelsSuperset — 기대 레이블 전부가 관측에 같은 값으로 있는지(초집합). node
-// 시스템 레이블의 kubelet 재부착 때문에 동치가 아니라 초집합이다(파일 헤더 판단
-// 기록).
-func labelsSuperset(observed, want map[string]string) bool {
-	for key, value := range want {
-		if observed[key] != value {
-			return false
-		}
-	}
-	return true
-}
-
-// satisfiedBy — state 가족의 수렴 판정식. 미지 Resource는 거짓(fail-closed —
-// 알 수 없는 handle은 영원히 Running으로, 오수렴 오탐보다 안전하다).
-func (e stateExpectation) satisfiedBy(o *stateObservation) bool {
-	switch e.Resource {
-	case "node":
-		return labelsSuperset(o.Metadata.Labels, e.Labels)
-	case "service":
-		if o.Spec.Type != e.Type {
-			return false
-		}
-		if e.Type == "ExternalName" {
-			return o.Spec.ExternalName == e.ExternalName
-		}
-		if !labelsSuperset(o.Spec.Selector, e.Selector) {
-			return false
-		}
-		for _, want := range e.Ports {
-			found := false
-			for _, got := range o.Spec.Ports {
-				if got.Port == want.Port && got.Protocol == want.Protocol &&
-					canonicalObservedTargetPort(got.TargetPort) == want.TargetPort {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-// pollStateRef — state handle의 폴 leg: GET 1회 → 상태 에코 판정. Succeeded의
-// detail은 stateResultRedaction(compose.go)과 1:1인 2키(generation·serverURL)다.
-// 발급 시점에 patch는 이미 수용된 뒤라 1회 폴이 상수 경로고, 미수렴(동시 변경·
-// 복제 지연)은 Running으로 다음 폴을 기다린다 — 종단은 restart leg와 같은
-// 리스/재시도 메커니즘이 지킨다(§3.6a).
-func (a *Adapter) pollStateRef(ctx context.Context, req contract.PollRequest, ref string) (contract.OperationStatus, error) {
-	handle, err := decodeStateRef(ref)
-	if err != nil {
-		return contract.OperationStatus{}, err
-	}
-	// J12 정합 가드 — rollout leg와 동일 문구: 다른 클러스터를 폴하는 오발사를
-	// 늦은 수렴 오탐보다 빨리 잡는다.
-	if req.Connection.UID != handle.ConnectionUID {
-		return contract.OperationStatus{}, fmt.Errorf(
-			"kubernetes: poll connection UID %q does not match the rollout handle's connection %q (assembly bug — J12)",
-			req.Connection.UID, handle.ConnectionUID)
-	}
-	client, err := a.buildExecutorClient(req.Connection)
-	if err != nil {
-		return contract.OperationStatus{}, err
-	}
-	// P2-C resource 가족(manifest·delete)은 판정면이 종별 디코드와 다르다 —
-	// 부분집합 에코·404 종단(executor_resource.go)으로 분기한다.
-	switch handle.Expectation.Resource {
-	case "manifest":
-		return a.pollManifestRef(ctx, client, handle)
-	case "delete":
-		return a.pollAbsentRef(ctx, client, handle)
-	}
-	var obj stateObservation
-	if err := client.getJSONOp(ctx, handle.APIPath, nil, "poll", &obj); err != nil {
-		return contract.OperationStatus{}, err
-	}
-	if !handle.Expectation.satisfiedBy(&obj) {
-		return contract.OperationStatus{State: contract.OperationStateRunning}, nil
-	}
-	return contract.OperationStatus{
-		State: contract.OperationStateSucceeded,
-		Detail: contract.JSONMap{
-			"generation": obj.Metadata.Generation,
-			"serverURL":  client.rt.Server,
-		},
-	}, nil
 }

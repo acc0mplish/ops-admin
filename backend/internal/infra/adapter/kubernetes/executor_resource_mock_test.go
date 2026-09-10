@@ -141,9 +141,15 @@ func (m *resourceMock) serveObject(w http.ResponseWriter, r *http.Request, obj *
 // 실제로 변했을 때만 resourceVersion·generation을 증가시킨다(비교는 버전 무관 —
 // 재실행 PUT의 무증가 수렴 실증).
 func (m *resourceMock) applyReplace(obj *mockObject, body []byte) {
+	applyMockObjectReplace(m.t, obj, body)
+}
+
+// applyMockObjectReplace — applyReplace의 자유 함수형(P2-D traffic mock이 같은
+// replace 시맨틱을 재사용한다 — 판단 기록: state 가족 mock의 수렴 실증은 한 벌).
+func applyMockObjectReplace(t *testing.T, obj *mockObject, body []byte) {
 	var submitted map[string]any
 	if err := json.Unmarshal(body, &submitted); err != nil {
-		m.t.Fatalf("resourceMock: decode put body: %v", err)
+		t.Fatalf("mock: decode put body: %v", err)
 	}
 	if canonical(stripResourceVersion(submitted)) == canonical(stripResourceVersion(obj.obj)) {
 		return

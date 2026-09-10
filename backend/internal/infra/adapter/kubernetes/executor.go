@@ -206,8 +206,8 @@ func frozenRestartedAt(payload contract.JSONMap) (string, error) {
 }
 
 // servedOperations — dispatch가 수용하는 operation name set(오류 메시지용 —
-// P2-A에서 3종, P2-B에서 state-convergent 2종, P2-C에서 resource 2종 확장,
-// §J-P1-6 확정표).
+// P2-A에서 3종, P2-B에서 state-convergent 2종, P2-C에서 resource 2종, P2-D에서
+// traffic 2종 확장 — §J-P1-6 확정표 9종 + restart 완결).
 var servedOperations = []string{
 	RestartOperationName,
 	ScaleOperationName,
@@ -217,13 +217,15 @@ var servedOperations = []string{
 	ServiceUpdateOperationName,
 	ApplyOperationName,
 	DeleteOperationName,
+	IstioTrafficUpdateOperationName,
+	HTTPRouteTrafficUpdateOperationName,
 }
 
 // Execute — operation-name dispatch(§J-P1-6: restart 1종 검사문의 일반화).
 // 각 leg는 동일 검증 순서(URN → payload → UID·client — executionClient)를
 // 유지한다. workload 4종은 rollout handle·Poll을, state-convergent 2종
-// (executor_config.go)은 state handle·pollStateRef를, resource 2종(P2-C —
-// executor_resource.go)은 state handle의 manifest·delete 폴 leg를 공유한다.
+// (executor_config.go)과 resource 2종(P2-C — executor_resource.go)·traffic 2종
+// (P2-D — executor_traffic.go)은 state handle·pollStateRef 가족을 공유한다.
 func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (contract.OperationHandle, error) {
 	switch req.OperationName {
 	case RestartOperationName:
@@ -242,6 +244,10 @@ func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (c
 		return a.executeResourceApply(ctx, req)
 	case DeleteOperationName:
 		return a.executeResourceDelete(ctx, req)
+	case IstioTrafficUpdateOperationName:
+		return a.executeIstioTrafficUpdate(ctx, req)
+	case HTTPRouteTrafficUpdateOperationName:
+		return a.executeHTTPRouteTrafficUpdate(ctx, req)
 	}
 	return contract.OperationHandle{}, fmt.Errorf("kubernetes: operation %q is not served by this executor (serves %s)", req.OperationName, strings.Join(servedOperations, ", "))
 }

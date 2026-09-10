@@ -222,9 +222,10 @@ var kubernetesReadKinds = []string{
 	"orchestration.configmap",
 	"orchestration.secret",
 	"network.load_balancer",
-	"network.endpoint",   // P1-A — v2-only 보조종(service.endpoints 집계 원천, Phase6ResourceKindExtensions)
-	"network.gateway",    // P1-C1 — GatewayAPI Gateway(P1-C1 수집기, 비교 집합 불참 I-P5)
-	"network.http_route", // P1-C1 — GatewayAPI HTTPRoute(동일 — J-P1-2)
+	"network.endpoint",        // P1-A — v2-only 보조종(service.endpoints 집계 원천, Phase6ResourceKindExtensions)
+	"network.gateway",         // P1-C1 — GatewayAPI Gateway(P1-C1 수집기, 비교 집합 불참 I-P5)
+	"network.http_route",      // P1-C1 — GatewayAPI HTTPRoute(동일 — J-P1-2)
+	"network.virtual_service", // P2-D — istio VirtualService(오퍼레이션 uid 앵커 J-P1-1 — 앵커 최소형, 비교 불참 R-P6)
 	"storage.volume",
 	"storage.pool",
 }
@@ -264,9 +265,10 @@ func registerKubernetes(reg *registry.Registry) error {
 				"orchestration.configmap", // P2-C
 				"orchestration.secret",    // P2-C
 				"network.load_balancer",
-				"network.gateway",    // P2-C — GatewayAPI(v1 선호·v1beta1 폴백)
-				"network.http_route", // P2-C — 동일
-				"storage.volume",     // P2-C — pv·pvc
+				"network.gateway",         // P2-C — GatewayAPI(v1 선호·v1beta1 폴백)
+				"network.http_route",      // P2-C — 동일
+				"network.virtual_service", // P2-D — istio traffic 서빙 면
+				"storage.volume",          // P2-C — pv·pvc
 			},
 		},
 	); err != nil {

@@ -228,6 +228,16 @@ var discoverSections = []sectionTable{
 	{"persistentvolumes", "/api/v1/persistentvolumes"},
 	{"persistentvolumeclaims", "/api/v1/persistentvolumeclaims"},
 	{"storageclasses", "/apis/storage.k8s.io/v1/storageclasses"},
+	// P2-D — istio VirtualService 앵커(J-P1-1 — networking.istio.io v1beta1).
+	// 스코프 외 종: 쓰기(k8s.istio.traffic_update)의 uid 닻 전용이고 비교 집합
+	// 불참이다(R-P6 — S-2 읽기 패리티 제외와 무관). istio CRD 부재 클러스터에서는
+	// 404 섹션 스킵(gateways와 동일 — M-6·J-P1-8).
+	// Anchor path is v1beta1-only by design: istio serves VirtualService
+	// predominantly on v1beta1 (v1 group-version has no notable serving
+	// history), so unlike gatewayapi there is no sectionFallbacks entry.
+	// The traffic executor still walks v1→v1beta1 PUT candidates — see
+	// P2-D review LOW note (2026-09-10) if istio CRD versions are revisited.
+	{"virtualservices", "/apis/networking.istio.io/v1beta1/virtualservices"},
 }
 
 // cursor format: "<section>|<continue-token>" — each section delegates to the
