@@ -8,7 +8,7 @@
     "review": 1
   },
   "spawns": 6,
-  "ptrack": {"phase": "implement-P2A", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 (a030953)", "spawns": 5, "next": "p2a-impl(오퍼레이션 등록) → 리뷰 → PR. P1-D는 ⑤ 판정(kubeadm serviceCIDR 예외 승인) 사용자 대기 — 대기질: 사용자 귀환 시 ⑤ 질의 필요. ④ P1-G 전. 카나리 이연"},
+  "ptrack": {"phase": "implement-P2B", "round": {"adversary": 2}, "plan": "p-parity-plan.md r3", "done": "PP-0 #62 · P1-A #63 · P1-B #64 · P1-C #65 · P2-A #66 (6efd3f3, 결함 0)", "spawns": 6, "next": "p2b-impl(+§5 7파일 정정) → 리뷰 → PR. P1-D ⑤ 대기(사용자 귀환 시 질의)·④ P1-G 전·카나리 이연"},
   "phaseA": {
     "phase": "done",
     "pr": "#55 (6574bb0)",

@@ -291,7 +291,7 @@ PP-0 ─▶ P1-A ─▶ P1-B ─▶ P1-C1 ─▶ P1-C2 ─▶ P1-D ─▶ P1-E1 
 | **P1-F** | 2 | 게이트 종결 — mapping.md G-P1c 전환 완료(certificates → `pending(④-보안판정)`)·판정 표 갱신 | PC-5 |
 | **P1-G1** 〔④ 후〕 | 5 | certificates 관측 생산·기록 — contract/adapter.go(Observation)·k8s adapter.go·adapter_test.go·healthloop.go·healthloop_test.go(`TestHealthSweepRecordsObservation` 고정) | PC-6 |
 | **P1-G2** 〔④ 후〕 | 5 | certificates 조립·mapping.md 최종 처분·Z 스왑 4마커 — 원장 ≥33 | PC-6·PC-4·PC-2 |
-| **P2-A** | 5 | workload 3종 실행기(+test) + compose 등록 + opharness(+test, `TestOperationContractRoundtrip`) | PC-7·PC-2 |
+| **P2-A** | 7 | workload 3종 실행기(+test·mock test 분리) + executor.go dispatch 일반화(수정) + compose 등록 + opharness(+test, `TestOperationContractRoundtrip`) — 실측 정정(r3 리뷰 수용; 이하 P2~D도 executor.go 수정·mock 분리 포함) | PC-7·PC-2 |
 | **P2-B** | 3 | node labels·service.update(+test) | PC-7 |
 | **P2-C** | 3 | resource.apply(update)·delete(+test) — high·권한 검토 결론 반영 | PC-7·PC-8 |
 | **P2-D** | 5 | virtualservice 앵커 수집 + istio·httproute traffic(+test) | PC-7·PC-9 |

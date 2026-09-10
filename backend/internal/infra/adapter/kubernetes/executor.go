@@ -206,17 +206,20 @@ func frozenRestartedAt(payload contract.JSONMap) (string, error) {
 }
 
 // servedOperations — dispatch가 수용하는 operation name set(오류 메시지용 —
-// P2-A에서 3종 확장, §J-P1-6 확정표).
+// P2-A에서 3종, P2-B에서 state-convergent 2종 확장, §J-P1-6 확정표).
 var servedOperations = []string{
 	RestartOperationName,
 	ScaleOperationName,
 	ImageUpdateOperationName,
 	ResourcesUpdateOperationName,
+	NodeLabelsUpdateOperationName,
+	ServiceUpdateOperationName,
 }
 
 // Execute — operation-name dispatch(§J-P1-6: restart 1종 검사문의 일반화).
 // 각 leg는 동일 검증 순서(URN → payload → UID·client — executionClient)를
-// 유지하고, 4종 모두 rollout handle·Poll을 공유한다.
+// 유지한다. workload 4종은 rollout handle·Poll을, state-convergent 2종
+// (executor_config.go)은 state handle·pollStateRef를 공유한다.
 func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (contract.OperationHandle, error) {
 	switch req.OperationName {
 	case RestartOperationName:
@@ -227,6 +230,10 @@ func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (c
 		return a.executeImageUpdate(ctx, req)
 	case ResourcesUpdateOperationName:
 		return a.executeResourcesUpdate(ctx, req)
+	case NodeLabelsUpdateOperationName:
+		return a.executeNodeLabelsUpdate(ctx, req)
+	case ServiceUpdateOperationName:
+		return a.executeServiceUpdate(ctx, req)
 	}
 	return contract.OperationHandle{}, fmt.Errorf("kubernetes: operation %q is not served by this executor (serves %s)", req.OperationName, strings.Join(servedOperations, ", "))
 }
@@ -351,6 +358,12 @@ func updatedCount(kind string, o *workloadRolloutStatus) int {
 // kind는 loopback — 오발사 추적 증거). 판정 실패는 Running(다음 폴)이며 종단은
 // 리스/재시도 메커니즘이 지킨다(§3.6a).
 func (a *Adapter) Poll(ctx context.Context, req contract.PollRequest) (contract.OperationStatus, error) {
+	// state handle 가족(P2-B — provider_state_convergent 2종, 이후 apply·traffic이
+	// 승계)은 rollout 수렴식과 판정면이 다르다 — 마커 접두로 분기한다
+	// (pollStateRef — executor_config.go).
+	if strings.HasPrefix(req.Handle.ProviderRef, stateHandleMarker+"|") {
+		return a.pollStateRef(ctx, req, req.Handle.ProviderRef)
+	}
 	handle, err := decodeRolloutRef(req.Handle.ProviderRef)
 	if err != nil {
 		return contract.OperationStatus{}, err
