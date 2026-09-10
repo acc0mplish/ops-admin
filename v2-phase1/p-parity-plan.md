@@ -46,7 +46,7 @@
 1. **①②의 전제가 현행 코드와 다르다.** 인계 §1.1은 `requestRate`를 "Prometheus(`resolveK8sMonitorDatasource`)"로, `alertCount`를 "알림 도메인"으로 기술했다. 실측: `service/k8s.go:232-243`에서 `RequestRate = fmt.Sprintf("%d Workloads", len(workloads))`, `AlertCount = metrics.AlertCount`이고 원천 `calculateK8sAggregateMetrics`(`k8s_build_net.go:503-525`)는 **not-Ready/unschedulable 노드 + failed/pending/unknown 파드 수**. `HealthScore`(`k8s_path.go:335`)·`cpu/memoryUsage`(`formatUsagePercent` :346)도 인벤토리 파생. `resolveK8sMonitorDatasource`(`k8s_metrics.go:238`)는 클러스터 등록 시 ID 유효성 검사 전용.
 2. **`distribution[]`의 원천 2종 중 1종이 수집 금지다.** serviceCIDR 원천은 kube-system/kubeadm-config **data 값**(`k8s_overview.go:31-56`) — V2는 configmap 키 목록만 수집(mapping.md §2·보존 제약 #7). podCIDR 폴백 원천 `node.Spec.PodCIDRs`도 현행 디코드에 없다(`normalizer.go:42-58`). → 판정 ⑤.
 3. **`CreateK8sResourceYAML`(create)은 V2 오퍼레이션 모델에 안 맞는다.** 라우트(`POST /infra/resources/:uid/operations/:name/…`)·엔진 `SubmitInput.ResourceUID`·관측 리프레시(`compose.go:188-208`) 전부 **존재하는 리소스의 uid**를 요구하는데 create는 대상이 없다. → `k8s.resource.apply`는 uid-스코프 update-apply로 한정, create는 이월(I-P1·Phase H 블로커).
-4. **"오퍼레이션 10종" 계수 정정.** 인계 §2 표는 9행(신규 9종). 10종 = restart 포함 총계. G-P2a `grep -c RegisterOperation → 11 이상`은 현행 4콜사이트(`compose.go:250,343,346,349`) + 신규 9 = 13으로 성립.
+4. **"오퍼레이션 10종" 계수 정정.** 인계 §2 표는 9행(신규 9종). 10종 = restart 포함 총계. G-P2a `grep -c RegisterOperation → 11 이상`은 현행 4콜사이트(`compose.go:250,343,346,349`) + 신규 9 = 13으로 성립. (P2-E 실측 갱신 — P2-C 분할로 k8s 9종 콜사이트가 `compose_k8s_ops.go`로 이동: compose.go 4 + compose_k8s_ops.go 9 = 13. 게이트 문언은 PC-10이 2파일 합산으로 갱신.)
 5. **G-P1a/G-P1b의 게이트 명령이 공허 통과한다.** `-run TestMappingCoverage`는 현행 테스트명(`TestMappingTableCoversLegacyFields` 등, `mapping_test.go:125,166,201`)과 무매치. §7에서 실명 교정.
 6. **Z 마커 총수는 120이다 (지시문 "121"과 불일치 — 실측 2회).** `grep -rc '// legacy 1행'`·`grep -rh '// legacy' | wc -l` 모두 **120**(7 테스트 파일 24+21+26+19+25+4+1, 헬퍼 0). TestChar 함수 수 120과 우연 일치. PC-4는 총수를 하드코딩하지 않는 **불식식**(잔여 + 원장행수 = 총수)으로 판정해 구현 시점에 자기검증한다.
 7. **r1의 인용 오류 2건 정정**: compose RegisterOperation 2번째 proxmox 콜사이트는 `:346`(r1 `:345`) · executor operation 검사문은 `executor.go:210`(r1 `:209`).
@@ -363,7 +363,9 @@ PC-5  G-P1a: cd backend && go test ./internal/infra/adapter/kubernetes/ -run "Te
         종료 시 python3 -c "import json,glob,os; f=max(glob.glob('data/compare/1/*/*.json'),key=os.path.getmtime); print(json.load(open(f))['verdict'])" → pass (최신 아티팩트 위생)
       G-P1f: (repo root) grep -rn 'certificateObservation' backend/internal/infra/ → 0행 이고 \
         grep -ci 'certificate' backend/service/testdata/v2-swap-ledger.txt → 0 (④ 결착 전 — 인증서 구현·스왑 부재)
-PC-10 G-P2a: cd backend && grep -c 'RegisterOperation' internal/infra/compose/compose.go → 11 이상
+PC-10 G-P2a: cd backend && cat internal/infra/compose/compose.go internal/infra/compose/compose_k8s_ops.go \
+        | grep -c 'RegisterOperation' → 13 이상 (2파일 합산 — P2-C 분할 실측 4+9, P2-E 갱신.
+        단일 파일 문언은 분할로 드리프트한 구문. 등록면 닫기는 G-P2c TestOperationDefTable total 13 단얫)
       G-P2b: cd backend && go test ./internal/infra/contracttest/ -count=1 → ok 이고 \
         go test ./internal/infra/adapter/kubernetes/ -run TestOperationContractRoundtrip -count=1 → ok (10종 왕복 — P2-A deliverable)
       G-P2c: cd backend && go test ./internal/infra/contracttest/ -run TestOperationDefTable -count=1 → ok (P2-E deliverable — J-P1-6 확정표와 1:1)
@@ -378,7 +380,8 @@ PC-6  grep -c 'pending(④' backend/internal/infra/adapter/kubernetes/mapping.md
 PC-7  cd backend && go test ./internal/infra/adapter/kubernetes/ -run 'TestExecute|TestPoll' -count=1 → ok
       (실존 가족명 확장 — `-run TestExecutor` 0매치 폐지)
 PC-8  cd backend && go test ./internal/infra/contracttest/ -run TestOperationDefTable -count=1 → ok (risk high 2종·권한 10종 단얫 포함 — grep 다중행 리터럴 폐지) · \
-      grep -c 'RequiredPermission' internal/infra/compose/compose.go → 13 이상 (M-7 완화)
+      cat internal/infra/compose/compose.go internal/infra/compose/compose_k8s_ops.go \
+        | grep -c 'RequiredPermission' → 13 이상 (M-7 완화 — 2파일 합산, P2-E 갱신: G-P2a와 동일 P2-C 분할 드리프트)
 PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapter.go → 1 이상 (istio 앵커)
 ```
 
@@ -438,7 +441,7 @@ PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapte
 2. **판정 ④ 결착** — P1-G1 전. 권고 A′-1(HealthResult.Observation + healthloop 기록).
 3. **kind 어휘 최종 명칭** — `network.gateway`·`network.http_route`·`network.endpoint`·`network.virtual_service` 리뷰 확정(PP-0 착지 전).
 4. **apply·delete 권한 검토 결론** — 권고: v1 문자열 재사용 + high/승인 상향. 분리 권한은 하드닝. P2-C 전.
-5. **〔r2·M-4〕G-P2c 등재처 재해석 승인** — "sensitive-routes.txt 10행 등재"를 코드+`TestOperationDefTable`로 대체하는 인계 게이트 문언 변경. 골든 292 불변 원칙 유지 전제.
+5. **〔r2·M-4 → P2-E 확정〕G-P2c 등재처 재해석** — "sensitive-routes.txt 10행 등재"를 코드+`TestOperationDefTable`로 대체하는 인계 게이트 문언 변경. 골든 292 불변 원칙 유지 전제. **확정·착지(P2-E)**: 등재처 = opdef 코드(descriptors are code)+`contracttest/opdef_table_test.go` — 10행 전칸럼(권한·risk·승인·capability·ResourceKinds·IdempotencyPolicy) 잠금·레지스트리 total 13 닫기·plan·execute 대표행↔restart def 정합 단얫. 골든 292·452 불변 확인.
 
 ---
 
@@ -448,3 +451,4 @@ PC-9  grep -ci 'virtualservice' backend/internal/infra/adapter/kubernetes/adapte
 - 사실 정정 7건(§1) — 인계 ①② 전제·distribution 원천·create 부적합·게이트 공허·**마커 총수 120(지시문 121과 불일치 — 불식식으로 자기검증)**·인용 2건.
 - kind 어휘 = `Phase6ResourceKindExtensions` 4종(contract 슬라이스 선례 준수) · 비교 합류 = job·cronjob만(gateway 계열은 I-P5) · ④ = A′-1 변형(arch rule 2 정합).
 - 집계/조립 = `inventory/k8sassembly.go` 신규 · P2 = `api/v2` 무변경 · 권한·라우트 신설 0(골든 불변) · pod 컨테이너 원시량 수집(milli/bytes 정수).
+- **G-P2c 등재처 재해석 확정(P2-E)** — 10종 등재처는 코드+`TestOperationDefTable`(plan·execute는 파라미터 라우트라 골든 등재는 물리적 불가 — J-P1-7)·대표행 정합(sensitive-routes.txt:157-158 ↔ restart def)은 표 테스트 단얫으로 착지. G-P2a·PC-8 등록 계수 게이트는 P2-C 분할 실측(compose.go 4+compose_k8s_ops.go 9)으로 2파일 합산 문언 갱신.

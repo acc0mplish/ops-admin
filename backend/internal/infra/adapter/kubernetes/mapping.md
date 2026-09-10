@@ -260,3 +260,23 @@ CRD 실클러스터 설치와 함께)로 이월된다.
   정규화에 진입한다 — 값은 어댑터 경계에서 폐기.
 - 게이트웨이 모드는 `Connection.Config{"connection_mode","gateway_id"}` + 주입 dialer로만
   구성(A4) — Phase 2 게이트 증명은 직접 연결, 실환경 홉은 M2.
+
+## 7. 쓰기 오퍼레이션 등재처 — 종결 표기 (P2-E)
+
+본 표는 **읽기 패리티**(legacy `K8sClusterDetail` 직렬화 ↔ V2 정규화)의 권위 표다 —
+coverage rule(§15.2)도 응답 직렬화 필드를 대상으로 한다. 쓰기 오퍼레이션 10종
+(`k8s.workload.restart`·`scale`·`image_update`·`resources_update`·
+`k8s.node.labels_update`·`k8s.service.update`·`k8s.resource.apply`(update 한정)·
+`k8s.resource.delete`·`k8s.istio.traffic_update`·`k8s.httproute.traffic_update`)의
+등재처는 본 표가 아니라 **opdef 코드**(descriptors are code — `compose_k8s_ops.go`
+opdef 변수 + `compose.go` `restartOperation`)와 그 1:1 잠금 테스트
+`contracttest/opdef_table_test.go`(`TestOperationDefTable` — 권한·risk·승인·
+capability·ResourceKinds·IdempotencyPolicy 전칸럼)다(J-P1-7 재해석 확정 — plan·execute는
+파라미터 라우트라 sensitive-routes 골든에 10행 실기가 물리적 불가, 계획 §10 미해결 5의 확정 판정).
+
+- plan·execute 파라미터 라우트 2개는 골든(`docs/security/sensitive-routes.txt:157-158`)
+  에 대표 권한(`assets:k8s:workload:restart`)으로 실리고, 요청별 권한 분해는
+  `opdef.V2DynamicMiddleware` + `ResolveOperationPermission`(`routes_v2.go:33-34`)이
+  집행한다. 대표행 ↔ restart def 정합은 `TestOperationDefTable`이 단얫한다.
+- 골든 292·452 불변은 유지 원칙 — 오퍼레이션 추가는 골든이 아니라 opdef 코드·표 테스트
+  쪽 착지다(신규 권한 문자열 0 — 보존 제약 #6 유지).
