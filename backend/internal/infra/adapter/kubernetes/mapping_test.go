@@ -68,7 +68,7 @@ var coverageTable = map[string]string{
 	"overview.healthScore": "mapped(집계·P1-D)", "overview.cpuUsage": "mapped(집계·P1-D)",
 	"overview.memoryUsage": "mapped(집계·P1-D)", "overview.podUsage": "mapped(집계·P1-D)",
 	"overview.requestRate": "mapped(집계·P1-D)", "overview.alertCount": "mapped(집계·P1-D)",
-	"overview.distribution": "mapped(조립·판정⑤)", "overview.certificates": "dropped(v2-schema-absent)",
+	"overview.distribution": "mapped(조립·판정⑤)", "overview.certificates": "pending(④-보안판정)",
 	// §4.3 nodes
 	"nodes.name": "mapped", "nodes.role": "mapped", "nodes.status": "mapped",
 	"nodes.version": "mapped", "nodes.internalIP": "mapped",
@@ -182,7 +182,9 @@ func TestComparisonScopeTableMatchesEngine(t *testing.T) {
 		}
 	}
 	legacyOnly := map[string]string{
-		"replicaset": "dropped(v2-not-collected)",
+		// P1-F: P1-A 수집 착지로 dropped(v2-not-collected) 폐기 — 비교 승격은
+		// I-P5 재판정까지 이관 안 함(mapping.md §3.2).
+		"replicaset": "v2-only",
 		// storageclass는 v2-only이지만 legacy 표기의 처분 어휘도 §3.2 표에 있다.
 		"storageclass": "v2-only",
 	}
@@ -193,7 +195,7 @@ func TestComparisonScopeTableMatchesEngine(t *testing.T) {
 	}
 
 	// mapping.md documents all single-side rows.
-	for _, token := range []string{"ReplicaSet", "Job", "CronJob", "storageclass", "dropped(v2-not-collected)", "v2-only"} {
+	for _, token := range []string{"ReplicaSet", "Job", "CronJob", "storageclass", "이관 안 함", "v2-only"} {
 		if !strings.Contains(doc, token) {
 			t.Errorf("scope token %q absent from mapping.md §3.2", token)
 		}
