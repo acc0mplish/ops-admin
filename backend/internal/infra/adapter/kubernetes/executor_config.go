@@ -67,12 +67,16 @@ const stateHandleMarker = "state"
 // 판별자다. json.Marshal의 필드 순서 고정 + 맵 키 정렬로 인코딩이 결정적이다 —
 // 동일 payload 재실행은 동일 handle이다(J1 전송 계약의 state 가족 형태).
 type stateExpectation struct {
-	Resource     string                 `json:"resource"` // node | service
+	Resource     string                 `json:"resource"` // node | service | manifest | delete
 	Labels       map[string]string      `json:"labels,omitempty"`
 	Type         string                 `json:"type,omitempty"`
 	ExternalName string                 `json:"externalName,omitempty"`
 	Selector     map[string]string      `json:"selector,omitempty"`
 	Ports        []statePortExpectation `json:"ports,omitempty"`
+	// Manifest — P2-C apply(provider_frozen_manifest)가 동결하는 목표 manifest.
+	// 판정은 종별 디코드 없이 부분집합 에코(manifestSubsumes —
+	// executor_resource.go)라 typed 성분이 없다.
+	Manifest map[string]any `json:"manifest,omitempty"`
 }
 
 // statePortExpectation — targetPort는 정규형(숫자는 10진 문자열)으로 동결한다 —
@@ -108,7 +112,10 @@ func decodeStateRef(ref string) (stateHandle, error) {
 	if parts[1] == "" {
 		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries no connection uid", ref)
 	}
-	if !strings.HasPrefix(parts[2], "/api/") {
+	// apiPath 가드 — "/api" 접두(core 그룹 /api/v1/…·그룹 /apis/<group>/… 양쪽).
+	// P2-C resource 가족이 /apis/… 경로(workload·GatewayAPI apply)를 도입하며
+	// "/api/"에서 완화했다 — garbage("notaapi" 등)는 계속 거부된다(판단 기록).
+	if !strings.HasPrefix(parts[2], "/api") {
 		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries a malformed apiPath %q", ref, parts[2])
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[3])
@@ -119,7 +126,11 @@ func decodeStateRef(ref string) (stateHandle, error) {
 	if err := json.Unmarshal(raw, &expectation); err != nil {
 		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries a malformed expectation: %w", ref, err)
 	}
-	if expectation.Resource != "node" && expectation.Resource != "service" {
+	// resource 화이트리스트 — node·service는 satisfiedBy(executor_config.go),
+	// manifest·delete는 별도 폴 leg(pollManifestRef·pollAbsentRef —
+	// executor_resource.go)가 판정한다.
+	if expectation.Resource != "node" && expectation.Resource != "service" &&
+		expectation.Resource != "manifest" && expectation.Resource != "delete" {
 		return stateHandle{}, fmt.Errorf("kubernetes: state handle %q carries an unknown expectation resource %q", ref, expectation.Resource)
 	}
 	return stateHandle{ConnectionUID: parts[1], APIPath: parts[2], Expectation: expectation}, nil
@@ -609,6 +620,14 @@ func (a *Adapter) pollStateRef(ctx context.Context, req contract.PollRequest, re
 	client, err := a.buildExecutorClient(req.Connection)
 	if err != nil {
 		return contract.OperationStatus{}, err
+	}
+	// P2-C resource 가족(manifest·delete)은 판정면이 종별 디코드와 다르다 —
+	// 부분집합 에코·404 종단(executor_resource.go)으로 분기한다.
+	switch handle.Expectation.Resource {
+	case "manifest":
+		return a.pollManifestRef(ctx, client, handle)
+	case "delete":
+		return a.pollAbsentRef(ctx, client, handle)
 	}
 	var obj stateObservation
 	if err := client.getJSONOp(ctx, handle.APIPath, nil, "poll", &obj); err != nil {

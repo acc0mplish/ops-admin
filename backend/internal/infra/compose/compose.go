@@ -249,15 +249,24 @@ func registerKubernetes(reg *registry.Registry) error {
 		contract.Capability{
 			// §10.1 "(Phase 3: restart only)" — apply가 지금 하는 일은 restart뿐.
 			// P2 계열 opdef가 resource kind 면을 넓힌다(P2-A workload 3종·P2-B
-			// node·service 2종) — 선언을 opdef kind와 정합하게 유지한다. §16.1
-			// 열거와 엔진 제출 검증은 opdef kind로 움직이고 등록 검증은 어휘 소속만
-			// 요구하므로 이 확장은 계기판 성격이다.
+			// node·service 2종·P2-C resource apply·delete) — 선언을 opdef kind와
+			// 정합하게 유지한다. §16.1 열거와 엔진 제출 검증은 opdef kind로
+			// 움직이고 등록 검증은 어휘 소속만 요구하므로 이 확장은 계기판
+			// 성격이다. orchestration.pod만 없다 — pod는 uid 신원이라 P2-C
+			// apply·delete 면에서 빠지고 mutation opdef가 없다(executor_resource.go
+			// 판단 기록).
 			Name:    "orchestration.kubernetes.apply",
 			Version: "1",
 			ResourceKinds: []string{
 				"orchestration.workload",
 				"orchestration.node",
+				"orchestration.namespace", // P2-C — resource apply·delete 서빙 면
+				"orchestration.configmap", // P2-C
+				"orchestration.secret",    // P2-C
 				"network.load_balancer",
+				"network.gateway",    // P2-C — GatewayAPI(v1 선호·v1beta1 폴백)
+				"network.http_route", // P2-C — 동일
+				"storage.volume",     // P2-C — pv·pvc
 			},
 		},
 	); err != nil {
@@ -265,6 +274,11 @@ func registerKubernetes(reg *registry.Registry) error {
 	}
 	return reg.RegisterOperation(restartOperation)
 }
+
+// k8s 오퍼레이션 정의(restartOperation·registerKubernetesMutations·opdef 변수·
+// 결과 redaction 스펙)는 P2-C 분할(compose_k8s_ops.go — 리뷰 권고 §9-7)로
+// 이전됐다. pve opdef 등록부(registerProxmoxMutations 계열)는 compose.go에
+// 남는다 — provider 단위 분할 봉합선(판단 기록).
 
 // registerAliyun declares the aliyun read capability pair (판정 J10 — §10.1
 // 어휘): inventory.full + compute.vm.read, 둘 다 compute.vm 1종(E-3 — vm family
@@ -286,178 +300,6 @@ func registerAliyun(reg *registry.Registry) error {
 			ReadOnly:      true,
 		},
 	)
-}
-
-// restartOperation — k8s.workload.restart 정의(§3.3).
-var restartOperation = contract.OperationDefinition{
-	Name:    kubernetes.RestartOperationName,
-	Version: "1",
-	// §10.3 "role grants carry over" — 이미 시드된 v1 권한 재사용(J4,
-	// 신규 권한 문자열 0 — 보존 제약 #2).
-	RequiredPermission: "assets:k8s:workload:restart",
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"orchestration.workload"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	// J8 — V2 레인 신중 posture(첫 프로덕션 mutation의 승인 실증).
-	RequiresApproval: true,
-	// J1 — provider 수준 멱등: 동결 restartedAt의 byte-identical patch.
-	IdempotencyPolicy: "provider_frozen_annotation",
-	TimeoutSeconds:    30,
-	RetryPolicy:       contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	// §10.2 typed redaction spec — 결과 detail의 허용 필드를 타입으로 명시.
-	// executor의 성공 detail 키와 1:1(generation·restartedAt·readyReplicas·
-	// updated·serverURL) — 그 밖의 키는 허용되지 않는다.
-	Redaction: func() any { return rolloutResultRedaction{} },
-}
-
-// registerKubernetesMutations — P2-A~D(계획 r3 §J-P1-6 확정표): restart를
-// 제외한 workload mutation 9종 opdef 등록(descriptors are code). 권한 문자열은
-// v1 sensitive-routes.txt 재사용 — 신규 0(보존 제약 #6). 전 opdef 승인 필수
-// (확정표 수정 2건 — restart 선례 compose.go RequiresApproval 승계). 등록은
-// pve 선례(registerProxmoxMutations)와 같은 명시 콜 — P2-A는 workload 3종을,
-// P2-B는 state-convergent 2종을, P2-C~D가 나머지를 추가한다(G-P2a 콜사이트
-// 계수의 궤도).
-func registerKubernetesMutations(reg *registry.Registry) error {
-	if err := reg.RegisterOperation(workloadScaleOperation); err != nil {
-		return err
-	}
-	if err := reg.RegisterOperation(workloadImageUpdateOperation); err != nil {
-		return err
-	}
-	if err := reg.RegisterOperation(workloadResourcesUpdateOperation); err != nil {
-		return err
-	}
-	if err := reg.RegisterOperation(nodeLabelsUpdateOperation); err != nil {
-		return err
-	}
-	return reg.RegisterOperation(serviceUpdateOperation)
-}
-
-// rolloutResultRedaction — rollout 4종(restart 포함)이 공유하는 결과 detail 허용
-// 필드(§10.2). Poll(executor.go)이 상시 싣는 공통 5키와 1:1이고, restart 외
-// op의 restartedAt는 부재 관측값(공백 문자열)이다 — plan 응답의 restartedAt 키가
-// 타 op에 붙는 것과 같은 기존 동작(무해)의 승계(§J-P1-6).
-type rolloutResultRedaction struct {
-	Generation    int64  `json:"generation"`
-	RestartedAt   string `json:"restartedAt"`
-	ReadyReplicas int    `json:"readyReplicas"`
-	Updated       int    `json:"updated"`
-	ServerURL     string `json:"serverURL"`
-}
-
-// stateResultRedaction — state-convergent 가족(P2-B node·service — 이후 apply·
-// traffic이 승계)이 공유하는 결과 detail 허용 필드(§10.2). Poll(executor_config.go
-// pollStateRef)이 싣는 2키와 1:1이다 — rollout 가족의 5키에서 rollout 전용 성분
-// (restartedAt·replica 카운트)을 뺀 최소면이다.
-type stateResultRedaction struct {
-	Generation int64  `json:"generation"`
-	ServerURL  string `json:"serverURL"`
-}
-
-// workload mutation 3종 opdef(P2-A — 계획 r3 §J-P1-6 확정표). 공통 posture:
-// capability orchestration.kubernetes.apply · kind orchestration.workload ·
-// mutating · risk medium · 승인 필수 · rollout 수렴 폴(restart leg와 handle·
-// Poll 공유). RetryPolicy는 restart 선례(MaxAttempts 3 · BackoffSeconds 5 —
-// frozen annotation/payload·state-convergent 모두 provider 수준 멱등이라
-// 재시도가 재롤아웃을 유발하지 않는다).
-
-// workloadScaleOperation — k8s.workload.scale(v1 k8s_workload.go:61). /scale
-// 서브리소스 merge-patch — 동일 목표 replicas로의 재실행은 상태 재수렴.
-var workloadScaleOperation = contract.OperationDefinition{
-	Name:               kubernetes.ScaleOperationName,
-	Version:            "1",
-	RequiredPermission: "assets:k8s:workload:scale", // v1 sensitive-routes.txt:184
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"orchestration.workload"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	RequiresApproval:   true,
-	IdempotencyPolicy:  "provider_state_convergent",
-	TimeoutSeconds:     30,
-	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	Redaction:          func() any { return rolloutResultRedaction{} },
-}
-
-// workloadImageUpdateOperation — k8s.workload.image_update(v1
-// k8s_workload.go:149). 동결 version으로의 replaceImageVersion 경험식 patch —
-// 기존 tag 절단 때문에 재실행은 byte-identical이 된다.
-var workloadImageUpdateOperation = contract.OperationDefinition{
-	Name:               kubernetes.ImageUpdateOperationName,
-	Version:            "1",
-	RequiredPermission: "assets:k8s:workload:image", // v1 sensitive-routes.txt:183
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"orchestration.workload"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	RequiresApproval:   true,
-	IdempotencyPolicy:  "provider_frozen_payload",
-	TimeoutSeconds:     30,
-	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	Redaction:          func() any { return rolloutResultRedaction{} },
-}
-
-// workloadResourcesUpdateOperation — k8s.workload.resources_update(v1
-// k8s_workload.go:232). 동결 containers payload로의 resources·env·pull policy
-// patch — 재실행은 동일 상태의 재적용(실변경 없음 → generation 무증가)이라
-// 재롤아웃이 없다.
-var workloadResourcesUpdateOperation = contract.OperationDefinition{
-	Name:               kubernetes.ResourcesUpdateOperationName,
-	Version:            "1",
-	RequiredPermission: "assets:k8s:workload:yaml", // v1 sensitive-routes.txt:272
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"orchestration.workload"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	RequiresApproval:   true,
-	IdempotencyPolicy:  "provider_frozen_payload",
-	TimeoutSeconds:     30,
-	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	Redaction:          func() any { return rolloutResultRedaction{} },
-}
-
-// state-convergent 2종 opdef(P2-B — 계획 r3 §J-P1-6 확정표). rollout이 없는
-// mutation — handle·poll은 state handle 가족(executor_config.go: 발행+poll 1회,
-// 기대 상태 에코 판정)이다. 공통 posture는 workload 3종과 동일(capability
-// orchestration.kubernetes.apply · mutating · risk medium · 승인 필수 · restart
-// 선례 RetryPolicy — state-convergent 재시도는 동일 상태 재수렴이라 무해)이고,
-// resource kind가 workload를 벗어난다(node·network.load_balancer — 등록 검증은
-// 어휘 소속만 요구).
-
-// nodeLabelsUpdateOperation — k8s.node.labels_update(v1 k8s.go:308).
-// payload에 없는 기존 레이블의 null 제거 포함 — 재실행은 제거항 소멸 후 동일 상태
-// 재적용(provider_state_convergent).
-var nodeLabelsUpdateOperation = contract.OperationDefinition{
-	Name:               kubernetes.NodeLabelsUpdateOperationName,
-	Version:            "1",
-	RequiredPermission: "assets:k8s:workload:yaml", // v1 sensitive-routes.txt:269
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"orchestration.node"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	RequiresApproval:   true,
-	IdempotencyPolicy:  "provider_state_convergent",
-	TimeoutSeconds:     30,
-	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	Redaction:          func() any { return stateResultRedaction{} },
-}
-
-// serviceUpdateOperation — k8s.service.update(v1 k8s_detail.go:74).
-// wholesale-spec merge-patch(type·selector·ports·labels·annotations) — 재실행은
-// 동일 값의 재 upsert(provider_state_convergent).
-var serviceUpdateOperation = contract.OperationDefinition{
-	Name:               kubernetes.ServiceUpdateOperationName,
-	Version:            "1",
-	RequiredPermission: "assets:k8s:workload:yaml", // v1 sensitive-routes.txt:271
-	RequiredCapability: "orchestration.kubernetes.apply",
-	ResourceKinds:      []string{"network.load_balancer"},
-	Mutating:           true,
-	RiskLevel:          "medium",
-	RequiresApproval:   true,
-	IdempotencyPolicy:  "provider_state_convergent",
-	TimeoutSeconds:     30,
-	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
-	Redaction:          func() any { return stateResultRedaction{} },
 }
 
 // proxmoxGuestKinds — proxmox mutation capability·opdef가 통제하는 게스트 kind
