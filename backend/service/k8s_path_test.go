@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"ops-admin/backend/internal/infra/inventory"
 	"ops-admin/backend/model"
 )
 
@@ -341,7 +342,7 @@ func TestCharCalculateHealthScore(t *testing.T) {
 		{alertCount: 100, want: 40},
 	}
 	for _, tc := range cases {
-		if got := calculateHealthScore(tc.alertCount); got != tc.want { // legacy 1행
+		if got := inventory.CalculateHealthScore(tc.alertCount); got != tc.want { // v2 oracle
 			t.Errorf("%d: = %d, want %d", tc.alertCount, got, tc.want)
 		}
 	}
@@ -363,7 +364,7 @@ func TestCharFormatUsagePercent(t *testing.T) {
 		{used: 2, total: 1, want: "200.0%"},
 	}
 	for _, tc := range cases {
-		if got := formatUsagePercent(tc.used, tc.total); got != tc.want { // legacy 1행
+		if got := inventory.FormatUsagePercent(tc.used, tc.total); got != tc.want { // v2 oracle
 			t.Errorf("(%d,%d): = %q, want %q", tc.used, tc.total, got, tc.want)
 		}
 	}
@@ -389,7 +390,7 @@ func TestCharNodeReadyStatus(t *testing.T) {
 		{name: "다른 조건만 → Unknown", node: otherOnly, want: "Unknown"},
 	}
 	for _, tc := range cases {
-		if got := nodeReadyStatus(tc.node); got != tc.want { // legacy 1행
+		if got := v2NodeReadyStatus(tc.node); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -429,7 +430,7 @@ func TestCharJoinNodeRoles(t *testing.T) {
 		{name: "빈 맵 → worker", labels: nil, want: "worker"},
 	}
 	for _, tc := range cases {
-		if got := joinNodeRoles(tc.labels); got != tc.want { // legacy 1행
+		if got := v2JoinNodeRoles(tc.labels); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -545,7 +546,7 @@ func TestCharFormatTimestamp(t *testing.T) {
 		{value: "bogus", want: "-"},
 	}
 	for _, tc := range cases {
-		if got := formatTimestamp(tc.value); got != tc.want { // legacy 1행
+		if got := inventory.FormatTimestamp(tc.value); got != tc.want { // v2 oracle
 			t.Errorf("%q: = %q, want %q", tc.value, got, tc.want)
 		}
 	}
@@ -625,7 +626,7 @@ func TestCharFallbackText(t *testing.T) {
 		{value: "x", want: "x"},
 	}
 	for _, tc := range cases {
-		if got := fallbackText(tc.value); got != tc.want { // legacy 1행
+		if got := inventory.FallbackText(tc.value); got != tc.want { // v2 oracle
 			t.Errorf("%q: = %q, want %q", tc.value, got, tc.want)
 		}
 	}

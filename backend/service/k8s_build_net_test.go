@@ -227,7 +227,7 @@ func TestCharCollectGatewayAPIHosts(t *testing.T) {
 	gateway := charGatewayAPI("gw", "default")
 	gateway.Spec.Listeners = append(gateway.Spec.Listeners,
 		charGatewayListener("a.example", 0, ""), charGatewayListener("a.example", 0, ""), charGatewayListener("", 0, ""))
-	if got := collectGatewayAPIHosts(gateway); !reflect.DeepEqual(got, []string{"a.example", "*"}) { // legacy 1행
+	if got := v2CollectGatewayAPIHosts(gateway); !reflect.DeepEqual(got, []string{"a.example", "*"}) { // v2 oracle
 		t.Errorf("hosts = %v, want [a.example *]", got)
 	}
 }
@@ -237,7 +237,7 @@ func TestCharCollectGatewayAPIPorts(t *testing.T) {
 	gateway := charGatewayAPI("gw", "default")
 	gateway.Spec.Listeners = append(gateway.Spec.Listeners,
 		charGatewayListener("", 80, "HTTP"), charGatewayListener("", 80, "HTTP"), charGatewayListener("", 0, "HTTPS"))
-	if got := collectGatewayAPIPorts(gateway); !reflect.DeepEqual(got, []string{"80/HTTP", "HTTPS"}) { // legacy 1행
+	if got := v2CollectGatewayAPIPorts(gateway); !reflect.DeepEqual(got, []string{"80/HTTP", "HTTPS"}) { // v2 oracle
 		t.Errorf("ports = %v, want [80/HTTP HTTPS]", got)
 	}
 }
@@ -247,7 +247,7 @@ func TestCharCollectGatewayAPIAddresses(t *testing.T) {
 	gateway := charGatewayAPI("gw", "default")
 	gateway.Status.Addresses = append(gateway.Status.Addresses,
 		charGatewayAddress("1.1.1.1"), charGatewayAddress("1.1.1.1"), charGatewayAddress(" "))
-	if got := collectGatewayAPIAddresses(gateway); !reflect.DeepEqual(got, []string{"1.1.1.1"}) { // legacy 1행
+	if got := v2CollectGatewayAPIAddresses(gateway); !reflect.DeepEqual(got, []string{"1.1.1.1"}) { // v2 oracle
 		t.Errorf("addresses = %v, want [1.1.1.1]", got)
 	}
 }
@@ -279,7 +279,7 @@ func TestCharResolveGatewayAPIAddress(t *testing.T) {
 		{name: "매칭 없음 → -", item: charGatewayAPI("none", "other"), want: "-"},
 	}
 	for _, tc := range cases {
-		if got := resolveGatewayAPIAddress(tc.item, services); got != tc.want { // legacy 1행
+		if got := v2ResolveGatewayAPIAddress(tc.item, services); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -289,7 +289,7 @@ func TestCharResolveGatewayAPIAddress(t *testing.T) {
 func TestCharCollectHTTPRouteParents(t *testing.T) {
 	route := charHTTPRoute("route", "default")
 	charDecode(t, `{"parentRefs":[{"name":"gw","namespace":"istio"},{"name":"gw"},{"name":"  "}]}`, &route.Spec)
-	if got := collectHTTPRouteParents(route); !reflect.DeepEqual(got, []string{"istio/gw", "gw"}) { // legacy 1행
+	if got := v2CollectHTTPRouteParents(route); !reflect.DeepEqual(got, []string{"istio/gw", "gw"}) { // v2 oracle
 		t.Errorf("parents = %v, want [istio/gw gw]", got)
 	}
 }
@@ -301,7 +301,7 @@ func TestCharCollectHTTPRouteTargets(t *testing.T) {
 	if err := json.Unmarshal([]byte(specJSON), &route.Spec); err != nil {
 		t.Fatal(err)
 	}
-	if got := collectHTTPRouteTargets(route); !reflect.DeepEqual(got, []string{"a:80", "other/b:8080 (90%)", "c"}) { // legacy 1행
+	if got := v2CollectHTTPRouteTargets(route); !reflect.DeepEqual(got, []string{"a:80", "other/b:8080 (90%)", "c"}) { // v2 oracle
 		t.Errorf("targets = %v, want [a:80 other/b:8080 (90%%) c]", got)
 	}
 }
@@ -340,6 +340,9 @@ func TestCharBuildHTTPRouteTrafficItems(t *testing.T) {
 		if tc.spec != "" {
 			charDecode(t, tc.spec, &route.Spec)
 		}
+		// v2 미대응 사유 처분(J-P1-5 (iii)): HTTPRoute 트래픽 항목은 Index·Port·
+		// Weight 구조체를 지니는 v1 상세 뷰다 — V2는 targets를 문자열 목록 키로
+		// 정규화(lossy)해 구조체를 재구성할 수 없어 교체 불가.
 		if got := buildHTTPRouteTrafficItems(route); !reflect.DeepEqual(got, tc.want) { // legacy 1행
 			t.Errorf("%s: items = %+v, want %+v", tc.name, got, tc.want)
 		}
@@ -462,7 +465,7 @@ func TestCharPersistentVolumeSource(t *testing.T) {
 		{name: "둘 다 없음", item: charPV("pv3"), wantType: "-", wantPath: "-", wantNFSServer: "-"},
 	}
 	for _, tc := range cases {
-		sourceType, path, nfsServer := persistentVolumeSource(tc.item) // legacy 1행
+		sourceType, path, nfsServer := v2PersistentVolumeSource(tc.item) // v2 oracle
 		if sourceType != tc.wantType || path != tc.wantPath || nfsServer != tc.wantNFSServer {
 			t.Errorf("%s: = (%q, %q, %q), want (%q, %q, %q)", tc.name, sourceType, path, nfsServer, tc.wantType, tc.wantPath, tc.wantNFSServer)
 		}
@@ -482,7 +485,7 @@ func TestCharStorageNamespaceScope(t *testing.T) {
 		{name: "맵 nil → 폴백", annotations: nil, want: "Cluster-scoped"},
 	}
 	for _, tc := range cases {
-		if got := storageNamespaceScope(tc.annotations); got != tc.want { // legacy 1행
+		if got := v2StorageNamespaceScope(tc.annotations); got != tc.want { // v2 oracle
 			t.Errorf("%s: = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -579,7 +582,7 @@ func TestCharCalculateK8sAggregateMetrics(t *testing.T) {
 		{name: "빈 입력 → 제로값", want: k8sAggregateMetrics{}},
 	}
 	for _, tc := range cases {
-		if got := calculateK8sAggregateMetrics(tc.nodes, tc.pods); !reflect.DeepEqual(got, tc.want) { // legacy 1행
+		if got := v2CalculateK8sAggregateMetrics(tc.nodes, tc.pods); !reflect.DeepEqual(got, tc.want) { // v2 oracle
 			t.Errorf("%s: metrics = %+v, want %+v", tc.name, got, tc.want)
 		}
 	}
