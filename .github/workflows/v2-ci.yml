@@ -95,7 +95,7 @@ jobs:
         run: |
           cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/canary"
           cd "$RUNNER_TEMP/canary/backend"
-          sed -i 's|authGroup.GET("/profile", ctl.Profile)|authGroup.GET("/profile", ctl.Profile)\n\t\tauthGroup.POST("/canary/unlisted", func(c *gin.Context) {})|' router/router.go
+          sed -i 's|g.GET("/profile", ctl.Profile)|g.GET("/profile", ctl.Profile)\n\tg.POST("/canary/unlisted", func(c *gin.Context) {})|' router/routes_v1_system.go
           grep -q 'authGroup.POST("/canary/unlisted"' router/router.go || {
             echo "CANARY PLANT FAILED: /profile anchor drifted — the injection silently did nothing"
             exit 1
