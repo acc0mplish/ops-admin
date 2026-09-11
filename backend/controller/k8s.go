@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"ops-admin/backend/httpx"
-	"ops-admin/backend/model"
 	"ops-admin/backend/service"
 
 	"github.com/gin-gonic/gin"
@@ -306,20 +305,6 @@ func (ctl *Controller) GetK8sWorkloadDetail(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.GetK8sWorkloadDetail(query.ClusterID, query.Namespace, query.WorkloadType, query.WorkloadName)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) CreateK8sResourceYAML(c *gin.Context) {
-	var payload model.K8sResourceYAMLPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid yaml payload")
-		return
-	}
-	data, err := ctl.service.CreateK8sResourceYAML(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return

@@ -74,5 +74,4 @@ var monitorDefs = []Def{
 	{Method: http.MethodGet, Path: "/k8s/secret/detail", Permission: "assets:k8s:configstorage", Risk: RiskHigh,
 		Redaction: []string{"secret.data"}},
 	{Method: http.MethodGet, Path: "/k8s/pod/logs", Permission: "assets:k8s:pod", Risk: RiskLow},
-	{Method: http.MethodPost, Path: "/k8s/resource/yaml/create", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskMedium},
 }

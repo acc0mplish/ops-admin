@@ -142,8 +142,8 @@ func realignAPIVersions(declared string, candidates []string) []string {
 
 // createCollectionPaths — 표 소유 성분에서 조립한 컬렉션 경로 후보(선호 순).
 // core(APIGroup "")는 /api/v1, 그룹은 /apis/<group>/<version>이고 namespaced
-// 종은 /namespaces/<ns> 세그먼트를 끼운다(v1 buildK8sCreateResourcePaths의
-// 표 파생 일반화).
+// 종은 /namespaces/<ns> 세그먼트를 끼운다(삭제된 v1 create 경로 빌더의
+// 표 파생 일반화 — I10 J3 사멸 분계).
 func createCollectionPaths(entry contract.K8sCreateFaceEntry, declaredVersion, namespace string) []string {
 	versions := realignAPIVersions(strings.TrimSpace(declaredVersion), entry.APIVersions)
 	paths := make([]string, 0, len(versions))

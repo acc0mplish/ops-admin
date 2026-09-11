@@ -54,23 +54,6 @@ type K8sWorkloadResourcesPayload struct {
 	Containers   []K8sWorkloadContainerResources `json:"containers"`
 }
 
-type K8sResourceYAMLPayload struct {
-	ClusterID    uint   `json:"clusterId"`
-	ResourceType string `json:"resourceType"`
-	Namespace    string `json:"namespace"`
-	Name         string `json:"name"`
-	WorkloadType string `json:"workloadType"`
-	YAML         string `json:"yaml"`
-}
-
-type K8sResourceDeletePayload struct {
-	ClusterID    uint   `json:"clusterId"`
-	ResourceType string `json:"resourceType"`
-	Namespace    string `json:"namespace"`
-	Name         string `json:"name"`
-	WorkloadType string `json:"workloadType"`
-}
-
 type K8sIstioTrafficRoute struct {
 	Index  int    `json:"index"`
 	Host   string `json:"host"`

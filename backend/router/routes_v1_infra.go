@@ -238,5 +238,4 @@ func registerInfra(g *gin.RouterGroup, db *gorm.DB, ctl *controller.Controller) 
 	g.GET("/k8s/pod/logs", opdef.Middleware(db, opdef.Must("GET", "/k8s/pod/logs")), ctl.GetK8sPodLogs)
 	g.GET("/k8s/pod/events", ctl.GetK8sPodEvents)
 	g.GET("/k8s/workload/detail", ctl.GetK8sWorkloadDetail)
-	g.POST("/k8s/resource/yaml/create", opdef.Middleware(db, opdef.Must("POST", "/k8s/resource/yaml/create")), ctl.CreateK8sResourceYAML)
 }

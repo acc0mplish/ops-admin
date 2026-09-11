@@ -293,7 +293,6 @@ func TestConnectionOperationUnknownConnection404(t *testing.T) {
 // 핸들러는 400 INVALID_OPERATION_PAYLOAD로 매핑한다.
 func TestSyntheticConnectionUIDRoundTripAndBudget(t *testing.T) {
 	worst := connectionCreateTarget{
-		Manifest:  map[string]any{},
 		Entry:     contract.K8sCreateFaceEntry{Kind: "DestinationRule", Plural: "destinationrules", Namespaced: true},
 		Name:      strings.Repeat("n", 63),
 		Namespace: strings.Repeat("s", 63),

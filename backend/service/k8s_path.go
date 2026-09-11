@@ -1,10 +1,12 @@
 // k8s_path.go — moved verbatim from k8s.go (Phase D2, E5 seam #12).
+// I10 J3: the v1 create/delete YAML path builders, manifest identity parser
+// and friendly-error mapper were removed with the v1 create face (§3.7 death
+// boundary) — isK8sNotFoundError (live callers in k8s_transport.go) and the
+// formatter/status families (view builders) stay.
 package service
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -14,222 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"ops-admin/backend/model"
 )
-
-func buildK8sYAMLResourcePath(payload model.K8sResourceYAMLPayload) (string, error) {
-	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
-	namespace := Trimmed(payload.Namespace)
-	name := Trimmed(payload.Name)
-
-	switch resourceType {
-	case "namespace":
-		if name == "" {
-			return "", errors.New("namespace name is required")
-		}
-		return "/api/v1/namespaces/" + name, nil
-	case "pod":
-		if namespace == "" || name == "" {
-			return "", errors.New("pod namespace and name are required")
-		}
-		return fmt.Sprintf("/api/v1/namespaces/%s/pods/%s", namespace, name), nil
-	case "service":
-		if namespace == "" || name == "" {
-			return "", errors.New("service namespace and name are required")
-		}
-		return fmt.Sprintf("/api/v1/namespaces/%s/services/%s", namespace, name), nil
-	case "ingress":
-		if namespace == "" || name == "" {
-			return "", errors.New("ingress namespace and name are required")
-		}
-		return fmt.Sprintf("/apis/networking.k8s.io/v1/namespaces/%s/ingresses/%s", namespace, name), nil
-	case "configmap":
-		if namespace == "" || name == "" {
-			return "", errors.New("configmap namespace and name are required")
-		}
-		return fmt.Sprintf("/api/v1/namespaces/%s/configmaps/%s", namespace, name), nil
-	case "secret":
-		if namespace == "" || name == "" {
-			return "", errors.New("secret namespace and name are required")
-		}
-		return fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, name), nil
-	case "pvc":
-		if namespace == "" || name == "" {
-			return "", errors.New("pvc namespace and name are required")
-		}
-		return fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims/%s", namespace, name), nil
-	case "pv":
-		if name == "" {
-			return "", errors.New("pv name is required")
-		}
-		return "/api/v1/persistentvolumes/" + name, nil
-	case "workload":
-		if namespace == "" || name == "" {
-			return "", errors.New("workload namespace and name are required")
-		}
-		switch strings.ToLower(Trimmed(payload.WorkloadType)) {
-		case "deployment":
-			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments/%s", namespace, name), nil
-		case "statefulset":
-			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets/%s", namespace, name), nil
-		case "daemonset":
-			return fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets/%s", namespace, name), nil
-		case "job":
-			return fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs/%s", namespace, name), nil
-		case "cronjob":
-			return fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs/%s", namespace, name), nil
-		default:
-			return "", errors.New("unsupported workload type")
-		}
-	default:
-		return "", errors.New("unsupported resource type")
-	}
-}
-
-func buildK8sCreateResourcePaths(payload model.K8sResourceYAMLPayload, manifest k8sManifestIdentity) ([]string, error) {
-	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
-	namespace := firstNonEmpty(Trimmed(payload.Namespace), Trimmed(manifest.Metadata.Namespace))
-
-	switch resourceType {
-	case "namespace":
-		return []string{"/api/v1/namespaces"}, nil
-	case "pod":
-		if namespace == "" {
-			return nil, errors.New("pod namespace is required")
-		}
-		return []string{fmt.Sprintf("/api/v1/namespaces/%s/pods", namespace)}, nil
-	case "service":
-		if namespace == "" {
-			return nil, errors.New("service namespace is required")
-		}
-		return []string{fmt.Sprintf("/api/v1/namespaces/%s/services", namespace)}, nil
-	case "ingress":
-		if namespace == "" {
-			return nil, errors.New("ingress namespace is required")
-		}
-		return []string{fmt.Sprintf("/apis/networking.k8s.io/v1/namespaces/%s/ingresses", namespace)}, nil
-	case "configmap":
-		if namespace == "" {
-			return nil, errors.New("configmap namespace is required")
-		}
-		return []string{fmt.Sprintf("/api/v1/namespaces/%s/configmaps", namespace)}, nil
-	case "secret":
-		if namespace == "" {
-			return nil, errors.New("secret namespace is required")
-		}
-		return []string{fmt.Sprintf("/api/v1/namespaces/%s/secrets", namespace)}, nil
-	case "pvc":
-		if namespace == "" {
-			return nil, errors.New("pvc namespace is required")
-		}
-		return []string{fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", namespace)}, nil
-	case "pv":
-		return []string{"/api/v1/persistentvolumes"}, nil
-	case "workload":
-		if namespace == "" {
-			return nil, errors.New("workload namespace is required")
-		}
-		switch strings.ToLower(Trimmed(payload.WorkloadType)) {
-		case "deployment":
-			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", namespace)}, nil
-		case "statefulset":
-			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", namespace)}, nil
-		case "daemonset":
-			return []string{fmt.Sprintf("/apis/apps/v1/namespaces/%s/daemonsets", namespace)}, nil
-		case "job":
-			return []string{fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", namespace)}, nil
-		case "cronjob":
-			return []string{fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", namespace)}, nil
-		default:
-			return nil, errors.New("unsupported workload type")
-		}
-	case "gateway", "virtualservice", "destinationrule", "serviceentry":
-		if namespace == "" {
-			return nil, fmt.Errorf("%s namespace is required", resourceType)
-		}
-		resourceMap := map[string]string{
-			"gateway":         "gateways",
-			"virtualservice":  "virtualservices",
-			"destinationrule": "destinationrules",
-			"serviceentry":    "serviceentries",
-		}
-		return buildIstioResourcePathsWithPreferred(
-			resourceMap[resourceType],
-			namespace,
-			"",
-			manifest.APIVersion,
-		), nil
-	case "gatewayapi":
-		if namespace == "" {
-			return nil, errors.New("gateway namespace is required")
-		}
-		return buildGatewayAPIResourcePathsWithPreferred("gateways", namespace, "", manifest.APIVersion), nil
-	case "httproute":
-		if namespace == "" {
-			return nil, errors.New("httproute namespace is required")
-		}
-		return buildGatewayAPIResourcePathsWithPreferred("httproutes", namespace, "", manifest.APIVersion), nil
-	default:
-		return nil, errors.New("unsupported resource type")
-	}
-}
-
-func buildK8sYAMLResourcePaths(payload model.K8sResourceYAMLPayload) ([]string, error) {
-	resourceType := strings.ToLower(Trimmed(payload.ResourceType))
-	namespace := Trimmed(payload.Namespace)
-	name := Trimmed(payload.Name)
-
-	switch resourceType {
-	case "gateway", "virtualservice", "destinationrule", "serviceentry":
-		if namespace == "" || name == "" {
-			return nil, fmt.Errorf("%s namespace and name are required", resourceType)
-		}
-		resourceMap := map[string]string{
-			"gateway":         "gateways",
-			"virtualservice":  "virtualservices",
-			"destinationrule": "destinationrules",
-			"serviceentry":    "serviceentries",
-		}
-		return buildIstioResourcePaths(resourceMap[resourceType], namespace, name), nil
-	case "gatewayapi":
-		if namespace == "" || name == "" {
-			return nil, errors.New("gateway namespace and name are required")
-		}
-		return buildGatewayAPIResourcePaths("gateways", namespace, name), nil
-	case "httproute":
-		if namespace == "" || name == "" {
-			return nil, errors.New("httproute namespace and name are required")
-		}
-		return buildGatewayAPIResourcePaths("httproutes", namespace, name), nil
-	default:
-		path, err := buildK8sYAMLResourcePath(payload)
-		if err != nil {
-			return nil, err
-		}
-		return []string{path}, nil
-	}
-}
-
-func buildK8sDeleteResourcePaths(payload model.K8sResourceDeletePayload) ([]string, error) {
-	return buildK8sYAMLResourcePaths(model.K8sResourceYAMLPayload{
-		ResourceType: payload.ResourceType,
-		Namespace:    payload.Namespace,
-		Name:         payload.Name,
-		WorkloadType: payload.WorkloadType,
-	})
-}
-
-func parseK8sManifestIdentity(body []byte) (k8sManifestIdentity, error) {
-	var manifest k8sManifestIdentity
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		return manifest, errors.New("invalid yaml content")
-	}
-	if Trimmed(manifest.Kind) == "" {
-		return manifest, errors.New("resource kind is required")
-	}
-	return manifest, nil
-}
 
 func isK8sNotFoundError(err error) bool {
 	if err == nil {
@@ -237,36 +24,6 @@ func isK8sNotFoundError(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "unexpected status: 404") || strings.Contains(message, "\"code\":404")
-}
-
-func friendlyK8sYAMLError(payload model.K8sResourceYAMLPayload, err error) error {
-	if err == nil {
-		return nil
-	}
-	message := err.Error()
-	lower := strings.ToLower(message)
-
-	if strings.Contains(lower, "field is immutable") || strings.Contains(lower, "immutable") {
-		switch strings.ToLower(Trimmed(payload.ResourceType)) {
-		case "pod":
-			return errors.New("the Pod contains immutable fields that Kubernetes cannot update directly; modify only mutable fields or recreate the Pod")
-		case "pv", "pvc":
-			return errors.New("the storage resource contains immutable fields and cannot be overwritten directly; modify only mutable fields or use the storage-change workflow")
-		default:
-			return errors.New("the resource contains immutable fields and cannot be overwritten directly; check whether metadata, selector, or volume fields were changed")
-		}
-	}
-
-	if strings.Contains(lower, "already exists") {
-		return errors.New("the YAML resource identity conflicts with an existing cluster resource; verify the name, namespace, and related objects")
-	}
-	if strings.Contains(lower, "not found") {
-		return errors.New("target resource does not exist; it may have been deleted or moved to another namespace; refresh and retry")
-	}
-	if strings.Contains(lower, "invalid") || strings.Contains(lower, "unprocessable entity") {
-		return errors.New("YAML validation failed; verify field formats, apiVersion, kind, and spec content")
-	}
-	return err
 }
 
 func k8sGetText(client *http.Client, runtime kubeClusterRuntime, path string, query map[string]string) (string, error) {

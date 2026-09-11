@@ -64,10 +64,11 @@ func (a *InfraAPI) RegisterConnectionOperations(group *gin.RouterGroup, grants f
 	group.POST("/provider-connections/:uid/operations/:name/execute", grant("/infra/provider-connections/:uid/operations/:name/execute"), a.ExecuteConnectionOperation)
 }
 
-// connectionCreateTarget — plan·execute가 공유하는 검증 결과: 동결 매니페스트,
-// 매핑 표 행(단일 원천), 그리고 매니페스트 신원(name·namespace)과 원문 yaml.
+// connectionCreateTarget — plan·execute가 공유하는 검증 결과: 매핑 표 행
+// (단일 원천)과 매니페스트 신원(name·namespace), 원문 yaml. 파싱된 매니페스트
+// 맵 자체는 운반하지 않는다 — execute의 동결 본문은 원문 yaml이고(j1c L-2),
+// 종 검증은 Entry·신원 필드가 이미 운반한다.
 type connectionCreateTarget struct {
-	Manifest  map[string]any              // 동결 매니페스트 — plan 검증·execute 동결 본문의 근거
 	Entry     contract.K8sCreateFaceEntry // 매핑 표 행 — kind 면의 단일 원천(§3.2.1)
 	Name      string                      // metadata.name(trimmed)
 	Namespace string                      // namespaced 종의 metadata.namespace — 클러스터 스코프는 공백
@@ -257,7 +258,7 @@ func parseConnectionCreatePayload(c *gin.Context) (connectionCreateTarget, error
 	if !entry.Namespaced && namespace != "" {
 		return connectionCreateTarget{}, fmt.Errorf("create of cluster-scoped kind %q carries namespace %q", kind, namespace)
 	}
-	return connectionCreateTarget{Manifest: manifest, Entry: entry, Name: name, Namespace: namespace, YAML: body.YAML}, nil
+	return connectionCreateTarget{Entry: entry, Name: name, Namespace: namespace, YAML: body.YAML}, nil
 }
 
 // jsonStringOf — 매니페스트 스칼라 필드의 안전한 문자열 접근.

@@ -5,8 +5,8 @@
 // 실행기의 컬렉션 경로 후보도 본 표 소속 성분(Plural·APIVersions·
 // Namespaced)에서 조립한다(이중 열거 금지 — 파생 계약 §3.2.1).
 //
-// v1 패리티 계약: 본 표는 v1 create face의 resourceType 15종 전수(k8s_path.go
-// buildK8sCreateResourcePaths census — namespace·pod·service·ingress·configmap·
+// v1 패리티 계약: 본 표는 v1 create face의 resourceType 15종 전수(삭제된 v1
+// create 경로 빌더의 census — namespace·pod·service·ingress·configmap·
 // secret·pvc·pv·workload 하위 5형·istio 4종·gatewayapi·httproute)를 덮는다.
 // istio Gateway와 Gateway API Gateway는 apiVersion group으로 구분된다(동일
 // kind 문자열·상이 group — 그룹 불일치는 사전 미매치, RI-4).

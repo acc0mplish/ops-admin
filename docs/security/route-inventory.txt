@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 439 entries.
+# 438 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -328,7 +328,6 @@ POST /api/v1/integration/finops/sync/trigger -> ops-admin/backend/controller.(*C
 POST /api/v1/integration/navigation/group/save -> ops-admin/backend/controller.(*Controller).SaveIntegrationNavigationGroup-fm
 POST /api/v1/integration/navigation/group/token -> ops-admin/backend/controller.(*Controller).RegenerateIntegrationPublicToken-fm
 POST /api/v1/integration/navigation/save -> ops-admin/backend/controller.(*Controller).SaveIntegrationNavigation-fm
-POST /api/v1/k8s/resource/yaml/create -> ops-admin/backend/controller.(*Controller).CreateK8sResourceYAML-fm
 POST /api/v1/login -> ops-admin/backend/controller.(*Controller).Login-fm
 POST /api/v1/menu/add -> ops-admin/backend/controller.(*Controller).CreateMenu-fm
 POST /api/v1/monitor/aggregation/rule/batch -> ops-admin/backend/controller.(*Controller).BatchUpdateMonitorAggregationRules-fm

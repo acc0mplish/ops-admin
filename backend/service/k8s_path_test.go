@@ -1,189 +1,17 @@
-// k8s_path_test.go — Phase Z3 characterization (k8s_path 시맨 순수 함수 25개).
+// k8s_path_test.go — Phase Z3 characterization (k8s_path 시맨 순수 함수).
 // "불변" 고정 — B~D2 분해의 검출기·P의 V2 동치 오라클 (§J0·§12 #16·R18 legacy 1행).
+// I10 J3: v1 create/delete 경로 빌더·매니페스트 파서·friendly 에러 char 6종은
+// v1 create 면과 함께 사멸(§3.7 죽음/생존 경계) — isK8sNotFoundError char 생존.
 package service
 
 import (
 	"errors"
 	"net/http"
-	"reflect"
-	"strings"
 	"testing"
 	"time"
 
 	"ops-admin/backend/internal/infra/inventory"
-	"ops-admin/backend/model"
 )
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// 타입·ns·name trim+소문자화, 종류별 경로·에러 문언, workload 하위 스위치가 현재 계약.
-func TestCharBuildK8sYAMLResourcePath(t *testing.T) {
-	cases := []struct {
-		name        string
-		payload     model.K8sResourceYAMLPayload
-		want        string
-		wantErrText string
-	}{
-		{name: "namespace", payload: model.K8sResourceYAMLPayload{ResourceType: " Namespace ", Name: " prod "}, want: "/api/v1/namespaces/prod"},
-		{name: "pod", payload: model.K8sResourceYAMLPayload{ResourceType: "pod", Namespace: "ns1", Name: "p1"}, want: "/api/v1/namespaces/ns1/pods/p1"},
-		{name: "service", payload: model.K8sResourceYAMLPayload{ResourceType: "service", Namespace: "ns1", Name: "s1"}, want: "/api/v1/namespaces/ns1/services/s1"},
-		{name: "ingress", payload: model.K8sResourceYAMLPayload{ResourceType: "ingress", Namespace: "ns1", Name: "i1"}, want: "/apis/networking.k8s.io/v1/namespaces/ns1/ingresses/i1"},
-		{name: "pvc", payload: model.K8sResourceYAMLPayload{ResourceType: "pvc", Namespace: "ns1", Name: "c1"}, want: "/api/v1/namespaces/ns1/persistentvolumeclaims/c1"},
-		{name: "pv", payload: model.K8sResourceYAMLPayload{ResourceType: "pv", Name: "v1"}, want: "/api/v1/persistentvolumes/v1"},
-		{name: "workload deployment", payload: model.K8sResourceYAMLPayload{ResourceType: "workload", Namespace: "ns1", Name: "web", WorkloadType: "Deployment"}, want: "/apis/apps/v1/namespaces/ns1/deployments/web"},
-		{name: "workload cronjob은 batch", payload: model.K8sResourceYAMLPayload{ResourceType: "workload", Namespace: "ns1", Name: "c", WorkloadType: "cronjob"}, want: "/apis/batch/v1/namespaces/ns1/cronjobs/c"},
-		{name: "namespace 이름 없음", payload: model.K8sResourceYAMLPayload{ResourceType: "namespace"}, wantErrText: "namespace name is required"},
-		{name: "pod ns 누락", payload: model.K8sResourceYAMLPayload{ResourceType: "pod", Name: "p1"}, wantErrText: "pod namespace and name are required"},
-		{name: "pv 이름 없음", payload: model.K8sResourceYAMLPayload{ResourceType: "pv"}, wantErrText: "pv name is required"},
-		{name: "workload 타입 미지원", payload: model.K8sResourceYAMLPayload{ResourceType: "workload", Namespace: "ns1", Name: "x", WorkloadType: "replicaset"}, wantErrText: "unsupported workload type"},
-		{name: "리소스 타입 미지원", payload: model.K8sResourceYAMLPayload{ResourceType: "ghost"}, wantErrText: "unsupported resource type"},
-	}
-	for _, tc := range cases {
-		got, err := buildK8sYAMLResourcePath(tc.payload) // legacy 1행
-		if tc.wantErrText != "" {
-			if err == nil || err.Error() != tc.wantErrText {
-				t.Errorf("%s: err = %v, want %q", tc.name, err, tc.wantErrText)
-			}
-			continue
-		}
-		if err != nil || got != tc.want {
-			t.Errorf("%s: = (%q, %v), want (%q, nil)", tc.name, got, err, tc.want)
-		}
-	}
-}
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// ns는 payload 우선·manifest 폴백, istio/gatewayapi는 manifest apiVersion으로 버전 선호가 현재 계약.
-func TestCharBuildK8sCreateResourcePaths(t *testing.T) {
-	istioManifest := k8sManifestIdentity{APIVersion: "networking.istio.io/v1beta1", Kind: "Gateway"}
-	gatewayManifest := k8sManifestIdentity{APIVersion: "gateway.networking.k8s.io/v1beta1", Kind: "Gateway"}
-	cases := []struct {
-		name        string
-		payload     model.K8sResourceYAMLPayload
-		manifest    k8sManifestIdentity
-		want        []string
-		wantErrText string
-	}{
-		{name: "namespace는 단일 고정 경로", payload: model.K8sResourceYAMLPayload{ResourceType: "namespace"}, want: []string{"/api/v1/namespaces"}},
-		{name: "pod payload ns", payload: model.K8sResourceYAMLPayload{ResourceType: "pod", Namespace: "ns1"}, want: []string{"/api/v1/namespaces/ns1/pods"}},
-		{name: "pod manifest ns 폴백", payload: model.K8sResourceYAMLPayload{ResourceType: "pod"}, manifest: k8sManifestIdentity{Metadata: struct {
-			Name      string `json:"name"`
-			Namespace string `json:"namespace"`
-		}{Namespace: "ns2"}}, want: []string{"/api/v1/namespaces/ns2/pods"}},
-		{name: "workload deployment", payload: model.K8sResourceYAMLPayload{ResourceType: "workload", Namespace: "ns1", WorkloadType: "deployment"}, want: []string{"/apis/apps/v1/namespaces/ns1/deployments"}},
-		{name: "istio 선호 버전 전환", payload: model.K8sResourceYAMLPayload{ResourceType: "gateway", Namespace: "ns1"}, manifest: istioManifest,
-			want: []string{"/apis/networking.istio.io/v1beta1/namespaces/ns1/gateways", "/apis/networking.istio.io/v1/namespaces/ns1/gateways"}},
-		{name: "gatewayapi 선호 버전 전환", payload: model.K8sResourceYAMLPayload{ResourceType: "gatewayapi", Namespace: "ns1"}, manifest: gatewayManifest,
-			want: []string{"/apis/gateway.networking.k8s.io/v1beta1/namespaces/ns1/gateways", "/apis/gateway.networking.k8s.io/v1/namespaces/ns1/gateways"}},
-		{name: "pod ns 완전 누락", payload: model.K8sResourceYAMLPayload{ResourceType: "pod"}, wantErrText: "pod namespace is required"},
-		{name: "workload 타입 미지원", payload: model.K8sResourceYAMLPayload{ResourceType: "workload", Namespace: "ns1", WorkloadType: "x"}, wantErrText: "unsupported workload type"},
-		{name: "리소스 타입 미지원", payload: model.K8sResourceYAMLPayload{ResourceType: "ghost"}, wantErrText: "unsupported resource type"},
-	}
-	for _, tc := range cases {
-		got, err := buildK8sCreateResourcePaths(tc.payload, tc.manifest) // legacy 1행
-		if tc.wantErrText != "" {
-			if err == nil || err.Error() != tc.wantErrText {
-				t.Errorf("%s: err = %v, want %q", tc.name, err, tc.wantErrText)
-			}
-			continue
-		}
-		if err != nil || !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: = (%v, %v), want (%v, nil)", tc.name, got, err, tc.want)
-		}
-	}
-}
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// istio·gatewayapi·httproute는 버전 쌍 경로, 그 외는 단일 경로 위임이 현재 계약.
-func TestCharBuildK8sYAMLResourcePaths(t *testing.T) {
-	cases := []struct {
-		name        string
-		payload     model.K8sResourceYAMLPayload
-		want        []string
-		wantErrText string
-	}{
-		{name: "istio 버전 쌍", payload: model.K8sResourceYAMLPayload{ResourceType: "virtualservice", Namespace: "ns1", Name: "vs"},
-			want: []string{"/apis/networking.istio.io/v1/namespaces/ns1/virtualservices/vs", "/apis/networking.istio.io/v1beta1/namespaces/ns1/virtualservices/vs"}},
-		{name: "gatewayapi 버전 쌍", payload: model.K8sResourceYAMLPayload{ResourceType: "gatewayapi", Namespace: "ns1", Name: "gw"},
-			want: []string{"/apis/gateway.networking.k8s.io/v1/namespaces/ns1/gateways/gw", "/apis/gateway.networking.k8s.io/v1beta1/namespaces/ns1/gateways/gw"}},
-		{name: "기본은 단일 경로 위임", payload: model.K8sResourceYAMLPayload{ResourceType: "pod", Namespace: "ns1", Name: "p1"},
-			want: []string{"/api/v1/namespaces/ns1/pods/p1"}},
-		{name: "istio 이름 누락", payload: model.K8sResourceYAMLPayload{ResourceType: "gateway", Namespace: "ns1"}, wantErrText: "gateway namespace and name are required"},
-		{name: "httproute 이름 누락", payload: model.K8sResourceYAMLPayload{ResourceType: "httproute", Namespace: "ns1"}, wantErrText: "httproute namespace and name are required"},
-		{name: "위임 실패 전파", payload: model.K8sResourceYAMLPayload{ResourceType: "ghost"}, wantErrText: "unsupported resource type"},
-	}
-	for _, tc := range cases {
-		got, err := buildK8sYAMLResourcePaths(tc.payload) // legacy 1행
-		if tc.wantErrText != "" {
-			if err == nil || err.Error() != tc.wantErrText {
-				t.Errorf("%s: err = %v, want %q", tc.name, err, tc.wantErrText)
-			}
-			continue
-		}
-		if err != nil || !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: = (%v, %v), want (%v, nil)", tc.name, got, err, tc.want)
-		}
-	}
-}
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// 삭제 경로는 YAML 경로 위임(단일 경로)이 현재 계약.
-func TestCharBuildK8sDeleteResourcePaths(t *testing.T) {
-	cases := []struct {
-		name        string
-		payload     model.K8sResourceDeletePayload
-		want        []string
-		wantErrText string
-	}{
-		{name: "pod 단일 경로", payload: model.K8sResourceDeletePayload{ResourceType: "pod", Namespace: "ns1", Name: "p1"}, want: []string{"/api/v1/namespaces/ns1/pods/p1"}},
-		{name: "namespace 전용 경로", payload: model.K8sResourceDeletePayload{ResourceType: "namespace", Name: "prod"}, want: []string{"/api/v1/namespaces/prod"}},
-		{name: "미지원 위임 전파", payload: model.K8sResourceDeletePayload{ResourceType: "ghost"}, wantErrText: "unsupported resource type"},
-	}
-	for _, tc := range cases {
-		got, err := buildK8sDeleteResourcePaths(tc.payload) // legacy 1행
-		if tc.wantErrText != "" {
-			if err == nil || err.Error() != tc.wantErrText {
-				t.Errorf("%s: err = %v, want %q", tc.name, err, tc.wantErrText)
-			}
-			continue
-		}
-		if err != nil || !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: = (%v, %v), want (%v, nil)", tc.name, got, err, tc.want)
-		}
-	}
-}
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// 파서는 JSON이고 YAML 원문은 "invalid yaml content"로 떨어지는 현재 동작(문언 불일치 포함)을 고정.
-func TestCharParseK8sManifestIdentity(t *testing.T) {
-	cases := []struct {
-		name        string
-		body        []byte
-		want        k8sManifestIdentity
-		wantErrText string
-	}{
-		{name: "JSON 전체", body: []byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"p1","namespace":"ns1"}}`),
-			want: k8sManifestIdentity{APIVersion: "v1", Kind: "Pod", Metadata: struct {
-				Name      string `json:"name"`
-				Namespace string `json:"namespace"`
-			}{Name: "p1", Namespace: "ns1"}}},
-		{name: "YAML 원문 → invalid", body: []byte("kind: Pod\nmetadata:\n  name: p1"), wantErrText: "invalid yaml content"},
-		{name: "kind 누락", body: []byte(`{"metadata":{"name":"p1"}}`), wantErrText: "resource kind is required"},
-		{name: "kind 공백", body: []byte(`{"kind":"   "}`), wantErrText: "resource kind is required"},
-		{name: "빈 바디", body: []byte(""), wantErrText: "invalid yaml content"},
-	}
-	for _, tc := range cases {
-		identity, err := parseK8sManifestIdentity(tc.body) // legacy 1행
-		if tc.wantErrText != "" {
-			if err == nil || err.Error() != tc.wantErrText {
-				t.Errorf("%s: err = %v, want %q", tc.name, err, tc.wantErrText)
-			}
-			continue
-		}
-		if err != nil || !reflect.DeepEqual(identity, tc.want) {
-			t.Errorf("%s: = (%+v, %v), want (%+v, nil)", tc.name, identity, err, tc.want)
-		}
-	}
-}
 
 // characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
 // 소문자화 매칭이며 "code":404 바디 형식도 404로 인정이 현재 계약.
@@ -203,46 +31,6 @@ func TestCharIsK8sNotFoundError(t *testing.T) {
 	for _, tc := range cases {
 		if got := isK8sNotFoundError(tc.err); got != tc.want { // legacy 1행
 			t.Errorf("%s: = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-// characterization: 현재 동작 고정. 정합성 판정 아님 — 버그도 그대로 기록한다.
-// 매칭 순서 immutable → exists → not found → invalid, 미매칭은 원문 전파가 현재 계약.
-func TestCharFriendlyK8sYAMLError(t *testing.T) {
-	cases := []struct {
-		name            string
-		resourceType    string
-		err             error
-		wantContains    string
-		wantPassthrough bool
-		wantNil         bool
-	}{
-		{name: "pod immutable", resourceType: "pod", err: errors.New("field is immutable"), wantContains: "recreate the Pod"},
-		{name: "pvc immutable", resourceType: "pvc", err: errors.New("Field is Immutable"), wantContains: "storage resource contains immutable"},
-		{name: "기본 immutable", resourceType: "service", err: errors.New("immutable"), wantContains: "cannot be overwritten directly"},
-		{name: "already exists", err: errors.New("already exists"), wantContains: "identity conflicts"},
-		{name: "not found", err: errors.New("not found"), wantContains: "does not exist"},
-		{name: "invalid", err: errors.New("invalid value"), wantContains: "YAML validation failed"},
-		{name: "미매칭 원문 전파", err: errors.New("boom"), wantPassthrough: true},
-		{name: "nil은 nil", wantNil: true},
-	}
-	for _, tc := range cases {
-		friendly := friendlyK8sYAMLError(model.K8sResourceYAMLPayload{ResourceType: tc.resourceType}, tc.err) // legacy 1행
-		if tc.wantNil {
-			if friendly != nil {
-				t.Errorf("%s: = %v, want nil", tc.name, friendly)
-			}
-			continue
-		}
-		if tc.wantPassthrough {
-			if friendly == nil || friendly.Error() != tc.err.Error() {
-				t.Errorf("%s: = %v, want 원문 %v", tc.name, friendly, tc.err)
-			}
-			continue
-		}
-		if friendly == nil || !strings.Contains(friendly.Error(), tc.wantContains) {
-			t.Errorf("%s: = %v, want contains %q", tc.name, friendly, tc.wantContains)
 		}
 	}
 }
