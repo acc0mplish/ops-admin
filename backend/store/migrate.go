@@ -49,7 +49,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.DatabaseTransferTask{},
 		&model.DatabaseBackupPlan{},
 		&model.DatabaseBackupRecord{},
-		&model.K8sCluster{},
 		&model.OpsScript{},
 		&model.OpsScriptVersion{},
 		&model.OpsExecTask{},

@@ -120,7 +120,7 @@ func writeOrCompareArtifact(t *testing.T, name string, header []string, lines []
 
 // TestRouteInventoryArtifact is T12: the committed route-inventory.txt must be
 // byte-identical to a fresh dump of the live engine, and the body must hold
-// exactly 450 routes (H-1: 1 ping + 7 public + 428 authGroup + 2 uploads
+// exactly 437 routes (H-1: 1 ping + 7 public + 428 authGroup + 2 uploads
 // static — gin's Static registers GET and HEAD; 415 v1 + 4 Phase-2 v2 reads
 // + 9 Phase-3 v2 operation routes incl. the D1 tasks 목록 (plan M8/M13 —
 // golden refresh; H2 쓰기 12건 삭제로 v1 12건 감소 — phase6-plan §3.2).

@@ -47,7 +47,13 @@ func (s *Service) validateAssetServiceDiagnosisTarget(target AssetServiceDiagnos
 			}
 		}
 	}
-	return service.K8sClusterID, service.Namespace, nil
+	// 클러스터 링크는 I-b 칼럼 drop 이후 ServiceUID 역해상으로 조달한다
+	// (assetServiceClusterID — S3 소비자 재판정).
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return 0, "", err
+	}
+	return clusterID, service.Namespace, nil
 }
 
 func (s *Service) execAssetServiceDiagnosis(clusterID uint, namespace string, target AssetServiceDiagnosisTarget, command []string) (string, error) {

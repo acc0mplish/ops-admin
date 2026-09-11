@@ -122,8 +122,8 @@ var workloadScaleOperation = contract.OperationDefinition{
 	Redaction:          func() any { return rolloutResultRedaction{} },
 }
 
-// workloadImageUpdateOperation — k8s.workload.image_update(v1
-// k8s_workload.go:149). 동결 version으로의 replaceImageVersion 경험식 patch —
+// workloadImageUpdateOperation — k8s.workload.image_update(v1 원천
+// UpdateK8sWorkloadImages — phase6 H2에서 제거). 동결 version으로의 replaceImageVersion 경험식 patch —
 // 기존 tag 절단 때문에 재실행은 byte-identical이 된다.
 var workloadImageUpdateOperation = contract.OperationDefinition{
 	Name:               kubernetes.ImageUpdateOperationName,
@@ -140,8 +140,8 @@ var workloadImageUpdateOperation = contract.OperationDefinition{
 	Redaction:          func() any { return rolloutResultRedaction{} },
 }
 
-// workloadResourcesUpdateOperation — k8s.workload.resources_update(v1
-// k8s_workload.go:232). 동결 containers payload로의 resources·env·pull policy
+// workloadResourcesUpdateOperation — k8s.workload.resources_update(v1 원천
+// UpdateK8sWorkloadResources — phase6 H2에서 제거). 동결 containers payload로의 resources·env·pull policy
 // patch — 재실행은 동일 상태의 재적용(실변경 없음 → generation 무증가)이라
 // 재롤아웃이 없다.
 var workloadResourcesUpdateOperation = contract.OperationDefinition{
@@ -167,7 +167,7 @@ var workloadResourcesUpdateOperation = contract.OperationDefinition{
 // resource kind가 workload를 벗어난다(node·network.load_balancer — 등록 검증은
 // 어휘 소속만 요구).
 
-// nodeLabelsUpdateOperation — k8s.node.labels_update(v1 k8s.go:308).
+// nodeLabelsUpdateOperation — k8s.node.labels_update(v1 원천 UpdateK8sNodeLabels — phase6 H2에서 제거).
 // payload에 없는 기존 레이블의 null 제거 포함 — 재실행은 제거항 소멸 후 동일 상태
 // 재적용(provider_state_convergent).
 var nodeLabelsUpdateOperation = contract.OperationDefinition{
@@ -185,7 +185,7 @@ var nodeLabelsUpdateOperation = contract.OperationDefinition{
 	Redaction:          func() any { return stateResultRedaction{} },
 }
 
-// serviceUpdateOperation — k8s.service.update(v1 k8s_detail.go:74).
+// serviceUpdateOperation — k8s.service.update(v1 원천 UpdateK8sService — phase6 H2에서 제거).
 // wholesale-spec merge-patch(type·selector·ports·labels·annotations) — 재실행은
 // 동일 값의 재 upsert(provider_state_convergent).
 var serviceUpdateOperation = contract.OperationDefinition{
@@ -273,7 +273,7 @@ var resourceDeleteOperation = contract.OperationDefinition{
 // detail은 stateResultRedaction 2키다. RetryPolicy는 restart 선례 — 동일 가중치
 // 배열의 재 PUT은 실변경이 없으면 무증가다(provider_frozen_payload).
 
-// istioTrafficUpdateOperation — k8s.istio.traffic_update(v1 k8s_mutate.go:151).
+// istioTrafficUpdateOperation — k8s.istio.traffic_update(v1 원천 UpdateK8sIstioTraffic — phase6 H2에서 제거).
 // VirtualService의 첫 조정 가능 http 항목 경로에 위치 가중치 splice PUT.
 var istioTrafficUpdateOperation = contract.OperationDefinition{
 	Name:               kubernetes.IstioTrafficUpdateOperationName,
@@ -290,8 +290,8 @@ var istioTrafficUpdateOperation = contract.OperationDefinition{
 	Redaction:          func() any { return stateResultRedaction{} },
 }
 
-// httpRouteTrafficUpdateOperation — k8s.httproute.traffic_update(v1
-// k8s_mutate.go:202). HTTPRoute의 첫 조정 가능 rule backendRefs에 위치 가중치
+// httpRouteTrafficUpdateOperation — k8s.httproute.traffic_update(v1 원천
+// UpdateK8sHTTPRouteTraffic — phase6 H2에서 제거). HTTPRoute의 첫 조정 가능 rule backendRefs에 위치 가중치
 // splice PUT.
 var httpRouteTrafficUpdateOperation = contract.OperationDefinition{
 	Name:               kubernetes.HTTPRouteTrafficUpdateOperationName,

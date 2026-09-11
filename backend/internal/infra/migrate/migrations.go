@@ -38,4 +38,6 @@ var steps = []Step{
 	step0005AuditExtend,
 	// V2 Phase 4 C1 appends step0006FinopsCloudLink here (one line).
 	step0006FinopsCloudLink,
+	// V2 Phase 6 I-b appends step0007DropK8sCluster here (one line).
+	step0007DropK8sCluster,
 }

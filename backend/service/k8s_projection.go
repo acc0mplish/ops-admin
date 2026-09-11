@@ -4,21 +4,17 @@
 // 한다(보존 제약 #6 — internal/infra 무변경). G0의 전환 검증·롤백용 임시
 // 플래그(#12)는 G1에서 legacy 분기와 함께 제거됐다 — V2가 유일 소스다.
 //
-// ID 공간 판단(구현 판정 기록 — 2026-09-11): V2 투영 뷰의 응답 id는
-// conn.ID가 아니라 legacy source_id(k8s_cluster.id)로 되돌려 노출한다. 근거 —
-// ① 프론트 무변경(C56)이 G1·H 전 구간에서 유지되려면 list→info/detail→
-// 라이브 패스스루(node·pod·terminal·metrics — 보존 제약 #7 v1 무기한 존치)가
-// 같은 id 공간을 공유해야 한다. ② §J8이 info를 컨트롤러 착지점으로 분리한
-// 이유 자체가 GetK8sCluster 소비 12곳(S5)이 legacy id 공간을 계속 쓰기
-// 때문이다. ③ C53 compare의 페어링(--cluster <legacy id>)이
-// source_model/source_id 조회(구 main_compare.go:83 — G1 제거)로 성립한다. 조립물 내부의
-// Cluster.ID(conn.ID)는 응답 직전 source_id로 되돌린다 — compare 집합은
-// cluster 뷰 필드를 제외하므로 P가
-// 잠근 패리티 계약과 충돌하지 않는다.
-//
-// register-k8s 체인(H0 신설 — source 쌍 없는 커넥션)은 I-a S5가
-// GetK8sCluster를 provider_connection 소스로 전환하기 전까지 본 투영 목록에
-// 나타나지 않는다(H0→I-a 창의 알려진 제한 — 리포트 이월 판정).
+// ID 공간 판단(I-b — 구현 판정 기록 2026-09-11): 응답 id는 체인 형상별로
+// 배정된다. ① source 쌍 체인(source_id>0 — 백필 유산)은 legacy source_id를
+// 그대로 노출한다(G0 승인 계약 유지 — 이 집합은 step0007이 stale_source=true로
+// 봉인해 동결·소멸 예정이다). ② register-k8s 체인(source_id=0 — source 쌍
+// 없는 커넥션)은 conn.ID를 노출한다 — 노출할 source_id가 없고 conn.ID는 이
+// 체인의 자연 키다. 두 공간의 수치 충돌 시 source 쌍 체인이 해상 우선권을 갖는다
+// (resolveK8sProjectionConnection·GetK8sCluster 이중 해상 — 결정론적). 충돌
+// 표면은 유한하다: 백필 source_id 집합은 S1c(I-a) 제거로 더 이상 증가하지
+// 않는다. 라우트·골든 무변경 하에 register-k8s 체인이 투영 목록·info·detail에
+// 가시화되며, 이로써 H0→I-a 창에서 알려진 제한이었던 source-less 체인 비가시
+// 문제가 종결된다(Ia 판정 4 — legacy id 공간 종결의 코드 편).
 package service
 
 import (
@@ -32,21 +28,26 @@ import (
 	"ops-admin/backend/model"
 )
 
-// G0 투영의 소스 해상은 백필 체인(source_model/source_id 쌍)에 한정한다.
+// k8sProjectionSourceModel — source 쌍 체인(백필 유산)의 식별값. I-b부터
+// 목록·단건 해상은 이 값에 한정하지 않는다(register-k8s 체인 가시화 — 패키지
+// 문서 ID 공간 판단). 이 상수는 source 쌍 체인의 이중 해상 1순위 조건에만
+// 쓰인다.
 const (
 	k8sProjectionProvider    = "kubernetes"
 	k8sProjectionSourceModel = "k8s_cluster"
 )
 
-// projectK8sClusterList — cluster/list의 V2 소스. 백필 체인 커넥션을
-// source_id 오름차순(legacy Order("id asc") 대응)으로 열거한다. 공개
-// generation이 없는 커넥션(동기화 전)은 공개 읽기면(§5.4c·N8)에서 부재로
-// 읽힌다 — 목록 전체의 오류로 승격하지 않는다.
+// projectK8sClusterList — cluster/list의 V2 소스. live kubernetes 커넥션을
+// conn.ID 오름차순으로 열거한다(I-b: source_model 필터 제거 — register-k8s
+// 체인 가시화. post-drop live 집합은 register-k8s 체인이고 노출 id == conn.ID이므로
+// conn.ID 정렬이 legacy Order("id asc") 대응을 계승한다). 공개 generation이
+// 없는 커넥션(동기화 전)은 공개 읽기면(§5.4c·N8)에서 부재로 읽힌다 — 목록
+// 전체의 오류로 승격하지 않는다.
 func (s *Service) projectK8sClusterList() ([]model.K8sClusterView, error) {
 	var conns []infraModel.ProviderConnection
-	if err := s.db.Where("provider_type = ? AND source_model = ? AND stale_source = ?",
-		k8sProjectionProvider, k8sProjectionSourceModel, false).
-		Order("source_id asc").Find(&conns).Error; err != nil {
+	if err := s.db.Where("provider_type = ? AND stale_source = ?",
+		k8sProjectionProvider, false).
+		Order("id asc").Find(&conns).Error; err != nil {
 		return nil, fmt.Errorf("k8s projection: list connections: %w", err)
 	}
 	result := make([]model.K8sClusterView, 0, len(conns))
@@ -61,6 +62,15 @@ func (s *Service) projectK8sClusterList() ([]model.K8sClusterView, error) {
 		result = append(result, view)
 	}
 	return result, nil
+}
+
+// k8sProjectionViewID — 커넥션의 노출 id. source 쌍 체인은 legacy source_id,
+// register-k8s 체인은 conn.ID(패키지 문서 ID 공간 판단).
+func k8sProjectionViewID(conn *infraModel.ProviderConnection) uint {
+	if conn.SourceID > 0 {
+		return conn.SourceID
+	}
+	return conn.ID
 }
 
 // ProjectK8sClusterInfo — cluster/info의 V2 착지점(컨트롤러 k8s.go:32가 직접
@@ -95,7 +105,7 @@ func (s *Service) projectK8sClusterDetail(clusterID uint) (model.K8sClusterDetai
 	if err != nil {
 		return model.K8sClusterDetail{}, err
 	}
-	detail.Cluster.ID = conn.SourceID
+	detail.Cluster.ID = k8sProjectionViewID(conn)
 	return detail, nil
 }
 
@@ -127,7 +137,7 @@ func (s *Service) projectK8sClusterView(conn *infraModel.ProviderConnection) (mo
 		return model.K8sClusterView{}, err
 	}
 	view := detail.Cluster
-	view.ID = conn.SourceID
+	view.ID = k8sProjectionViewID(conn)
 	return view, nil
 }
 
@@ -170,12 +180,20 @@ func (s *Service) k8sClusterFromProjection(view model.K8sClusterView) (model.K8s
 	return cluster, nil
 }
 
-// resolveK8sProjectionConnection — legacy 클러스터 id를 백필 체인 커넥션으로
-// 해상한다(C53 페어링과 동일 조건 — 구 main_compare.go:83, G1 제거). stale 행은 부재다.
+// resolveK8sProjectionConnection — 노출 id를 live 커넥션으로 이중 해상한다.
+// 1순위는 source 쌍 체인(source_model/source_id — C53 페어링과 동일 조건, 구
+// main_compare.go:83의 계승), 2순위는 register-k8s 체인(source_id=0 — 노출 id
+// == conn.ID). 순서가 곧 충돌 우선권이다(패키지 문서 ID 공간 판단). 이 이중
+// 해상 순서는 GetK8sCluster(k8s.go)의 2단 조회와 동일 조건이다 — 양측을 함께
+// 갱신할 것(L1). stale 행은 부재다.
 func (s *Service) resolveK8sProjectionConnection(clusterID uint) (*infraModel.ProviderConnection, error) {
 	var conn infraModel.ProviderConnection
 	err := s.db.Where("provider_type = ? AND source_model = ? AND source_id = ? AND stale_source = ?",
 		k8sProjectionProvider, k8sProjectionSourceModel, clusterID, false).First(&conn).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = s.db.Where("provider_type = ? AND source_id = ? AND id = ? AND stale_source = ?",
+			k8sProjectionProvider, 0, clusterID, false).First(&conn).Error
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("k8s cluster %d has no live V2 source — run sync-inventory", clusterID)

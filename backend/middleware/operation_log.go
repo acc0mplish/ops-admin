@@ -108,7 +108,7 @@ func riskLevel(path string, method string) string {
 		return "high"
 	}
 	highRiskPaths := []string{
-		"/database/sql", "/database/export", "/database/import", "/k8s/yaml", "/k8s/workload/images",
+		"/database/sql", "/database/export", "/database/import", "/k8s/yaml",
 		"/ops/quick", "/ops/job", "/ops/schedule", "/ops/application/pipeline/run",
 	}
 	for _, item := range highRiskPaths {

@@ -226,8 +226,8 @@ func (a *Adapter) fetchTemplateObservation(ctx context.Context, client *k8sClien
 	return &obj, nil
 }
 
-// --- k8s.workload.image_update (v1 k8s_workload.go:149 UpdateK8sWorkloadImages
-// — 단일 워크로드 축소). ---
+// --- k8s.workload.image_update (v1 원천 UpdateK8sWorkloadImages — 단일 워크로드
+// 축소 — phase6 H2에서 제거). ---
 
 // imageUpdateVersion — Payload["version"] 검증: 공백 아닌 문자열(v1 "image
 // version is required" 문언). 값은 replaceImageVersion 경험식의 유일 입력이다.
@@ -330,8 +330,8 @@ func (a *Adapter) executeImageUpdate(ctx context.Context, req contract.Operation
 	}, nil
 }
 
-// --- k8s.workload.resources_update (v1 k8s_workload.go:232
-// UpdateK8sWorkloadResources — 단일 워크로드). ---
+// --- k8s.workload.resources_update (v1 원천 UpdateK8sWorkloadResources —
+// 단일 워크로드 — phase6 H2에서 제거). ---
 
 // resourcesUpdateSpec — payload 형태: {"containers":[{name, requests{cpu,memory},
 // limits{…}, imagePullPolicy?, env[]}]} — v1 K8sWorkloadResourcesPayload의 JSON

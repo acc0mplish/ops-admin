@@ -227,6 +227,54 @@ func TestK8sClusterAbsentAndStale(t *testing.T) {
 	}
 }
 
+// TestGetK8sClusterRegisterChainIDSpace — I-b id 공간 전환: source 쌍이 없는
+// register-k8s 체인(source_id=0)은 노출 id == conn.ID로 해상된다(2순위 leg —
+// k8s_projection.go ID 공간 판단).
+func TestGetK8sClusterRegisterChainIDSpace(t *testing.T) {
+	svc := newK8sSourceService(t)
+	conn := seedK8sSourceChain(t, svc.db, 0, infraModel.ProviderConnection{
+		Name: "registered", Endpoint: "https://r:6443", Status: "active", Version: "v1.31.2",
+		ConfigJSON: map[string]any{"connection_mode": "direct"},
+	}, "registered-kubeconfig")
+
+	cluster, err := svc.GetK8sCluster(conn.ID)
+	if err != nil {
+		t.Fatalf("GetK8sCluster(%d): %v", conn.ID, err)
+	}
+	if cluster.ID != conn.ID || cluster.Name != "registered" || cluster.APIServer != "https://r:6443" {
+		t.Errorf("register chain identity wrong: %+v", cluster)
+	}
+	if cluster.KubeConfig != "registered-kubeconfig" {
+		t.Errorf("kubeconfig not decrypted: %q", cluster.KubeConfig)
+	}
+}
+
+// TestGetK8sClusterSourcePairPrecedence — 이중 해상의 충돌 우선권: register
+// 체인의 conn.ID가 source 쌍 체인의 source_id와 수치로 겹치면 source 쌍이
+// 이긴다(1순위 — 결정론적 해상, 패키지 문서 ID 공간 판단).
+func TestGetK8sClusterSourcePairPrecedence(t *testing.T) {
+	svc := newK8sSourceService(t)
+	registered := seedK8sSourceChain(t, svc.db, 0, infraModel.ProviderConnection{
+		Name: "registered", Endpoint: "https://r:6443", Status: "active",
+		ConfigJSON: map[string]any{"connection_mode": "direct"},
+	}, "registered-kubeconfig")
+	// register 체인의 conn.ID와 같은 수치를 source_id로 갖는 source 쌍 체인을
+	// 뒤에 심는다 — 조회는 source 쌍을 반환해야 한다.
+	seedK8sSourceChain(t, svc.db, registered.ID, infraModel.ProviderConnection{
+		Name: "backfill-collision", Endpoint: "https://b:6443", Status: "active",
+		SourceModel: "k8s_cluster", SourceID: registered.ID,
+		ConfigJSON: map[string]any{"connection_mode": "direct"},
+	}, "backfill-kubeconfig")
+
+	cluster, err := svc.GetK8sCluster(registered.ID)
+	if err != nil {
+		t.Fatalf("GetK8sCluster(%d): %v", registered.ID, err)
+	}
+	if cluster.Name != "backfill-collision" {
+		t.Errorf("source-pair chain must win the collision, got %q", cluster.Name)
+	}
+}
+
 // TestCountK8sClustersByGateway — S6 등가 조회: 칼럼·ConfigJSON 두 체인
 // 형상을 모두 세고 stale 행은 제외한다(delete-protection 카운트).
 func TestCountK8sClustersByGateway(t *testing.T) {

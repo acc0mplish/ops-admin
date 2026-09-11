@@ -36,12 +36,13 @@ func (s *Service) ListK8sClusters() ([]model.K8sClusterView, error) {
 // gateway_id column (backfill chains) taking precedence over the ConfigJSON
 // string the register-k8s CLI records.
 //
-// Chain coverage judgment (구현 판정 기록 2026-09-11): the resolution follows
-// the plan's sourceModel-무관 recommendation (§J5 — provider_type
-// "kubernetes" + source_id) so any chain shape that carries the legacy id in
-// the source_id space resolves. register-k8s chains carry no source pair, so
-// they stay outside this legacy-id read surface until the id space
-// transitions (the k8s_projection.go H0→I-a window note extends to I-b).
+// Chain coverage judgment (구현 판정 기록 — I-a 2026-09-11, I-b 갱신): the
+// resolution follows the plan's sourceModel-무관 recommendation (§J5 —
+// provider_type "kubernetes" + source_id) and, since the I-b id-space
+// transition, falls back to the register-k8s chain shape (source_id=0, exposed
+// id == conn.ID — k8s_projection.go ID 공간 판단). Precedence: source-pair
+// chains resolve first, so a numeric overlap between the frozen backfill
+// source_id set and register conn.IDs is deterministic.
 func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 	// id=0 가드(리뷰 HIGH): register-k8s 체인은 source_id=0(미설정)이라
 	// 무가드 조회가 모든 미설정 체인을 0번 클러스터로 승격시킨다 — 0은
@@ -53,6 +54,13 @@ func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 	var conn infraModel.ProviderConnection
 	err := s.db.Where("provider_type = ? AND source_id = ? AND stale_source = ?",
 		k8sProjectionProvider, id, false).First(&conn).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// register-k8s 체인(source 쌍 없음) — 노출 id == conn.ID(I-b 전환).
+		// 이 이중 해상 순서는 resolveK8sProjectionConnection(k8s_projection.go)과
+		// 동일 조건이다 — 양측을 함께 갱신할 것(L1).
+		err = s.db.Where("provider_type = ? AND source_id = ? AND id = ? AND stale_source = ?",
+			k8sProjectionProvider, 0, id, false).First(&conn).Error
+	}
 	if err != nil {
 		return model.K8sCluster{}, err
 	}
