@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	infraModel "ops-admin/backend/internal/infra/model"
 	"ops-admin/backend/model"
 )
 
@@ -55,7 +56,39 @@ func (s *Service) ListAssetServices(pageNum, pageSize int, keyword string) (map[
 	if err := query.Order("id DESC").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
 		return nil, err
 	}
+	if err := s.fillAssetServiceClusterIDs(list); err != nil {
+		return nil, err
+	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
+}
+
+// resolveAssetServiceClusterID — 공유 커넥션 스캔 위에서 단일 행의 역해상.
+// 복수매치는 최초 매치를 반환한다 — 이 필드는 목록 표시·프론트 릴레이 전용이고,
+// 단건 k8s 읽기 경로는 assetServiceClusterID가 모호 에러로 차단한다.
+func resolveAssetServiceClusterID(conns []infraModel.ProviderConnection, service *model.AssetService) uint {
+	for i := range conns {
+		if assetServiceUID(conns[i].Endpoint, service.Namespace, service.Name) == service.ServiceUID {
+			return k8sProjectionViewID(&conns[i])
+		}
+	}
+	return 0
+}
+
+// fillAssetServiceClusterIDs — 행 슬라이스의 역해상 응답 필드
+// (model.AssetService.K8sClusterID gorm:"-")를 채운다. 커넥션 집합은 1회
+// 스캔해 공유한다.
+func (s *Service) fillAssetServiceClusterIDs(rows []model.AssetService) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	conns, err := s.k8sClusterConnections()
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].K8sClusterID = resolveAssetServiceClusterID(conns, &rows[i])
+	}
+	return nil
 }
 
 func (s *Service) GetAssetService(id uint) (*model.AssetService, error) {
@@ -63,7 +96,44 @@ func (s *Service) GetAssetService(id uint) (*model.AssetService, error) {
 	if err := s.db.Preload("Workloads").First(&item, id).Error; err != nil {
 		return nil, err
 	}
+	conns, err := s.k8sClusterConnections()
+	if err != nil {
+		return nil, err
+	}
+	item.K8sClusterID = resolveAssetServiceClusterID(conns, &item)
 	return &item, nil
+}
+
+// assetServiceClusterID — I-b(step0007) 칼럼 drop 이후의 행→클러스터 역해상
+// (S3 소비자 재판정 — 구현 판정 기록 2026-09-11). 링크 칼럼이 사라져도
+// ServiceUID가 링크를 결정론적으로 인코딩한다: SaveAssetService는
+// assetServiceUID(cluster.APIServer, namespace, name)로 파생하고 — I-a S5
+// 이후 APIServer == provider_connection.Endpoint — 읽기는 같은 함수를 live
+// kubernetes 커넥션 집합(k8sClusterConnections)에 재적용해 역해상한다.
+// 무매치는 not-found, 복수매치는 모호 에러로 차단한다 — 칼럼 시절의 1:1 링크
+// 보장을 live 체인 간 API 서버 hostname 충돌(동일 hostname, port만 다른
+// 멀티클러스터)에서도 조용히 깨지 않기 위해서다. 노출 id는 k8s_projection.go의
+// id 공간 판단(source 쌍 체인은 source_id, register-k8s 체인은 conn.ID)을
+// 따른다.
+func (s *Service) assetServiceClusterID(service *model.AssetService) (uint, error) {
+	conns, err := s.k8sClusterConnections()
+	if err != nil {
+		return 0, err
+	}
+	matches := make([]uint, 0, 1)
+	for i := range conns {
+		if assetServiceUID(conns[i].Endpoint, service.Namespace, service.Name) == service.ServiceUID {
+			matches = append(matches, k8sProjectionViewID(&conns[i]))
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return 0, apperr.New("K8S_CLUSTER_NOT_FOUND", nil)
+	default:
+		return 0, apperr.New("K8S_CLUSTER_AMBIGUOUS", nil)
+	}
 }
 
 func (s *Service) SaveAssetService(payload AssetServicePayload) error {
@@ -78,7 +148,10 @@ func (s *Service) SaveAssetService(payload AssetServicePayload) error {
 	if err != nil {
 		return apperr.New("K8S_CLUSTER_NOT_FOUND", nil)
 	}
-	item := model.AssetService{Name: name, ServiceUID: assetServiceUID(cluster.APIServer, namespace, name), K8sClusterID: payload.K8sClusterID, Namespace: namespace, ServiceType: Trimmed(payload.ServiceType), Status: payload.Status, Description: Trimmed(payload.Description)}
+	// 클러스터 링크 칼럼은 I-b에서 제거됐다(C66) — payload.K8sClusterID는
+	// 존재 검증과 ServiceUID 파생에만 쓰이고 행에는 저장되지 않는다. 링크는
+	// ServiceUID에 인코딩되며 읽기는 assetServiceClusterID로 역해상한다.
+	item := model.AssetService{Name: name, ServiceUID: assetServiceUID(cluster.APIServer, namespace, name), Namespace: namespace, ServiceType: Trimmed(payload.ServiceType), Status: payload.Status, Description: Trimmed(payload.Description)}
 	if item.ServiceType == "" {
 		item.ServiceType = "Business Service"
 	}
@@ -185,14 +258,18 @@ func (s *Service) GetAssetServiceRuntimeTopology(serviceID uint) (map[string]any
 	if err != nil {
 		return nil, err
 	}
-	cluster, err := s.GetK8sCluster(service.K8sClusterID)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	cluster, err := s.GetK8sCluster(clusterID)
 	if err != nil {
 		return nil, err
 	}
 	result := map[string]any{"service": service, "cluster": toK8sClusterView(cluster), "namespace": service.Namespace, "source": "saved", "workloads": service.Workloads}
 	workloads := make([]model.K8sWorkloadItem, 0, len(service.Workloads))
 	for _, item := range service.Workloads {
-		detail, detailErr := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, item.WorkloadType, item.WorkloadName)
+		detail, detailErr := s.GetK8sWorkloadDetail(clusterID, service.Namespace, item.WorkloadType, item.WorkloadName)
 		if detailErr != nil {
 			workloads = append(workloads, model.K8sWorkloadItem{Name: item.WorkloadName, Type: item.WorkloadType, Namespace: service.Namespace, Ready: "0/0"})
 			continue
@@ -212,7 +289,11 @@ func (s *Service) GetAssetServiceWorkloadRuntime(serviceID uint, workloadType, w
 	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
 		return model.K8sWorkloadDetail{}, apperr.New("ASSET_SERVICE_WORKLOAD_MISMATCH", nil)
 	}
-	return s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return model.K8sWorkloadDetail{}, err
+	}
+	return s.GetK8sWorkloadDetail(clusterID, service.Namespace, workloadType, workloadName)
 }
 
 func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, workloadName string) (map[string]any, error) {
@@ -223,12 +304,16 @@ func (s *Service) GetAssetServiceWorkloadTopology(serviceID uint, workloadType, 
 	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
 		return nil, apperr.New("ASSET_SERVICE_WORKLOAD_MISMATCH", nil)
 	}
-	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := s.GetK8sWorkloadDetail(clusterID, service.Namespace, workloadType, workloadName)
 	if err != nil {
 		return nil, err
 	}
 	result := map[string]any{"workload": detail, "services": []map[string]any{}, "replicaSets": []map[string]any{}, "statefulSet": nil}
-	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
 		return result, nil
 	}
@@ -286,7 +371,11 @@ func (s *Service) GetAssetServiceWorkloadMetrics(serviceID uint, workloadType, w
 	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
 		return nil, apperr.New("ASSET_SERVICE_WORKLOAD_MISMATCH", nil)
 	}
-	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := s.GetK8sWorkloadDetail(clusterID, service.Namespace, workloadType, workloadName)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +383,7 @@ func (s *Service) GetAssetServiceWorkloadMetrics(serviceID uint, workloadType, w
 	for _, pod := range detail.Pods {
 		podNames = append(podNames, pod.Name)
 	}
-	return s.getK8sPodMetricComparison(service.K8sClusterID, service.Namespace, podNames, rangeKey)
+	return s.getK8sPodMetricComparison(clusterID, service.Namespace, podNames, rangeKey)
 }
 
 func workloadDetailHealthy(detail model.K8sWorkloadDetail) bool {
@@ -318,7 +407,11 @@ func (s *Service) GetAssetServiceWorkloadRolloutHistory(serviceID uint, workload
 	if !strings.EqualFold(Trimmed(workloadType), "deployment") {
 		return nil, apperr.New("ASSET_SERVICE_ROLLBACK_DEPLOYMENT_ONLY", nil)
 	}
-	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +455,11 @@ func (s *Service) RollbackAssetServiceWorkload(payload AssetServiceWorkloadRollb
 	if !strings.EqualFold(Trimmed(payload.WorkloadType), "deployment") || Trimmed(payload.Revision) == "" {
 		return nil, apperr.New("ASSET_SERVICE_ROLLBACK_DEPLOYMENT_ONLY", nil)
 	}
-	_, runtime, client, err := s.k8sClientForCluster(service.K8sClusterID)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -410,14 +507,18 @@ func (s *Service) GetAssetServiceWorkloadLogs(serviceID uint, workloadType, work
 	if !assetServiceContainsWorkload(service, workloadType, workloadName) {
 		return nil, apperr.New("ASSET_SERVICE_WORKLOAD_MISMATCH", nil)
 	}
-	detail, err := s.GetK8sWorkloadDetail(service.K8sClusterID, service.Namespace, workloadType, workloadName)
+	clusterID, err := s.assetServiceClusterID(service)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := s.GetK8sWorkloadDetail(clusterID, service.Namespace, workloadType, workloadName)
 	if err != nil {
 		return nil, err
 	}
 	podName = Trimmed(podName)
 	for _, pod := range detail.Pods {
 		if pod.Name == podName {
-			return s.GetK8sPodLogs(service.K8sClusterID, service.Namespace, podName, container, tailLines)
+			return s.GetK8sPodLogs(clusterID, service.Namespace, podName, container, tailLines)
 		}
 	}
 	return nil, apperr.New("ASSET_SERVICE_POD_MISMATCH", nil)

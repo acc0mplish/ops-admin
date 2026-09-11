@@ -4,12 +4,21 @@ import "time"
 
 // AssetService is an operational service discovered from one Kubernetes
 // namespace. It is intentionally independent from application-center projects
-// and their repository, build, release, and pipeline records.
+// and their repository, build, release, and pipeline records. The cluster
+// link is not a stored column: the k8s_cluster_id column dropped in V2 Phase
+// 6 I-b (C66), and the linkage lives in ServiceUID, which SaveAssetService
+// derives from the cluster's API server — reads re-derive the cluster from it
+// (service/asset_service.go assetServiceClusterID).
 type AssetService struct {
-	ID           uint                   `json:"id" gorm:"primaryKey"`
-	Name         string                 `json:"name" gorm:"size:128;not null;index"`
-	ServiceUID   string                 `json:"serviceUid" gorm:"size:255;not null;uniqueIndex"`
-	K8sClusterID uint                   `json:"k8sClusterId" gorm:"not null;index"`
+	ID         uint   `json:"id" gorm:"primaryKey"`
+	Name       string `json:"name" gorm:"size:128;not null;index"`
+	ServiceUID string `json:"serviceUid" gorm:"size:255;not null;uniqueIndex"`
+	// K8sClusterID — I-b 역해상 응답 필드(gorm:"-" — 칼럼은 step0007에서
+	// drop). ServiceUID에서 결정론적으로 역해상되며 목록·단건 로드 시
+	// service/asset_service.go가 채운다. 영속 링크가 아니라 읽기 시점
+	// 계산값이다 — 프론트 스코프 열·pod 컨테이너 릴레이의 소비자 계약
+	// 유지용(I-b 리뷰 HIGH·M1 판정 기록).
+	K8sClusterID uint                   `json:"k8sClusterId" gorm:"-"`
 	Namespace    string                 `json:"namespace" gorm:"size:128;not null;index"`
 	ServiceType  string                 `json:"serviceType" gorm:"size:64;index"`
 	Status       int                    `json:"status" gorm:"default:1;index"`

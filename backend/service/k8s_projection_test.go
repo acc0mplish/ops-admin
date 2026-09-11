@@ -198,31 +198,34 @@ func seedV2K8sCluster(t *testing.T, db *gorm.DB, legacyID uint, opts func(*infra
 	return conn.ID, pctx.ID
 }
 
-// TestProjectK8sClusterList — cluster/list V2 단일 소스(G1): 백필 체인만 source_id
-// 오름차순(legacy Order("id asc") 대응)으로 노출하고, 뷰의 id는 conn.ID가
-// 아니라 legacy source_id다(ID 공간 판단 — k8s_projection.go 패키지 문서).
-// stale 커넥션(§5.4c)과 source 쌍이 없는 커넥션(register-k8s 체인 — I-a S5
-// 전까지 목록 제외 판정)은 부재로 읽힌다.
+// TestProjectK8sClusterList — cluster/list V2 단일 소스(I-b 갱신): live
+// kubernetes 커넥션을 conn.ID 오름차순으로 노출하고, 뷰의 id는 체인 형상별로
+// 배정된다(source 쌍 체인 → legacy source_id, register-k8s 체인 → conn.ID —
+// ID 공간 판단, k8s_projection.go 패키지 문서). stale 커넥션(§5.4c)만 부재로
+// 읽힌다.
 func TestProjectK8sClusterList(t *testing.T) {
 	svc := newProjectionService(t)
 
-	// 일부러 conn.ID 오름차순과 어긋나게: legacy 5 → 2 순서로 심는다.
+	// 일부러 source_id 오름차순과 어긋나게: legacy 5 → 2 순서로 심는다
+	// (conn.ID 1·2 — conn.ID 정렬이면 [5 2] 순).
 	seedV2K8sCluster(t, svc.db, 5, nil)
 	seedV2K8sCluster(t, svc.db, 2, nil)
 	seedV2K8sCluster(t, svc.db, 9, func(c *infraModel.ProviderConnection) { c.StaleSource = true })
-	seedV2K8sCluster(t, svc.db, 11, func(c *infraModel.ProviderConnection) { c.SourceModel = "" })
+	// register-k8s 체인(source 쌍 없음 — H0 규약 형상) — 노출 id == conn.ID
+	// (stale 체인이 conn.ID 3을 쓰므로 4다).
+	seedV2K8sCluster(t, svc.db, 11, func(c *infraModel.ProviderConnection) { c.SourceModel = ""; c.SourceID = 0 })
 
 	list, err := svc.ListK8sClusters()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 {
-		t.Fatalf("list length = %d, want 2 (stale·비source 체인 제외): %+v", len(list), list)
+	if len(list) != 3 {
+		t.Fatalf("list length = %d, want 3 (stale 체인 제외·register 체인 가시화): %+v", len(list), list)
 	}
-	if list[0].ID != 2 || list[1].ID != 5 {
-		t.Fatalf("list ids = [%d %d], want [2 5] — legacy source_id 공간·오름차순", list[0].ID, list[1].ID)
+	if list[0].ID != 5 || list[1].ID != 2 || list[2].ID != 4 {
+		t.Fatalf("list ids = [%d %d %d], want [5 2 4] — conn.ID 오름차순·형상별 노출 id", list[0].ID, list[1].ID, list[2].ID)
 	}
-	byID := map[uint]model.K8sClusterView{list[0].ID: list[0], list[1].ID: list[1]}
+	byID := map[uint]model.K8sClusterView{list[0].ID: list[0], list[1].ID: list[1], list[2].ID: list[2]}
 	view := byID[5]
 	if view.Name != "seed-cluster-5" {
 		t.Fatalf("name = %q, want conn.Name 승계", view.Name)
@@ -243,6 +246,12 @@ func TestProjectK8sClusterList(t *testing.T) {
 	// degraded 노드(n-2)가 있으므로 목록 뷰도 warning이다.
 	if view.Status != "warning" || view.StatusText == "" {
 		t.Fatalf("status = %q/%q, want 경보 승격 warning", view.Status, view.StatusText)
+	}
+	// register 체인이 conn.ID 공간으로 노출됐는지(I-b 가시화 — 노출 id 4 =
+	// conn.ID) 확인한다.
+	registered := byID[4]
+	if registered.Name != "seed-cluster-11" || registered.APIServer != "https://seed:6443" {
+		t.Fatalf("register 체인 노출 이상: %+v", registered)
 	}
 }
 

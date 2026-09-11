@@ -2,49 +2,30 @@ package model
 
 import "time"
 
-// K8sCluster — V2 Phase 6 I-a 이후 이 구조체는 응답 DTO다: 서비스 계층의
-// 클러스터 소스는 provider_connection + SecretRef 체인으로 전환됐고
-// (service/k8s.go GetK8sCluster — phase6-plan §J5 S5), 이 타입은 소비자
-// 시그니처 유지(§12 #16)를 위해 존속한다. 아래 gorm 매핑·TableName은 legacy
-// 테이블(stale 데이터 전용)과 v1 AutoMigrate 소유분이며, I-b의 step0007
-// drop과 함께 AutoMigrate 제외 → 매핑 제거가 이어진다(C66 — I-a에서는
-// 스키마 불변 원칙상 손대지 않는다).
+// K8sCluster — V2 Phase 6 I-b 이후 이 구조체는 순수 응답 DTO다(§J5 S5 —
+// 타입은 존재, gorm 매핑 제거). 서비스 계층의 클러스터 소스는
+// provider_connection + SecretRef 체인(I-a S5)이고 legacy k8s_cluster 테이블은
+// step0007에서 drop됐으며(C66) v1 AutoMigrate 소유분도 제외됐다. gorm 태그와
+// TableName은 제거됐다 — 이 타입을 테이블로 조회하는 경로는 존재하지 않는다.
 type K8sCluster struct {
-	ID                  uint              `json:"id" gorm:"primaryKey"`
-	Name                string            `json:"name" gorm:"size:128;not null;uniqueIndex"`
-	Status              string            `json:"status" gorm:"size:32;not null;default:running"`
-	APIServer           string            `json:"apiServer" gorm:"size:255;not null"`
-	Version             string            `json:"version" gorm:"size:64;not null"`
-	NodeCount           int               `json:"nodeCount" gorm:"default:0"`
-	Env                 string            `json:"env" gorm:"size:64;index"`
-	Tags                []string          `json:"tags" gorm:"serializer:json;type:text"`
-	ConnectionMode      string            `json:"connectionMode" gorm:"size:32;default:direct;index"`
-	GatewayID           *uint             `json:"gatewayId" gorm:"index"`
-	Gateway             AssetGateway      `json:"gateway" gorm:"foreignKey:GatewayID"`
-	MonitorDatasourceID *uint             `json:"monitorDatasourceId" gorm:"index"`
-	MonitorDatasource   MonitorDatasource `json:"monitorDatasource" gorm:"foreignKey:MonitorDatasourceID"`
-	Description         string            `json:"description" gorm:"size:255"`
-	KubeConfig          string            `json:"kubeConfig" gorm:"type:text"`
+	ID                  uint              `json:"id"`
+	Name                string            `json:"name"`
+	Status              string            `json:"status"`
+	APIServer           string            `json:"apiServer"`
+	Version             string            `json:"version"`
+	NodeCount           int               `json:"nodeCount"`
+	Env                 string            `json:"env"`
+	Tags                []string          `json:"tags"`
+	ConnectionMode      string            `json:"connectionMode"`
+	GatewayID           *uint             `json:"gatewayId"`
+	Gateway             AssetGateway      `json:"gateway"`
+	MonitorDatasourceID *uint             `json:"monitorDatasourceId"`
+	MonitorDatasource   MonitorDatasource `json:"monitorDatasource"`
+	Description         string            `json:"description"`
+	KubeConfig          string            `json:"kubeConfig"`
 	LastSyncAt          *time.Time        `json:"lastSyncAt"`
 	CreatedAt           time.Time         `json:"createTime"`
 	UpdatedAt           time.Time         `json:"updateTime"`
-}
-
-func (K8sCluster) TableName() string {
-	return "k8s_cluster"
-}
-
-type K8sClusterPayload struct {
-	ID                  uint     `json:"id"`
-	Name                string   `json:"name"`
-	Description         string   `json:"description"`
-	KubeConfig          string   `json:"kubeConfig"`
-	Env                 string   `json:"env"`
-	ConnectionMode      string   `json:"connectionMode"`
-	GatewayID           uint     `json:"gatewayId"`
-	MonitorDatasourceID uint     `json:"monitorDatasourceId"`
-	Tags                []string `json:"tags"`
-	Operator            string   `json:"-"`
 }
 
 type K8sWorkloadActionPayload struct {
@@ -53,18 +34,6 @@ type K8sWorkloadActionPayload struct {
 	WorkloadType string `json:"workloadType"`
 	WorkloadName string `json:"workloadName"`
 	Replicas     int    `json:"replicas"`
-}
-
-type K8sWorkloadImageUpdateItem struct {
-	Namespace    string `json:"namespace"`
-	WorkloadType string `json:"workloadType"`
-	WorkloadName string `json:"workloadName"`
-}
-
-type K8sWorkloadImageBatchPayload struct {
-	ClusterID uint                         `json:"clusterId"`
-	Version   string                       `json:"version"`
-	Items     []K8sWorkloadImageUpdateItem `json:"items"`
 }
 
 type K8sWorkloadContainerResources struct {
@@ -109,13 +78,6 @@ type K8sIstioTrafficRoute struct {
 	Port   int    `json:"port"`
 	Weight int    `json:"weight"`
 	Label  string `json:"label"`
-}
-
-type K8sIstioTrafficPayload struct {
-	ClusterID uint                   `json:"clusterId"`
-	Namespace string                 `json:"namespace"`
-	Name      string                 `json:"name"`
-	Routes    []K8sIstioTrafficRoute `json:"routes"`
 }
 
 type K8sClusterView struct {
@@ -178,12 +140,6 @@ type K8sNodeItem struct {
 	CPU        string `json:"cpu"`
 	Memory     string `json:"memory"`
 	Pods       string `json:"pods"`
-}
-
-type K8sNodeLabelsPayload struct {
-	ClusterID uint              `json:"clusterId"`
-	NodeName  string            `json:"nodeName"`
-	Labels    map[string]string `json:"labels"`
 }
 
 type K8sNamespaceItem struct {

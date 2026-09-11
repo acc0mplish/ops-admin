@@ -1,7 +1,7 @@
 // executor_traffic.go — P2-D: traffic mutation 2종(k8s.istio.traffic_update·
 // k8s.httproute.traffic_update)의 OperationExecutor leg(계획 r3 §J-P1-6 확정표 —
-// k8s_mutate.go:151 UpdateK8sIstioTraffic·:202 UpdateK8sHTTPRouteTraffic의 v1
-// 원천). 두 v1 함수는 검증 순서·문언만 다르고 와이어가 동일 형태라(배열 원소 가중치
+// v1 UpdateK8sIstioTraffic·UpdateK8sHTTPRouteTraffic이 원천으로, phase6 H2에서
+// v1 경로와 함께 제거됐다). 두 v1 함수는 검증 순서·문언만 다르고 와이어가 동일 형태라(배열 원소 가중치
 // splice PUT) 선언형 종 스펙 2건 + 단일 실행 코어로 착지한다 — v1의 2중 복제를
 // 그대로 이월하지 않은 구조 판단 기록. handle·poll은 확정표 "발행+poll 1회"대로
 // state handle 가족(executor_state.go — 동결 엔트리 위치·가중치의 에코 판정)이다.

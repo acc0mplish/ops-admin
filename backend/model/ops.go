@@ -380,7 +380,6 @@ type OpsApplicationEnvironmentBinding struct {
 	AppID               uint      `json:"appId" gorm:"index;not null;uniqueIndex:idx_ops_app_env_binding"`
 	Env                 string    `json:"env" gorm:"size:64;not null;index;uniqueIndex:idx_ops_app_env_binding"`
 	HostGroupID         uint      `json:"hostGroupId" gorm:"index"`
-	K8sClusterID        uint      `json:"k8sClusterId" gorm:"index"`
 	Namespace           string    `json:"namespace" gorm:"size:128"`
 	WorkloadType        string    `json:"workloadType" gorm:"size:32"`
 	WorkloadName        string    `json:"workloadName" gorm:"size:128"`

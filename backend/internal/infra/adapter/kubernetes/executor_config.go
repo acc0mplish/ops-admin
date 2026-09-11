@@ -1,6 +1,7 @@
 // executor_config.go — P2-B: state-convergent mutation 2종(k8s.node.labels_update·
-// k8s.service.update)의 OperationExecutor leg(계획 r3 §J-P1-6 확정표 — k8s.go:308
-// UpdateK8sNodeLabels·k8s_detail.go:74 UpdateK8sService의 v1 원천 2라인). 이 2종은
+// k8s.service.update)의 OperationExecutor leg(계획 r3 §J-P1-6 확정표 — v1
+// UpdateK8sNodeLabels·UpdateK8sService 2라인이 원천으로, phase6 H2에서 v1
+// 경로와 함께 제거됐다). 이 2종은
 // rollout이 없다 — 확정표의 handle·poll 형태 "발행+poll 1회"를 state handle
 // 가족으로 착지한다. handle encode/decode·관측 디코드·satisfiedBy·pollStateRef는
 // P2-D 분할로 executor_state.go로 옮겨졌다(가족 공용면 — P2-C 권고 상환).
@@ -91,7 +92,7 @@ func parseServiceURN(urn string) (string, string, error) {
 	return ns, name, nil
 }
 
-// --- k8s.node.labels_update (v1 k8s.go:308 UpdateK8sNodeLabels). ---
+// --- k8s.node.labels_update (v1 원천 UpdateK8sNodeLabels — phase6 H2에서 제거). ---
 
 // nodeLabelsOf — Payload["labels"] 검증: 빈 키 거부(v1 "node label key is required"
 // 문언), 키·값 trim. 빈 집합 자체는 v1과 동일하게 허용한다(전 레이블 제거 의미).
@@ -180,7 +181,7 @@ func (a *Adapter) executeNodeLabelsUpdate(ctx context.Context, req contract.Oper
 	return contract.OperationHandle{ProviderRef: ref}, nil
 }
 
-// --- k8s.service.update (v1 k8s_detail.go:74 UpdateK8sService). ---
+// --- k8s.service.update (v1 원천 UpdateK8sService — phase6 H2에서 제거). ---
 
 // serviceUpdateSpec — payload 형태: v1 K8sServiceUpdatePayload의 JSON 형태 그대로
 // (clusterId·namespace·name 키는 v1 원천에 있지만 V2에서는 URN이 목표를 결정하므로

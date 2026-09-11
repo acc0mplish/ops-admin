@@ -1,6 +1,7 @@
 // executor_resource.go — P2-C: high-risk resource mutation 2종(k8s.resource.apply
 // update 한정·k8s.resource.delete)의 OperationExecutor leg(계획 r3 §J-P1-6 확정표
-// — k8s_mutate.go:15 UpdateK8sResourceYAML·:122 DeleteK8sResource의 v1 원천).
+// — v1 UpdateK8sResourceYAML·DeleteK8sResource가 원천으로, phase6 H2에서 v1
+// 경로와 함께 제거됐다).
 // apply는 확정표 수정 1건대로 update 한정이다 — create는 uid-스코프 오퍼레이션
 // 모델(SubmitInput.ResourceUID·관측 리프레시가 존재 자원의 uid를 요구)에 안 맞아
 // 이월이다(I-P1·Phase H 블로커). handle·poll은 확정표 "발행+poll 1회"대로 state
@@ -209,7 +210,7 @@ func expectedManifestKind(t resourceTarget) string {
 	return ""
 }
 
-// --- k8s.resource.apply (v1 k8s_mutate.go:15 UpdateK8sResourceYAML — update 한정). ---
+// --- k8s.resource.apply (v1 원천 UpdateK8sResourceYAML — update 한정 — phase6 H2에서 제거). ---
 
 // applyManifestOf — Payload["yaml"] 검증(v1 payload.YAML 키 승계 — resourceType·
 // namespace·name·clusterId는 v1 payload에 있지만 URN이 목표를 결정하므로 V2
@@ -341,7 +342,7 @@ func (a *Adapter) executeResourceApply(ctx context.Context, req contract.Operati
 	return contract.OperationHandle{ProviderRef: ref}, nil
 }
 
-// --- k8s.resource.delete (v1 k8s_mutate.go:122 DeleteK8sResource). ---
+// --- k8s.resource.delete (v1 원천 DeleteK8sResource — phase6 H2에서 제거). ---
 
 // executeResourceDelete — DELETE 1회(v1 와이어 — nil body·application/json).
 // provider_terminal_404: 목표 상태는 "부재"다. 시도가 404를 만나도 그것은 이미

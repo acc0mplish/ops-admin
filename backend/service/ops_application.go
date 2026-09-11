@@ -49,7 +49,6 @@ type OpsApplicationPayload struct {
 type OpsApplicationEnvironmentBindingPayload struct {
 	Env                 string `json:"env"`
 	HostGroupID         uint   `json:"hostGroupId"`
-	K8sClusterID        uint   `json:"k8sClusterId"`
 	Namespace           string `json:"namespace"`
 	WorkloadType        string `json:"workloadType"`
 	WorkloadName        string `json:"workloadName"`
@@ -505,7 +504,7 @@ func (s *Service) SaveOpsApplication(payload OpsApplicationPayload) error {
 			}
 			seen[env] = struct{}{}
 			row := model.OpsApplicationEnvironmentBinding{
-				AppID: appID, Env: env, HostGroupID: binding.HostGroupID, K8sClusterID: binding.K8sClusterID,
+				AppID: appID, Env: env, HostGroupID: binding.HostGroupID,
 				Namespace: Trimmed(binding.Namespace), WorkloadType: strings.ToLower(Trimmed(binding.WorkloadType)),
 				WorkloadName: Trimmed(binding.WorkloadName), DatabaseID: binding.DatabaseID,
 				MonitorDatasourceID: binding.MonitorDatasourceID, GatewayID: binding.GatewayID, Status: 1,
@@ -1330,9 +1329,9 @@ func (s *Service) RunOpsAppPipeline(payload OpsAppPipelineRunPayload) (map[strin
 			if stages[index].Config == nil {
 				stages[index].Config = map[string]any{}
 			}
-			if opsPipelineConfigUint(stages[index].Config, "clusterId") == 0 && binding.K8sClusterID > 0 {
-				stages[index].Config["clusterId"] = binding.K8sClusterID
-			}
+			// clusterId 폴백(binding.K8sClusterID)은 I-b 칼럼 drop(C66)으로
+			// 제거됐다 — k8sDeploy 스테이지는 스테이지 Config에 clusterId를
+			// 명시해야 한다(런타임 검증 :1076).
 			if opsPipelineConfigString(stages[index].Config, "namespace") == "" {
 				stages[index].Config["namespace"] = binding.Namespace
 			}
