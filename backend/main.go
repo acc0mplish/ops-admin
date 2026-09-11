@@ -46,8 +46,10 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "verify-secrets" {
 		os.Exit(runVerifySecrets(os.Args[2:]))
 	}
-	// V2 shadow sync subcommand (Phase 2 PR 21): backfill + one sync run +
-	// the dated report artifact, dispatched before any server startup path.
+	// V2 shadow sync subcommand (Phase 2 PR 21): one sync run + the dated
+	// report artifact, dispatched before any server startup path. The §5.4
+	// v1 backfill this command once ran first was retired in V2 Phase 6 I-a
+	// — register-k8s is the registration path now.
 	if len(os.Args) >= 2 && os.Args[1] == "sync-inventory" {
 		os.Exit(runSyncInventory(os.Args[2:]))
 	}

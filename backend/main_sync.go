@@ -18,32 +18,35 @@ import (
 )
 
 // syncReportArtifact is the report artifact schema — a whitelist: run
-// identity, §9.3 outcomes, the backfill summary, counts, and the Prometheus
-// metrics render (claims 5/6 evidence). Nothing credential-shaped
-// (kubeconfig, SecretRef material) exists on this struct (보존 제약 #7).
+// identity, §9.3 outcomes, counts, and the Prometheus metrics render
+// (claims 5/6 evidence). Nothing credential-shaped (kubeconfig, SecretRef
+// material) exists on this struct (보존 제약 #7). The §5.4 backfill summary
+// the v1 schema once carried was dropped with the backfill itself (V2
+// Phase 6 I-a — phase6-plan §J5 S7).
 type syncReportArtifact struct {
-	RunUID         string                   `json:"runUid"`
-	ConnectionUID  string                   `json:"connectionUid"`
-	Mode           string                   `json:"mode"`
-	Status         string                   `json:"status"`
-	Outcomes       map[string]int           `json:"outcomes"`
-	SeenCount      int                      `json:"seenCount"`
-	CreatedCount   int                      `json:"createdCount"`
-	UpdatedCount   int                      `json:"updatedCount"`
-	MissingCount   int                      `json:"missingCount"`
-	Backfill       inventory.BackfillReport `json:"backfill"`
-	MetricsText    string                   `json:"metricsText"`
-	StartedAt      time.Time                `json:"startedAt"`
-	CommittedAt    time.Time                `json:"committedAt"`
-	FinishedAt     time.Time                `json:"finishedAt"`
-	ArtifactSchema string                   `json:"artifactSchema"`
+	RunUID         string         `json:"runUid"`
+	ConnectionUID  string         `json:"connectionUid"`
+	Mode           string         `json:"mode"`
+	Status         string         `json:"status"`
+	Outcomes       map[string]int `json:"outcomes"`
+	SeenCount      int            `json:"seenCount"`
+	CreatedCount   int            `json:"createdCount"`
+	UpdatedCount   int            `json:"updatedCount"`
+	MissingCount   int            `json:"missingCount"`
+	MetricsText    string         `json:"metricsText"`
+	StartedAt      time.Time      `json:"startedAt"`
+	CommittedAt    time.Time      `json:"committedAt"`
+	FinishedAt     time.Time      `json:"finishedAt"`
+	ArtifactSchema string         `json:"artifactSchema"`
 }
 
-// runSyncInventory implements the "sync-inventory" command: backfill the v1
-// k8s_cluster rows into the V2 tables (§5.4), run one shadow sync (§9), and
-// write the dated report artifact under the deployment's data directory.
-// A failed run reports through the artifact and exits non-zero only on
-// infrastructure errors — a partial/failed sync outcome is data, not a crash.
+// runSyncInventory implements the "sync-inventory" command: run one shadow
+// sync (§9) and write the dated report artifact under the deployment's data
+// directory. The §5.4 v1 backfill this command once ran first was retired in
+// V2 Phase 6 I-a (phase6-plan §J5 S1c·S7) — register-k8s is the registration
+// path now. A failed run reports through the artifact and exits non-zero
+// only on infrastructure errors — a partial/failed sync outcome is data,
+// not a crash.
 func runSyncInventory(args []string) int {
 	flags := flag.NewFlagSet("sync-inventory", flag.ContinueOnError)
 	configPath := flags.String("config", "config.yaml", "path to config.yaml")
@@ -86,14 +89,6 @@ func runSyncInventory(args []string) int {
 	}
 
 	ctx := context.Background()
-	// §5.4 propagation first — a fresh v1 registration becomes a V2
-	// connection with its inventory credential binding before the sync.
-	backfill, err := inventory.RunK8sBackfill(ctx, db)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "sync-inventory: backfill: %v\n", err)
-		return 1
-	}
-
 	report, err := stack.Runner.RunSync(ctx, inventory.SyncInput{ConnectionUID: *connectionUID, Mode: *mode})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sync-inventory: sync: %v\n", err)
@@ -103,8 +98,8 @@ func runSyncInventory(args []string) int {
 	artifact := syncReportArtifact{
 		RunUID: report.RunUID, ConnectionUID: *connectionUID, Mode: *mode,
 		Status: report.Status, Outcomes: report.Outcomes,
-		Backfill: backfill, MetricsText: report.MetricsText,
-		StartedAt: report.StartedAt, CommittedAt: report.CommittedAt, FinishedAt: report.FinishedAt,
+		MetricsText: report.MetricsText,
+		StartedAt:   report.StartedAt, CommittedAt: report.CommittedAt, FinishedAt: report.FinishedAt,
 		ArtifactSchema: "ops-admin.sync-report/v1",
 	}
 	path, err := writeSyncArtifact(*dataDir, *connectionUID, report.FinishedAt, artifact)
