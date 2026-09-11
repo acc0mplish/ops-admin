@@ -74,8 +74,8 @@ func (s *Service) SaveAssetService(payload AssetServicePayload) error {
 	if len(payload.Workloads) == 0 {
 		return apperr.New("ASSET_SERVICE_WORKLOAD_REQUIRED", nil)
 	}
-	var cluster model.K8sCluster
-	if err := s.db.First(&cluster, payload.K8sClusterID).Error; err != nil {
+	cluster, err := s.GetK8sCluster(payload.K8sClusterID)
+	if err != nil {
 		return apperr.New("K8S_CLUSTER_NOT_FOUND", nil)
 	}
 	item := model.AssetService{Name: name, ServiceUID: assetServiceUID(cluster.APIServer, namespace, name), K8sClusterID: payload.K8sClusterID, Namespace: namespace, ServiceType: Trimmed(payload.ServiceType), Status: payload.Status, Description: Trimmed(payload.Description)}
@@ -93,7 +93,7 @@ func (s *Service) SaveAssetService(payload AssetServicePayload) error {
 			}
 			serviceID = item.ID
 		} else {
-			result := tx.Model(&model.AssetService{}).Where("id = ?", serviceID).Updates(map[string]any{"name": item.Name, "service_uid": item.ServiceUID, "k8s_cluster_id": item.K8sClusterID, "namespace": item.Namespace, "service_type": item.ServiceType, "status": item.Status, "description": item.Description})
+			result := tx.Model(&model.AssetService{}).Where("id = ?", serviceID).Updates(map[string]any{"name": item.Name, "service_uid": item.ServiceUID, "namespace": item.Namespace, "service_type": item.ServiceType, "status": item.Status, "description": item.Description})
 			if result.Error != nil {
 				return result.Error
 			}
@@ -185,8 +185,8 @@ func (s *Service) GetAssetServiceRuntimeTopology(serviceID uint) (map[string]any
 	if err != nil {
 		return nil, err
 	}
-	var cluster model.K8sCluster
-	if err := s.db.First(&cluster, service.K8sClusterID).Error; err != nil {
+	cluster, err := s.GetK8sCluster(service.K8sClusterID)
+	if err != nil {
 		return nil, err
 	}
 	result := map[string]any{"service": service, "cluster": toK8sClusterView(cluster), "namespace": service.Namespace, "source": "saved", "workloads": service.Workloads}

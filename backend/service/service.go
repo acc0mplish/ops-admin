@@ -2341,22 +2341,29 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 	if err := s.db.Model(&model.AssetDatabase{}).Where("connect_status = ?", 1).Count(&databaseHealthy).Error; err != nil {
 		return nil, err
 	}
-	if err := s.db.Model(&model.K8sCluster{}).Count(&k8sClusterTotal).Error; err != nil {
+	// Kubernetes cluster stats resolve through the V2 connection source
+	// (I-a S6 — the k8s_cluster aggregates are retired; §J5). "online" maps
+	// to the connection status the V2 chains record ("active").
+	k8sConns, err := s.k8sClusterConnections()
+	if err != nil {
 		return nil, err
 	}
-	if err := s.db.Model(&model.K8sCluster{}).Where("status = ?", "running").Count(&k8sClusterOnline).Error; err != nil {
-		return nil, err
-	}
-	if err := s.db.Model(&model.K8sCluster{}).Select("COALESCE(SUM(node_count), 0)").Scan(&k8sNodeTotal).Error; err != nil {
-		return nil, err
+	k8sClusterTotal = int64(len(k8sConns))
+	for i := range k8sConns {
+		if k8sConns[i].Status == "active" {
+			k8sClusterOnline++
+		}
+		if nodeCount, ok := k8sConfigUintValue(&k8sConns[i], "node_count"); ok {
+			k8sNodeTotal += int64(nodeCount)
+		}
+		if k8sConfigString(&k8sConns[i], "env") == "" {
+			incompleteClusters++
+		}
 	}
 	if err := s.db.Model(&model.AssetHost{}).Where("TRIM(COALESCE(environment, '')) = ''").Count(&incompleteHosts).Error; err != nil {
 		return nil, err
 	}
 	if err := s.db.Model(&model.AssetDatabase{}).Where("TRIM(COALESCE(env, '')) = ''").Count(&incompleteDatabases).Error; err != nil {
-		return nil, err
-	}
-	if err := s.db.Model(&model.K8sCluster{}).Where("TRIM(COALESCE(env, '')) = ''").Count(&incompleteClusters).Error; err != nil {
 		return nil, err
 	}
 
@@ -2463,19 +2470,29 @@ func (s *Service) GetAssetOverview() (map[string]any, error) {
 		})
 	}
 
-	var recentClusters []model.K8sCluster
-	if err := s.db.Order("updated_at DESC").Limit(6).Find(&recentClusters).Error; err != nil {
-		return nil, err
+	// Recent clusters likewise ride the V2 connection source (I-a S6).
+	recentClusters := make([]infraModel.ProviderConnection, len(k8sConns))
+	copy(recentClusters, k8sConns)
+	sort.Slice(recentClusters, func(i, j int) bool {
+		return recentClusters[i].UpdatedAt.After(recentClusters[j].UpdatedAt)
+	})
+	if len(recentClusters) > 6 {
+		recentClusters = recentClusters[:6]
 	}
 	clusterItems := make([]map[string]any, 0, len(recentClusters))
-	for _, item := range recentClusters {
+	for i := range recentClusters {
+		item := &recentClusters[i]
+		nodeCount := 0
+		if parsed, ok := k8sConfigUintValue(item, "node_count"); ok {
+			nodeCount = int(parsed)
+		}
 		clusterItems = append(clusterItems, map[string]any{
-			"id":        item.ID,
+			"id":        item.SourceID,
 			"name":      item.Name,
 			"status":    item.Status,
-			"apiServer": item.APIServer,
+			"apiServer": item.Endpoint,
 			"version":   item.Version,
-			"nodeCount": item.NodeCount,
+			"nodeCount": nodeCount,
 			"updatedAt": item.UpdatedAt,
 		})
 	}

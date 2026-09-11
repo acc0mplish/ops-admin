@@ -105,7 +105,6 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 		{name: "application", entity: &model.OpsApplication{}, field: "env"},
 		{name: "host", entity: &model.AssetHost{}, field: "environment"},
 		{name: "database", entity: &model.AssetDatabase{}, field: "env"},
-		{name: "Kubernetes cluster", entity: &model.K8sCluster{}, field: "env"},
 		{name: "monitoring datasource", entity: &model.MonitorDatasource{}, field: "env"},
 		{name: "alert rule", entity: &model.MonitorAlertRule{}, field: "env"},
 	}
@@ -117,6 +116,15 @@ func (s *Service) DeleteOpsEnvironment(id uint) error {
 		if count > 0 {
 			return fmt.Errorf("environment %q is still referenced by %d %s resource(s); migrate them first", environment.Name, count, reference.name)
 		}
+	}
+	// Kubernetes cluster references resolve through the V2 connection source
+	// (I-a S6 — the k8s_cluster env lookup is retired; §J5).
+	clusterRefs, err := s.countK8sClustersByEnv(environment.Code)
+	if err != nil {
+		return err
+	}
+	if clusterRefs > 0 {
+		return fmt.Errorf("environment %q is still referenced by %d Kubernetes cluster resource(s); migrate them first", environment.Name, clusterRefs)
 	}
 	return s.db.Delete(&model.OpsEnvironment{}, id).Error
 }
