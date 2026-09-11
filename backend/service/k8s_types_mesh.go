@@ -150,13 +150,6 @@ type kubeHTTPRoute struct {
 	} `json:"spec"`
 }
 
-type k8sClusterProbe struct {
-	APIServer string
-	Version   string
-	NodeCount int
-	Status    string
-}
-
 type k8sFetchedData struct {
 	Nodes                 []kubeNode
 	Namespaces            []kubeNamespace

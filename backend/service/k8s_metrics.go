@@ -235,21 +235,6 @@ func k8sPodMetricLatest(points []map[string]any) any {
 	return points[len(points)-1]["value"]
 }
 
-func (s *Service) resolveK8sMonitorDatasource(datasourceID uint) (*uint, error) {
-	if datasourceID == 0 {
-		return nil, nil
-	}
-	var datasource model.MonitorDatasource
-	if err := s.db.First(&datasource, datasourceID).Error; err != nil {
-		return nil, errors.New("monitoring datasource does not exist")
-	}
-	if datasource.Status != 1 || !isMonitorMetricDatasource(datasource.Type) {
-		return nil, errors.New("select an enabled Prometheus or VictoriaMetrics datasource")
-	}
-	id := datasource.ID
-	return &id, nil
-}
-
 func (s *Service) GetK8sPodLogs(clusterID uint, namespace string, podName string, container string, tailLines int) (map[string]any, error) {
 	_, runtime, client, err := s.k8sClientForCluster(clusterID)
 	if err != nil {

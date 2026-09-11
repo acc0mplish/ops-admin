@@ -372,7 +372,6 @@ func seedApplicationMenus(db *gorm.DB) error {
 		{"assets:database:workbench", "assets:database:sql:execute"}, {"assets:database:workbench", "assets:database:data:edit"}, {"assets:database:workbench", "assets:database:export"},
 		{"assets:database:import", "assets:database:import:execute"}, {"assets:database:backup", "assets:database:backup:create"}, {"assets:database:backup", "assets:database:backup:restore"}, {"assets:database:backup", "assets:database:backup:delete"},
 		{"assets:gateway:list", "assets:gateway:add"}, {"assets:gateway:list", "assets:gateway:edit"}, {"assets:gateway:list", "assets:gateway:delete"}, {"assets:gateway:list", "assets:gateway:test"},
-		{"assets:k8s:cluster", "assets:k8s:cluster:add"}, {"assets:k8s:cluster", "assets:k8s:cluster:edit"}, {"assets:k8s:cluster", "assets:k8s:cluster:delete"},
 		{"assets:k8s:workload", "assets:k8s:workload:scale"}, {"assets:k8s:workload", "assets:k8s:workload:restart"}, {"assets:k8s:workload", "assets:k8s:workload:image"}, {"assets:k8s:workload", "assets:k8s:workload:yaml"},
 		{"assets:k8s:pod", "assets:k8s:pod:terminal"}, {"assets:k8s:pod", "assets:k8s:pod:delete"}, {"assets:k8s:pod", "assets:k8s:pod:yaml"},
 		{"ops:script:list", "ops:script:add"}, {"ops:script:list", "ops:script:edit"}, {"ops:script:list", "ops:script:delete"}, {"ops:script:list", "ops:script:status"},
