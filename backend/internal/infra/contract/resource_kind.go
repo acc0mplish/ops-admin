@@ -47,6 +47,18 @@ var Phase6ResourceKindExtensions = []string{
 	"network.virtual_service",
 }
 
+// I10ResourceKindExtensions — I10 계획(§3.2.1)이 등재하는 kind 어휘 확장
+// 2종. Phase2·Phase6 확장과 같은 reviewed-diff 경로(§8.5)로 착지하며
+// M1ResourceKinds 19종 verbatim 보존 계약(T1)은 그대로다. destinationrule·
+// serviceentry는 v1 create face 어휘에는 존재하지만 §8.5 초기·기존 확장
+// 어느쪽에도 없어 신설한다 — network.virtual_service P2-D 선례를 승계하는
+// "오퍼레이션 앵커 전용" kind다(수집·비교 집합 불참 — create 매니페스트
+// 매핑 표 k8s_create_face.go만 소비).
+var I10ResourceKindExtensions = []string{
+	"network.destination_rule",
+	"network.service_entry",
+}
+
 // IsKnownResourceKind reports whether kind is in the closed M1 vocabulary
 // (§8.5) or its reviewed extension slices — not as unguarded registrations
 // (A9).
@@ -62,6 +74,11 @@ func IsKnownResourceKind(kind string) bool {
 		}
 	}
 	for _, k := range Phase6ResourceKindExtensions {
+		if k == kind {
+			return true
+		}
+	}
+	for _, k := range I10ResourceKindExtensions {
 		if k == kind {
 			return true
 		}

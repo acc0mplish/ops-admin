@@ -877,6 +877,8 @@ identity.account            (cloud account as a context-like resource)
 
 Provider-native details remain subtypes or observation fields unless common policy and query use cases justify standardization.
 
+Vocabulary extensions land as reviewed diffs to this section in the owning milestone's PR; the initial list above stays verbatim (code tracks extensions in separate slices). I10 adds `network.destination_rule` and `network.service_entry` as operation-anchor kinds: the DestinationRule and ServiceEntry manifest kinds had no prior mapping, and these two kinds exist only as the manifest-identity face of the connection-scoped `k8s.resource.create` operation — they do not join inventory sync or comparison sets, the same posture as the `network.virtual_service` operation anchor (P2-D).
+
 
 ---
 
@@ -974,6 +976,8 @@ type OperationDefinition struct {
 ```
 
 The operation definition is the source of truth for authorization, audit, UI, policy, and execution. **No new runtime dependencies in M1** (r1 implied a JSONSchema library): schemas are typed Go constructors validated at registration; a JSON-Schema tool is only evaluated when third-party adapters actually arrive.
+
+A connection-scoped operation definition carries no `ResourceKinds` (empty slice) — the kind face of such an operation is owned by its manifest identity mapping table, not by the definition.
 
 ### 10.3 Permission string mapping (v1 ↔ v2)
 

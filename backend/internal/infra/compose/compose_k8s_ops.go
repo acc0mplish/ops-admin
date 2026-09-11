@@ -66,7 +66,10 @@ func registerKubernetesMutations(reg *registry.Registry) error {
 	if err := reg.RegisterOperation(istioTrafficUpdateOperation); err != nil {
 		return err
 	}
-	return reg.RegisterOperation(httpRouteTrafficUpdateOperation)
+	if err := reg.RegisterOperation(httpRouteTrafficUpdateOperation); err != nil {
+		return err
+	}
+	return reg.RegisterOperation(resourceCreateOperation)
 }
 
 // rolloutResultRedaction — rollout 4종(restart 포함)이 공유하는 결과 detail 허용
@@ -306,4 +309,32 @@ var httpRouteTrafficUpdateOperation = contract.OperationDefinition{
 	TimeoutSeconds:     30,
 	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
 	Redaction:          func() any { return stateResultRedaction{} },
+}
+
+// connection-scoped create opdef(I10 §3.2 — resourceApplyOperation의 이월
+// 주석 "create는 uid-스코프 오퍼레이션 모델에 안 맞아 이월(I-P1)"의 상환
+// 착지). 스코프 앵커를 리소스 uid에서 커넥션 uid + 매니페스트 신원으로 옮긴다.
+//
+// resourceCreateOperation — k8s.resource.create. ResourceKinds는 공란이다 —
+// 커넥션-스코프 부호화(I10 §0 인코딩 (i)): registry 등록 검증이 빈 슬라이스에
+// no-op이고 ListResourceOperations의 교집합 루프가 빈 kinds와 미매치라 존재
+// 리소스의 오퍼레이션 목록에서 자동 누출이 방지된다. kind 면은 매니페스트
+// 신원 매핑 표(contract.K8sCreateFace — k8s_create_face.go)가 소유한다(단일
+// 원천·이중 열거 금지). v1 create 라우트는 J3까지 존지(§5 #1) — 본 def는
+// 라우트 미착지 상태로 등록만 선착지한다(J1c가 라우트를 붙인다).
+var resourceCreateOperation = contract.OperationDefinition{
+	// 실행기 상수(adapter/kubernetes executor_create.go — J1b)가 착지 전이므로
+	// 등록부가 리터럴을 소유한다 — opdef_table_test가 같은 리터럴로 잠근다.
+	Name:               "k8s.resource.create",
+	Version:            "1",
+	RequiredPermission: "assets:k8s:workload:yaml", // v1 create 행(sensitive-routes.txt:177) 재사용 — 신규 권한 문자열 0
+	RequiredCapability: "orchestration.kubernetes.apply",
+	ResourceKinds:      nil, // 커넥션-스코프 — 빈 슬라이스(§0 인코딩 (i)). 서빙 면은 매니페스트 매핑 표 소유
+	Mutating:           true,
+	RiskLevel:          "high",                       // 임의 kind 면 — apply·delete 상향 선례(§10-4). v1 medium에서 상향 판단 기록
+	RequiresApproval:   true,                         // 전 오퍼레이션 승인 필수 posture 승계
+	IdempotencyPolicy:  "provider_create_convergent", // POST 201 = 종단; 409+동결 manifest 부분집합 에코 = 수렴 성공
+	TimeoutSeconds:     30,
+	RetryPolicy:        contract.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 5},
+	Redaction:          func() any { return stateResultRedaction{} }, // generation·serverURL — apply·state 가족 승계
 }

@@ -38,8 +38,10 @@ var resourceMutationKinds = []string{
 	"storage.volume",
 }
 
-// k8sOpDefTable — 계획 r3 §J-P1-6 확정표의 Go 이행. 10행 = restart(기존) +
-// P2-A~D 신규 9종. 순서는 확정표 행 순서를 따른다.
+// k8sOpDefTable — 계획 r3 §J-P1-6 확정표의 Go 이행. 11행 = restart(기존) +
+// P2-A~D 신규 9종 + I10 k8s.resource.create 1종(§3.2 — 빈 kinds는 커넥션-스코프
+// 부호화: kind 면은 매니페스트 매핑 표 contract.K8sCreateFace가 소유). 순서는
+// 확정표 행 순서를 따르고 I10 행은 확정표 뒤에 붙인다.
 var k8sOpDefTable = []struct {
 	name        string
 	permission  string
@@ -139,6 +141,15 @@ var k8sOpDefTable = []struct {
 		kinds:       []string{"network.http_route"},
 		idempotency: "provider_frozen_payload",
 	},
+	{
+		name:        "k8s.resource.create", // I10 §3.2 — 커넥션-스코프(빈 ResourceKinds 부호화)
+		permission:  "assets:k8s:workload:yaml",
+		risk:        "high",
+		approval:    true,
+		capability:  "orchestration.kubernetes.apply",
+		kinds:       []string{},
+		idempotency: "provider_create_convergent",
+	},
 }
 
 // pveDefNames — 레지스트리에 등록된 pve opdef 3종(계획 P2 확정표 밖 — compose.go
@@ -164,8 +175,9 @@ func TestOperationDefTable(t *testing.T) {
 	}
 	reg := stack.Registry
 
-	// --- 등록 집합 닫기: 13 = k8s 10종 + pve 3종. G-P2a 등록 계수(2파일 합산
-	// 13)의 등록면 대응물 — 고스트 opdef·무단 추가가 본 단얫으로 막힌다. ---
+	// --- 등록 집합 닫기: 14 = k8s 11종 + pve 3종. G-P2a 등록 계수의 등록면
+	// 대응물(I10 create 추가분 포함) — 고스트 opdef·무단 추가가 본 단얫으로
+	// 막힌다. ---
 	ops := reg.Operations()
 	if len(ops) != len(k8sOpDefTable)+len(pveDefNames) {
 		t.Fatalf("registry holds %d operations, want %d (k8s %d + pve %d)",
@@ -185,10 +197,11 @@ func TestOperationDefTable(t *testing.T) {
 		t.Errorf("registered operation names = %v, want %v (def table + pve trio)", gotNames, wantNames)
 	}
 
-	// --- 전칸럼 잠금: 10행 × 6칼럼. 확정표의 승인 열은 "필수" — 전 행 true,
-	// risk high는 apply·delete 2종뿐(PC-8 "risk high 2종·권한 10종 단얫" — 권한
-	// 단얫은 행 루프의 permission 비교가 곧 그것이다; 10행에 고유 문자열은 6개 —
-	// yaml 4행·advancednetwork 2행 공유가 확정표 의도다). ---
+	// --- 전칸럼 잠금: 11행 × 6칼럼. 확정표의 승인 열은 "필수" — 전 행 true,
+	// risk high는 apply·delete·create 3종(PC-8 "risk high" 단얫의 I10 확장 —
+	// create는 임의 kind 면이라 apply·delete 상향 선례를 승계; 권한 단얫은 행
+	// 루프의 permission 비교가 곧 그것이다; yaml 공유 행이 create로 1개 늘어
+	// 5행이 된다). ---
 	highRisk := 0
 	for _, row := range k8sOpDefTable {
 		def, ok := reg.Operation(row.name)
@@ -238,8 +251,8 @@ func TestOperationDefTable(t *testing.T) {
 			highRisk++
 		}
 	}
-	if highRisk != 2 {
-		t.Errorf("high-risk opdef count = %d, want 2 (apply·delete — §J-P1-6 risk 상향)", highRisk)
+	if highRisk != 3 {
+		t.Errorf("high-risk opdef count = %d, want 3 (apply·delete·create — §J-P1-6 risk 상향 + I10 §3.2)", highRisk)
 	}
 
 	// --- sensitive 대표 행 정합(J-P1-7 등재처 재해석의 기계 면): plan·execute
