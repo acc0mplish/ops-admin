@@ -30,7 +30,13 @@ func registerV2(v2Group *gin.RouterGroup, db *gorm.DB, v2API *v2.InfraAPI) {
 		v2API = v2.NewInfraAPI(db)
 	}
 	v2API.Register(v2Group)
-	v2API.RegisterOperations(v2Group, func(def opdef.Def) gin.HandlerFunc {
+	grants := func(def opdef.Def) gin.HandlerFunc {
 		return opdef.V2DynamicMiddleware(db, def, v2API.ResolveOperationPermission)
-	})
+	}
+	v2API.RegisterOperations(v2Group, grants)
+	// I10 J1c (§16.1): the connection-scoped create surface joins the same
+	// group with the same dynamic grants. It must register AFTER
+	// RegisterOperations — that call attaches the audit middleware once, and
+	// the connection routes inherit it (a second Use would double-write).
+	v2API.RegisterConnectionOperations(v2Group, grants)
 }

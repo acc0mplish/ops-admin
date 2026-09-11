@@ -11,6 +11,7 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -335,6 +336,28 @@ func TestExecuteResourceCreateConflictTernary(t *testing.T) {
 		}
 		if gets := mock.getPaths(); len(gets) != 0 {
 			t.Errorf("get count = %d, want 0 (409만이 수렴 판정에 진입한다)", len(gets))
+		}
+	})
+
+	// r3 LOW 이월(I10 J1c) — POST 404(경쟁 소실·네임스페이스 부재 등)는 차후보
+	// 폴백 없이 client의 404 센티넬로 원 POST 에러를 돌려 엔진 재시도에 맡긴다
+	// (v1 k8sDoJSONAnyPath의 경로 순회 폴백과 달리 POST 1회 계약).
+	t.Run("404 post returns the post error with no later-candidate fallback", func(t *testing.T) {
+		mock := newCreateMock(t)
+		mock.forcePost(cmCollectionPath(), http.StatusNotFound)
+
+		handle, err := NewAdapter().Execute(context.Background(), createRequest(mock, createConfigMapYAML))
+		if err == nil {
+			t.Fatalf("Execute (404) = handle %q, want the post error", handle.ProviderRef)
+		}
+		if !errors.Is(err, errNotFound) {
+			t.Errorf("error = %v, want the client's not-found sentinel (재시도 계약 — 경쟁 소실)", err)
+		}
+		if gets := mock.getPaths(); len(gets) != 0 {
+			t.Errorf("get count = %d, want 0 (404 POST는 수렴 판정에 진입하지 않는다)", len(gets))
+		}
+		if posts := mock.postPaths(); len(posts) != 1 {
+			t.Errorf("post count = %d, want 1 (차후보 폴백 부재 — POST 1회)", len(posts))
 		}
 	})
 }

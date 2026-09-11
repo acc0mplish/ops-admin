@@ -7,16 +7,19 @@ import (
 )
 
 // TestV2InfraDefsRegistered pins the §16.2 v2 non-GET surface (plan N12 /
-// 보존 제약 #3): exactly five POST definitions, registered before any route
-// may exist. Sensitive-route golden (285→290) and the replay baseline
-// (240→245) both count these rows.
+// 보존 제약 #3): every POST definition registered before any route may exist.
+// Sensitive-route golden and the replay baseline both count these rows —
+// I10 J1c added the §16.1 connection-scoped create pair (yaml representative,
+// risk=high), 5→7 rows.
 func TestV2InfraDefsRegistered(t *testing.T) {
 	want := map[string]Def{
-		"POST /infra/resources/:uid/operations/:name/plan":    {Permission: "assets:k8s:workload:restart"},
-		"POST /infra/resources/:uid/operations/:name/execute": {Permission: "assets:k8s:workload:restart"},
-		"POST /infra/tasks/:uid/approve":                      {Permission: "ops:job:approve"},
-		"POST /infra/tasks/:uid/reject":                       {Permission: "ops:job:approve"},
-		"POST /infra/tasks/:uid/cancel":                       {Permission: "ops:job:approve"},
+		"POST /infra/provider-connections/:uid/operations/:name/plan":    {Permission: "assets:k8s:workload:yaml"},
+		"POST /infra/provider-connections/:uid/operations/:name/execute": {Permission: "assets:k8s:workload:yaml"},
+		"POST /infra/resources/:uid/operations/:name/plan":               {Permission: "assets:k8s:workload:restart"},
+		"POST /infra/resources/:uid/operations/:name/execute":            {Permission: "assets:k8s:workload:restart"},
+		"POST /infra/tasks/:uid/approve":                                 {Permission: "ops:job:approve"},
+		"POST /infra/tasks/:uid/reject":                                  {Permission: "ops:job:approve"},
+		"POST /infra/tasks/:uid/cancel":                                  {Permission: "ops:job:approve"},
 	}
 	byKey := map[string]Def{}
 	for _, d := range v2infraDefs {

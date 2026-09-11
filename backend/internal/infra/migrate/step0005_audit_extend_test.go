@@ -73,13 +73,13 @@ func TestStep0005AuditExtendNullableColumns(t *testing.T) {
 
 // TestStep0005ListedLast pins the W-4 append-only step list contract: the
 // list grew by exactly one line per PR and the pin advances with each new
-// step (0007/drop_k8s_cluster — see step0007_drop_k8s_cluster_test.go).
+// step (0008/resource_uid_widen — see step0008_resource_uid_widen.go).
 func TestStep0005ListedLast(t *testing.T) {
 	if len(steps) == 0 {
 		t.Fatal("step list is empty")
 	}
 	last := steps[len(steps)-1]
-	if last.Version != 7 || last.Name != "drop_k8s_cluster" {
-		t.Fatalf("last step is %d/%q, want 7/drop_k8s_cluster", last.Version, last.Name)
+	if last.Version != 8 || last.Name != "resource_uid_widen" {
+		t.Fatalf("last step is %d/%q, want 8/resource_uid_widen", last.Version, last.Name)
 	}
 }

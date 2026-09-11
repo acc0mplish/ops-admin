@@ -232,7 +232,7 @@ func (a *Adapter) executeResourceCreate(ctx context.Context, req contract.Operat
 			return contract.OperationHandle{}, getErr
 		}
 	}
-	// 그 외 오류 — executor error(엔진 재시도 MaxAttempts 3 — §3.4).
+	// 그 외 오류 — executor error(엔진 재시도 MaxAttempts 3 — §3.4). 판단 기록(r3 LOW 이월): 404(네임스페이스 부재 등)에도 차후보(APIVersion 후보 경로) 폴백이 없다 — v1 k8sDoJSONAnyPath의 경로 순회와 달리 POST 1회 단발이며 재시도도 동일 선호 경로를 향한다(§3.4 정합).
 	return contract.OperationHandle{}, postErr
 }
 

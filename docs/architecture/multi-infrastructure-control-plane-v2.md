@@ -1353,12 +1353,28 @@ POST   /api/v2/infra/provider-connections
 GET    /api/v2/infra/provider-connections/{uid}
 POST   /api/v2/infra/provider-connections/{uid}/validate
 POST   /api/v2/infra/provider-connections/{uid}/sync
+POST   /api/v2/infra/provider-connections/{uid}/operations/{name}/plan
+POST   /api/v2/infra/provider-connections/{uid}/operations/{name}/execute
 GET    /api/v2/infra/provider-contexts
 GET    /api/v2/infra/resources
 GET    /api/v2/infra/resources/{uid}
 GET    /api/v2/infra/resources/{uid}/relationships
 GET    /api/v2/infra/resources/{uid}/operations
 ```
+
+Connection-scoped operations (I10, §16.1 reviewed addition): the create family
+anchors its scope on the connection uid plus the manifest identity instead of a
+resource uid — the target resource does not exist yet at plan/execute time.
+`{name}` is currently `k8s.resource.create`; plan requires a `{yaml}` body (the
+manifest is the freeze anchor — no restartedAt/resourceRevision is issued), the
+manifest's apiVersion group × kind must belong to the create-face mapping table
+(single source of the served kind face; vocabulary outside the table is rejected
+400 before policy evaluation), and execute derives the synthetic resource_uid
+`conn:{connectionUID}:{singular}:{target}` (target is `{namespace}/{name}` or
+`{name}` for cluster-scoped kinds) with the mandatory Idempotency-Key (§13.4).
+The `provider_task.resource_uid` column is widened to 255 (step0008) to hold the
+synthetic uid's 181-char worst case. The resource-scoped §16.2 operations remain
+the canonical surface for targets that already exist.
 
 ### 16.2 Plan and execute
 

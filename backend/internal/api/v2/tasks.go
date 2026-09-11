@@ -17,13 +17,18 @@ import (
 // V2 task reads and the approval chain (plan §3.4, N8). The approval verbs
 // gate on ops:job:approve (J4 — router-level middleware); this file owns the
 // engine delegation and the error mapping: unknown task 404, a verb refused
-// off awaiting_approval 409 (ErrNotAwaitingApproval), the not-yet-landed
-// cancel capability 503 (the CancelStarter seam), everything else 500.
+// off awaiting_approval 409 (ErrNotAwaitingApproval), the cancel verb 503
+// when the RequestCancel seam is not wired (nil engine injection — the
+// capability itself landed, cancel.go RequestCancel), everything else 500.
 
 // taskView is the §16.2 task representation. Payload is included: the frozen
 // execution payload (restartedAt, resourceRevision — J1/J7) carries no
 // credential material (보존 제약 #7), and it is exactly what the UI and the
-// trace assertions read back.
+// trace assertions read back. — RI-12 수용 기록(I10 §5 #16): the
+// connection-scoped create freezes a user-authored manifest verbatim, so a
+// Secret creation manifest (stringData) IS credential material surfaced
+// here. Accepted: the admin plane sits behind Auth + the task grant, and
+// de-identifying the payload would break the §13 replay contract.
 type taskView struct {
 	UID              string           `json:"uid"`
 	Operation        string           `json:"operation"`
