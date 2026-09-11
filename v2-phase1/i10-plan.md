@@ -1,8 +1,8 @@
-# I10 계획 — create 오퍼레이션화 (§16.1 커넥션-스코프 create + v1 create 면 삭제) — r2
+# I10 계획 — create 오퍼레이션화 (§16.1 커넥션-스코프 create + v1 create 면 삭제) — r3
 
-작성: 2026-09-11 (r1) · **개정 r2 (2026-09-11 — 5렌즈 적대검토 상환: `i10-adversary-r1.md` 발견 HIGH 11·MED 17·LOW 18. HIGH 전부·MED 전부·LOW 선택 반영, 기각분 §9 처분표)** · 티어 **XL**
+작성: 2026-09-11 (r1) · 개정 r2 (2026-09-11 — 5렌즈 상환) · 개정 r3 (2026-09-11 — uid 길이 HIGH → step0008) · **개정 r4 (2026-09-12 — J2 실측 선존 결함 2건 수복 Phase J4 신설·순서 J4→J3 재조정: 결함 2 커넥션 해상(register 체인 source 쌍 영값)·결함 3 operations 바인딩 갭. §0·§3.9·§4·§5·§6·§7·§10 갱신)** · 티어 **XL**
 원천: p6-state.json `i10` · phase6-plan.md §J9·§13 I10·§7 D-15·§14.2-3 · 리컨 `v2-phase1/i10-recon.md`
-프로세스 계약: plan-xhigh(r2) → adversary 재검(필요 시) → implement → review-pr-xhigh → verify(메인 재실행)
+프로세스 계약: plan-xhigh(r4) → adversary 재검(필요 시) → implement → review-pr-xhigh → verify(메인 재실행)
 
 ## r2 개정 이력 (발견 번호 ↔ 반영 위치)
 
@@ -18,6 +18,11 @@
 | 위험1(멱등키 소각)·위험2(RESOURCE_BUSY) | §3.6 헬퍼 쌍+공유 템플릿 · RI-9 재평가(§7) |
 | MED M3~M7·단순2 | §3.7(고아 처분) · §3.8(스펙 배정 통일) · §5 #12·#16·#17 · §7 RI-11·RI-12·롤백 cleanup · §3.2.1 파생 계약 |
 | LOW | 반영분 인라인 · 기각분 §9 처분표 |
+| **r3 — J1a 리뷰 HIGH**(합성 uid 최대 181자 > `provider_task.resource_uid` varchar(64), model/task.go:18 `gorm:"size:64"` 실측) | §0 인코딩 (iii) · §1 비목표 예외화 · §3.3 길이 예산·step0008 설계·대안 판정 · §4 J1c · §5 #18 · CI17 · §7 롤백·RI-13 |
+| **r3 — J1a 리뷰 LOW 2**(connectionUIDOfSynthetic 빈 분절 가드·예약 단얫 실효 범위) | §4 J1c(가드 보강 편입) · CI17(왕복 단얫·생성기 어휘 단얫) · §9 처분표 r3 소절 |
+| **r4 — 결함 2**(J2 실측: register-k8s 체인 SourceModel/SourceID 영값 → k8s.js:113 1순위 매칭만으로 해상 실패) | §0 결함 수복 판정 · §3.9 · §4 J4 · CI18 |
+| **r4 — 결함 3**(e2e test2 실증: awaiting_approval→queued→failed `executor_error — missing credential material Material["operations"]` — register-k8s inventory 바인딩만 봉인) | §0 · §3.9 · §4 J4 · CI19 · §10 실효 조건 |
+| **r4 — 순서 재조정·종찰**(J4를 J3 앞·V2 완전 동작 후 삭제·CI14/CI16 재녹화·stack.sh compare 잔존 L-2) | §4 순서도·J4 행 · §5 #4·#19 · CI20 · §7 RI-14 |
 
 ---
 
@@ -37,8 +42,16 @@
 |---|---|---|
 | (i) 커넥션-스코프 def의 kinds 부호화 | **빈 `ResourceKinds` 등록 — ConnectionScoped 신규 필드 폐지** | registry.go:247-251 검증 루프가 빈 슬라이스에 no-op(등록 성공) · operations.go:341 ListResourceOperations 교집합 루프가 빈 kinds와 미매치 → **리소스-스코프 목록에서 자동 누출 방지** — operations.go·contract/operation.go 무편집. 대안(필드 유지)은 operations.go 소유 지정+§5 #4 예외+스펙 §10.2 구조 확장을 전부 요구 — 우위 없음 |
 | (ii) create 핸들 마커 | **`state\|` 마커 + `resource:"manifest"` 기대상태 재사용 — `create\|` 신규 마커 폐지, executor_state.go 무편집** | executor.go:378 Poll이 `state\|` 접두로만 분기(신규 마커는 rollout 디코더로 낙하·에러) · state 판별자 화이트리스트 6종 중 manifest의 판정면(GET 1회·동결 manifest 부분집합 에코)이 create 종단 판정과 동일 · 404→에러 처리도 create 수렴 오보 방지와 정합(§3.4). 핸들: `state\|<connUID>\|<항목경로>\|<base64url({resource:"manifest", manifest:동결})>` |
+| (iii) 합성 uid 길이 예산 〔r3〕 | **`step0008` 마이그레이션으로 resource_uid varchar(64→255) 확장 + 빌더 상한 가드** | model/task.go:18 `gorm:"size:64"`(step0002 AutoMigrate → MySQL varchar(64) 실측) 대비 합성 uid 고정 오버헤드 40자(conn: 5 + 32-hex 커넥션 uid + 콜론 3) + 가변 최악 141자(singular 15 + namespace 63 + "/" + name 63 — DNS-1123 상한) = **최악 181자**. 255는 InnoDB 인덱스 접두 한도(3072바이트) 내(255×4+ε≈1021). 대안 기각 사유 §3.3. **신규 step 번호는 step0008** — step0004는 step0004_connection_source.go로 이미 사용(실측) |
 
 **골든 목표치(정정 승계)**: 사전 기술 "440→439·280→279"은 v1 삭제분만 계산 — v2 라우트 2 신설 반영 실측 목표 **route-inventory 441(438 라우트+헤더 3)·sensitive 281(278 def+헤더 3)·authz "428 (413 v1 + 15 v2)"·non-GET 233** (§2.4 · CI3/CI4 단일 원천).
+
+**결함 수복 판정 (r4 — J2 실측 선존 결함 2건)**
+
+| 결함 | 판정 | 실측 근거 |
+|---|---|---|
+| 2. 커넥션 해상 — register-k8s 체인에서 프론트 resolve 실패 | **connections 뷰에 conn.ID 1필드 노출 + 프론트 resolve 폴백(소스 쌍 불일치 시 `id === clusterId`)** | register-k8s 체인은 provider_connection에 SourceModel/SourceID 영값(registerK8sInDB — k8sRegisterUID는 register 도메인) → k8s.js:113의 1순위(sourceModel==='k8s_cluster' && sourceId) 매칭만으로는 영원히 실패. 백엔드 k8s_projection.go:185-203 resolveK8sProjectionConnection은 **이중 해상**(1순위 소스 쌍·2순위 `source_id=0 && id=clusterID`)이고 노출 id는 k8sProjectionViewID가 register 체인에서 conn.ID로 배정(:69-74·패키지 문서 I-b ID 공간 판단) — **뷰 id 노출+폴백이 백엔드 2순위의 정확한 프론트 대칭**. 이름 매칭은 기각: run() 시그니처 전파·K8s.vue 14콜사이트·이름은 가변 인간 라벨(신원 아님) |
+| 3. operations 자격 계약 불일치 — create/restart 태스크 executor_error | **(A) register-k8s가 operations 바인딩도 봉인(같은 kubeconfig SecretRef를 향한 2번째 바인딩 행)** | §7.4 원문(:703-711): "A connection may use multiple credentials for different purposes" + Aliyun 예 "bindings with purposes inventory and billing **pointing at the same SecretRef** where the underlying cloud credential is shared" — 동일 자격의 purpose별 복수 바인딩이 스펙의 명문 패턴. **자매 선례 register-pve(main_register_pve.go:308-311)가 inventory·operations 2 바인딩을 이미 봉인** — k8s판만 인라인 주석 "단일 물질이라 operations 별도 자격 없음"의 오류로 누락(binding은 물질 단위가 아니라 purpose 단위). 바인딩 모델(provider.go:56-64)은 connection_id 유니크 없음(복수 행 허용). 기각 (B) 엔진 inventory 폴백: 범용 엔진에 k8s 특수 분기는 arch rule 1 위반 + engine_resolve의 "operations 조회만" 계약에 제2 해상 경로 추가 |
 
 ---
 
@@ -55,7 +68,7 @@
 - 기존 10종 오퍼레이션 def·실행기·라우트 동작 변경 금지(§5 #4 — executor.go dispatch case 1행·tasks.go 주석 1행만 예외).
 - 라이브 패스스루 읽기 17 + `pod/terminal/ws` 무변경(§J3·D-12 승계).
 - istio kinds의 apply/delete 면 확장 — create만(現狀 승계).
-- DB 스키마 변경 0(provider_task.resource_uid에 합성 uid 문자열만).
+- DB 스키마 변경은 **step0008 1건뿐**〔r3 — 예외화〕: `provider_task.resource_uid` varchar(64→255) 확장(§3.3). 그 외 칼럼·인덱스·테이블 무변경.
 - e2e 신규 슬라이스 창설 불가 — slice-a 보강만(모드 규율: slice-b/c는 serve-b/c 전용 fixture — 병렬 레인 금지, web-e2e-stack-modes 계약).
 
 ---
@@ -181,6 +194,7 @@ var resourceCreateOperation = contract.OperationDefinition{
 ### 3.3 엔진 — 합성 resource_uid와 체인 분기
 
 - **합성 uid**: `conn:<connectionUID>:<singular>:<namespace>/<name>`(클러스터 스코프는 `conn:<connUID>:<singular>:<name>`) — execute 시점 매니페스트 신원에서 결정적 도출. T-5 충족 · `(resource_uid, active_flag)` 유니크(§13.4)가 **목표 신원 단위 직렬화**(동일 목표 동시 create 2건째 RESOURCE_BUSY 409 fast-fail·상이 목표 독립). `conn:` 단순 접두(커넥션 전체 직렬화)는 무관 create 충돌로 기각.
+- **길이 예산·스키마 확장 〔r3 — J1a 리뷰 HIGH〕**: 저장처 `provider_task.resource_uid`는 `gorm:"size:64"`(model/task.go:18 — step0002 AutoMigrate → MySQL varchar(64))라 **r2 포맷 그대로는 물리 불합** — 고정 오버헤드 40자(conn: 5 + 32-hex + 콜론 3) + 가변 최악 141자(singular 15 + ns 63 + "/" + name 63) = **181자 > 64**. strict 모드 1406→500, non-strict 무음 절단→상이 목표 가짜 RESOURCE_BUSY·파싱 불능. J1a가 잡지 못한 이유: 라우트 미착지(쓰는 쪽 부재)·테스트 러너 sqlite(glebarez)가 varchar 미강제·테스트 uid 8-hex. **판정: (a) step0008로 varchar(255) 확장 채택** — InnoDB 접두 한도 내(255×4+ε≈1021바이트 < 3072)·(resource_uid, active_flag) 복합 유니크도 안전·181 < 255 여유 74. **기각 (b) 커넥션 분절 16-hex 압축**: 역파싱 불가(접두 조회로 바뀜)·64비트 충돌 관리 부담·"connUID는 공개 식별자" 자기서술 계약 훼손. **기각 (c) tail-hash(`conn:<32hex>:<sha16>` ≤ 54 — 마이그레이션 불필요)**: resource_uid가 목표를 자기서술하지 않게 되어 감사·디버깅·event 대조 가독성 상실 — handle 자기서술 철학(J12 계열)과 배치되고, 길이 상한 가드는 (c)에서도 필요해 비용 절감이 가드뿐. **step0008 설계**: step0003 패턴 승계 — 존재 확인 후 조건부 DDL(신규 DB는 갱신된 model tag size:255로 step0002가 직접 255 생성 → no-op)·dialect 가드(MySQL만 MODIFY·sqlite 러너는 no-op)·**W-5 계약 준수: provider_task를 건드린 후 `EnsureProviderTaskGuards` postlude 재실행**(step0003 원문 계약 — 유니크 가드 재확보). 동반: model/task.go tag `size:64`→`size:255`(ResourceUID 행만 — UID 필드는 무변경). **빌더 상한 가드(J1c)**: 합성 uid 조립부가 `len(uid) > 255`면 `INVALID_OPERATION_PAYLOAD` 400으로 거부 — sqlite 미강제 환경에서 길이 계약의 소유자는 Go 빌더 가드+단얫이다(CI17).
 - **예약 단얫(위험7 채택)**: engine_resolve_test에 ① 생성된 infra_resource.uid 전수가 `conn:` 비접두임을 조건부로 단얫(가드 쿼리) ② 합성 uid 포맷 단얫(접두·콜론 세그먼트 수·namespaced/cluster-scope 2형) — r2 "알파벳 단얫".
 - **엔진 변경**: resolveExecutionChain에 `conn:` 접두 분기 — infra_resource 조인 대신 `provider_connection.uid = ?` 직접 조회(ConnectionUID·ProviderType 조달·ExternalURN=""). executeClaimed 이하 무변경.
 - **라인캡 동반 분할**: engine.go 696행(650 초과) — resolveExecutionChain·connectionView·capabilityServed를 `engine_resolve.go`(신규)로 추출, engine.go ~600행 복귀. 기존 테스트 **51 Test 함수**(실측) 전수 보존 + 신규 2경로 단얫.
@@ -229,27 +243,38 @@ var resourceCreateOperation = contract.OperationDefinition{
 | §16.1 | **J1c** | provider-connections 하위 operations 2 endpoint + 커넥션-스코프 계약(매핑 표·합성 uid·plan body 필수) |
 | §19.1 step 4 | **J3** | D-15 이탈 기록에 **상환 주석 추가**(`resolved: 2026-09-… — connection-scoped create landed (I10); step 4 is 13/13` — 역사 문언 삭제 아님. 실측: 스펙에 `resolved:` 현재 0매치 → CI13② 2단 성립) |
 
+### 3.9 J4 — 선존 결함 2건 수복 설계 〔r4 신설〕
+
+**결함 2 — 해상 폴백**: `internal/api/v2/infra.go` providerConnectionView에 `ID uint json:"id"` 1필드 + 조립 1행(뷰 행 확장 — 기존 필드 무변경). `web/src/api/k8s.js` resolveK8sClusterConnectionUid에 2순위 폴백: 소스 쌍 매칭 실패 시 `String(row.id) === String(clusterId)` — 백엔드 2순위(source_id=0 && id=clusterID)와 동일 조건·동일 우선권 순서. 정합 계약: 백필 유산(source_id>0)은 1순위가 계속 이긴다(양측 같은 순서). 기존 register 체인이 이미 dev DB에 있는 상태에서도 유효 — 뷰 노출은 읽기 전용 확장이라 재등록 불요.
+
+**결함 3 — operations 바인딩 봉인**: `main_register_k8s.go`의 binding 단계에 `k8sUpsertBinding(tx, conn.ID, pctx.ID, contract.CredentialPurposeOperations, ref.ID)` 1호출 추가(**같은 ref.ID** — §7.4 same-SecretRef 패턴) + 잘못된 인라인 주석("operations 별도 자격 없음") 정정. k8sUpsertBinding은 이미 purpose 파라미터화·멱등 upsert라 신규 헬퍼 불요. **기존 체인 보강**: register-k8s 재실행이 멱등 upsert로 2번째 바인딩을 봉인(C39′ "재실행 멱등·UID 유지" 규약 승계) — dev 체인은 CLI 1회 재실행으로 자격 보강, 별도 SQL 불요. engine_resolve.go(connectionView :125-137)·executor.go(:143-152 Material["operations"] 필수)는 **무편집** — 계약 위반이 CLI 봉인 누락 쪽에만 있었다.
+
+**L-2 — stack.sh compare 모드 잔존**: `web/e2e/stack.sh:22`(헤더 광고 "compare J11's §15 segment")·:432-449(compare 함수 — `compare-inventory --cluster` cluster-id 읽기)·:467/:469(dispatch) — D-16으로 compare CLI는 G1에서 종결된 죽은 경로(실행 시 실패). **삭제 처분** — 사용처 census(grep workflows·scripts·docs) 후 제거, serve/serve-b/serve-c 모드는 무변경(web-e2e-stack-modes 계약).
+
+---
+
 ---
 
 ## 4. 구현 Phase 분해
 
 ```
-[착수 승인(§14.2-3)] ─▶ J0 ─▶ J1a ─▶ J1b ─▶ J1c ─▶ J2 ─▶ J3
-                        def·어휘  엔진 체인  실행기 leg  라우트+상수+스펙  프론트  원자 삭제
+[착수 승인(§14.2-3)] ─▶ J0 ─▶ J1a ─▶ J1b ─▶ J1c ─▶ J2 ─▶ J4 ─▶ J3
+                        def·어휘  엔진 체인  실행기 leg  라우트+상수+스펙  프론트  결함 수복  원자 삭제
 ```
 
-J0·J1a 상호 무의존(병렬 가능)이나 XL 직렬 프로세스 계약상 순차 PR(리뷰 단순성 — 처분표 §9-D3). J1b는 J0·J1a 선행. J2는 J1c 후. **J3는 J2 후**(E-1 승계 — J2 이전 v1 삭제 금지).
+J0·J1a 상호 무의존(병렬 가능)이나 XL 직렬 프로세스 계약상 순차 PR(리뷰 단순성 — 처분표 §9-D3). J1b는 J0·J1a 선행. J2는 J1c 후. **J4는 J2 후·J3 전〔r4〕** — V2 경로의 완전 동작(자격·해상 수복 + e2e 재녹화 통과)을 확보한 뒤에 v1을 원자 삭제한다. 결함 상태로 J3를 수행하면 create 무동작 창이 열린다(§5 #1 정신 — 대체 경로가 *동작*을 입증한 뒤 삭제).
 
 | Phase | 파일 (소유) | 성격 | 독립 검증 |
 |---|---|---|---|
 | **J0** 〔임계〕 | ① contract/resource_kind.go(+I10 슬라이스) ② contract/k8s_create_face.go〔신규〕+테스트 ③ compose/compose_k8s_ops.go(+def 1·등록 1행) ④ **contracttest/opdef_table_test.go(테이블 +1행 — P 산물 예외 §5 #3)** ⑤ 스펙 §8.5·§10.2 개정 | additive(라우트·골든 무변경) | CI1·CI2·CI8·CIm |
 | **J1a** 〔임계〕 | ① tasks/engine.go(체인 계열 추출 ~600행) ② tasks/engine_resolve.go〔신규〕(+conn: 분기) ③ tasks/engine_resolve_test.go〔신규〕 | additive(도달 불가 — 라우트 미착지) | CI1·CI2·CI9 |
 | **J1b** | ① adapter/kubernetes/executor_create.go〔신규〕 ② executor_create_test.go〔신규〕 ③ executor.go(dispatch case 1행 — 유일 편집) | additive | CI1·CI2·CI10 |
-| **J1c** | ① api/v2/operations_connection.go〔신규〕 ② operations_connection_test.go〔신규〕 ③ opdef/defs_v2infra.go(+2행) ④ router/routes_v2.go(등록 1블록) ⑤ api/v2/tasks.go(주석 1행 — §3.5) ＋ **테스트 상수 3곳 갱신(routes_inventory_test:130→439·authz:235→"429 (414 v1 + 15 v2)"·:353→234)** ＋ 골든 2종 재생성(442·282) ＋ 스펙 §16.1 | additive(라우트 신설 — v1 무변경) | CI1·CI2·CI7·CI13① |
+| **J1c** | ① api/v2/operations_connection.go〔신규〕 ② operations_connection_test.go〔신규〕 ③ opdef/defs_v2infra.go(+2행) ④ router/routes_v2.go(등록 1블록) ⑤ api/v2/tasks.go(주석 1행 — §3.5) ⑥ **migrate/step0008_resource_uid_widen.go〔신규·r3〕** ⑦ **migrate/migrations.go(등록 1행)** ⑧ **model/task.go(ResourceUID tag size:64→255)** ⑨ **tasks/engine_resolve.go(LOW① 가드 보강 — 빈 singular/target 분절 거부 1~2행)** ＋ **테스트 상수 3곳 갱신(routes_inventory_test:130→439·authz:235→"429 (414 v1 + 15 v2)"·:353→234)** ＋ 골든 2종 재생성(442·282) ＋ 스펙 §16.1 — **코드 9파일(≤5 의도된 편차 — 라우트·스키마 확장·상수가 한 원자 착지, J3 원자성과 동일 논거)** | additive(라우트·스키마 확장 신설 — v1 무변경) | CI1·CI2·CI7·CI13①·**CI17** |
 | **J2** | ① api/k8s.js ② composables/useK8sOperationProgress.js ③ views/assets/K8s.vue ④ utils/k8s-extra-i18n.js ⑤ (보강) e2e/slice-a.spec.js create 단얫 | behavior-changing(프론트 — v1 존치 병행) | CI11·CI12·CI14 |
+| **J4** 〔r4 신설〕 | ① internal/api/v2/infra.go(providerConnectionView +`id` 필드·조립 1행 — §5 #4 예외) ② web/src/api/k8s.js(resolve 폴백) ③ backend/main_register_k8s.go(operations 바인딩 upsert 1호출·인라인 주석 정정) ④ backend/main_register_k8s_test.go(바인딩 2건 단얫) ⑤ web/e2e/stack.sh(compare 모드 삭제 — L-2) | 결함 수복(2·3)+e2e 재녹화 — 읽기 전용 확장·멱등 upsert라 가역 | CI1·CI2·CI18·CI19·**CI20** |
 | **J3** 〔임계·원자 ⚠〕 | routes_v1_infra.go·controller/k8s.go·service/k8s_mutate.go·service/k8s_path.go(6함수)·model/k8s.go(2타입)·service/k8s_types_mesh.go(1타입)·opdef/defs_monitor.go·service/k8s_path_test.go(char 6종)·**service/testdata/char-baseline.txt(재생성 114행)**·routes_inventory_test.go·authz_replay_test.go·스펙 §19.1 ＋ 골든 2종 재생성(441·281) — **~12파일(≤5 의도된 편차 — H2·E1 선례 원자 단위)** | behavior-changing(삭제 원자) | CI1~CI6·CI13②·CI15 |
 
-임계경로(직렬 신중): **J0 매핑 표**(서빙 면 정확성이 전체 전제) → **J1a 엔진 체인**(합성 uid 분기 — 태스크 엔진 코어) → **J3 원자 삭제**. J1b·J1c는 매핑 표·체인에 결합 — 표가 단일 원천이므로 정합은 유닛테스트 2중(표 소속성·경로 조립)이 잠금.
+임계경로(직렬 신중): **J0 매핑 표**(서빙 면 정확성이 전체 전제) → **J1a 엔진 체인**(합성 uid 분기 — 태스크 엔진 코어) → **J4 결함 수복**(자격·해상 — V2 create가 실제 등록 경로에서 동작하는 조건) → **J3 원자 삭제**. J1b·J1c는 매핑 표·체인에 결합 — 표가 단일 원천이므로 정합은 유닛테스트 2중(표 소속성·경로 조립)이 잠금.
 
 라인캡: 신규 k8s_create_face.go(~120)·engine_resolve.go(~120)·executor_create.go(~260)·operations_connection.go(~200) + 테스트 — 전부 650 이내. engine.go 696→~600(CI9). compose_k8s_ops.go 309→~350. k8s_path.go 512→~330. controller/k8s.go 438−13. k8s.js 226±.
 
@@ -260,7 +285,7 @@ J0·J1a 상호 무의존(병렬 가능)이나 XL 직렬 프로세스 계약상 �
 1. **v1 create 라우트는 J3까지 존지한다** — J2(프론트 전환) 머지 전에 v1 create 면을 삭제하지 않는다(E-1 승계).
 2. **골든 2종·테스트 상수의 허용 변경은 J1c(+2·중간 상수 3곳)·J3(−1·최종 상수 3곳) 선언분뿐**이다. J0·J1a·J1b·J2는 골든 diff 0. 최종 기대값 route-inventory **441**·sensitive **281**·authz **"428 (413 v1 + 15 v2)"**·non-GET **233** — 단일 원천은 CI3·CI4·CI7.
 3. **P 산출물 무변경 — 단 I10 명시적 예외 2건**: (a) compose_k8s_ops.go 신규 def 추가·등록 1행 한정(기존 10종 def 바이트 불변) (b) contracttest/opdef_table_test.go k8sOpDefTable +1행(def 집합 잠금 단얫의 대상 확장). `k8sassembly*`·`compose.go`·`mapping.md`·`projection.go`·`internal/infra/metrics/**`·`internal/infra/inventory/**`·**char-baseline은 J3 재생성분 외 무변경**.
-4. **기존 10종 오퍼레이션·핸들러·실행기 동작 무변경** — create는 신규 파일·신규 행으로만 추가. `operations.go`·`infra.go`·`executor_state.go`·`executor_resource.go`·`executor.go`의 Poll은 수정하지 않는다. 유일 예외 2편집: executor.go dispatch case 1행(J1b)·tasks.go 주석 1행(J1c).
+4. **기존 10종 오퍼레이션·핸들러·실행기 동작 무변경** — create는 신규 파일·신규 행으로만 추가. `operations.go`·`infra.go`·`executor_state.go`·`executor_resource.go`·`executor.go`의 Poll은 수정하지 않는다. 유일 예외 3편집: executor.go dispatch case 1행(J1b)·tasks.go 주석 1행(J1c)·**infra.go providerConnectionView `id` 필드+조립 1행(J4 — 뷰 행 확장, 기존 필드 무변경)〔r4〕**.
 5. **kubeconfig 평문 금지(봉인 계약 승계)** — create 실행기·핸들러는 ConnectionView·매니페스트만 다룬다. 시크릿 물질의 로그·에러·감사·ProviderRef 노출 금지.
 6. **어댑터의 DB·브로커 직접 접근 금지**(arch rule 2) — create leg는 req.Connection만 소비. 합성 uid 도출은 API 계층(v2)과 엔진뿐.
 7. **Z 테스트**: k8s_path_test.go에서 죽은 6종 char만 제거 — **isK8sNotFoundError char·k8s_transport_test.go 전부(WithPreferred 2종 포함)·살아남은 19종 char는 바이트 불변**. char-baseline 재생성은 C47 절차 원문(시간 문자열 sed 절단 포함)으로만 — 기대 114행. char-exclude·C47 불가침의 첫 수정 사례임을 PR에 명기.
@@ -274,6 +299,8 @@ J0·J1a 상호 무의존(병렬 가능)이나 XL 직렬 프로세스 계약상 �
 15. **스펙 편집은 조용히 두지 않는다** — §8.5·§10.2(J0)·§16.1(J1c)·§19.1 step 4 상환 주석(J3)이 각 PR에 동반. 역사 이탈 문언 삭제 금지.
 16. **Secret 매니페스트 payload 노출 수용 기록(RI-12)** — create 태스크의 payload_json은 사용자 작성 매니페스트를 그대로 동결하며 taskView.Payload로 노출된다(§13 내구성 계약·재생·디버깅 원천). Secret 생성 매니페스트의 stringData가 포함될 수 있음을 tasks.go 주석 수식·PR 설명에 명시적으로 기록한다. 권한 게이트(Auth+task grant) 뒤 관제 면이라 **수용**한다 — payload 반식별화는 재생 계약을 깨뜨리므로 불채택.
 17. **멱등키 소각 배선** — 커넥션-스코프 키 생성·소각은 하나의 공유 템플릿 상수를 소비한다(템플릿 이원화 금지). 종단 전환 시점 소각을 runOpTasks 폴 콜백이 수행한다(기존 패턴 승계).
+18. **스키마 예외 계약 〔r3〕** — DB 변경은 step0008(resource_uid varchar 64→255) 1건뿐이다. step0008은 step0003 패턴(존재 확인 조건부 DDL·dialect 가드)을 승계하고 **provider_task를 건드린 후 `EnsureProviderTaskGuards` postlude를 재실행한다**(W-5 원문 계약). model/task.go의 ResourceUID tag만 size:255로 갱신 — 다른 필드 tag 무변경. 합성 uid 빌더는 `len > 255`를 하드 거부한다(400 INVALID_OPERATION_PAYLOAD — sqlite 미강제 환경에서 길이 계약의 소유자).
+19. **J4 수복 범위 계약 〔r4〕** — 결함 3의 수정은 CLI 봉인(main_register_k8s) 1호출뿐: `engine_resolve.go`·`executor.go`의 자격 계약(operations 목적 직접 조회·Material 필수)은 무편집 — 위반은 CLI에 있었다. 결함 2의 폴백은 백엔드 2순위(`source_id=0 && id=clusterID`)와 동일 조건·동일 우선권 순서로만. 기존 dev 체인의 자격 보강은 register-k8s 멱등 재실행으로 수행한다(신규 SQL 경로 금지). stack.sh compare 모드 삭제 전 사용처 census를 PR에 첨부한다.
 
 ---
 
@@ -337,7 +364,8 @@ CI12 [J2] cd web && bun install --frozen-lockfile && bun run build → exit 0 ·
 CI14 [J2 — 필수 시도] cd web && bun run e2e → exit 0. 대상 슬라이스는 slice-a(serve-a) — slice-b/c는 serve-b/c 전용 fixture라
        본 변경(k8s 면)의 레인 아니다(모드 규율). kind 미가용으로 회피 시: CI11 grep(4콜사이트 배선) + CI12 build를
        필수로 돌리고 재발화 단얫(종단 후 동일 버튼 재클릭 → 신규 태스크 uid ≠ 이전 — 가짜 재생 성공 방지)을
-       코드 계약(§3.6 공유 템플릿·종단 소각) 리뷰 확인으로 대체, 사유·판정 경로 PR 기재(C61 선례 강화)
+       코드 계약(§3.6 공유 템플릿·종단 소각) 리뷰 확인으로 대체, 사유·판정 경로 PR 기재(C61 선례 강화).
+       〔r4〕J2 시점의 test2 실패(결함 3)·create 경로는 **J4 착지 후 CI20에서 전체 재녹화로 판정한다** — J2 회피 판정은 J4가 대체 종찰
 
 --- J3 (v1 원자 삭제·골든·baseline 종결) ---
 CI3  [J3] grep -c . docs/security/route-inventory.txt → 441 · grep -c . docs/security/sensitive-routes.txt → 281
@@ -365,8 +393,20 @@ CI15 [J3] 잔여·생존 경계: grep -rn "http\.(post\|put\|delete)\('/api/v1/k
        grep -c 'K8sResourceYAMLPayload\|K8sResourceDeletePayload' backend/model/k8s.go → 0(고아 타입 처분) 이고
        grep -c 'k8sManifestIdentity' backend/service/k8s_types_mesh.go → 0(동일)
 
---- 종합 (구현 완료 후 1회 — 선택, 판정 경로 기재 의무) ---
-CI16 [종합·선택] V2 왕복: kind kubeconfig → register-k8s → 서버 기동 →
+--- J4 (결함 수복 — r4) ---
+CI18 [J4] 결함 2 수복 2단: ① 착수 전 grep -c 'json:"id"' backend/internal/api/v2/infra.go → 0(부재 증명)
+       ② J4 후 → 1 이상(providerConnectionView) 이고
+       grep -n 'resolveK8sClusterConnectionUid' -A 14 web/src/api/k8s.js | grep -c 'row.id\|\.id ===' → 1 이상(폴백 분기 존재) 이고
+       cd web && bun run build → exit 0(회귀)
+CI19 [J4] 결함 3 수복: grep -c 'CredentialPurposeOperations' backend/main_register_k8s.go → 1 이상(바인딩 2건째) 이고
+       grep -n 'func Test' backend/main_register_k8s_test.go | grep -ci 'binding\|purpose' → 1 이상(존재 증명) 이고
+       cd backend && go test . -run TestRegisterK8s -count=1 → ok(바인딩 2건 단얫 — inventory·operations 동일 SecretRef) 이고
+       grep -c 'CredentialPurpose' backend/main_register_pve.go → 2 이상(pve 선례와 대칭 확인)
+CI20 [J4 종료 — 의무] e2e 전체 재녹화: cd web && ./e2e/stack.sh serve && bun run e2e → exit 0 —
+       test1(connections 뷰)·test2(restart 종단 succeeded — 결함 3 해소 실증)·test3(create 종단 succeeded + 재발화 신규 uid) 전부.
+       kind 미가용 시: CI18·CI19 + CI16(J4 이후 의무화 — 하기)의 유닛 대체 집합을 돌리고 사유 PR 기재. **J3는 CI20 통과 후에만 착수한다**
+--- 종합 (J4 착지 후 — CI16 의무화〔r4: 선택→J4 이후 실행 가능〕) ---
+CI16 [종합 — J4 후 의무] V2 왕복: kind kubeconfig → register-k8s(멱등 재실행 포함 — 기존 체인 자격 보강) → 서버 기동 →
        POST /api/v2/infra/provider-connections/{uid}/operations/k8s.resource.create/plan(body {yaml: Namespace 매니페스트}) → 200 ·
        execute(Idempotency-Key) → 201 → approve → 폴 succeeded → kubectl --context kind-v2-p2 get ns <name> → Found ·
        동일 key 재execute → 200 + Idempotency-Replayed: true ·
@@ -374,9 +414,26 @@ CI16 [종합·선택] V2 왕복: kind kubeconfig → register-k8s → 서버 기
        미가용 시 대체 집합: CI9(체인 2경로) + CI10(실행기 3분기·핸들 부호화) + CI7(라우트 골든) +
        **operations_connection_test 지정 단얫: go test ./internal/api/v2/ -run TestPlanConnectionOperation -count=1 → ok
        (plan 200·execute 201·키 무지정 400·불소속 kind 400·CONNECTION_NOT_FOUND 404 — CI13① 대신이 아니라 J1c 본체 검증으로 J1c에도 적용)**
+
+--- J1c 스키마·uid 길이 계약 〔r3〕 ---
+CI17 [J1c] 마이그레이션·모델·빌더 계약:
+       ls backend/internal/infra/migrate/step0008_resource_uid_widen.go → 파일 존재 이고
+       grep -c 'step0008' backend/internal/infra/migrate/migrations.go → 1 이상(등록) 이고
+       grep -n 'ResourceUID' backend/internal/infra/model/task.go | grep -c 'size:255' → 1(tag 갱신·UID 필드와 구분되는 ResourceUID 행) 이고
+       grep -c 'EnsureProviderTaskGuards' backend/internal/infra/migrate/step0008_resource_uid_widen.go → 1 이상(W-5 postlude 재실행) 이고
+       cd backend && go test ./internal/infra/migrate/ -count=1 → ok(신규 DB leg: step0002가 255로 직접 생성 — 조건부 no-op 정합)
+       그리고 길이 왕복 단얫(operations_connection_test — sqlite 미강제를 Go 빌더가 소유):
+       최악 fixture(singular 15 + ns 63 + name 63 → uid 181자)의 왕복(빌드→파싱→커넥션 uid·target 복원) 성공 단얫 ·
+       상한 초과(빌더 산출 > 255) 거부 단얫(400 INVALID_OPERATION_PAYLOAD) ·
+       LOW① 가드: 빈 singular/빈 target 분절을 connectionUIDOfSynthetic이 거부하는 단얫 ·
+       LOW② 예약 보강: 생성기 어휘 단얫(newSyncUID·SourceKeyUID·k8sRegisterUID 산출 전수 ^[0-9a-f]{32}$ — 'conn:' 비충돌을
+       생성기 수준에서 잠금. infra_resource uid는 32-hex 또는 urn: 접두 계열임도 단얫)
+       (선택·docker 가용 시 — C35 패턴: docker exec ops-admin-mysql-dev mysql -uroot -p123456 -N -e
+       "select character_maximum_length from information_schema.columns where table_schema='ops_admin' and
+       table_name='provider_task' and column_name='resource_uid';" → 255 — 서버 기동 후 판정, 미가용 시 사유 PR 기재)
 ```
 
-최소 회전 세트(Phase별): CI1·CI2·CIf (+J2: CI12). 존재 증명(V-1)은 CIm·CI9·CI10·(CI16 대체 집합)에 인라인.
+최소 회전 세트(Phase별): CI1·CI2·CIf (+J1c: CI17 · +J2: CI12 · +J4: CI20 — J3 착수 게이트). 존재 증명(V-1)은 CIm·CI9·CI10·(CI16 대체 집합)에 인라인.
 
 ---
 
@@ -396,8 +453,10 @@ CI16 [종합·선택] V2 왕복: kind kubeconfig → register-k8s → 서버 기
 | RI-10 | K8s.vue 4 콜사이트 치환 리뷰 불가 규모 | 중 | 중 | op별 매핑표 PR 첨부·`connectionScoped: true` 4건 grep·runOpTasks target 치환은 기계적(R29 선례) | CI11 |
 | **RI-11** (신설·위험4) | J1c~J3 승인 우회 창 — v1 create(무승인) 병존 기간에 무승인 경로 사용 | 중 | 저 | 창 최소화(J1c 즉시 J2·J3)·J1c PR 명기·J2가 사용자 노출 제거. M1 무배포 단계라 실 트래픽 부재 — §5 #12로 계약화 | 리뷰·CI11 |
 | **RI-12** (신설·위험5) | Secret 생성 매니페스트의 payload_json 영속·taskView 노출 | 중 | 중 | **명시적 수용 기록**(§5 #16): §13 동결 계약·재생 원천이라 반식별화 불채택. 관제 면은 Auth+task grant 게이트 뒤. tasks.go 주석 가정 수식(J1c)·PR 설명 첨부 | 리뷰·CI13① |
+| **RI-13** (r3 신설 — uid 길이 HIGH) | step0008 스키마 확장의 파급 — 인덱스 재구축·(resource_uid, active_flag) 유니크 정합 | 낮 | 중 | InnoDB 한도 내 산술(§0 (iii))·W-5 postlude 재실행으로 유니크 가드 보존·dev 규모(행수 소)라 재구축 비용 무해·조건부 DDL로 신규 DB no-op 정합 | CI17·CI1 |
+| **RI-14** (r4 신설 — 선존 결함 2·3) | 결함 수복이 J4로 지연되는 동안 V2 create가 register 체인에서 무동작(자격 공백·해상 실패) — J3가 선행되면 create 기능 공백 창 | 중 | 높 | **순서 계약 J4→J3**(§4) — 결함 상태 삭제 금지·CI20 통과가 J3 게이트·기존 dev 체인은 CLI 멱등 재실행 1회로 보강(§3.9)·J2 프론트는 이미 V2 배선(회귀 없음 — v1 create 병존) | CI18·CI19·CI20·CI16 |
 
-**롤백**: 앵커 = I10 착수 전 커밋(`i10-j0-base`부터 Phase별 태그 — 존재 검사 CI 전문). J0·J1a·J1b·J1c additive — 개별 revert 무함(J1c revert 시 골든 중간값·상수 3곳도 함께 복귀). J2 revert 시 v1 create가 J3 이전엔 생존 — 무해(§5 #1 순서 계약). **J3 원자 revert**(부분 revert 불가). **cleanup 단계(위험3 채택)**: revert 후 잔여 `conn:` 접두 **비종단** 태스크 행은 active 잠금으로 남는다 — 롤백 절차에 "비종단 conn: 태스크를 실패 종단화하는 SQL 1문(`UPDATE provider_task SET status='failed' WHERE resource_uid LIKE 'conn:%' AND status NOT IN (종단 5종)` — 정확 종단 집합은 구현 시 §13.5 어휘 원문 대조) 또는 reject 라우트 순회"를 포함한다. "잔여 무해"는 **종단 행만** 참이다. 전체 역순: J3→J2→J1c→J1b→J1a→J0. DB 스키마 무변경 — 백업·복원 불요.
+**롤백**: 앵커 = I10 착수 전 커밋(`i10-j0-base`부터 Phase별 태그 — 존재 검사 CI 전문). J0·J1a·J1b·J1c additive — 개별 revert 무함(J1c revert 시 골든 중간값·상수 3곳도 함께 복귀). J2 revert 시 v1 create가 J3 이전엔 생존 — 무해(§5 #1 순서 계약). **J3 원자 revert**(부분 revert 불가). **cleanup 단계(위험3 채택)**: revert 후 잔여 `conn:` 접두 **비종단** 태스크 행은 active 잠금으로 남는다 — 롤백 절차에 "비종단 conn: 태스크를 실패 종단화하는 SQL 1문(`UPDATE provider_task SET status='failed' WHERE resource_uid LIKE 'conn:%' AND status NOT IN (종단 5종)` — 정확 종단 집합은 구현 시 §13.5 어휘 원문 대조) 또는 reject 라우트 순회"를 포함한다. "잔여 무해"는 **종단 행만** 참이다. 전체 역순: J3→J4→J2→J1c→J1b→J1a→J0. J4는 읽기 전용 뷰 확장+멱등 upsert — 단독 revert 무해(바인딩 2건째 잔존 무해·폴백 미사용 시 무동작). **스키마〔r3〕**: step0008은 순방향 전용 러너(R-Q 선례 — 되돌림 마이그레이션 미작성)라 revert 후에도 컬럼은 255로 잔존하되 **64 초과 데이터가 없으면 무해하다**(J1c revert 시 conn: 태스크는 cleanup SQL이 종단화 — 데이터도 소멸). 백업·복원 불요·불가(되돌림 수단 부재가 아니라 되돌림 필요성 부재).
 
 ---
 
@@ -436,10 +495,18 @@ CI16 [종합·선택] V2 왕복: kind kubeconfig → register-k8s → 서버 기
 | 검증 V-13 CI13① 절 근거 | **채택** | CI13① awk §16.1/§8.5 범위 한정 |
 | 검증 V-14 태그 존재 검사 | **채택** | §6 전문 `git rev-parse --verify` |
 
+**r3 유입 LOW 2 (J1a 리뷰 — 병합 보고 외 별도 유입)**:
+
+| LOW | 처분 | 사유·반영 위치 |
+|---|---|---|
+| connectionUIDOfSynthetic 빈 분절 미검증(빈 target·빈 singular 통과 — engine_resolve.go:93-101) | **채택 — J1c 소유** | 빌더(operations_connection.go)가 J1c에 착지하므로 생산자·파서 가드·왕복 단얫을 한 Phase에 둔다 — §4 J1c ⑨·CI17 |
+| 예약 가드 단얫 실효 범위(자기 fixture 1행 — 생성기 규칙 미반영) | **채택 — 생성기 어휘 단얫 보강** | newSyncUID·SourceKeyUID·k8sRegisterUID 산출 전수 ^[0-9a-f]{32}$ 단얫으로 'conn:' 비충돌을 생성기 수준에서 잠금 — CI17 |
+
 ---
 
 ## 10. 완료 판정 (구현·리뷰에 인계)
 
+- **D-15 완결의 실효 조건 〔r4 성문화〕**: "실제 등록 경로(register-k8s)에서 create가 동작"이 I10 완결 조건이다 — 라우트·골든·프론트 전환이 갖춰져도 자격(결함 3)·해상(결함 2)이 수복되지 않으면 완결이 아니다. J4(CI20·CI16 실증)가 그 전제를 공급하고 J3가 v1을 지운다. **J3 머지 = 완결은 CI20·CI16 선행 통과 조건부.**
 - J3 머지 시점에 §19.1 step 4는 13/13 — D-15 상환·I-P1 폐쇄·phase6 §13 I10 폐쇄(메인 기록).
 - 골든 최종 441·281·"428 (413 v1 + 15 v2)"·233 — 이후 골든 논의의 기준점(CI3·CI4 원천).
 - char-baseline 114행 — C47 불가침 계약의 갱신 선례.

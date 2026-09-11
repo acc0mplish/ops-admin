@@ -176,18 +176,27 @@
     "next": "Phase 6 블록 2 전체 종결 — G0~H2·I-a·I-b 완결. 후속 대장: I10(create)·I5(hardcap 14건)·L2(validateK8sClusterPayload 고아)·register-k8s delete 미제공"
   },
   "i10": {
-    "phase": "implement",
+    "phase": "done",
     "round": {
       "adversary": 0,
-      "review": 0
+      "review": 1
     },
-    "spawns": 9,
+    "spawns": 21,
     "task": "I10 create 오퍼레이션화 — §16.1 커넥션-스코프 create 라우트(plan|execute) 신설 + v1 POST /k8s/resource/yaml/create 삭제 + 골든 441·281(v1 1삭제+v2 2신설 — 리컨 439/279에서 정정) + 프론트 소비 전환 (D-15 상환·§19.1 step4 13/13)",
     "adversary_r1": "종결 — 5렌즈 전 조건부 승인(병합 v2-phase1/i10-adversary-r1.md·C1/H11/M17/L18·반려 0·교차확인 4건). r2 반영: HIGH 11·MED 17 전건·LOW 16채택 3기각(RFC1123 가드·repo외 통지창·J0+J1a 병합). 인코딩: (i) ConnectionScoped 폐지→빈 ResourceKinds (ii) create| 마커 폐지→state|+manifest 기대상태 재사용(executor_state.go 무편집). 메인 검증 통과(446행·cancel 분쟁 r2 승소 — cancel.go:58+infra.go:74 실측·spec resolved: 0매치·char 120/25→114/19 산술 정합)",
     "plan": "v2-phase1/i10-plan.md r2 (446행 — 5렌즈 발견 전건 소화·Phase J0→J1a→J1b→J1c→J2→J3)",
     "bundle": "v2-phase1/i10-plan.md",
-    "phase_j0": "review — feat/i10-j0-defs 커밋 4541e1c(+326/−11·6파일). 구현 claims 전통과(CI1·CI2·CIf·CI8·CIm·골든 diff 0·TDD RED→GREEN). 메인 4패키지 재실행 ok. j0-review 심층 리뷰 진행",
-    "next": "J0 리뷰 판정 → merge → J1a(엔진 체인)"
+    "phase_j0": "done — PR #82 병합(e0fd795). 리뷰 승인 C/H/M 0·claims 15항 verified·LOW 3 J1b 이월(APIVersions 선언버전 선행 주석·슬라이스 복사 반환·상수↔def 교차 잠금 단얫). docs 커밋(계획 r2·adversary·recon·state)",
+    "phase_j1a": "done — PR #83 병합(788d2c4). 리뷰 승인·claims 전항 verified. HIGH 1(계획 결함 — 합성 uid 최대 77자 > resource_uid varchar(64)) r3 의제화·LOW 2(분절 빈 가드·예약 단얫) r3 의제",
+    "plan_r3": "done — 476행. (a) step0008 varchar(64→255) 채택(step0004 중복 정정·W-5 postlude·빌더 상한 가드·CI17·§5 #18·LOW 2 채택). 메인 검증 통과",
+    "phase_j1b": "done — PR #84 병합(092a279). 리뷰 승인 C/H 0·구현자 판단 5점 verified. LOW 3 중 2건 J1c 이월(폴백 주석·POST→404 테스트)·1건 servedOperations 화장적 잔존",
+    "phase_j1c": "done — PR #85 병합(c8deb33). 리뷰 승인 C/H 0·골든 산술 재계산 정합·편차 5+1건 승인. 이월: M-1 감사 상속 핀 테스트·L-2 Manifest 필드 미소비 → J3. CI17 MySQL post-state — 서버 기동 시 판정 잔여",
+    "phase_j2": "done — PR #86 병합(a7462f0·round.review 1). 커밋 4건·CI14 전량 그린 3 passed·재리뷰 승인(폴 래퍼·t 임포트 수복 근거 실측). 이월: L 3건(주석 11·trap 위치·compare 사유)+i18n 중복 3키 dedupe → J4. canary plant 앵커 드리프트 수복(12b5d2d — /profile 이동 반영·로컬 실증)",
+    "plan_r4": "done — 513행. 결함 3=(A) pve 자매 선례(:308-311 2바인딩)·§7.4 명문·바인딩 모델 복수행 허용. 결함 2=뷰 id 노출(k8sProjectionViewID conn.ID 실측)+폴백(백엔드 2순위 대칭). J4 신설(5파일)·순서 J2→J4→J3·CI20=J3 착수 게이트·D-15 실효 조건 성문. 429 사망 1회·resume 완주",
+    "phase_j4": "done — PR #87 병합(8d7eead). 마이크로 ce7809e(폴백 레인 실증·ns 고유화·201 양측 단얫) 포함. 메인 CI20 재실행 3 passed·리뷰 승인·stale 브랜치 청산(feat/i10-j2-frontend 삭제·a4f16fe 폐기 확정)",
+    "phase_j3": "done — PR #88 병합(ff47140). 리뷰 승인 C/H/M 0·claims 전 verified·C47 집합 동일·이월 2건 착지. L2 후속(감사 핀 주석-픽스처·사멸 심볼 잔여 주석) — 후속 문서 접촉 PR 권고",
+    "next": "I10 종결. 후속 대장: CI16 dev 체인 register-k8s 멱등 재실행(운영 시점·자격 보강)·I5(hardcap 14건)·register-k8s delete 미제공·L2 문서 접촉(사멸 심볼 주석·sensitive 행번호 shift)·i18n 중복 3키 dedupe·K8s.vue 2803행 분할",
+    "done": "I10 완결(2026-09-12·PR #82~#88) — §16.1 커넥션-스코프 create(plan|execute)+def 빈 ResourceKinds+엔진 conn: 합성 uid+step0008 varchar255+프론트 4콜사이트 전환+선존 결함 5건 수복(커넥션 해상 폴백·operations 바인딩·폴 래퍼·t 임포트·stack.sh 드리프트)+v1 create 원자 삭제. §19.1 step4 13/13·D-15 상환·골든 441/281·char 114/19. 계획 r1→r4(5렌즈 C1H11M17L18+uid 길이 HIGH+결함 2·3). 최종 전수 -race 30패키지 ok"
   },
-  "next": "Phase 6 블록 2 종결(2026-09-11·PR #75~#81 + 계획 ceece22) — §19.1 step 1·2a·3·4a·4b·5 전부 완결. 후속: I10(create)·register-k8s delete·I5 hardcap·고아 sweep. 백업 /tmp/p6-pre-drop.sql(휘발성 — 필요 시 영구 보관)"
+  "next": "Phase 6 블록 2 종결(PR #75~#81) + I10 create 오퍼레이션화 종결(2026-09-12·PR #82~#88). 후속: register-k8s delete·I5 hardcap·고아 sweep·CI16 dev 체인 재실행"
 }
