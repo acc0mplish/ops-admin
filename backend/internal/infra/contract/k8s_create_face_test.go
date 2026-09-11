@@ -1,6 +1,6 @@
 // k8s_create_face_test.go — 매니페스트 신원 매핑 표(k8s_create_face.go) 잠금
 // (I10 §3.2.1·CIm). 단얫 3축: ① v1 create face resourceType 15종 전수 대응
-// (k8s_path.go buildK8sCreateResourcePaths census와 1:1 — workload 하위 5형·
+// (삭제된 v1 create 경로 빌더의 census와 1:1 — workload 하위 5형·
 // istio 4·gatewayapi·httproute 포함) ② istio Gateway와 Gateway API Gateway의
 // 그룹 구분 이중 대응(동일 kind 문자열·상이 apiVersion group — RI-4) ③
 // namespaced 플래그(Namespace·PersistentVolume만 클러스터 스코프).

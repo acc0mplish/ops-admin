@@ -120,17 +120,17 @@ func writeOrCompareArtifact(t *testing.T, name string, header []string, lines []
 
 // TestRouteInventoryArtifact is T12: the committed route-inventory.txt must be
 // byte-identical to a fresh dump of the live engine, and the body must hold
-// exactly 439 routes (H-1: 1 ping + 7 public + 429 authGroup + 2 uploads
-// static — gin's Static registers GET and HEAD; 414 v1 + 4 Phase-2 v2 reads
-// + 11 Phase-3 v2 operation routes incl. the D1 tasks 목록 — J1c adds the
-// §16.1 connection-scoped create pair, the intermediate value before J3
-// removes the v1 create route (I10 plan §2.4; plan M8/M13 golden refresh
-// lineage — H2 쓰기 12건 삭제로 v1 12건 감소 — phase6-plan §3.2).
+// exactly 438 routes (H-1: 1 ping + 7 public + 428 authGroup + 2 uploads
+// static — gin's Static registers GET and HEAD; 413 v1 + 4 Phase-2 v2 reads
+// + 11 Phase-3 v2 operation routes incl. the D1 tasks 목록 + the §16.1
+// connection-scoped create pair (I10 J3 final value: J3 removed the v1
+// create route, closing step 4 at 13/13 — I10 plan §2.4; plan M8/M13 golden
+// refresh lineage — H2 쓰기 12건 삭제로 v1 12건 감소 — phase6-plan §3.2).
 func TestRouteInventoryArtifact(t *testing.T) {
 	engine, _ := newArtifactEngine(t)
 	lines := routeInventoryLines(engine)
-	if len(lines) != 439 {
-		t.Fatalf("route inventory holds %d routes, contract is 439", len(lines))
+	if len(lines) != 438 {
+		t.Fatalf("route inventory holds %d routes, contract is 438", len(lines))
 	}
 	header := artifactHeader(
 		"Route inventory generated from the live gin engine",

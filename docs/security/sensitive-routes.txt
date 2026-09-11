@@ -1,6 +1,6 @@
 # Sensitive-route classification generated from backend/opdef — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestSensitiveRoutesArtifact -update
-# 279 entries.
+# 278 entries.
 DELETE /admin/delete	permission=system:admin:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/cloudAccount/delete	permission=assets:cloudaccount:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/credential/delete	permission=assets:credential:delete	mutating=true	risk=high	reduction=false
@@ -176,7 +176,6 @@ POST /integration/finops/sync/trigger	permission=integration:finops:sync	mutatin
 POST /integration/navigation/group/save	permission=integration:navigation:save	mutating=true	risk=medium	reduction=false
 POST /integration/navigation/group/token	permission=integration:navigation:token	mutating=true	risk=medium	reduction=false
 POST /integration/navigation/save	permission=integration:navigation:save	mutating=true	risk=medium	reduction=false
-POST /k8s/resource/yaml/create	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
 POST /menu/add	permission=system:menu:add	mutating=true	risk=medium	reduction=false
 POST /monitor/aggregation/rule/batch	permission=monitor:aggregation:edit	mutating=true	risk=medium	reduction=false
 POST /monitor/aggregation/rule/save	permission=monitor:aggregation:add|monitor:aggregation:edit	mutating=true	risk=medium	reduction=false

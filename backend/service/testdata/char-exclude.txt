@@ -19,7 +19,6 @@ GetK8sPodLogs
 GetK8sPodEvents
 GetK8sNamespaceDetail
 UpdateK8sResourceYAML
-CreateK8sResourceYAML
 DeleteK8sResource
 UpdateK8sIstioTraffic
 UpdateK8sHTTPRouteTraffic

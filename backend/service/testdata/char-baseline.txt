@@ -13,10 +13,6 @@
 --- PASS: TestCharBuildIstioResourcePaths
 --- PASS: TestCharBuildIstioResourcePathsWithPreferred
 --- PASS: TestCharBuildJobDetail
---- PASS: TestCharBuildK8sCreateResourcePaths
---- PASS: TestCharBuildK8sDeleteResourcePaths
---- PASS: TestCharBuildK8sYAMLResourcePath
---- PASS: TestCharBuildK8sYAMLResourcePaths
 --- PASS: TestCharBuildNamespaceCounts
 --- PASS: TestCharBuildNamespaceItems
 --- PASS: TestCharBuildNetworkSection
@@ -70,7 +66,6 @@
 --- PASS: TestCharFormatTimestamp
 --- PASS: TestCharFormatUsagePercent
 --- PASS: TestCharFormatWorkloadResourceSummary
---- PASS: TestCharFriendlyK8sYAMLError
 --- PASS: TestCharHumanizeAge
 --- PASS: TestCharIntLabel
 --- PASS: TestCharIntValue
@@ -101,7 +96,6 @@
 --- PASS: TestCharNormalizedK8sStatus
 --- PASS: TestCharParseBytesQuantity
 --- PASS: TestCharParseCPUToMilli
---- PASS: TestCharParseK8sManifestIdentity
 --- PASS: TestCharParseKubeConfig
 --- PASS: TestCharParseOverviewCertificate
 --- PASS: TestCharPersistentVolumeSource

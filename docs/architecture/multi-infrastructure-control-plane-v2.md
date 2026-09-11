@@ -1574,6 +1574,9 @@ decomposition order (each step is a separately revertible PR):
      deviation recorded: 2026-09-10 — k8s arbitrary-kind create stays on the
      v1 path; the uid-scope operation model does not fit free-form YAML
      creation, carried as I10 (D-15)
+     resolved: 2026-09-12 — connection-scoped create landed (I10, §16.1):
+     the scope anchor moved to connection uid + manifest identity, the v1
+     create face is deleted, and step 4 is 13/13 (D-15 repaid)
   5. legacy columns/tables drop only after one release-cycle observation
      with zero legacy-path traffic (log-verified)
      deviation recorded: 2026-09-10 — no production traffic exists to

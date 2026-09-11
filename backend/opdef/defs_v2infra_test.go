@@ -45,13 +45,17 @@ func TestV2InfraDefsRegistered(t *testing.T) {
 	}
 }
 
-// vocabularyInheritedFromV1 lists permission strings whose v1 source row Phase
-// 6 E1 (2026-09-10) deleted. E1 removed the v1 restart opdef, so the sole owner
-// of "assets:k8s:workload:restart" is now the v2 plan/execute def below. This
-// is inheritance, not new vocabulary — J4's purpose (the v2 batch invents no
+// vocabularyInheritedFromV1 lists permission strings whose v1 source row a
+// later phase deleted. Phase 6 E1 (2026-09-10) removed the v1 restart opdef,
+// so the sole owner of "assets:k8s:workload:restart" is now the v2 plan/execute
+// def below. I10 J3 (2026-09-12) removed the v1 yaml create opdef row the same
+// way — "assets:k8s:workload:yaml" now has the §16.1 connection-scoped pair as
+// its sole table owner (the registry def resolves it at request time). This is
+// inheritance, not new vocabulary — J4's purpose (the v2 batch invents no
 // permission strings) still holds.
 var vocabularyInheritedFromV1 = map[string]struct{}{
 	"assets:k8s:workload:restart": {},
+	"assets:k8s:workload:yaml":    {},
 }
 
 // TestV2InfraDefsReuseExistingVocabulary is the J4 preservation assertion

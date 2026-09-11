@@ -19,7 +19,9 @@ import "net/http"
 // I10 J1c adds the §16.1 connection-scoped create pair: same representative
 // mechanism, but the registry def (k8s.resource.create) resolves to
 // "assets:k8s:workload:yaml" at risk=high — the enforced values come from
-// V2DynamicMiddleware at request time, as everywhere above.
+// V2DynamicMiddleware at request time, as everywhere above. Sole table owner
+// of that vocabulary since I10 J3 removed the v1 yaml create def
+// (2026-09-12, the E1 restart precedent repeated).
 var v2infraDefs = []Def{
 	{Method: http.MethodPost, Path: "/infra/provider-connections/:uid/operations/:name/plan", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskHigh},
 	{Method: http.MethodPost, Path: "/infra/provider-connections/:uid/operations/:name/execute", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskHigh},
