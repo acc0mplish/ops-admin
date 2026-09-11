@@ -64,7 +64,7 @@ export const queryK8sWorkloadDetail = (clusterId, namespace, workloadType, workl
 // flow (E2 restart pattern §3.5). Create joined at I10 J2 (§16.1 connection-
 // scoped face — D-15 repaid on the consumption side; the v1 route itself is
 // removed at J3).
-// The 10 operations (§3.2 — compose_k8s_ops.go opdef names are the single
+// The 11 operations (§3.2 — compose_k8s_ops.go opdef names are the single
 // source; these constants mirror them for the view layer).
 export const K8S_OPERATIONS = {
   restart: 'k8s.workload.restart',
@@ -110,10 +110,18 @@ export const K8S_OPERATION_TASK_TERMINAL_STATUSES = ['succeeded', 'failed', 'tim
 
 // E2 §3.5: provider-connections → the row whose sourceModel is k8s_cluster and
 // sourceId is the cluster id exposes the connection uid the E0 filter needs.
+// Register chains (register-k8s) carry no source pair, so a second-priority
+// fallback matches the row id the backend projection exposes as the register
+// chain's cluster id — same condition, same priority order as the backend's
+// own dual resolution (k8s_projection.go: source_id=0 && id=clusterID; I10
+// J4 defect 2). Backfilled source pairs keep winning on both sides.
 export async function resolveK8sClusterConnectionUid(clusterId) {
   const connections = await listInfraProviderConnections()
-  const match = (connections?.items || []).find(
+  const rows = connections?.items || []
+  const match = rows.find(
     (row) => row.sourceModel === 'k8s_cluster' && String(row.sourceId) === String(clusterId)
+  ) || rows.find(
+    (row) => row.providerType === 'kubernetes' && String(row.sourceId) === '0' && String(row.id) === String(clusterId)
   )
   if (!match?.uid) {
     throw new Error(`k8s_cluster provider connection not found (clusterId=${clusterId})`)

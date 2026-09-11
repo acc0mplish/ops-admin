@@ -182,18 +182,34 @@ func TestRegisterK8sSealsKubeconfigChain(t *testing.T) {
 	if err := db.Find(&bindings).Error; err != nil {
 		t.Fatalf("load bindings: %v", err)
 	}
-	if len(bindings) != 1 || bindings[0].Purpose != "inventory" {
-		t.Fatalf("binding rows = %d, want exactly one inventory purpose", len(bindings))
+	if len(bindings) != 2 {
+		t.Fatalf("binding rows = %d, want 2 (inventory + operations — §7.4 purpose-per-row)", len(bindings))
 	}
-	if bindings[0].ProviderConnectionID != conn.ID || bindings[0].SecretRefID != ref.ID ||
-		bindings[0].ProviderContextID == nil || *bindings[0].ProviderContextID != pctx.ID {
-		t.Fatalf("binding chain pointers: %+v", bindings[0])
+	byPurpose := map[string]inframodel.ProviderCredentialBinding{}
+	for _, b := range bindings {
+		byPurpose[b.Purpose] = b
+	}
+	if _, ok := byPurpose["inventory"]; !ok {
+		t.Fatalf("binding purposes = %v, want inventory present", byPurpose)
+	}
+	if _, ok := byPurpose["operations"]; !ok {
+		t.Fatalf("binding purposes = %v, want operations present", byPurpose)
+	}
+	for purpose, b := range byPurpose {
+		if b.ProviderConnectionID != conn.ID || b.SecretRefID != ref.ID ||
+			b.ProviderContextID == nil || *b.ProviderContextID != pctx.ID {
+			t.Fatalf("binding(%s) chain pointers: %+v", purpose, b)
+		}
 	}
 
 	// C58 평문 무잔존 — 봉인 행 밖 어느 체인 행에도 kubeconfig 성분(토큰·
 	// 서버 URL)이 남지 않는다. backfill의 P-class 예외를 승계하지 않는다.
 	token := "mock-k8s-token-not-real"
-	for name, row := range map[string]any{"connection": conn, "context": pctx, "binding": bindings[0]} {
+	residueRows := map[string]any{"connection": conn, "context": pctx}
+	for i, b := range bindings {
+		residueRows[fmt.Sprintf("binding[%d]", i)] = b
+	}
+	for name, row := range residueRows {
 		blob, err := json.Marshal(row)
 		if err != nil {
 			t.Fatalf("marshal %s: %v", name, err)
@@ -203,7 +219,7 @@ func TestRegisterK8sSealsKubeconfigChain(t *testing.T) {
 		}
 	}
 	assertChainCounts(t, db, map[string]int64{
-		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 1,
+		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 2,
 	})
 }
 
@@ -239,7 +255,7 @@ func TestRegisterK8sIdempotentRerunKeepsUIDsAndReSeals(t *testing.T) {
 		t.Fatalf("rerun must keep the chain UIDs: %+v vs %+v", first, second)
 	}
 	assertChainCounts(t, db, map[string]int64{
-		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 1,
+		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 2,
 	})
 
 	var ref inframodel.SecretRef
@@ -255,6 +271,71 @@ func TestRegisterK8sIdempotentRerunKeepsUIDsAndReSeals(t *testing.T) {
 	}
 	if plain != rotated {
 		t.Fatalf("re-sealed material must be the rotated kubeconfig content")
+	}
+}
+
+// TestRegisterK8sSealsBothCredentialPurposesAtTheSameSecretRef — I10 J4 결함 3:
+// k8s 자격은 kubeconfig 하나지만 바인딩은 물질 단위가 아니라 purpose 단위다
+// (§7.4 same-SecretRef 명문 패턴). register-k8s는 inventory·operations 2행을
+// 봉인해 실행기 assembly가 조회하는 Material["operations"]가 비지 않게 한다
+// (engine_resolve·executor 자격 계약은 무편집 — §5 #19). 재실행은 2행을
+// 그대로 유지한다(멱등 upsert — 기존 dev 체인의 자격 보강 경로).
+func TestRegisterK8sSealsBothCredentialPurposesAtTheSameSecretRef(t *testing.T) {
+	mock := &k8sRegisterMock{}
+	srv := mock.serve(t)
+	db := newRegisterK8sTestDB(t)
+
+	run := func() k8sRegisterReport {
+		t.Helper()
+		report, err := registerK8sInDB(context.Background(), db, k8sRegisterOptions{
+			Name: "k8s-mock", KubeconfigPath: writeTempKubeconfig(t, kubeconfigForServer(srv.URL)),
+			ConnectionMode: k8sModeDirect,
+		})
+		if err != nil {
+			t.Fatalf("registerK8sInDB: %v", err)
+		}
+		return report
+	}
+	report := run()
+
+	var conn inframodel.ProviderConnection
+	if err := db.Where("uid = ?", report.ConnectionUID).First(&conn).Error; err != nil {
+		t.Fatalf("load connection: %v", err)
+	}
+	bindingRefs := func() map[string]uint {
+		var rows []inframodel.ProviderCredentialBinding
+		if err := db.Where("provider_connection_id = ?", conn.ID).Find(&rows).Error; err != nil {
+			t.Fatalf("load bindings: %v", err)
+		}
+		refs := map[string]uint{}
+		for _, b := range rows {
+			refs[b.Purpose] = b.SecretRefID
+		}
+		return refs
+	}
+
+	refs := bindingRefs()
+	if len(refs) != 2 {
+		t.Fatalf("binding purposes = %v, want exactly {inventory, operations}", refs)
+	}
+	if refs["inventory"] == 0 || refs["operations"] == 0 {
+		t.Fatalf("binding purposes = %v, want both inventory and operations sealed", refs)
+	}
+	if refs["inventory"] != refs["operations"] {
+		t.Fatalf("one kubeconfig credential — both purposes must point at the same secret_ref (§7.4), got inventory=%d operations=%d", refs["inventory"], refs["operations"])
+	}
+	var refCount int64
+	if err := db.Model(&inframodel.SecretRef{}).Count(&refCount).Error; err != nil {
+		t.Fatalf("count secret refs: %v", err)
+	}
+	if refCount != 1 {
+		t.Fatalf("secret_ref rows = %d, want 1 (single material shared by both purposes)", refCount)
+	}
+
+	// 멱등 재실행 — 2행 유지·같은 SecretRef 지목(기존 dev 체인 자격 보강).
+	run()
+	if again := bindingRefs(); len(again) != 2 || again["inventory"] != refs["inventory"] || again["operations"] != refs["operations"] {
+		t.Fatalf("rerun must keep the two purpose rows pointed at the same secret_ref: %v", again)
 	}
 }
 
@@ -298,7 +379,7 @@ func TestRegisterK8sValidateFailureWritesNothing(t *testing.T) {
 		t.Fatalf("failing rerun must error")
 	}
 	assertChainCounts(t, db, map[string]int64{
-		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 1,
+		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 2,
 	})
 	var after string
 	if err := db.Table("secret_ref").Select("ciphertext").Where("uid = ?", k8sRegisterUID("k8s-good", "secret")).Scan(&after).Error; err != nil {
