@@ -102,3 +102,60 @@ test('run a restart operation through plan, approval and the event timeline', as
   await expect(eventTags.filter({ hasText: 'claimed' })).not.toHaveCount(0)
   await expect(eventTags.filter({ hasText: 'succeeded' })).not.toHaveCount(0)
 })
+
+// I10 J2 (§16.1): the console's create flow rides the connection-scoped
+// k8s.resource.create operation — plan → execute(Idempotency-Key) → auto
+// approve → poll — through the shared progress dialog. The dialog labels and
+// the create dialog copy render through the main ko catalog (i18n.js `t`
+// carries no en table), so the ko strings below are the stable selectors even
+// under the pinned en-US locale.
+test('create a namespace through the connection-scoped task flow and never replay a spent key', async ({ page }) => {
+  await page.goto('/containers/k8s/namespaces')
+  // The console auto-selects the first (only) fixture cluster — wait for its
+  // namespace rows before driving the create dialog (submit is a no-op guard
+  // while cluster.value is still unset).
+  await expect(page.locator('.el-table__row').first()).toBeVisible({ timeout: 30_000 })
+  const createButton = page.getByRole('button', { name: 'Namespace 생성' })
+  await expect(createButton).toBeVisible()
+  const executeResponse = () => page.waitForResponse(
+    (response) => response.url().includes('/operations/k8s.resource.create/execute'),
+    { timeout: 30_000 }
+  )
+
+  // First create: execute must return a real task uid, and the progress
+  // dialog must carry the row to the succeeded terminal state.
+  await createButton.click()
+  const dialog = page.locator('.el-dialog', { hasText: 'Namespace 생성' })
+  await expect(dialog).toBeVisible()
+  await dialog.locator('.el-input input').first().fill('e2e-create-ns')
+  const firstExecute = executeResponse()
+  await dialog.getByRole('button', { name: '생성', exact: true }).click()
+  const uid1 = (await (await firstExecute).json())?.data?.task?.uid
+  expect(uid1).toBeTruthy()
+  const progress = page.locator('.el-dialog', { hasText: 'Resource Create Progress' })
+  await expect(progress).toBeVisible()
+  await expect(progress.locator('.el-tag').first()).toHaveText('Succeeded', { timeout: TERMINAL_BUDGET })
+
+  // The progress dialog is modal — close it before re-firing through the
+  // console header button.
+  await progress.locator('.el-dialog__headerbtn').click()
+  await expect(progress).toBeHidden({ timeout: 10_000 })
+
+  // Re-fire the identical manifest after the terminal state: the burned key
+  // must spawn a NEW task (uid2 ≠ uid1) — a replay of the spent key would
+  // return the old task and its uid instead (silent false-success contract).
+  await createButton.click()
+  const redialog = page.locator('.el-dialog', { hasText: 'Namespace 생성' })
+  await expect(redialog).toBeVisible()
+  await redialog.locator('.el-input input').first().fill('e2e-create-ns')
+  const secondExecute = executeResponse()
+  await redialog.getByRole('button', { name: '생성', exact: true }).click()
+  const uid2 = (await (await secondExecute).json())?.data?.task?.uid
+  expect(uid2).toBeTruthy()
+  expect(uid2).not.toBe(uid1)
+  await expect(progress.locator('.el-tag').first()).toHaveText('Succeeded', { timeout: TERMINAL_BUDGET })
+
+  // The finish refresh pulls the created namespace into the cluster overview.
+  await expect(page.locator('.el-table__row', { hasText: 'e2e-create-ns' }).first())
+    .toBeVisible({ timeout: 30_000 })
+})

@@ -26,13 +26,17 @@ import {
   queryK8sConfigMapDetail,
   queryK8sSecretDetail,
   queryK8sStorageDetail,
-  createK8sResourceYAML,
   K8S_OPERATIONS,
   K8S_RESOURCE_TARGETS,
   K8S_TRAFFIC_TARGETS
 } from '../../api/k8s'
 import { useK8sOperationProgress } from '../../composables/useK8sOperationProgress'
 import { kt } from '../../utils/k8s-extra-i18n'
+// `t` — main-catalog keys (k8sStatusWarning·k8sSectionOverviewDesc·k8sYamlEditor
+// …) that stayed in i18n.js. b15577d (en-extract A5) dropped this import while
+// converting the moved keys to `kt`, leaving these call sites with a
+// ReferenceError that blanked the whole console view at mount.
+import { t } from '../../utils/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -1712,15 +1716,14 @@ async function submitStorageClassCreate() {
   }
   storageClassCreateSaving.value = true
   try {
-    await createK8sResourceYAML({
-      clusterId: cluster.value.id,
-      resourceType: 'pv',
-      name,
-      yaml: JSON.stringify(manifest, null, 2)
-    })
-    ElMessage.success(kt('storageClassCreated'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceCreate') }), [{
+      op: K8S_OPERATIONS.resourceCreate,
+      connectionScoped: true,
+      payload: { yaml: JSON.stringify(manifest, null, 2) },
+      display: name
+    }])
+    if (ok) ElMessage.success(kt('storageClassCreated'))
     storageClassCreateVisible.value = false
-    await refreshCurrentClusterData()
   } finally {
     storageClassCreateSaving.value = false
   }
@@ -1883,7 +1886,12 @@ async function submitConfigStorageCreate() {
         display: `${namespace}/${name}`
       }])
     } else {
-      await createK8sResourceYAML({ clusterId: cluster.value.id, resourceType: kind, namespace, name, yaml: JSON.stringify(manifest, null, 2) })
+      ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceCreate') }), [{
+        op: K8S_OPERATIONS.resourceCreate,
+        connectionScoped: true,
+        payload: { yaml: JSON.stringify(manifest, null, 2) },
+        display: `${namespace}/${name}`
+      }])
     }
     if (ok) ElMessage.success(kt('configStorageDone', { title: configStorageCreateTitle() }))
     configStorageCreateVisible.value = false
@@ -1901,15 +1909,14 @@ async function submitNamespaceCreate() {
   }
   namespaceCreateSaving.value = true
   try {
-    await createK8sResourceYAML({
-      clusterId: cluster.value.id,
-      resourceType: 'namespace',
-      name,
-      yaml: `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ${name}\n`
-    })
-    ElMessage.success(kt('k8sNamespaceCreatedSuccess'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceCreate') }), [{
+      op: K8S_OPERATIONS.resourceCreate,
+      connectionScoped: true,
+      payload: { yaml: `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ${name}\n` },
+      display: name
+    }])
+    if (ok) ElMessage.success(kt('k8sNamespaceCreatedSuccess'))
     namespaceCreateVisible.value = false
-    await refreshCurrentClusterData()
   } finally {
     namespaceCreateSaving.value = false
   }
@@ -2096,15 +2103,14 @@ async function submitIstioCreate() {
   )
   istioCreateSaving.value = true
   try {
-    await createK8sResourceYAML({
-      clusterId: cluster.value.id,
-      resourceType: istioCreateForm.resourceType,
-      namespace: '',
-      yaml: istioCreateForm.yaml
-    })
-    ElMessage.success(kt('k8sIstioResourceCreatedSuccess'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceCreate') }), [{
+      op: K8S_OPERATIONS.resourceCreate,
+      connectionScoped: true,
+      payload: { yaml: istioCreateForm.yaml },
+      display: yamlResourceLabel(istioCreateForm.resourceType)
+    }])
+    if (ok) ElMessage.success(kt('k8sIstioResourceCreatedSuccess'))
     istioCreateDialogVisible.value = false
-    await refreshCurrentClusterData()
   } finally {
     istioCreateSaving.value = false
   }
