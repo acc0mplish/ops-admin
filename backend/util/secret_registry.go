@@ -44,8 +44,12 @@ type SecretField struct {
 	Conditional bool
 }
 
-// SecretFields is the §4.1 secret field inventory (r2.4), 15 rows, in
+// SecretFields is the §4.1 secret field inventory (r2.4), 13 rows, in
 // inventory order. Anything not listed here is not a secret by contract.
+// Inventory Row 8 (the legacy cluster kube_config plaintext column) was
+// retired in V2 Phase 6 I-a — the kubeconfig travels through the sealed
+// SecretRef chain only now, so the column no longer exists as a registered
+// field (C41).
 var SecretFields = []SecretField{
 	// Row 1 — PublicDNSAccount: legacy envelope.
 	{Row: 1, Model: "PublicDNSAccount", Table: "domain_public_dns_account", Column: "access_key_cipher", Class: ClassELegacy, Labels: []string{"public DNS AccessKey"}},
@@ -56,13 +60,12 @@ var SecretFields = []SecretField{
 	{Row: 3, Model: "SSLCertificateVersion", Table: "ssl_certificate_versions", Column: "private_key_cipher", Class: ClassELegacy, Labels: []string{"certificate private key (version archive)"}},
 	// Row 4 — schedule variables: legacy envelope, secretness declared per value.
 	{Row: 4, Model: "OpsScheduleTask", Table: "ops_schedule_task", Column: "variables", Class: ClassELegacy, Labels: []string{"schedule task variables (JSON map)"}, MixedDeclaration: true},
-	// Rows 5-15 — P-class plaintext fields.
+	// Rows 5-15 — P-class plaintext fields (Row 8 retired — see above).
 	{Row: 5, Model: "AssetCredential", Table: "asset_credential", Column: "password", Class: ClassPlaintext, Labels: []string{"asset credential password"}},
 	{Row: 5, Model: "AssetCredential", Table: "asset_credential", Column: "private_key", Class: ClassPlaintext, Labels: []string{"asset credential private key"}},
 	{Row: 5, Model: "AssetCredential", Table: "asset_credential", Column: "passphrase", Class: ClassPlaintext, Labels: []string{"asset credential passphrase"}},
 	{Row: 6, Model: "AssetCloudAccount", Table: "asset_cloud_account", Column: "access_key", Class: ClassPlaintext, Labels: []string{"cloud account AccessKeyID"}},
 	{Row: 6, Model: "AssetCloudAccount", Table: "asset_cloud_account", Column: "secret_key", Class: ClassPlaintext, Labels: []string{"cloud account SecretKey"}},
-	{Row: 8, Model: "K8sCluster", Table: "k8s_cluster", Column: "kube_config", Class: ClassPlaintext, Labels: []string{"cluster kubeconfig"}},
 	{Row: 9, Model: "IntegrationFinOpsAccount", Table: "integration_finops_account", Column: "secret_key", Class: ClassPlaintext, Labels: []string{"FinOps account SecretKey"}},
 	{Row: 9, Model: "IntegrationFinOpsAccount", Table: "integration_finops_account", Column: "billing_token", Class: ClassPlaintext, Labels: []string{"FinOps billing token"}},
 	{Row: 10, Model: "MonitorDatasource", Table: "monitor_datasource", Column: "password", Class: ClassPlaintext, Labels: []string{"monitor datasource password"}},

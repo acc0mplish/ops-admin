@@ -100,13 +100,22 @@ func (s *Service) ListAssetGateways(pageNum, pageSize int, keyword string, statu
 	if err := query.Order("id desc").Offset((pageNum - 1) * pageSize).Limit(pageSize).Find(&list).Error; err != nil {
 		return nil, err
 	}
+	// S6 등가 조회 — 커넥션 스캔을 루프 밖 1회로 올려 N개 게이트웨이의
+	// 클러스터 카운트를 메모리 그룹핑한다(리뷰 M1 — 루프 내 풀스캔 N×M 회피).
+	// 스캔 실패 시 카운트는 0으로 남는다(기존 best-effort 자세 유지).
+	clusterCountsByGateway := map[uint]int64{}
+	if liveConns, connErr := s.k8sClusterConnections(); connErr == nil {
+		for i := range liveConns {
+			clusterCountsByGateway[k8sGatewayIDValue(&liveConns[i])]++
+		}
+	}
 	for i := range list {
 		list[i].Credential.Password = ""
 		list[i].Credential.PrivateKey = ""
 		list[i].Credential.Passphrase = ""
 		_ = s.db.Model(&model.AssetHost{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].HostCount).Error
 		_ = s.db.Model(&model.AssetDatabase{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].DatabaseCount).Error
-		_ = s.db.Model(&model.K8sCluster{}).Where("gateway_id = ?", list[i].ID).Count(&list[i].ClusterCount).Error
+		list[i].ClusterCount = clusterCountsByGateway[list[i].ID]
 	}
 	return map[string]any{"list": list, "total": total, "pageNum": pageNum, "pageSize": pageSize}, nil
 }
@@ -159,14 +168,15 @@ func (s *Service) DeleteAssetGateway(id uint) error {
 	if id == 0 {
 		return errors.New("gateway ID is required")
 	}
-	var hostCount, databaseCount, clusterCount int64
+	var hostCount, databaseCount int64
 	if err := s.db.Model(&model.AssetHost{}).Where("gateway_id = ?", id).Count(&hostCount).Error; err != nil {
 		return err
 	}
 	if err := s.db.Model(&model.AssetDatabase{}).Where("gateway_id = ?", id).Count(&databaseCount).Error; err != nil {
 		return err
 	}
-	if err := s.db.Model(&model.K8sCluster{}).Where("gateway_id = ?", id).Count(&clusterCount).Error; err != nil {
+	clusterCount, err := s.countK8sClustersByGateway(id)
+	if err != nil {
 		return err
 	}
 	if hostCount+databaseCount+clusterCount > 0 {

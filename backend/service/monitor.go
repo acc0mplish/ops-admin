@@ -695,10 +695,11 @@ func (s *Service) DeleteMonitorDatasource(id uint) error {
 	if count > 0 {
 		return errors.New("datasource is referenced by monitoring dashboards and cannot be deleted")
 	}
-	if err := s.db.Model(&model.K8sCluster{}).Where("monitor_datasource_id = ?", id).Count(&count).Error; err != nil {
+	clusterRefs, err := s.countK8sClustersByMonitorDatasource(id)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if clusterRefs > 0 {
 		return errors.New("datasource is bound to Kubernetes cluster monitoring and cannot be deleted")
 	}
 	return s.db.Delete(&model.MonitorDatasource{}, id).Error
@@ -4507,7 +4508,9 @@ func (s *Service) GetMonitorCommandCenter() (map[string]any, error) {
 	_ = s.db.Model(&model.AssetHost{}).Where("status = ? AND alive_status = ?", 1, 1).Count(&onlineHostCount).Error
 	_ = s.db.Model(&model.AssetDatabase{}).Where("status = ?", 1).Count(&databaseCount).Error
 	_ = s.db.Model(&model.AssetDatabase{}).Where("status = ? AND connect_status = ?", 1, 1).Count(&connectedDatabaseCount).Error
-	_ = s.db.Model(&model.K8sCluster{}).Count(&clusterCount).Error
+	if liveConns, connErr := s.k8sClusterConnections(); connErr == nil {
+		clusterCount = int64(len(liveConns))
+	}
 	_ = s.db.Model(&model.AssetService{}).Where("status = ?", 1).Count(&serviceCount).Error
 
 	type regionRow struct {

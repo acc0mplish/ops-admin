@@ -431,7 +431,7 @@ C40 [H2] 하드코딩 수치 재수정·음의 증명〔r4.1 신설 — r3 C40 �
       grep -n 'contract is 437\|427 (414 v1 + 13 v2)\|!= 232' router/routes_inventory_test.go router/authz_replay_test.go → 3건 전부 양성 존재
 C63 [I-a] backfill k8s 경로 제거: grep -c 'RunK8sBackfill\|markStaleSources\|SourceKeyUID("k8s_cluster"' backend/internal/infra/inventory/backfill.go → 0 이고
       grep -rn 'RunK8sBackfill' backend/main_sync.go → 0행(S7 — runSyncCLI 호출부 제거) ·
-      grep -c 'func RunCloudBackfill' backend/internal/infra/inventory/backfill_cloud.go → 1(cloud 존치 증명 — 'cloud' 문자열 grep은 파일명상 항상 매치라 vacuous, 폐기〔r4.1·R-K〕) ·
+      grep -c 'func RunCloudBackfill' backend/internal/infra/inventory/backfill_cloud.go → 1(cloud 존치 증명 — 'cloud' 문자열 grep은 파일명상 항상 매치라 vacuous, 폐기〔r4.1·R-K〕. **심볼명 정정 r4.2〔Ia-리뷰 L1〕: 실제 함수명은 `RunCloudAccountBackfill`** — 원문 패턴은 0매치라 cloud 존재 증명이 성립하지 않았다) ·
       cd backend && go test ./internal/infra/inventory/ -count=1 → ok
 C64 [I-a] S5·S6 전환: ① 존재 증명 — grep -rc 'func TestGetK8sCluster' backend/service/ | awk -F: '{s+=$NF} END {print s}' → 1(착수 전 deliverable 존재 — 무매칭 ok 방지〔r4.1·F10〕) ·
       grep -n 'provider_connection\|ProviderConnection' backend/service/k8s.go(GetK8sCluster 본문) → 1 이상 ·

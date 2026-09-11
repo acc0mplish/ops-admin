@@ -187,7 +187,7 @@ func normalizeCloudProvider(raw string) (string, bool) {
 }
 
 // readCloudCredential assembles the J4 blob from the v1 columns. Each
-// component is decrypt-if-envelope-else-plaintext (sourceKubeSecret posture):
+// component is decrypt-if-envelope-else-plaintext (§4.3):
 // P-class plaintext stays plaintext in process memory, an envelope component
 // is opened, and anything that claims to be an envelope but fails to open is
 // the row-scoped UNKNOWN halt (§4.3 — ambiguity is reported, never

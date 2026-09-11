@@ -2,6 +2,13 @@ package model
 
 import "time"
 
+// K8sCluster — V2 Phase 6 I-a 이후 이 구조체는 응답 DTO다: 서비스 계층의
+// 클러스터 소스는 provider_connection + SecretRef 체인으로 전환됐고
+// (service/k8s.go GetK8sCluster — phase6-plan §J5 S5), 이 타입은 소비자
+// 시그니처 유지(§12 #16)를 위해 존속한다. 아래 gorm 매핑·TableName은 legacy
+// 테이블(stale 데이터 전용)과 v1 AutoMigrate 소유분이며, I-b의 step0007
+// drop과 함께 AutoMigrate 제외 → 매핑 제거가 이어진다(C66 — I-a에서는
+// 스키마 불변 원칙상 손대지 않는다).
 type K8sCluster struct {
 	ID                  uint              `json:"id" gorm:"primaryKey"`
 	Name                string            `json:"name" gorm:"size:128;not null;uniqueIndex"`
