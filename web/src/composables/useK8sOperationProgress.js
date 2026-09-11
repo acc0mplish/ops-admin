@@ -2,8 +2,11 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { approveInfraTask, getInfraTask } from '../api/infra'
 import {
+  clearK8sConnectionIdempotencyKey,
   clearK8sOperationIdempotencyKey,
+  createK8sConnectionOperationTask,
   createK8sOperationTask,
+  k8sManifestTargetKey,
   K8S_OPERATION_TASK_TERMINAL_STATUSES,
   resolveK8sClusterConnectionUid,
   resolveK8sResourceUid
@@ -88,7 +91,12 @@ export function useK8sOperationProgress({ onFinish } = {}) {
             // 종단 전환 시점에 소진된 키를 폐기한다 — 이후 재발화는 새 키 → 새 태스크.
             // (서버는 상태 무관 리플레이를 반환하므로 남은 키는 가짜 성공을 낳는다)
             if (wasActive && K8S_OPERATION_TASK_TERMINAL_STATUSES.includes(task.status)) {
-              clearK8sOperationIdempotencyKey(row.resourceUid, row.op)
+              // 커넥션-스코프 행은 §3.6 공유 템플릿 쌍으로 소각한다.
+              if (row.connectionScoped) {
+                clearK8sConnectionIdempotencyKey(row.connectionUid, row.op, row.targetKey)
+              } else {
+                clearK8sOperationIdempotencyKey(row.resourceUid, row.op)
+              }
             }
           }
         } catch {
@@ -128,16 +136,34 @@ export function useK8sOperationProgress({ onFinish } = {}) {
     finishing = false
   }
 
-  // One submit per target row: resolve the V2 resource uid → plan → execute →
-  // auto-approve when this user holds the opdef permission, else surface the
-  // awaiting-external notice. Connection-uid resolution failure marks every
-  // still-pending row failed (E2 precedent).
+  // 행 제출 2경로 — 이후 승인·폴 흐름은 공유한다. 커넥션-스코프 create(§16.1)는
+  // 리소스 uid 조인을 건너뛰고 커넥션 uid로 직행한다. targetKey는 제출 전 1회만
+  // 도출해 row에 보관 — 폴 콜백의 소각이 같은 문자열을 소비한다(§5 #17).
+  async function submitConnectionScoped(row, connectionUid) {
+    row.connectionUid = connectionUid
+    row.targetKey = k8sManifestTargetKey(row.payload?.yaml || '')
+    return createK8sConnectionOperationTask(connectionUid, row.op, row.payload, row.targetKey)
+  }
+
+  async function submitResourceScoped(row, connectionUid) {
+    row.resourceUid = await resolveK8sResourceUid(connectionUid, row.target)
+    return createK8sOperationTask(row.resourceUid, row.op, row.payload)
+  }
+
+  // One submit per target row: resolve the V2 resource uid (or take the
+  // connection-scoped §16.1 route) → plan → execute → auto-approve when this
+  // user holds the opdef permission, else surface the awaiting-external
+  // notice. Connection-uid resolution failure marks every still-pending row
+  // failed (E2 precedent).
   async function run(clusterId, titleText, targets) {
     rows.value = targets.map((item) => ({
       key: item.display,
       display: item.display,
       op: item.op,
       target: item.target,
+      connectionScoped: item.connectionScoped || false,
+      connectionUid: '',
+      targetKey: '',
       payload: item.payload || {},
       resourceUid: '',
       taskUid: '',
@@ -155,14 +181,14 @@ export function useK8sOperationProgress({ onFinish } = {}) {
       const connectionUid = await resolveK8sClusterConnectionUid(clusterId)
       for (const row of rows.value) {
         try {
-          const resourceUid = await resolveK8sResourceUid(connectionUid, row.target)
-          row.resourceUid = resourceUid
-          const { taskUid, permission } = await createK8sOperationTask(resourceUid, row.op, row.payload)
-          row.taskUid = taskUid
+          const submitted = row.connectionScoped
+            ? await submitConnectionScoped(row, connectionUid)
+            : await submitResourceScoped(row, connectionUid)
+          row.taskUid = submitted.taskUid
           row.status = 'awaiting_approval'
-          if (!permission || permissions.includes(permission)) {
+          if (!submitted.permission || permissions.includes(submitted.permission)) {
             try {
-              await approveInfraTask(taskUid)
+              await approveInfraTask(row.taskUid)
               row.status = 'running'
             } catch {
               row.notice = 'restartTaskApprovalFailed'
