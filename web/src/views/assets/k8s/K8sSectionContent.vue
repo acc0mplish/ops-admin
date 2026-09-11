@@ -167,7 +167,6 @@ defineProps({
             <el-button link type="primary" @click="page.openPodLogs(row)">Log</el-button>
             <el-button link type="primary" @click="page.openPodYAML(row)">{{ page.t('k8sYaml') }}</el-button>
             <el-button link type="primary" @click="page.openPodTerminal(row)">{{ page.t('k8sTerminal') }}</el-button>
-            <el-button link type="danger" @click="page.handleDeletePod(row)">{{ page.t('k8sDelete') }}</el-button>
           </div>
         </template>
       </el-table-column>

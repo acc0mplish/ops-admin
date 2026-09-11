@@ -141,7 +141,8 @@ defineProps({
               v-model="page.yamlEditor.yaml"
               class="yaml-native-textarea"
               spellcheck="false"
-              :placeholder="page.t('k8sEditYamlHere')"
+              :readonly="page.yamlEditor.readOnly"
+              :placeholder="page.yamlEditor.readOnly ? '' : page.t('k8sEditYamlHere')"
               @input="page.handleYAMLInput"
               @click="page.updateYAMLCurrentLine"
               @keyup="page.updateYAMLCurrentLine"
@@ -190,7 +191,7 @@ defineProps({
     </div>
     <template #footer>
       <el-button @click="page.yamlDialogVisible = false">{{ page.t('cancel') }}</el-button>
-      <el-button type="primary" :loading="page.yamlSaving" @click="page.submitYAMLUpdate">{{ page.t('save') }}</el-button>
+      <el-button v-if="!page.yamlEditor.readOnly" type="primary" :loading="page.yamlSaving" @click="page.submitYAMLUpdate">{{ page.t('save') }}</el-button>
     </template>
   </el-dialog>
 

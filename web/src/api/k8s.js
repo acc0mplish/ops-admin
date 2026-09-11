@@ -5,12 +5,6 @@ export const queryK8sClusterList = () => http.get('/api/v1/k8s/cluster/list')
 
 export const queryK8sClusterInfo = (id) => http.get('/api/v1/k8s/cluster/info', { params: { id } })
 
-export const addK8sCluster = (data) => http.post('/api/v1/k8s/cluster/add', data)
-
-export const updateK8sCluster = (data) => http.put('/api/v1/k8s/cluster/update', data)
-
-export const deleteK8sCluster = (id) => http.delete('/api/v1/k8s/cluster/delete', { data: { id } })
-
 export const queryK8sClusterOverview = (clusterId) =>
   http.get('/api/v1/k8s/cluster/detail', { params: { clusterId } })
 
@@ -20,8 +14,6 @@ export const queryK8sNodeDetail = (clusterId, nodeName) =>
 export const queryK8sNodePods = (clusterId, nodeName) =>
   http.get('/api/v1/k8s/node/pods', { params: { clusterId, nodeName } })
 
-export const updateK8sNodeLabels = (data) => http.put('/api/v1/k8s/node/labels', data)
-
 export const queryK8sNamespaceDetail = (clusterId, namespace) =>
   http.get('/api/v1/k8s/namespace/detail', { params: { clusterId, namespace } })
 
@@ -30,8 +22,6 @@ export const queryK8sNamespaceEvents = (clusterId, namespace) =>
 
 export const queryK8sServiceDetail = (clusterId, namespace, serviceName) =>
   http.get('/api/v1/k8s/service/detail', { params: { clusterId, namespace, serviceName } })
-
-export const updateK8sService = (data) => http.put('/api/v1/k8s/service/update', data)
 
 export const queryK8sIngressDetail = (clusterId, namespace, ingressName) =>
   http.get('/api/v1/k8s/ingress/detail', { params: { clusterId, namespace, ingressName } })
@@ -69,15 +59,53 @@ export const queryK8sPodEvents = (clusterId, namespace, podName) =>
 export const queryK8sWorkloadDetail = (clusterId, namespace, workloadType, workloadName) =>
   http.get('/api/v1/k8s/workload/detail', { params: { clusterId, namespace, workloadType, workloadName } })
 
-export const scaleK8sWorkload = (data) => http.post('/api/v1/k8s/workload/scale', data)
+// ---- V2 mutations (plan §3.2 H1 — plan → execute(Idempotency-Key) → approve → poll) ----
+// The v1 write routes die at H2; every mutation rides the §16.2 operation
+// flow (E2 restart pattern §3.5, generalized to the 9 operations).
+// `createK8sResourceYAML` stays on v1 by design — create has no uid-scoped
+// V2 operation yet (D-15, carried as I10).
+// The 9 H1 operations (§3.2 — compose_k8s_ops.go opdef names are the single
+// source; these constants mirror them for the view layer).
+export const K8S_OPERATIONS = {
+  restart: 'k8s.workload.restart',
+  scale: 'k8s.workload.scale',
+  imageUpdate: 'k8s.workload.image_update',
+  resourcesUpdate: 'k8s.workload.resources_update',
+  nodeLabelsUpdate: 'k8s.node.labels_update',
+  serviceUpdate: 'k8s.service.update',
+  resourceApply: 'k8s.resource.apply',
+  resourceDelete: 'k8s.resource.delete',
+  istioTrafficUpdate: 'k8s.istio.traffic_update',
+  httpRouteTrafficUpdate: 'k8s.httproute.traffic_update'
+}
 
-// ---- V2 workload restart (plan §3.5 / Phase E2 — 4-step operation flow) ----
-// The v1 direct call is gone (E1 deletes the backend route); restarts go through
-// plan → execute(Idempotency-Key) → approve → poll as §16.2 tasks.
-const RESTART_OPERATION = 'k8s.workload.restart'
-const RESTART_RESOURCE_KIND = 'orchestration.workload'
+// V2 inventory target specs per view resourceType — kind + URN-tail builder
+// (buildURN §8.1: workload `:workload:{ns}/{type}/{name}`, other name-addressable
+// kinds `:{singular}:{ns}/{name}`, cluster-scoped `:{singular}:{name}`). The
+// uid-identity node matches by displayName instead. pod·virtualservice and the
+// uncollected istio kinds have no V2 face and stay out of this table.
+export const K8S_RESOURCE_TARGETS = {
+  workload: (namespace, workloadType, name) => ({ kind: 'orchestration.workload', urnTail: `:workload:${namespace}/${workloadType}/${name}` }),
+  namespace: (_namespace, _workloadType, name) => ({ kind: 'orchestration.namespace', urnTail: `:namespace:${name}` }),
+  service: (namespace, _workloadType, name) => ({ kind: 'network.load_balancer', urnTail: `:service:${namespace}/${name}` }),
+  ingress: (namespace, _workloadType, name) => ({ kind: 'network.load_balancer', urnTail: `:ingress:${namespace}/${name}` }),
+  configmap: (namespace, _workloadType, name) => ({ kind: 'orchestration.configmap', urnTail: `:configmap:${namespace}/${name}` }),
+  secret: (namespace, _workloadType, name) => ({ kind: 'orchestration.secret', urnTail: `:secret:${namespace}/${name}` }),
+  pv: (_namespace, _workloadType, name) => ({ kind: 'storage.volume', urnTail: `:pv:${name}` }),
+  pvc: (namespace, _workloadType, name) => ({ kind: 'storage.volume', urnTail: `:pvc:${namespace}/${name}` }),
+  // Gateway API faces — the advanced-network tab's Gateway/HTTPRoute rows.
+  gatewayapi: (namespace, _workloadType, name) => ({ kind: 'network.gateway', urnTail: `:gateway:${namespace}/${name}` }),
+  httproute: (namespace, _workloadType, name) => ({ kind: 'network.http_route', urnTail: `:httproute:${namespace}/${name}` })
+}
+
+// Traffic ops face their own kinds — istio VirtualService (P2-D uid anchor)
+// and the Gateway API HTTPRoute.
+export const K8S_TRAFFIC_TARGETS = {
+  virtualservice: (namespace, _workloadType, name) => ({ kind: 'network.virtual_service', urnTail: `:virtualservice:${namespace}/${name}` }),
+  httproute: (namespace, _workloadType, name) => ({ kind: 'network.http_route', urnTail: `:httproute:${namespace}/${name}` })
+}
 // §13.5 closed 9-state vocabulary — the terminal set mirrors TaskDetail.vue.
-export const K8S_RESTART_TASK_TERMINAL_STATUSES = ['succeeded', 'failed', 'timed_out', 'cancelled']
+export const K8S_OPERATION_TASK_TERMINAL_STATUSES = ['succeeded', 'failed', 'timed_out', 'cancelled']
 
 // E2 §3.5: provider-connections → the row whose sourceModel is k8s_cluster and
 // sourceId is the cluster id exposes the connection uid the E0 filter needs.
@@ -92,29 +120,50 @@ export async function resolveK8sClusterConnectionUid(clusterId) {
   return match.uid
 }
 
-// E0 connectionUid filter narrows to one cluster; the URN tail
-// `:workload:{ns}/{type}/{name}` is unique inside that cluster (§J4).
-export async function resolveK8sWorkloadResourceUid(connectionUid, namespace, workloadType, workloadName) {
-  const response = await listInfraResources({ kind: RESTART_RESOURCE_KIND, connectionUid, pageSize: 100 })
-  const tail = `:workload:${namespace}/${workloadType}/${workloadName}`
-  const match = (response?.items || []).find(
-    (row) => typeof row.externalUrn === 'string' && row.externalUrn.endsWith(tail)
-  )
-  if (!match?.uid) {
-    throw new Error(`workload resource not found in V2 inventory: ${tail}`)
+// E0 connectionUid filter narrows to one cluster. A target is matched either
+// by URN tail — `:workload:{ns}/{type}/{name}` is unique inside the cluster
+// (§J4), and the other name-addressable kinds follow the same shape — or, for
+// the uid-identity kinds (node), by display name (the URN tail carries the
+// node uid, not the name the v1 UI holds).
+// The backend caps pageSize at 100 and answers `{items, total, page, pageSize}`,
+// so a cluster with more than one page of same-kind resources is walked with
+// the total-based pagination until the target appears (no false "not found"
+// on row 101+).
+export async function resolveK8sResourceUid(connectionUid, { kind, urnTail, displayName }) {
+  const pageSize = 100
+  const seen = new Set()
+  let page = 1
+  let total = Infinity
+  while (seen.size < total) {
+    const response = await listInfraResources({ kind, connectionUid, pageSize, page })
+    const items = response?.items || []
+    const match = items.find((row) => (urnTail
+      ? typeof row.externalUrn === 'string' && row.externalUrn.endsWith(urnTail)
+      : row.displayName === displayName))
+    if (match?.uid) {
+      return match.uid
+    }
+    items.forEach((row) => seen.add(row.uid))
+    total = Number(response?.total) || 0
+    if (!items.length) {
+      break
+    }
+    page += 1
   }
-  return match.uid
+  const target = urnTail || `displayName=${displayName}`
+  throw new Error(`resource not found in V2 inventory: ${kind} ${target}`)
 }
 
-// §3.5: one key per `<resourceUid>:restart:<submit timestamp(ms)>`; repeated
+// §3.5: one key per `<resourceUid>:<op>:<submit timestamp(ms)>`; repeated
 // clicks on the same button reuse the key so replays never spawn new tasks
 // (the §13.4 unique index is the server-side last line of defense).
-const restartIdempotencyKeys = new Map()
-export function k8sRestartIdempotencyKey(resourceUid) {
-  let key = restartIdempotencyKeys.get(resourceUid)
+const operationIdempotencyKeys = new Map()
+export function k8sOperationIdempotencyKey(resourceUid, operation) {
+  const mapKey = `${resourceUid}:${operation}`
+  let key = operationIdempotencyKeys.get(mapKey)
   if (!key) {
-    key = `${resourceUid}:restart:${Date.now()}`
-    restartIdempotencyKeys.set(resourceUid, key)
+    key = `${mapKey}:${Date.now()}`
+    operationIdempotencyKeys.set(mapKey, key)
   }
   return key
 }
@@ -123,39 +172,32 @@ export function k8sRestartIdempotencyKey(resourceUid) {
 // spent key must be dropped the moment its task reaches a terminal state —
 // otherwise a later re-fire would replay the old task and report success
 // without touching the cluster. In-flight double clicks still reuse the key.
-export function clearK8sRestartIdempotencyKey(resourceUid) {
-  restartIdempotencyKeys.delete(resourceUid)
+export function clearK8sOperationIdempotencyKey(resourceUid, operation) {
+  operationIdempotencyKeys.delete(`${resourceUid}:${operation}`)
 }
 
-// plan → execute with the §3.5 key. Returns the task uid plus the plan's
-// permission string so the caller can decide whether this user may approve.
-export async function createK8sWorkloadRestartTask(resourceUid, idempotencyKey) {
-  const plan = await planInfraOperation(resourceUid, RESTART_OPERATION)
-  const payload = { restartedAt: plan.restartedAt }
-  if (plan.resourceRevision !== null && plan.resourceRevision !== undefined) {
-    payload.resourceRevision = plan.resourceRevision
+// plan → execute with the §3.5 key. The payload rides the request body and is
+// frozen at execute; restartedAt/resourceRevision come from the plan response
+// (J1/J7). Returns the task uid plus the plan's permission string so the
+// caller can decide whether this user may approve.
+export async function createK8sOperationTask(resourceUid, operation, payload = {}) {
+  const plan = await planInfraOperation(resourceUid, operation)
+  const body = {
+    ...payload,
+    restartedAt: plan.restartedAt,
+    ...(plan.resourceRevision !== null && plan.resourceRevision !== undefined
+      ? { resourceRevision: plan.resourceRevision }
+      : {})
   }
-  const response = await executeInfraOperation(resourceUid, plan.operation || RESTART_OPERATION, payload, idempotencyKey)
+  const response = await executeInfraOperation(resourceUid, plan.operation || operation, body, k8sOperationIdempotencyKey(resourceUid, operation))
   const taskUid = response?.task?.uid
   if (!taskUid) {
-    throw new Error('restart execution returned no task uid')
+    throw new Error(`${operation} execution returned no task uid`)
   }
   return { taskUid, permission: plan.permission || '' }
 }
 
-export const updateK8sWorkloadImages = (data) => http.post('/api/v1/k8s/workload/images', data)
-
-export const updateK8sWorkloadResources = (data) => http.put('/api/v1/k8s/workload/resources', data)
-
-export const updateK8sIstioTraffic = (data) => http.post('/api/v1/k8s/istio/traffic', data)
-
-export const updateK8sHTTPRouteTraffic = (data) => http.post('/api/v1/k8s/httproute/traffic', data)
-
 export const createK8sResourceYAML = (data) => http.post('/api/v1/k8s/resource/yaml/create', data)
-
-export const updateK8sResourceYAML = (data) => http.put('/api/v1/k8s/resource/yaml', data)
-
-export const deleteK8sResource = (data) => http.delete('/api/v1/k8s/resource/delete', { data })
 
 export const buildK8sPodTerminalWSUrl = ({
   clusterId,
