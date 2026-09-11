@@ -448,85 +448,9 @@ func newTaskUID() string {
 }
 
 // ---------------------------------------------------------------------------
-// 실행 회로 (T-7/T-8) — 체인 조인·UID→URN·어댑터 결합·비동기 폴.
+// 실행 회로 (T-7/T-8) — 체인 결정면은 engine_resolve.go(§3.3 conn: 분기) ·
+// UID→URN·어댑터 결합·비동기 폴.
 // ---------------------------------------------------------------------------
-
-// executionChain is the T-7 join result: resource_uid → infra_resource →
-// provider_context → provider_connection → ProviderType.
-type executionChain struct {
-	ConnectionUID string
-	ProviderType  string
-	ExternalURN   string
-}
-
-// resolveExecutionChain walks the three-level join. Soft-deleted resources
-// are outside the default scope (deleted_at IS NULL) — a miss (unknown or
-// deleted resource, or a broken chain) is an `unknown resource` hard error
-// the caller terminal-fails without retry (T-7).
-func (e *Engine) resolveExecutionChain(ctx context.Context, resourceUID string) (executionChain, error) {
-	var row executionChain
-	res := e.db.WithContext(ctx).
-		Table("infra_resource").
-		Select("provider_connection.uid AS connection_uid, provider_connection.provider_type AS provider_type, infra_resource.external_urn AS external_urn").
-		Joins("JOIN provider_context ON provider_context.id = infra_resource.context_id").
-		Joins("JOIN provider_connection ON provider_connection.id = provider_context.connection_id").
-		Where("infra_resource.uid = ? AND infra_resource.deleted_at IS NULL", resourceUID).
-		Limit(1).
-		Scan(&row)
-	if res.Error != nil {
-		return executionChain{}, fmt.Errorf("tasks: execution chain join for %q: %w", resourceUID, res.Error)
-	}
-	if row.ConnectionUID == "" {
-		return executionChain{}, fmt.Errorf("tasks: unknown resource %q — no live resource→context→connection chain (T-7)", resourceUID)
-	}
-	return row, nil
-}
-
-// connectionView assembles the §7.2-derived view the execution path hands to
-// adapters, filling Material through the §7.4/§3.5 broker. A connection with
-// NO operations binding (the fake / Phase 1 gate path) runs with nil Material
-// — "fake는 Config만으로 동작" (§3.5). A binding that exists but fails to
-// resolve is a hard error: executing without the configured credential would
-// be the silent hole §3.5 closes.
-func (e *Engine) connectionView(ctx context.Context, chain executionChain) (contract.ConnectionView, error) {
-	var conn model.ProviderConnection
-	if err := e.db.WithContext(ctx).Where("uid = ?", chain.ConnectionUID).First(&conn).Error; err != nil {
-		return contract.ConnectionView{}, fmt.Errorf("tasks: load connection %q: %w", chain.ConnectionUID, err)
-	}
-	view := contract.ConnectionView{
-		UID:          conn.UID,
-		ProviderType: conn.ProviderType,
-		Endpoint:     conn.Endpoint,
-		Config:       conn.ConfigJSON,
-	}
-	var bindings int64
-	if err := e.db.WithContext(ctx).Model(&model.ProviderCredentialBinding{}).
-		Where("provider_connection_id = ? AND purpose = ?", conn.ID, contract.CredentialPurposeOperations).
-		Count(&bindings).Error; err != nil {
-		return contract.ConnectionView{}, fmt.Errorf("tasks: probe operations bindings for %q: %w", chain.ConnectionUID, err)
-	}
-	if bindings == 0 {
-		return view, nil
-	}
-	resolved, err := e.broker.Resolve(ctx, conn.UID, contract.CredentialPurposeOperations)
-	if err != nil {
-		return contract.ConnectionView{}, fmt.Errorf("tasks: %s: %w", ErrorCodeCredentialError, err)
-	}
-	view.Material = map[string]string{contract.CredentialPurposeOperations: resolved.Value}
-	return view, nil
-}
-
-// capabilityServed — the adapter choice is a registry lookup only (arch
-// rule 1): the connection's provider type must have declared the operation's
-// required capability.
-func capabilityServed(reg *registry.Registry, providerType, capability string) bool {
-	for _, c := range reg.Capabilities(providerType) {
-		if c.Name == capability {
-			return true
-		}
-	}
-	return false
-}
 
 // executeClaimed runs one claimed attempt end to end: chain join → registry
 // lookups → broker material → Execute → (null handle: synchronous terminal) |
