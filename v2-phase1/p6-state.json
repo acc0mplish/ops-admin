@@ -175,5 +175,19 @@
     "phase_ib": "done — C34 백업(510KB)·C35 FK 0·step0007 drop 적용(테이블 0·칼럼 2 0·v7 dirty 0·backfill 2행 stale 봉인·register live). 모델 정리·id 공간 전환(이중 해상+id=0 사촌 차단)·sweep. 리뷰 수정요청 H1(진단 UI 파손)·M1을 역해상 응답 필드(json gorm:- + List 채움)로 해소 — 웹 무변경 회복(사용자 승인·429 사망 후 메인 인수 검증 배터리). 기록: C19/C20 의도 편차(migrate+주석 sweep — L4 선례)·monitor 이관 불요 판정(ConfigJSON 소스·DTO 존속)·실데이터 k8s_cluster 2행은 §J10 전제분·백업 보존. ib-impl 429 사망 1회(17:08 리셋 후 재개)",
     "next": "Phase 6 블록 2 전체 종결 — G0~H2·I-a·I-b 완결. 후속 대장: I10(create)·I5(hardcap 14건)·L2(validateK8sClusterPayload 고아)·register-k8s delete 미제공"
   },
+  "i10": {
+    "phase": "implement",
+    "round": {
+      "adversary": 0,
+      "review": 0
+    },
+    "spawns": 9,
+    "task": "I10 create 오퍼레이션화 — §16.1 커넥션-스코프 create 라우트(plan|execute) 신설 + v1 POST /k8s/resource/yaml/create 삭제 + 골든 441·281(v1 1삭제+v2 2신설 — 리컨 439/279에서 정정) + 프론트 소비 전환 (D-15 상환·§19.1 step4 13/13)",
+    "adversary_r1": "종결 — 5렌즈 전 조건부 승인(병합 v2-phase1/i10-adversary-r1.md·C1/H11/M17/L18·반려 0·교차확인 4건). r2 반영: HIGH 11·MED 17 전건·LOW 16채택 3기각(RFC1123 가드·repo외 통지창·J0+J1a 병합). 인코딩: (i) ConnectionScoped 폐지→빈 ResourceKinds (ii) create| 마커 폐지→state|+manifest 기대상태 재사용(executor_state.go 무편집). 메인 검증 통과(446행·cancel 분쟁 r2 승소 — cancel.go:58+infra.go:74 실측·spec resolved: 0매치·char 120/25→114/19 산술 정합)",
+    "plan": "v2-phase1/i10-plan.md r2 (446행 — 5렌즈 발견 전건 소화·Phase J0→J1a→J1b→J1c→J2→J3)",
+    "bundle": "v2-phase1/i10-plan.md",
+    "phase_j0": "review — feat/i10-j0-defs 커밋 4541e1c(+326/−11·6파일). 구현 claims 전통과(CI1·CI2·CIf·CI8·CIm·골든 diff 0·TDD RED→GREEN). 메인 4패키지 재실행 ok. j0-review 심층 리뷰 진행",
+    "next": "J0 리뷰 판정 → merge → J1a(엔진 체인)"
+  },
   "next": "Phase 6 블록 2 종결(2026-09-11·PR #75~#81 + 계획 ceece22) — §19.1 step 1·2a·3·4a·4b·5 전부 완결. 후속: I10(create)·register-k8s delete·I5 hardcap·고아 sweep. 백업 /tmp/p6-pre-drop.sql(휘발성 — 필요 시 영구 보관)"
 }
