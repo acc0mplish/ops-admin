@@ -4,13 +4,13 @@
 # Brings up the same stack the N16 Go trace exercises, but keeps it alive for
 # a real browser session:
 #   dedicated schema (VK-7) → backend child (migrations+seed+engine lane,
-#   OPS_ADMIN_ENGINE_* overrides, J10) → v1 k8s_cluster registration + sync-
+#   OPS_ADMIN_ENGINE_* overrides, J10) → register-k8s CLI registration + sync-
 #   inventory (the CLI subcommand, never a parallel reimplementation) → vite
 #   dev server in the foreground (Playwright's webServer URL).
 #
 # Modes:
 #   prepare   schema + run dir + config + backend build (no processes)
-#   register  k8s_cluster row + sync-inventory (needs one backend boot first)
+#   register  register-k8s CLI + sync-inventory (needs one backend boot first)
 #   serve     prepare + seed apply + backend boot + register + vite (webServer)
 #   serve-b   Slice B (plan N17 — PR 30): prepare (no kind cluster needed) +
 #             backend boot + seed_cloud (mock aliyun account → V2 rows) +
@@ -133,42 +133,73 @@ EOF
 }
 
 # --- mode: register -----------------------------------------------------------
-# Same deterministic registration the N16 harness performs: a v1 k8s_cluster
-# row (plaintext kubeconfig, §4.4) whose id feeds the backfill connection UID.
-# Requires a booted backend — the v1 tables (k8s_cluster, admin, seeds) exist
-# only after one boot of store.AutoMigrate + store.Seed; the CLI subcommands
-# run just the v2 migration set.
+# Same registration path the product keeps: the register-k8s CLI subcommand
+# (H0) seals the kubeconfig into the secret_ref chain and upserts the
+# connection/context pair. Requires a booted backend — the schema exists only
+# after one boot of store.AutoMigrate + store.Seed; the CLI subcommands run
+# just the v2 migration set.
 register() {
   [ -f "$BIN" ] || die "run 'stack.sh prepare' first"
-  [ -f "$RUN_DIR/backend-booted" ] || die "backend has never booted — the v1 schema does not exist yet"
-  local kubeconfig api_server k8s_version node_count
+  [ -f "$RUN_DIR/backend-booted" ] || die "backend has never booted — the schema does not exist yet"
+  local kubeconfig conn_uid
   kubeconfig="$(kubectl config view --minify --flatten --context "$SLICEA_CONTEXT")"
   [ -n "$kubeconfig" ] || die "minified kubeconfig is empty"
-  api_server="$(kubectl config view --minify --flatten --context "$SLICEA_CONTEXT" -o jsonpath='{.clusters[0].cluster.server}')"
-  k8s_version="$(kubectl --context "$SLICEA_CONTEXT" version -o json 2>/dev/null \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])')"
-  node_count="$(kubectl --context "$SLICEA_CONTEXT" get nodes -o name | wc -l | tr -d ' ')"
 
-  # SQL literal safety: move the kubeconfig through base64 / FROM_BASE64.
-  local kube_b64 cluster_id conn_uid
-  kube_b64="$(printf '%s' "$kubeconfig" | base64 -w0)"
-  mysql_exec -e "INSERT INTO $E2E_SCHEMA.k8s_cluster
-    (name, status, api_server, version, node_count, env, tags, connection_mode,
-     description, kube_config, created_at, updated_at)
-    VALUES ('$CLUSTER_NAME', 'running', '$api_server', '$k8s_version', $node_count,
-      'dev', '[]', 'direct', 'Playwright UI-flow fixture',
-      CONVERT(FROM_BASE64('$kube_b64') USING utf8mb4), NOW(3), NOW(3));"
-  cluster_id="$(mysql_exec -N -s -e "SELECT id FROM $E2E_SCHEMA.k8s_cluster WHERE name='$CLUSTER_NAME';")"
-  [ -n "$cluster_id" ] || die "k8s_cluster insert failed"
-  conn_uid="$(printf 'backfill|k8s_cluster|%s' "$cluster_id" | sha256sum | cut -c1-32)"
-  log "cluster registered id=$cluster_id connection_uid=$conn_uid"
+  # The kubeconfig travels by file path only (CLI 규약 — 시크릿 값은 인자로
+  # 받지 않는다): 0600 temp file, removed on both paths (F7 임시 파일 계약).
+  local kube_file report
+  kube_file="$(mktemp "$RUN_DIR/kubeconfig.XXXXXX")"
+  chmod 0600 "$kube_file"
+  printf '%s\n' "$kubeconfig" > "$kube_file"
+  if ! report="$(cd "$RUN_DIR" && OPS_ADMIN_INITIAL_PASSWORD="$E2E_ADMIN_PASSWORD" \
+      OPS_SECRET_MASTER_KEYS="$MASTER_KEYS" \
+      "$BIN" register-k8s --config "$CONFIG" --name "$CLUSTER_NAME" \
+        --kubeconfig "$kube_file" --env dev --connection-mode direct \
+        2> "$RUN_DIR/register-err.log")"; then
+    rm -f "$kube_file"
+    cat "$RUN_DIR/register-err.log" >&2 || true
+    die "register-k8s failed — see $RUN_DIR/register-err.log"
+  fi
+  rm -f "$kube_file"
+  conn_uid="$(printf '%s' "$report" | python3 -c 'import json,sys; print(json.load(sys.stdin)["connectionUid"])')"
+  [ -n "$conn_uid" ] || die "register-k8s report carried no connectionUid"
+  log "cluster registered connection_uid=$conn_uid"
+
+  # Fixture-limited chain completion (team-lead approved (i) — I10 r4 owns the
+  # product fix; this SQL only makes the fixture represent the chain shape the
+  # console reads). Two gaps the register-k8s CLI leaves open today:
+  #   1. the source pair (source_model/source_id) the frontend's
+  #      resolveK8sClusterConnectionUid matches on — the backend projection's
+  #      first-priority resolution (k8s_projection.go). Setting source_id to
+  #      the connection id is ID-preserving: the exposed cluster id equals
+  #      what the second-priority register-k8s path exposes.
+  #   2. the operations-purpose credential binding the task engine's
+  #      execution assembly requires (engine_resolve.go) — the CLI seals
+  #      inventory only. The kubeconfig is a single material for k8s, so the
+  #      binding re-points at the same sealed secret_ref.
+  local conn_id
+  conn_id="$(mysql_exec -N -s -e "SELECT id FROM $E2E_SCHEMA.provider_connection WHERE uid='$conn_uid';")"
+  [ -n "$conn_id" ] || die "register-k8s chain row not found (uid=$conn_uid)"
+  mysql_exec "$E2E_SCHEMA" <<SQL
+UPDATE provider_connection SET source_model='k8s_cluster', source_id=$conn_id
+WHERE uid='$conn_uid' AND stale_source=0;
+
+INSERT INTO provider_credential_binding
+  (provider_connection_id, provider_context_id, purpose, secret_ref_id, status)
+SELECT b.provider_connection_id, b.provider_context_id, 'operations', b.secret_ref_id, 'active'
+FROM provider_credential_binding b
+WHERE b.provider_connection_id = $conn_id AND b.purpose = 'inventory'
+  AND NOT EXISTS (
+    SELECT 1 FROM provider_credential_binding x
+    WHERE x.provider_connection_id = b.provider_connection_id AND x.purpose = 'operations');
+SQL
+  log "fixture chain completed (source pair + operations binding)"
 
   log "running sync-inventory (backfill + one sync)"
   (cd "$RUN_DIR" && OPS_ADMIN_INITIAL_PASSWORD="$E2E_ADMIN_PASSWORD" \
     OPS_SECRET_MASTER_KEYS="$MASTER_KEYS" \
     "$BIN" sync-inventory --config "$CONFIG" --connection "$conn_uid" --data "$RUN_DIR/data" \
     > "$RUN_DIR/sync-report.json")
-  echo "$cluster_id" > "$RUN_DIR/cluster-id"
   echo "$conn_uid" > "$RUN_DIR/connection-uid"
 }
 
@@ -240,8 +271,12 @@ serve() {
   log "applying seed fixture (idempotent) and waiting for rollout"
   kubectl --context "$SLICEA_CONTEXT" apply -f "$SEED" >/dev/null
   kubectl --context "$SLICEA_CONTEXT" -n v3-seed rollout status deploy/restart-target --timeout=180s >/dev/null
-  # Boot first (creates the v1 schema), then register + sync against it.
+  # Boot first (creates the schema), then register + sync against it. Arm the
+  # teardown before register: a register/sync failure must reap the backend
+  # child too (a mid-serve die otherwise leaks it holding the port — observed
+  # during the register-k8s repair).
   start_backend
+  trap teardown_stack EXIT
   register
   start_vite
 }
