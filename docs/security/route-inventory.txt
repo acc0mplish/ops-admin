@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 449 entries.
+# 437 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -25,8 +25,6 @@ DELETE /api/v1/integration/finops/account/delete -> ops-admin/backend/controller
 DELETE /api/v1/integration/finops/recommendation/delete -> ops-admin/backend/controller.(*Controller).DeleteFinOpsRecommendation-fm
 DELETE /api/v1/integration/navigation/delete -> ops-admin/backend/controller.(*Controller).DeleteIntegrationNavigation-fm
 DELETE /api/v1/integration/navigation/group/delete -> ops-admin/backend/controller.(*Controller).DeleteIntegrationNavigationGroup-fm
-DELETE /api/v1/k8s/cluster/delete -> ops-admin/backend/controller.(*Controller).DeleteK8sCluster-fm
-DELETE /api/v1/k8s/resource/delete -> ops-admin/backend/controller.(*Controller).DeleteK8sResource-fm
 DELETE /api/v1/menu/delete -> ops-admin/backend/controller.(*Controller).DeleteMenu-fm
 DELETE /api/v1/monitor/aggregation/rule/delete -> ops-admin/backend/controller.(*Controller).DeleteMonitorAggregationRule-fm
 DELETE /api/v1/monitor/alert/rule/delete -> ops-admin/backend/controller.(*Controller).DeleteMonitorAlertRule-fm
@@ -330,12 +328,7 @@ POST /api/v1/integration/finops/sync/trigger -> ops-admin/backend/controller.(*C
 POST /api/v1/integration/navigation/group/save -> ops-admin/backend/controller.(*Controller).SaveIntegrationNavigationGroup-fm
 POST /api/v1/integration/navigation/group/token -> ops-admin/backend/controller.(*Controller).RegenerateIntegrationPublicToken-fm
 POST /api/v1/integration/navigation/save -> ops-admin/backend/controller.(*Controller).SaveIntegrationNavigation-fm
-POST /api/v1/k8s/cluster/add -> ops-admin/backend/controller.(*Controller).CreateK8sCluster-fm
-POST /api/v1/k8s/httproute/traffic -> ops-admin/backend/controller.(*Controller).UpdateK8sHTTPRouteTraffic-fm
-POST /api/v1/k8s/istio/traffic -> ops-admin/backend/controller.(*Controller).UpdateK8sIstioTraffic-fm
 POST /api/v1/k8s/resource/yaml/create -> ops-admin/backend/controller.(*Controller).CreateK8sResourceYAML-fm
-POST /api/v1/k8s/workload/images -> ops-admin/backend/controller.(*Controller).UpdateK8sWorkloadImages-fm
-POST /api/v1/k8s/workload/scale -> ops-admin/backend/controller.(*Controller).ScaleK8sWorkload-fm
 POST /api/v1/login -> ops-admin/backend/controller.(*Controller).Login-fm
 POST /api/v1/menu/add -> ops-admin/backend/controller.(*Controller).CreateMenu-fm
 POST /api/v1/monitor/aggregation/rule/batch -> ops-admin/backend/controller.(*Controller).BatchUpdateMonitorAggregationRules-fm
@@ -425,11 +418,6 @@ PUT /api/v1/domain/internal/settings -> ops-admin/backend/controller.(*Controlle
 PUT /api/v1/domain/public/certificates/renew-settings -> ops-admin/backend/controller.(*Controller).UpdateSSLCertificateRenewSettings-fm
 PUT /api/v1/integration/ai/tool/update -> ops-admin/backend/controller.(*Controller).UpdateIntegrationAITool-fm
 PUT /api/v1/integration/finops/recommendation/status -> ops-admin/backend/controller.(*Controller).UpdateFinOpsRecommendation-fm
-PUT /api/v1/k8s/cluster/update -> ops-admin/backend/controller.(*Controller).UpdateK8sCluster-fm
-PUT /api/v1/k8s/node/labels -> ops-admin/backend/controller.(*Controller).UpdateK8sNodeLabels-fm
-PUT /api/v1/k8s/resource/yaml -> ops-admin/backend/controller.(*Controller).UpdateK8sResourceYAML-fm
-PUT /api/v1/k8s/service/update -> ops-admin/backend/controller.(*Controller).UpdateK8sService-fm
-PUT /api/v1/k8s/workload/resources -> ops-admin/backend/controller.(*Controller).UpdateK8sWorkloadResources-fm
 PUT /api/v1/menu/update -> ops-admin/backend/controller.(*Controller).UpdateMenu-fm
 PUT /api/v1/monitor/alert/rule/status -> ops-admin/backend/controller.(*Controller).UpdateMonitorAlertRuleStatus-fm
 PUT /api/v1/ops/application/build-task/status -> ops-admin/backend/controller.(*Controller).UpdateOpsAppBuildTaskStatus-fm

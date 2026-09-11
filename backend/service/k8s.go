@@ -3,8 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"ops-admin/backend/model"
@@ -23,111 +21,6 @@ func (s *Service) GetK8sCluster(id uint) (model.K8sCluster, error) {
 		return cluster, err
 	}
 	return cluster, nil
-}
-
-func (s *Service) CreateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
-	monitorDatasourceID, err := s.resolveK8sMonitorDatasource(payload.MonitorDatasourceID)
-	if err != nil {
-		return model.K8sCluster{}, err
-	}
-	cluster := model.K8sCluster{
-		Name:                strings.TrimSpace(payload.Name),
-		Description:         strings.TrimSpace(payload.Description),
-		KubeConfig:          strings.TrimSpace(payload.KubeConfig),
-		Env:                 normalizeEnvCode(payload.Env),
-		Tags:                normalizeAssetTags(payload.Tags),
-		ConnectionMode:      normalizeConnectionMode(payload.ConnectionMode),
-		GatewayID:           optionalGatewayID(payload.ConnectionMode, payload.GatewayID),
-		MonitorDatasourceID: monitorDatasourceID,
-	}
-	if err := validateK8sClusterPayload(cluster); err != nil {
-		return cluster, err
-	}
-
-	var count int64
-	if err := s.db.Model(&model.K8sCluster{}).Where("name = ?", cluster.Name).Count(&count).Error; err != nil {
-		return cluster, err
-	}
-	if count > 0 {
-		return cluster, errors.New("Kubernetes cluster name already exists")
-	}
-
-	probe, err := s.probeK8sCluster(cluster)
-	if err != nil {
-		return cluster, err
-	}
-
-	now := time.Now()
-	cluster.APIServer = probe.APIServer
-	cluster.Version = probe.Version
-	cluster.NodeCount = probe.NodeCount
-	cluster.Status = probe.Status
-	cluster.LastSyncAt = &now
-
-	if err := s.db.Create(&cluster).Error; err != nil {
-		return cluster, err
-	}
-	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "create", "Create Kubernetes Cluster", payload.Operator)
-	return cluster, nil
-}
-
-func (s *Service) UpdateK8sCluster(payload model.K8sClusterPayload) (model.K8sCluster, error) {
-	cluster, err := s.GetK8sCluster(payload.ID)
-	if err != nil {
-		return cluster, err
-	}
-
-	cluster.Name = strings.TrimSpace(payload.Name)
-	cluster.Description = strings.TrimSpace(payload.Description)
-	cluster.KubeConfig = strings.TrimSpace(payload.KubeConfig)
-	cluster.Env = normalizeEnvCode(payload.Env)
-	cluster.Tags = normalizeAssetTags(payload.Tags)
-	cluster.ConnectionMode = normalizeConnectionMode(payload.ConnectionMode)
-	cluster.GatewayID = optionalGatewayID(payload.ConnectionMode, payload.GatewayID)
-	monitorDatasourceID, err := s.resolveK8sMonitorDatasource(payload.MonitorDatasourceID)
-	if err != nil {
-		return cluster, err
-	}
-	cluster.MonitorDatasourceID = monitorDatasourceID
-
-	if err := validateK8sClusterPayload(cluster); err != nil {
-		return cluster, err
-	}
-
-	var count int64
-	if err := s.db.Model(&model.K8sCluster{}).Where("name = ? AND id <> ?", cluster.Name, cluster.ID).Count(&count).Error; err != nil {
-		return cluster, err
-	}
-	if count > 0 {
-		return cluster, errors.New("Kubernetes cluster name already exists")
-	}
-
-	probe, err := s.probeK8sCluster(cluster)
-	if err != nil {
-		return cluster, err
-	}
-
-	now := time.Now()
-	cluster.APIServer = probe.APIServer
-	cluster.Version = probe.Version
-	cluster.NodeCount = probe.NodeCount
-	cluster.Status = probe.Status
-	cluster.LastSyncAt = &now
-
-	if err := s.db.Save(&cluster).Error; err != nil {
-		return cluster, err
-	}
-	s.recordAssetChange("k8s", cluster.ID, cluster.Name, "update", "Update Kubernetes Cluster Configuration and Validate Connection", payload.Operator)
-	return cluster, nil
-}
-
-func (s *Service) DeleteK8sCluster(id uint) error {
-	cluster, _ := s.GetK8sCluster(id)
-	if err := s.db.Delete(&model.K8sCluster{}, id).Error; err != nil {
-		return err
-	}
-	s.recordAssetChange("k8s", id, cluster.Name, "delete", "Delete Kubernetes Cluster", "system")
-	return nil
 }
 
 func (s *Service) GetK8sClusterDetail(clusterID uint) (model.K8sClusterDetail, error) {
@@ -223,38 +116,6 @@ func (s *Service) GetK8sNodePods(clusterID uint, nodeName string) ([]model.K8sPo
 		return nil, errors.New(k8sClusterConnectError)
 	}
 	return buildPodItems(pods), nil
-}
-
-// UpdateK8sNodeLabels applies the submitted label set to a Kubernetes node.
-// Existing labels not included in the set are explicitly removed via a merge patch.
-func (s *Service) UpdateK8sNodeLabels(payload model.K8sNodeLabelsPayload) error {
-	_, runtime, client, err := s.k8sClientForCluster(payload.ClusterID)
-	if err != nil {
-		return err
-	}
-	var node kubeNode
-	if err := k8sGetJSON(client, runtime, "/api/v1/nodes/"+url.PathEscape(payload.NodeName), &node); err != nil {
-		return errors.New(k8sClusterConnectError)
-	}
-	labelsPatch := make(map[string]any, len(node.Metadata.Labels)+len(payload.Labels))
-	for key := range node.Metadata.Labels {
-		if _, keep := payload.Labels[key]; !keep {
-			labelsPatch[key] = nil
-		}
-	}
-	for key, value := range payload.Labels {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			return errors.New("node label key is required")
-		}
-		labelsPatch[key] = strings.TrimSpace(value)
-	}
-	if err := k8sPatchJSON(client, runtime, "/api/v1/nodes/"+url.PathEscape(payload.NodeName), map[string]any{
-		"metadata": map[string]any{"labels": labelsPatch},
-	}, "application/merge-patch+json", nil); err != nil {
-		return errors.New(k8sClusterConnectError)
-	}
-	return nil
 }
 
 func (s *Service) GetK8sPodDetail(clusterID uint, namespace string, podName string) (model.K8sPodDetail, error) {

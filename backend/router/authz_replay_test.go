@@ -42,11 +42,11 @@ var publicRouteKeys = map[string]struct{}{
 	"HEAD /uploads/*filepath": {},
 }
 
-// authGroupRoutes filters the live engine's route table down to the 439
+// authGroupRoutes filters the live engine's route table down to the 427
 // authenticated routes: the api-group routes minus the public set, plus the
 // /api/v2/infra group (M12 — plan: authGroupRoutes에 /api/v2 포함; E1에서
-// v1 restart 경로 삭제로 426 v1 + 4 Phase-2 v2 reads + 9 Phase-3 v2
-// operation routes incl. the D1 tasks 목록).
+// v1 restart 경로 삭제로 414 v1 + 4 Phase-2 v2 reads + 9 Phase-3 v2
+// operation routes incl. the D1 tasks 목록; H2 쓰기 12건 삭제 — phase6-plan §3.2).
 func authGroupRoutes(routes gin.RoutesInfo) []gin.RouteInfo {
 	out := make([]gin.RouteInfo, 0, 440)
 	for _, route := range routes {
@@ -231,8 +231,8 @@ func TestZeroGrantCoverage(t *testing.T) {
 		defKeys[d.Method+" "+d.Path] = struct{}{}
 	}
 	authRoutes := authGroupRoutes(engine.Routes())
-	if len(authRoutes) != 439 {
-		t.Fatalf("authGroup holds %d routes, contract is 439 (426 v1 + 13 v2)", len(authRoutes))
+	if len(authRoutes) != 427 {
+		t.Fatalf("authGroup holds %d routes, contract is 427 (414 v1 + 13 v2)", len(authRoutes))
 	}
 	missedDenials := []string{}
 	unexpectedDenials := []string{}
@@ -350,7 +350,7 @@ func TestOperationTableCoversRouter(t *testing.T) {
 	}
 	// 240→245 (plan M12 — golden refresh, 근거 기록): the five §16.2 v2
 	// mutation POSTs join the every-mutation-has-a-definition contract.
-	if count != 244 {
-		t.Fatalf("authGroup non-GET count %d drifted from the 244 baseline", count)
+	if count != 232 {
+		t.Fatalf("authGroup non-GET count %d drifted from the 232 baseline", count)
 	}
 }

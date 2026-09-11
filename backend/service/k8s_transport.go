@@ -19,44 +19,7 @@ import (
 	"ops-admin/backend/model"
 
 	"gopkg.in/yaml.v3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
-
-func (s *Service) probeK8sCluster(cluster model.K8sCluster) (k8sClusterProbe, error) {
-	config, cleanup, err := s.k8sRESTConfigForCluster(cluster)
-	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("failed to parse cluster configuration: %w", err)
-	}
-	defer cleanup()
-	config.Timeout = 8 * time.Second
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("failed to initialize Kubernetes client: %w", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-
-	version, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		if normalizeConnectionMode(cluster.ConnectionMode) == "gateway" {
-			return k8sClusterProbe{}, fmt.Errorf("failed to connect to API Server through gateway (%s): %w", config.Host, err)
-		}
-		return k8sClusterProbe{}, fmt.Errorf("failed to connect to API Server (%s): %w", config.Host, err)
-	}
-	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return k8sClusterProbe{}, fmt.Errorf("connection succeeded but node listing failed; verify nodes/list permission: %w", err)
-	}
-
-	return k8sClusterProbe{
-		APIServer: config.Host,
-		Version:   version.GitVersion,
-		NodeCount: len(nodes.Items),
-		Status:    "running",
-	}, nil
-}
 
 func parseKubeConfig(content string) (kubeClusterRuntime, error) {
 	var cfg kubeConfig

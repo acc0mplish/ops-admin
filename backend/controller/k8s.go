@@ -3,7 +3,6 @@ package controller
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"ops-admin/backend/httpx"
 	"ops-admin/backend/model"
@@ -38,51 +37,6 @@ func (ctl *Controller) GetK8sClusterInfo(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, data)
-}
-
-func (ctl *Controller) CreateK8sCluster(c *gin.Context) {
-	var payload model.K8sClusterPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid k8s cluster payload")
-		return
-	}
-	payload.Operator = c.GetString("username")
-	data, err := ctl.service.CreateK8sCluster(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sCluster(c *gin.Context) {
-	var payload model.K8sClusterPayload
-	if err := c.ShouldBindJSON(&payload); err != nil || payload.ID == 0 {
-		httpx.Failed(c, http.StatusBadRequest, "invalid k8s cluster payload")
-		return
-	}
-	payload.Operator = c.GetString("username")
-	data, err := ctl.service.UpdateK8sCluster(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) DeleteK8sCluster(c *gin.Context) {
-	var payload struct {
-		ID uint `json:"id"`
-	}
-	if err := c.ShouldBindJSON(&payload); err != nil || payload.ID == 0 {
-		httpx.Failed(c, http.StatusBadRequest, "invalid delete payload")
-		return
-	}
-	if err := ctl.service.DeleteK8sCluster(payload.ID); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, true)
 }
 
 func (ctl *Controller) GetK8sClusterDetail(c *gin.Context) {
@@ -133,19 +87,6 @@ func (ctl *Controller) GetK8sNodePods(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sNodeLabels(c *gin.Context) {
-	var payload model.K8sNodeLabelsPayload
-	if err := c.ShouldBindJSON(&payload); err != nil || payload.ClusterID == 0 || strings.TrimSpace(payload.NodeName) == "" {
-		httpx.Failed(c, http.StatusBadRequest, "invalid node labels payload")
-		return
-	}
-	if err := ctl.service.UpdateK8sNodeLabels(payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, true)
 }
 
 func (ctl *Controller) GetK8sPodDetail(c *gin.Context) {
@@ -372,34 +313,6 @@ func (ctl *Controller) GetK8sWorkloadDetail(c *gin.Context) {
 	httpx.Success(c, data)
 }
 
-func (ctl *Controller) ScaleK8sWorkload(c *gin.Context) {
-	var payload model.K8sWorkloadActionPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid workload payload")
-		return
-	}
-	data, err := ctl.service.ScaleK8sWorkload(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sResourceYAML(c *gin.Context) {
-	var payload model.K8sResourceYAMLPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid yaml payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sResourceYAML(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
 func (ctl *Controller) CreateK8sResourceYAML(c *gin.Context) {
 	var payload model.K8sResourceYAMLPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -407,76 +320,6 @@ func (ctl *Controller) CreateK8sResourceYAML(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.CreateK8sResourceYAML(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) DeleteK8sResource(c *gin.Context) {
-	var payload model.K8sResourceDeletePayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid delete payload")
-		return
-	}
-	data, err := ctl.service.DeleteK8sResource(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sIstioTraffic(c *gin.Context) {
-	var payload model.K8sIstioTrafficPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid istio traffic payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sIstioTraffic(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sHTTPRouteTraffic(c *gin.Context) {
-	var payload model.K8sIstioTrafficPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid http route traffic payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sHTTPRouteTraffic(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sWorkloadImages(c *gin.Context) {
-	var payload model.K8sWorkloadImageBatchPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid workload image payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sWorkloadImages(payload)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sWorkloadResources(c *gin.Context) {
-	var payload model.K8sWorkloadResourcesPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid workload resource payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sWorkloadResources(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return
@@ -495,20 +338,6 @@ func (ctl *Controller) GetK8sServiceDetail(c *gin.Context) {
 		return
 	}
 	data, err := ctl.service.GetK8sServiceDetail(query.ClusterID, query.Namespace, query.ServiceName)
-	if err != nil {
-		httpx.Failed(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	httpx.Success(c, data)
-}
-
-func (ctl *Controller) UpdateK8sService(c *gin.Context) {
-	var payload model.K8sServiceUpdatePayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		httpx.Failed(c, http.StatusBadRequest, "invalid service payload")
-		return
-	}
-	data, err := ctl.service.UpdateK8sService(payload)
 	if err != nil {
 		httpx.Failed(c, http.StatusBadRequest, err.Error())
 		return

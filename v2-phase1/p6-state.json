@@ -170,7 +170,8 @@
     "phase_g1": "done — PR #76 merge(8e2eb46). C36② 0행·uncached 제거·compare CLI 종결(D-16 등재)·리뷰 승인(HIGH#1 CI compare 스텝 폐지 동반·LOW dead code 3함수 후속 sweep·controller 주석 팀리드 승인). §19.1 step 3 완결(G0 #75+G1 #76)",
     "phase_h0": "done — 리뷰 승인(C/H/M 0·LOW 4: pve 베리바임 70행 I-a 통합 검토·name trim·status 비대칭·gateway_id str→uint I-a 착지). C39′ 실왕복(uid 3c248bef…·sync created=53·infra_resource 53행 DB 실측)·규약 7행 충족",
     "phase_h1": "done — gap 4건 해소(CLI 안내 정정·완료토스트 종단 대기화·uid 리졸버 total 순회·고아 키 44건 제거). 9종 4단 흐름 배선·CRUD 폼 제거→CLI 안내(§14.2-2)·pod 진입 제거(R27 — 팀리드 판정 (b))·pod YAML readOnly. 리뷰 심층 하자 없음(URN tail·DefTable payload·4단 계약 전수 일치). C60②=1·C12·C42(325/325)·C61 모드별 전부 통과",
-    "next": "H1 커밋·PR·merge → H2(임계 — 쓰기 12건 삭제·골든 440/280) → I(계획만·승인 재상신)"
+    "phase_h2": "done — 라우트 12·핸들러 12·def 12·메서드 11+헬퍼 3·seed 권한 3 삭제·골든 440/280·테스트 수치 3곳·C24 CANARY_OK(블록1 미징수 상환)·C7 30패키지 -race 0FAIL·TestChar 120. 리뷰 승인 C/H/M 0 — LOW 4·INFO 3은 죽은 주석·고아 타입(I-a sweep 이월: executor/compose 줄번호 주석·routes_inventory_test 주석 오프바이원·operation_log dead entry·model payload 고아 5종). 헬퍼 10종 존치 기각 판정 리뷰 확인(§12 #15)",
+    "next": "블록 2 실행분(G·H) 종결 — I는 계획만 보유, 착수 승인 재상신 대기(§14.2-1)"
   },
   "next": "Phase 6 블록 2(G·H·I) — 계획 r4 작성 중(plan-xhigh 스폰). 완료 후 5렌즈 적대검토"
 }

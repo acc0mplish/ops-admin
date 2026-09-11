@@ -1,6 +1,6 @@
 # Sensitive-route classification generated from backend/opdef — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestSensitiveRoutesArtifact -update
-# 289 entries.
+# 277 entries.
 DELETE /admin/delete	permission=system:admin:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/cloudAccount/delete	permission=assets:cloudaccount:delete	mutating=true	risk=high	reduction=false
 DELETE /asset/credential/delete	permission=assets:credential:delete	mutating=true	risk=high	reduction=false
@@ -25,8 +25,6 @@ DELETE /integration/finops/account/delete	permission=integration:finops:account	
 DELETE /integration/finops/recommendation/delete	permission=integration:finops:recommendation	mutating=true	risk=high	reduction=false
 DELETE /integration/navigation/delete	permission=integration:navigation:delete	mutating=true	risk=high	reduction=false
 DELETE /integration/navigation/group/delete	permission=integration:navigation:delete	mutating=true	risk=high	reduction=false
-DELETE /k8s/cluster/delete	permission=assets:k8s:cluster:delete	mutating=true	risk=high	reduction=false
-DELETE /k8s/resource/delete	permission=assets:k8s:resource:delete	mutating=true	risk=high	reduction=false
 DELETE /menu/delete	permission=system:menu:delete	mutating=true	risk=high	reduction=false
 DELETE /monitor/aggregation/rule/delete	permission=monitor:aggregation:delete	mutating=true	risk=high	reduction=false
 DELETE /monitor/alert/rule/delete	permission=monitor:alertrule:delete	mutating=true	risk=high	reduction=false
@@ -176,12 +174,7 @@ POST /integration/finops/sync/trigger	permission=integration:finops:sync	mutatin
 POST /integration/navigation/group/save	permission=integration:navigation:save	mutating=true	risk=medium	reduction=false
 POST /integration/navigation/group/token	permission=integration:navigation:token	mutating=true	risk=medium	reduction=false
 POST /integration/navigation/save	permission=integration:navigation:save	mutating=true	risk=medium	reduction=false
-POST /k8s/cluster/add	permission=assets:k8s:cluster:add	mutating=true	risk=medium	reduction=false
-POST /k8s/httproute/traffic	permission=assets:k8s:advancednetwork	mutating=true	risk=medium	reduction=false
-POST /k8s/istio/traffic	permission=assets:k8s:advancednetwork	mutating=true	risk=medium	reduction=false
 POST /k8s/resource/yaml/create	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
-POST /k8s/workload/images	permission=assets:k8s:workload:image	mutating=true	risk=medium	reduction=false
-POST /k8s/workload/scale	permission=assets:k8s:workload:scale	mutating=true	risk=medium	reduction=false
 POST /menu/add	permission=system:menu:add	mutating=true	risk=medium	reduction=false
 POST /monitor/aggregation/rule/batch	permission=monitor:aggregation:edit	mutating=true	risk=medium	reduction=false
 POST /monitor/aggregation/rule/save	permission=monitor:aggregation:add|monitor:aggregation:edit	mutating=true	risk=medium	reduction=false
@@ -265,11 +258,6 @@ PUT /domain/internal/settings	permission=domains:settings:save	mutating=true	ris
 PUT /domain/public/certificates/renew-settings	permission=domains:ssl:settings	mutating=true	risk=medium	reduction=false
 PUT /integration/ai/tool/update	permission=integration:ai:tool	mutating=true	risk=medium	reduction=false
 PUT /integration/finops/recommendation/status	permission=integration:finops:recommendation	mutating=true	risk=medium	reduction=false
-PUT /k8s/cluster/update	permission=assets:k8s:cluster:edit	mutating=true	risk=medium	reduction=false
-PUT /k8s/node/labels	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
-PUT /k8s/resource/yaml	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
-PUT /k8s/service/update	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
-PUT /k8s/workload/resources	permission=assets:k8s:workload:yaml	mutating=true	risk=medium	reduction=false
 PUT /menu/update	permission=system:menu:edit	mutating=true	risk=medium	reduction=false
 PUT /monitor/alert/rule/status	permission=monitor:alertrule:edit	mutating=true	risk=medium	reduction=false
 PUT /ops/application/build-task/status	permission=ops:application:buildtask:edit	mutating=true	risk=medium	reduction=false
