@@ -100,6 +100,24 @@ func TestSyntheticUIDResolutionErrors(t *testing.T) {
 	}
 }
 
+// r3 LOW①(I10 J1c) — 빈 singular/target 분절도 거부한다: 3분절이라도
+// singular·target이 공백이면 목표 신원이 성립하지 않고, 목표 단위 직렬화
+// ((resource_uid, active_flag) 유니크)를 무의미하게 만든다. 본 단얫은
+// connectionUIDOfSynthetic 자신을 직접 검증한다 — 가드와 같은 패키지의
+// 유닛테스트라서 가능한 소재다(v2 측 왕복 단얫은
+// operations_connection_test.go가 소유).
+func TestConnectionUIDOfSyntheticRejectsEmptySegments(t *testing.T) {
+	for _, uid := range []string{
+		"conn:c0ffee00::team-a/web", // 빈 singular
+		"conn:c0ffee00:namespace:",  // 빈 target
+		"conn:c0ffee00::",           // 둘 다 공백
+	} {
+		if _, err := connectionUIDOfSynthetic(uid); err == nil {
+			t.Errorf("connectionUIDOfSynthetic(%q) err = nil, want the malformed-uid hard error (r3 LOW①)", uid)
+		}
+	}
+}
+
 // §3.3 — 합성 uid는 (resource_uid, active_flag) 유니크의 목표 신원 단위로
 // 직렬화한다: 동일 목표 2번째 활성 제출은 ErrResourceBusy(N11 fast-fail),
 // 상이 목표(다른 이름)는 독립 제출된다. 실제 스키마(step0003 가드) 위에서

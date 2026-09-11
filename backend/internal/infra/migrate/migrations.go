@@ -40,4 +40,6 @@ var steps = []Step{
 	step0006FinopsCloudLink,
 	// V2 Phase 6 I-b appends step0007DropK8sCluster here (one line).
 	step0007DropK8sCluster,
+	// I10 J1c appends step0008ResourceUIDWiden here (one line).
+	step0008ResourceUIDWiden,
 }

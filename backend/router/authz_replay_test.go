@@ -231,8 +231,8 @@ func TestZeroGrantCoverage(t *testing.T) {
 		defKeys[d.Method+" "+d.Path] = struct{}{}
 	}
 	authRoutes := authGroupRoutes(engine.Routes())
-	if len(authRoutes) != 427 {
-		t.Fatalf("authGroup holds %d routes, contract is 427 (414 v1 + 13 v2)", len(authRoutes))
+	if len(authRoutes) != 429 {
+		t.Fatalf("authGroup holds %d routes, contract is 429 (414 v1 + 15 v2)", len(authRoutes))
 	}
 	missedDenials := []string{}
 	unexpectedDenials := []string{}
@@ -348,9 +348,10 @@ func TestOperationTableCoversRouter(t *testing.T) {
 	if len(missing) > 0 {
 		t.Fatalf("%d non-GET authGroup routes have no operation definition (must be 0): %v", len(missing), missing)
 	}
-	// 240→245 (plan M12 — golden refresh, 근거 기록): the five §16.2 v2
-	// mutation POSTs join the every-mutation-has-a-definition contract.
-	if count != 232 {
-		t.Fatalf("authGroup non-GET count %d drifted from the 232 baseline", count)
+	// 240→245 (plan M12) · 232→234 (I10 J1c — §16.1 커넥션-스코프 create
+	// plan·execute 2건 — golden refresh, 근거 기록): the every-mutation-has-
+	// a-definition contract holds as the v2 mutation surface grows.
+	if count != 234 {
+		t.Fatalf("authGroup non-GET count %d drifted from the 234 baseline", count)
 	}
 }

@@ -15,7 +15,14 @@ import "net/http"
 // The three GET v2 routes (GET resources/:uid/operations, GET tasks/:uid,
 // GET tasks/:uid/events) are deliberately absent: non-sensitive reads join
 // the read group without an opdef grant, same posture as the Phase 2 reads.
+//
+// I10 J1c adds the §16.1 connection-scoped create pair: same representative
+// mechanism, but the registry def (k8s.resource.create) resolves to
+// "assets:k8s:workload:yaml" at risk=high — the enforced values come from
+// V2DynamicMiddleware at request time, as everywhere above.
 var v2infraDefs = []Def{
+	{Method: http.MethodPost, Path: "/infra/provider-connections/:uid/operations/:name/plan", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskHigh},
+	{Method: http.MethodPost, Path: "/infra/provider-connections/:uid/operations/:name/execute", Permission: "assets:k8s:workload:yaml", Mutating: true, Risk: RiskHigh},
 	{Method: http.MethodPost, Path: "/infra/resources/:uid/operations/:name/plan", Permission: "assets:k8s:workload:restart", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/infra/resources/:uid/operations/:name/execute", Permission: "assets:k8s:workload:restart", Mutating: true, Risk: RiskMedium},
 	{Method: http.MethodPost, Path: "/infra/tasks/:uid/approve", Permission: "ops:job:approve", Mutating: true, Risk: RiskMedium},

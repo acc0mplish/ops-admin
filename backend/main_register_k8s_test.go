@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -346,5 +347,26 @@ func TestRunRegisterK8sRejectsBadInput(t *testing.T) {
 	}
 	if code := runRegisterK8s([]string{"--name", "k8s-x", "--kubeconfig", "/tmp/p6-h0-no-such-file"}); code != 1 {
 		t.Fatalf("missing kubeconfig file must exit 1, got %d", code)
+	}
+}
+
+// TestK8sRegisterUIDVocabularyNeverCollidesWithConnPrefix — CI17 LOW②(I10
+// J1c): 등록 체인의 UID 생성기 산출은 전수 ^[0-9a-f]{32}$ — 콜론을 포함하지
+// 않아 conn: 합성 resource_uid 접두(engine_resolve.go 예약)와 구조적으로
+// 충돌하지 않는다(생성기 수준 잠금). newSyncUID(inventory)는 unexported +
+// inventory/** 무변경(§5 #3)라 직접 단얫 불가 — 동일 근거(crypto/rand 16B
+// hex32)와 데이터 수준 가드(tasks TestInfraResourceUIDsNeverUseConnPrefix)로
+// 간접 잠금하며 직접 단얫 부재는 J1c 보고에 기록된다.
+func TestK8sRegisterUIDVocabularyNeverCollidesWithConnPrefix(t *testing.T) {
+	hex32 := regexp.MustCompile(`^[0-9a-f]{32}$`)
+	for _, pair := range [][2]string{
+		{"k8s-prod", ""},
+		{"k8s-prod", "context"},
+		{"k8s-prod", "secret"},
+		{"k8s-dev", ""},
+	} {
+		if uid := k8sRegisterUID(pair[0], pair[1]); !hex32.MatchString(uid) {
+			t.Errorf("k8sRegisterUID(%q, %q) = %q, want ^[0-9a-f]{32}$ (conn: 비충돌 생성기 잠금)", pair[0], pair[1], uid)
+		}
 	}
 }

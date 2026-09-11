@@ -1,6 +1,6 @@
 # Route inventory generated from the live gin engine — do not edit by hand.
 # Regenerate with: cd backend && go test ./router/ -run TestRouteInventoryArtifact -update
-# 437 entries.
+# 439 entries.
 DELETE /api/v1/admin/delete -> ops-admin/backend/controller.(*Controller).DeleteSysAdmin-fm
 DELETE /api/v1/asset/cloudAccount/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCloudAccount-fm
 DELETE /api/v1/asset/credential/delete -> ops-admin/backend/controller.(*Controller).DeleteAssetCredential-fm
@@ -394,6 +394,8 @@ POST /api/v1/post/add -> ops-admin/backend/controller.(*Controller).CreatePost-f
 POST /api/v1/role/add -> ops-admin/backend/controller.(*Controller).CreateRole-fm
 POST /api/v1/system/ldap/test -> ops-admin/backend/controller.(*Controller).TestLDAPConfig-fm
 POST /api/v1/systemConfig/upload -> ops-admin/backend/controller.(*Controller).UploadSystemAsset-fm
+POST /api/v2/infra/provider-connections/:uid/operations/:name/execute -> ops-admin/backend/internal/api/v2.(*InfraAPI).ExecuteConnectionOperation-fm
+POST /api/v2/infra/provider-connections/:uid/operations/:name/plan -> ops-admin/backend/internal/api/v2.(*InfraAPI).PlanConnectionOperation-fm
 POST /api/v2/infra/resources/:uid/operations/:name/execute -> ops-admin/backend/internal/api/v2.(*InfraAPI).ExecuteOperation-fm
 POST /api/v2/infra/resources/:uid/operations/:name/plan -> ops-admin/backend/internal/api/v2.(*InfraAPI).PlanOperation-fm
 POST /api/v2/infra/tasks/:uid/approve -> ops-admin/backend/internal/api/v2.(*InfraAPI).ApproveTask-fm

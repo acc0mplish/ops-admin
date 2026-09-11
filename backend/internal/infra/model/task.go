@@ -15,7 +15,7 @@ type ProviderTask struct { // §13.1 "the unit of work + lease column + approval
 	UID                string           `gorm:"size:64;not null;uniqueIndex"` // §16.2 GET /tasks/{uid}
 	OperationName      string           `gorm:"size:128;not null"`            // §10.2 def 이름
 	OperationVersion   string           `gorm:"size:64"`
-	ResourceUID        string           `gorm:"size:64;index"` // §13.4 유일성 대상
+	ResourceUID        string           `gorm:"size:255;index"` // §13.4 유일성 대상 — step0008 확장(I10 §3.3 r3: 합성 uid conn:… 최악 181자)
 	PayloadJSON        contract.JSONMap `gorm:"serializer:json;type:text"`
 	Status             string           `gorm:"size:32;not null;index"` // §13.5 상태머신
 	AttemptCount       int              `gorm:"default:0"`              // §13.2 claim 증가

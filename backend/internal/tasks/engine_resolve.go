@@ -91,11 +91,12 @@ func (e *Engine) resolveConnectionScopedChain(ctx context.Context, resourceUID s
 
 // connectionUIDOfSynthetic — 합성 uid에서 커넥션 분절을 추출한다. 커넥션 uid
 // 어휘는 32자 hex(newSyncUID·SourceKeyUID — 콜론 불포함)이라 첫 분절이 곧
-// uid다. 분절 수가 3이 아니거나 커넥션 분절이 빈 uid는 포맷 계약 위반의
-// 하드 에러다.
+// uid다. 분절 수가 3이 아니거나 커넥션·singular·target 분절 중 하나라도 빈
+// uid는 포맷 계약 위반의 하드 에러다(r3 LOW① — 빈 singular/target은 조립
+// 사고의 흔적이며 목표 신원 단위 직렬화를 무의미하게 만든다).
 func connectionUIDOfSynthetic(resourceUID string) (string, error) {
 	segs := strings.Split(strings.TrimPrefix(resourceUID, connUIDPrefix), ":")
-	if len(segs) != syntheticUIDSegments || segs[0] == "" {
+	if len(segs) != syntheticUIDSegments || segs[0] == "" || segs[1] == "" || segs[2] == "" {
 		return "", fmt.Errorf(
 			"tasks: malformed synthetic resource_uid %q — want conn:<connectionUID>:<singular>:<target> (§3.3)",
 			resourceUID)
