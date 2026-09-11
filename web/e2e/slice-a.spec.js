@@ -123,15 +123,22 @@ test('create a namespace through the connection-scoped task flow and never repla
   )
 
   // First create: execute must return a real task uid, and the progress
-  // dialog must carry the row to the succeeded terminal state.
+  // dialog must carry the row to the succeeded terminal state. The namespace
+  // name is unique per run (L-1): the kind cluster outlives the lane's
+  // schema drop, so a fixed name would ride the executor's 409-convergent
+  // leg forever — the fresh create needs a name that cannot pre-exist, and
+  // a fresh submission answers 201 (a key replay would answer 200 instead).
+  const nsName = `e2e-create-ns-${Date.now()}`
   await createButton.click()
   const dialog = page.locator('.el-dialog', { hasText: 'Namespace 생성' })
   await expect(dialog).toBeVisible()
-  await dialog.locator('.el-input input').first().fill('e2e-create-ns')
+  await dialog.locator('.el-input input').first().fill(nsName)
   const firstExecute = executeResponse()
   await dialog.getByRole('button', { name: '생성', exact: true }).click()
-  const uid1 = (await (await firstExecute).json())?.data?.task?.uid
+  const firstResponse = await firstExecute
+  const uid1 = (await firstResponse.json())?.data?.task?.uid
   expect(uid1).toBeTruthy()
+  expect(firstResponse.status()).toBe(201)
   const progress = page.locator('.el-dialog', { hasText: 'Resource Create Progress' })
   await expect(progress).toBeVisible()
   await expect(progress.locator('.el-tag').first()).toHaveText('Succeeded', { timeout: TERMINAL_BUDGET })
@@ -147,15 +154,19 @@ test('create a namespace through the connection-scoped task flow and never repla
   await createButton.click()
   const redialog = page.locator('.el-dialog', { hasText: 'Namespace 생성' })
   await expect(redialog).toBeVisible()
-  await redialog.locator('.el-input input').first().fill('e2e-create-ns')
+  await redialog.locator('.el-input input').first().fill(nsName)
   const secondExecute = executeResponse()
   await redialog.getByRole('button', { name: '생성', exact: true }).click()
-  const uid2 = (await (await secondExecute).json())?.data?.task?.uid
+  const secondResponse = await secondExecute
+  const uid2 = (await secondResponse.json())?.data?.task?.uid
   expect(uid2).toBeTruthy()
+  // 201 again — the burned key forces a fresh submission; a lingering key
+  // would replay 200 with the old task's uid.
+  expect(secondResponse.status()).toBe(201)
   expect(uid2).not.toBe(uid1)
   await expect(progress.locator('.el-tag').first()).toHaveText('Succeeded', { timeout: TERMINAL_BUDGET })
 
   // The finish refresh pulls the created namespace into the cluster overview.
-  await expect(page.locator('.el-table__row', { hasText: 'e2e-create-ns' }).first())
+  await expect(page.locator('.el-table__row', { hasText: nsName }).first())
     .toBeVisible({ timeout: 30_000 })
 })

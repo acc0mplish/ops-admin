@@ -164,24 +164,14 @@ register() {
   [ -n "$conn_uid" ] || die "register-k8s report carried no connectionUid"
   log "cluster registered connection_uid=$conn_uid"
 
-  # Fixture-limited chain completion — the operations-binding gap is gone:
-  # register-k8s seals inventory AND operations itself now (I10 J4 defect 3 —
-  # §7.4 same-SecretRef pattern), so this SQL no longer plants the second
-  # binding row; the e2e lane records the pure CLI sealing. What stays is the
-  # source pair (source_model/source_id): this lane's legacy-shaped chain
-  # keeps the frontend's first-priority resolve (k8s_projection.go 1순위와
-  # 동일 조건) on the exercised path — the register chain's second-priority
-  # id fallback is a product path covered by the J4 unit-level claims (CI18),
-  # not by this lane. Setting source_id to the connection id is ID-preserving:
-  # the exposed cluster id equals what the second-priority path would expose.
-  local conn_id
-  conn_id="$(mysql_exec -N -s -e "SELECT id FROM $E2E_SCHEMA.provider_connection WHERE uid='$conn_uid';")"
-  [ -n "$conn_id" ] || die "register-k8s chain row not found (uid=$conn_uid)"
-  mysql_exec "$E2E_SCHEMA" <<SQL
-UPDATE provider_connection SET source_model='k8s_cluster', source_id=$conn_id
-WHERE uid='$conn_uid' AND stale_source=0;
-SQL
-  log "fixture source pair materialized (operations binding is sealed by the CLI itself)"
+  # The chain stays exactly as the CLI sealed it — this lane runs no fixture
+  # SQL at all (I10 J4 M-1). The register chain carries no source pair
+  # (source_id=0), so every mutation flow resolves the connection through the
+  # frontend's second-priority id fallback — the exact register-chain path
+  # the product keeps (same condition and priority order as the backend
+  # projection's own dual resolution, k8s_projection.go). The first-priority
+  # source-pair match is the backfill-legacy path, which a register-CLI lane
+  # cannot and no longer fakes.
 
   log "running sync-inventory (backfill + one sync)"
   (cd "$RUN_DIR" && OPS_ADMIN_INITIAL_PASSWORD="$E2E_ADMIN_PASSWORD" \
