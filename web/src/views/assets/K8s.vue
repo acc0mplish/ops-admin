@@ -32,6 +32,11 @@ import {
 } from '../../api/k8s'
 import { useK8sOperationProgress } from '../../composables/useK8sOperationProgress'
 import { kt } from '../../utils/k8s-extra-i18n'
+// `t` — main-catalog keys (k8sStatusWarning·k8sSectionOverviewDesc·k8sYamlEditor
+// …) that stayed in i18n.js. b15577d (en-extract A5) dropped this import while
+// converting the moved keys to `kt`, leaving these call sites with a
+// ReferenceError that blanked the whole console view at mount.
+import { t } from '../../utils/i18n'
 
 const route = useRoute()
 const router = useRouter()

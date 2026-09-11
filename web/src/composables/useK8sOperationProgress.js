@@ -85,12 +85,17 @@ export function useK8sOperationProgress({ onFinish } = {}) {
       for (const row of active) {
         try {
           const task = await getInfraTask(row.taskUid)
-          if (task?.status) {
+          // getInfraTask unwraps the §13.5 envelope to its `data` — the task
+          // view rides a `task` key ({task: {status…}}). Reading `status` off
+          // the wrapper never matched, so rows never reached a terminal state
+          // and the idempotency key could not burn.
+          const view = task?.task || task
+          if (view?.status) {
             const wasActive = !K8S_OPERATION_TASK_TERMINAL_STATUSES.includes(row.status)
-            row.status = task.status
+            row.status = view.status
             // 종단 전환 시점에 소진된 키를 폐기한다 — 이후 재발화는 새 키 → 새 태스크.
             // (서버는 상태 무관 리플레이를 반환하므로 남은 키는 가짜 성공을 낳는다)
-            if (wasActive && K8S_OPERATION_TASK_TERMINAL_STATUSES.includes(task.status)) {
+            if (wasActive && K8S_OPERATION_TASK_TERMINAL_STATUSES.includes(view.status)) {
               // 커넥션-스코프 행은 §3.6 공유 템플릿 쌍으로 소각한다.
               if (row.connectionScoped) {
                 clearK8sConnectionIdempotencyKey(row.connectionUid, row.op, row.targetKey)
