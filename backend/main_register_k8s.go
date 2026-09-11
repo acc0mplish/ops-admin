@@ -268,9 +268,17 @@ func registerK8sInDB(ctx context.Context, db *gorm.DB, opts k8sRegisterOptions) 
 			return err
 		}
 
-		// 4) binding — inventory 1건 (CLI 규약). k8s는 자격이 kubeconfig 단일
-		// 물질이라 operations 별도 자격이 존재하지 않는다.
+		// 4) binding 2건 — inventory·operations이 같은 SecretRef를 지목한다.
+		// 바인딩은 물질 단위가 아니라 purpose 단위다(§7.4: 하나의 자격을 여러
+		// purpose가 공유하는 same-SecretRef 패턴이 스펙 명문). k8s는 자격이
+		// kubeconfig 하나라 행만 늘어난다 — register-pve의 2행 봉인과 동일한
+		// 체인 모양(판정 J5의 권한 분리는 자격이 둘인 pve 국면). 실행기 assembly는
+		// Material["operations"]를 필수로 조회하므로(§5 #19 — 엔진 계약 무편집),
+		// inventory만 봉인하면 create/restart 태스크가 executor_error로 죽는다.
 		if err := k8sUpsertBinding(tx, conn.ID, pctx.ID, contract.CredentialPurposeInventory, ref.ID); err != nil {
+			return err
+		}
+		if err := k8sUpsertBinding(tx, conn.ID, pctx.ID, contract.CredentialPurposeOperations, ref.ID); err != nil {
 			return err
 		}
 		return nil

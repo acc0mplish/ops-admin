@@ -129,6 +129,11 @@ func (a *InfraAPI) ListProviderTypes(c *gin.Context) {
 // the secret is surfaced as the inventory-purpose SecretRef UID alone —
 // never ciphertext, never key material (claim 14).
 type providerConnectionView struct {
+	// ID is the numeric row id — the cluster id the register-k8s chains
+	// (source_id=0) are exposed under, so the frontend's second-priority
+	// resolve can mirror the backend projection's own second priority
+	// (k8s_projection.go resolveK8sProjectionConnection — I10 J4 defect 2).
+	ID           uint       `json:"id"`
 	UID          string     `json:"uid"`
 	ProviderType string     `json:"providerType"`
 	Name         string     `json:"name"`
@@ -156,6 +161,7 @@ func (a *InfraAPI) ListProviderConnections(c *gin.Context) {
 	items := make([]providerConnectionView, 0, len(rows))
 	for _, row := range rows {
 		view := providerConnectionView{
+			ID:           row.ID,
 			UID:          row.UID,
 			ProviderType: row.ProviderType,
 			Name:         row.Name,

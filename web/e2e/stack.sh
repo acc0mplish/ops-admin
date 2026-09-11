@@ -19,7 +19,6 @@
 #             backend boot + seed_pve (the proxmox normalizer renders the V2
 #             rows through TestSliceCSeedWriter — no hand-written JSON, R10) +
 #             vite (webServer)
-#   compare   J11's §15 segment: boot + register + sync + compare-inventory CLI
 #   down      stop the backend, drop the schema (unless STACK_KEEP=1)
 #
 # Environment (all defaulted; same names as the N16 harness where shared):
@@ -165,35 +164,14 @@ register() {
   [ -n "$conn_uid" ] || die "register-k8s report carried no connectionUid"
   log "cluster registered connection_uid=$conn_uid"
 
-  # Fixture-limited chain completion (team-lead approved (i) — I10 r4 owns the
-  # product fix; this SQL only makes the fixture represent the chain shape the
-  # console reads). Two gaps the register-k8s CLI leaves open today:
-  #   1. the source pair (source_model/source_id) the frontend's
-  #      resolveK8sClusterConnectionUid matches on — the backend projection's
-  #      first-priority resolution (k8s_projection.go). Setting source_id to
-  #      the connection id is ID-preserving: the exposed cluster id equals
-  #      what the second-priority register-k8s path exposes.
-  #   2. the operations-purpose credential binding the task engine's
-  #      execution assembly requires (engine_resolve.go) — the CLI seals
-  #      inventory only. The kubeconfig is a single material for k8s, so the
-  #      binding re-points at the same sealed secret_ref.
-  local conn_id
-  conn_id="$(mysql_exec -N -s -e "SELECT id FROM $E2E_SCHEMA.provider_connection WHERE uid='$conn_uid';")"
-  [ -n "$conn_id" ] || die "register-k8s chain row not found (uid=$conn_uid)"
-  mysql_exec "$E2E_SCHEMA" <<SQL
-UPDATE provider_connection SET source_model='k8s_cluster', source_id=$conn_id
-WHERE uid='$conn_uid' AND stale_source=0;
-
-INSERT INTO provider_credential_binding
-  (provider_connection_id, provider_context_id, purpose, secret_ref_id, status)
-SELECT b.provider_connection_id, b.provider_context_id, 'operations', b.secret_ref_id, 'active'
-FROM provider_credential_binding b
-WHERE b.provider_connection_id = $conn_id AND b.purpose = 'inventory'
-  AND NOT EXISTS (
-    SELECT 1 FROM provider_credential_binding x
-    WHERE x.provider_connection_id = b.provider_connection_id AND x.purpose = 'operations');
-SQL
-  log "fixture chain completed (source pair + operations binding)"
+  # The chain stays exactly as the CLI sealed it — this lane runs no fixture
+  # SQL at all (I10 J4 M-1). The register chain carries no source pair
+  # (source_id=0), so every mutation flow resolves the connection through the
+  # frontend's second-priority id fallback — the exact register-chain path
+  # the product keeps (same condition and priority order as the backend
+  # projection's own dual resolution, k8s_projection.go). The first-priority
+  # source-pair match is the backfill-legacy path, which a register-CLI lane
+  # cannot and no longer fakes.
 
   log "running sync-inventory (backfill + one sync)"
   (cd "$RUN_DIR" && OPS_ADMIN_INITIAL_PASSWORD="$E2E_ADMIN_PASSWORD" \
@@ -254,7 +232,7 @@ stop_backend() {
 
 # Shared teardown: reap the backend child, drop the dedicated schema unless
 # STACK_KEEP=1 (dirty runbook — VK-12). The run dir with the backend log and
-# the sync/compare artifacts is always left in place for inspection.
+# the sync artifacts is always left in place for inspection.
 teardown_stack() {
   stop_backend
   if [ "${STACK_KEEP:-0}" != "1" ]; then
@@ -272,11 +250,12 @@ serve() {
   kubectl --context "$SLICEA_CONTEXT" apply -f "$SEED" >/dev/null
   kubectl --context "$SLICEA_CONTEXT" -n v3-seed rollout status deploy/restart-target --timeout=180s >/dev/null
   # Boot first (creates the schema), then register + sync against it. Arm the
-  # teardown before register: a register/sync failure must reap the backend
-  # child too (a mid-serve die otherwise leaks it holding the port — observed
-  # during the register-k8s repair).
-  start_backend
+  # teardown before start_backend: the readiness probe inside start_backend
+  # dies on timeout too (J2 review L carryover — with the trap armed only
+  # after the boot, that die leaked the spawned child holding the port), and
+  # a register/sync failure must reap the backend child likewise.
   trap teardown_stack EXIT
+  start_backend
   register
   start_vite
 }
@@ -372,7 +351,8 @@ EOF
 serve_b() {
   REQUIRE_KIND=0
   E2E_SCHEMA="${E2E_SCHEMA:-ops_admin_p4b}"
-  # Failure-safe like compare(): the backend child never outlives this mode.
+  # Failure-safe (the backend child never outlives this mode): the EXIT trap
+  # is armed before anything that can die mid-flight.
   trap teardown_stack EXIT
   prepare
   start_backend
@@ -429,26 +409,6 @@ start_vite() {
   wait "$VITE_PID"
 }
 
-# --- mode: compare (J11's §15 segment — CLI only) ------------------------------
-# prepare → boot (v1 schema) → register + sync → compare-inventory capture.
-# A BLOCKER verdict exits non-zero; the artifact under .stack/data is always
-# the primary output (§15.4 r2).
-compare() {
-  # Failure-safe: the backend child must never outlive this mode (CI has one
-  # lane per runner, but a local dev backend may share the machine).
-  trap teardown_stack EXIT
-  prepare
-  start_backend
-  register
-  local cluster_id
-  cluster_id="$(cat "$RUN_DIR/cluster-id")"
-  # Same key family as the backend child and the CLI runs — the G-5 gate
-  # refuses an empty secret source outside explicit development.
-  OPS_SECRET_MASTER_KEYS="$MASTER_KEYS" \
-    "$BIN" compare-inventory --config "$CONFIG" --cluster "$cluster_id" --data "$RUN_DIR/data"
-  log "compare-inventory verdict ok (exit 0) for cluster id=$cluster_id"
-}
-
 # --- mode: down ---------------------------------------------------------------
 down() {
   stop_backend
@@ -464,7 +424,6 @@ case "${1:-}" in
   serve)    serve ;;
   serve-b)  serve_b ;;
   serve-c)  serve_c ;;
-  compare)  compare ;;
   down)     down ;;
-  *) die "usage: stack.sh {prepare|register|serve|serve-b|serve-c|compare|down}" ;;
+  *) die "usage: stack.sh {prepare|register|serve|serve-b|serve-c|down}" ;;
 esac
