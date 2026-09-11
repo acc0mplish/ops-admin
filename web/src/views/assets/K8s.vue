@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { Connection, Grid, Histogram, Monitor, Promotion, SetUp } from '@element-plus/icons-vue'
@@ -15,37 +15,24 @@ import {
   queryK8sNamespaceEvents,
   queryK8sNodeDetail,
   queryK8sNodePods,
-  updateK8sNodeLabels,
   queryK8sPodDetail,
   queryK8sPodContainers,
   queryK8sPodEvents,
   queryK8sPodLogs,
   queryK8sWorkloadDetail,
   queryK8sServiceDetail,
-	updateK8sService,
   queryK8sIngressDetail,
   queryK8sIstioResourceDetail,
   queryK8sConfigMapDetail,
   queryK8sSecretDetail,
   queryK8sStorageDetail,
-  scaleK8sWorkload,
-  clearK8sRestartIdempotencyKey,
-  createK8sWorkloadRestartTask,
-  k8sRestartIdempotencyKey,
-  resolveK8sClusterConnectionUid,
-  resolveK8sWorkloadResourceUid,
-  K8S_RESTART_TASK_TERMINAL_STATUSES,
-  updateK8sWorkloadImages,
-	updateK8sWorkloadResources,
-  updateK8sIstioTraffic,
-  updateK8sHTTPRouteTraffic,
   createK8sResourceYAML,
-  deleteK8sResource,
-  updateK8sResourceYAML
+  K8S_OPERATIONS,
+  K8S_RESOURCE_TARGETS,
+  K8S_TRAFFIC_TARGETS
 } from '../../api/k8s'
-import { approveInfraTask, getInfraTask } from '../../api/infra'
+import { useK8sOperationProgress } from '../../composables/useK8sOperationProgress'
 import { kt } from '../../utils/k8s-extra-i18n'
-import { getPermissions } from '../../utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -213,149 +200,39 @@ const batchScaleDialogVisible = ref(false)
 const batchScaleSaving = ref(false)
 const batchScaleForm = reactive({ replicas: 1 })
 
-// ---- V2 restart 진행 상황 (plan §3.5 — N건 분해·행별 상태·5분 폴링 예산) ----
-// 흐름: POST /api/v2/infra/operations/k8s.workload.restart/plan → …/execute → /tasks/:uid/approve → GET /tasks/:uid
-// (호출 상세는 api/k8s.js — infra.js operations API 관례 재사용)
-const RESTART_POLL_INTERVAL_MS = 2000
-const RESTART_POLL_BUDGET_MS = 5 * 60 * 1000
-const restartProgressVisible = ref(false)
-const restartProgressRows = ref([])
-const restartFinishHooks = []
-let restartPollTimer = null
-let restartPollStartedAt = 0
+// ---- V2 오퍼레이션 진행 상황 (plan §3.2 H1 — E2 restart 패턴의 기계적 확장) ----
+// 9종 오퍼레이션 + restart가 하나의 4단 흐름 머신을 공유한다: 대상별 §16.2 태스크
+// 분해 → plan → execute(Idempotency-Key) → 승인(권한 보유 시 자동) → 2초 폴링.
+// 머신 본체는 composables/useK8sOperationProgress.js — 여기서는 대상 조립만 한다.
+const {
+  visible: opProgressVisible,
+  title: opProgressTitle,
+  rows: opProgressRows,
+  percent: opProgressPercent,
+  statusText: opStatusText,
+  statusTagType: opStatusTagType,
+  run: runOpTasks,
+  closeOpProgress,
+  pushFinishHook
+} = useK8sOperationProgress({ onFinish: () => refreshCurrentClusterData() })
 
-const restartProgressPercent = computed(() => {
-  const rows = restartProgressRows.value
-  if (!rows.length) return 0
-  const done = rows.filter((row) => K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status)).length
-  return Math.round((done / rows.length) * 100)
-})
-
-function restartStatusText(status) {
-  const keys = {
-    pending: 'restartTaskPending',
-    awaiting_approval: 'restartTaskAwaitingApproval',
-    running: 'restartTaskRunning',
-    succeeded: 'restartTaskSucceeded',
-    failed: 'restartTaskFailed',
-    timed_out: 'restartTaskFailed',
-    cancelled: 'restartTaskCancelled',
-    timeout: 'restartTaskTimeout'
-  }
-  return kt(keys[status] || 'restartTaskPending')
-}
-
-function restartStatusTagType(status) {
-  if (status === 'succeeded') return 'success'
-  if (status === 'failed' || status === 'timed_out' || status === 'timeout') return 'danger'
-  if (status === 'running') return 'warning'
-  return 'info'
-}
-
-function stopRestartPolling() {
-  if (restartPollTimer) {
-    window.clearInterval(restartPollTimer)
-    restartPollTimer = null
-  }
-}
-
-function startRestartPolling() {
-  stopRestartPolling()
-  restartPollTimer = window.setInterval(async () => {
-    const active = restartProgressRows.value.filter((row) => row.taskUid && !K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status))
-    if (!active.length) {
-      finishRestartProgress()
-      return
-    }
-    if (Date.now() - restartPollStartedAt > RESTART_POLL_BUDGET_MS) {
-      active.forEach((row) => { row.status = 'timeout' })
-      finishRestartProgress()
-      return
-    }
-    for (const row of active) {
-      try {
-        const task = await getInfraTask(row.taskUid)
-        if (task?.status) {
-          const wasActive = !K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status)
-          row.status = task.status
-          // 종단 전환 시점에 소진된 키를 폐기한다 — 이후 재발화는 새 키 → 새 태스크.
-          // (서버는 상태 무관 리플레이를 반환하므로 남은 키는 가짜 성공을 낳는다)
-          if (wasActive && K8S_RESTART_TASK_TERMINAL_STATUSES.includes(task.status)) {
-            clearK8sRestartIdempotencyKey(row.resourceUid)
-          }
-        }
-      } catch {
-        // 일시적 조회 실패는 다음 폴링에서 재시도한다
-      }
-    }
-    if (restartProgressRows.value.every((row) => K8S_RESTART_TASK_TERMINAL_STATUSES.includes(row.status))) {
-      finishRestartProgress()
-    }
-  }, RESTART_POLL_INTERVAL_MS)
-}
-
-async function finishRestartProgress() {
-  stopRestartPolling()
-  const rows = restartProgressRows.value
-  const failed = rows.filter((row) => row.status === 'failed' || row.status === 'timed_out' || row.status === 'timeout')
-  if (!failed.length) {
-    ElMessage.success(kt('restartTaskAllSucceeded', { count: rows.length }))
-  } else {
-    ElMessage.warning(kt('restartTaskPartialFailure', { count: failed.length, names: failed.map((row) => `${row.namespace}/${row.name}`).join(', ') }))
-  }
-  await refreshCurrentClusterData()
-  while (restartFinishHooks.length) {
-    restartFinishHooks.pop()()
-  }
-}
-
+// restart 전용 진입 — 기존 호출부 유지를 위한 래퍼.
 async function runRestartTasks(targets) {
-  restartProgressRows.value = targets.map((item) => ({
-    key: `${item.namespace}/${item.type}/${item.name}`,
-    namespace: item.namespace,
-    type: item.type,
-    name: item.name,
-    status: 'pending',
-    taskUid: '',
-    notice: ''
-  }))
-  restartProgressVisible.value = true
-  stopRestartPolling()
-  restartPollStartedAt = Date.now()
-  const permissions = getPermissions()
-  try {
-    const connectionUid = await resolveK8sClusterConnectionUid(cluster.value.id)
-    for (const row of restartProgressRows.value) {
-      try {
-        const resourceUid = await resolveK8sWorkloadResourceUid(connectionUid, row.namespace, row.type, row.name)
-        row.resourceUid = resourceUid
-        const { taskUid, permission } = await createK8sWorkloadRestartTask(resourceUid, k8sRestartIdempotencyKey(resourceUid))
-        row.taskUid = taskUid
-        row.status = 'awaiting_approval'
-        if (!permission || permissions.includes(permission)) {
-          try {
-            await approveInfraTask(taskUid)
-            row.status = 'running'
-          } catch {
-            row.notice = 'restartTaskApprovalFailed'
-          }
-        } else {
-          row.notice = 'restartTaskAwaitingExternal'
-        }
-      } catch {
-        row.status = 'failed'
-      }
-    }
-  } catch {
-    // 연결 uid 해석 실패 — 미제출 행을 전부 실패로 표기한다
-    restartProgressRows.value.forEach((row) => {
-      if (row.status === 'pending') row.status = 'failed'
-    })
-  }
-  startRestartPolling()
+  await runOpTasks(cluster.value?.id, kt('restartTaskProgressTitle'), targets.map((item) => ({
+    op: K8S_OPERATIONS.restart,
+    target: K8S_RESOURCE_TARGETS.workload(item.namespace, item.type, item.name),
+    payload: {},
+    display: `${item.namespace}/${item.name}`
+  })))
 }
 
-onBeforeUnmount(stopRestartPolling)
+// yamlEditor.resourceType → V2 대상 스펙. pod·virtualservice·istio 종은 V2
+// apply/delete 면 밖이라 이 표에 없다 — submitYAMLUpdate가 이들을 guard한다.
+function yamlEditorTarget(resourceType, namespace, name, workloadType) {
+  const spec = K8S_RESOURCE_TARGETS[resourceType]
+  if (!spec) return null
+  return spec(namespace, workloadType, name)
+}
 
 const imageVersionDialogVisible = ref(false)
 const imageVersionSaving = ref(false)
@@ -389,7 +266,8 @@ const yamlEditor = reactive({
   name: '',
   workloadType: '',
   originalYAML: '',
-  yaml: ''
+  yaml: '',
+  readOnly: false
 })
 const yamlSearch = reactive({
   keyword: '',
@@ -819,11 +697,15 @@ async function submitBatchScale() {
   }
   batchScaleSaving.value = true
   try {
-    await Promise.all(targets.map((item) => scaleK8sWorkload({ clusterId: cluster.value.id, namespace: item.namespace, workloadType: item.type, workloadName: item.name, replicas: Number(batchScaleForm.replicas) })))
-    ElMessage.success(kt('batchScaleSubmitted', { count: targets.length }))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpScale') }), targets.map((item) => ({
+      op: K8S_OPERATIONS.scale,
+      target: K8S_RESOURCE_TARGETS.workload(item.namespace, item.type, item.name),
+      payload: { replicas: Number(batchScaleForm.replicas) },
+      display: `${item.namespace}/${item.name}`
+    })))
+    if (ok) ElMessage.success(kt('batchScaleSubmitted', { count: targets.length }))
     batchScaleDialogVisible.value = false
     selectedWorkloads.value = []
-    await refreshCurrentClusterData()
   } finally {
     batchScaleSaving.value = false
   }
@@ -852,9 +734,13 @@ async function handleDeleteWorkload(row) {
   } catch {
     return
   }
-  await deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: row.namespace, name: row.name, workloadType: row.type })
-  ElMessage.success(kt('workloadDeleted', { name: row.name }))
-  await refreshCurrentClusterData()
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.workload(row.namespace, row.type, row.name),
+    payload: {},
+    display: `${row.namespace}/${row.name}`
+  }])
+  if (ok) ElMessage.success(kt('workloadDeleted', { name: row.name }))
 }
 
 async function submitBatchWorkloadDelete() {
@@ -865,10 +751,14 @@ async function submitBatchWorkloadDelete() {
   } catch {
     return
   }
-  await Promise.all(targets.map((item) => deleteK8sResource({ clusterId: cluster.value.id, resourceType: 'workload', namespace: item.namespace, name: item.name, workloadType: item.type })))
-  ElMessage.success(kt('workloadsDeleted', { count: targets.length }))
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), targets.map((item) => ({
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.workload(item.namespace, item.type, item.name),
+    payload: {},
+    display: `${item.namespace}/${item.name}`
+  })))
+  if (ok) ElMessage.success(kt('workloadsDeleted', { count: targets.length }))
   selectedWorkloads.value = []
-  await refreshCurrentClusterData()
 }
 
 async function submitWorkloadImageVersionUpdate() {
@@ -890,16 +780,13 @@ async function submitWorkloadImageVersionUpdate() {
 
   imageVersionSaving.value = true
   try {
-    await updateK8sWorkloadImages({
-      clusterId: cluster.value.id,
-      version,
-      items: selectedWorkloads.value.map((item) => ({
-        namespace: item.namespace,
-        workloadType: item.type,
-        workloadName: item.name
-      }))
-    })
-    ElMessage.success(kt('k8sBatchImageUpdatedSuccess'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpImageUpdate') }), selectedWorkloads.value.map((item) => ({
+      op: K8S_OPERATIONS.imageUpdate,
+      target: K8S_RESOURCE_TARGETS.workload(item.namespace, item.type, item.name),
+      payload: { version },
+      display: `${item.namespace}/${item.name}`
+    })))
+    if (ok) ElMessage.success(kt('k8sBatchImageUpdatedSuccess'))
     imageVersionDialogVisible.value = false
     selectedWorkloads.value = []
     await refreshCurrentClusterData()
@@ -1036,6 +923,7 @@ function setYAMLEditor(payload) {
   yamlEditor.workloadType = payload.workloadType || ''
   yamlEditor.originalYAML = payload.yaml || ''
   yamlEditor.yaml = payload.yaml || ''
+  yamlEditor.readOnly = payload.readOnly || false
   yamlSearch.keyword = ''
   yamlSearch.matches = []
   yamlSearch.activeIndex = -1
@@ -1347,14 +1235,13 @@ async function submitScale() {
   if (!cluster.value?.id) return
   scaleLoading.value = true
   try {
-    await scaleK8sWorkload({
-      clusterId: cluster.value.id,
-      namespace: scaleForm.namespace,
-      workloadType: scaleForm.workloadType,
-      workloadName: scaleForm.workloadName,
-      replicas: Number(scaleForm.replicas)
-    })
-    ElMessage.success(kt('k8sWorkloadScaledSuccess'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpScale') }), [{
+      op: K8S_OPERATIONS.scale,
+      target: K8S_RESOURCE_TARGETS.workload(scaleForm.namespace, scaleForm.workloadType, scaleForm.workloadName),
+      payload: { replicas: Number(scaleForm.replicas) },
+      display: `${scaleForm.namespace}/${scaleForm.workloadName}`
+    }])
+    if (ok) ElMessage.success(kt('k8sWorkloadScaledSuccess'))
     scaleDialogVisible.value = false
     await refreshCurrentClusterData()
     if (workloadDrawerVisible.value && workloadDetail.value?.name === scaleForm.workloadName) {
@@ -1375,7 +1262,7 @@ async function handleRestartWorkload(row) {
   await ElMessageBox.confirm(kt('k8sConfirmRestartMessage', { type: row.type, name: row.name }), kt('k8sConfirmRestartTitle'), {
     type: 'warning'
   })
-  restartFinishHooks.push(() => {
+  pushFinishHook(() => {
     if (workloadDrawerVisible.value && workloadDetail.value?.name === row.name) {
       queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name).then((detail) => { workloadDetail.value = detail })
     }
@@ -1427,7 +1314,9 @@ async function openPodYAML(row) {
     resourceType: 'pod',
     namespace: detail.namespace,
     name: detail.name,
-    yaml: detail.yaml
+    yaml: detail.yaml,
+    // H1 — pod는 V2 apply 면 밖(uid 신원 제외). 조회는 유지, 편집 제출은 제거.
+    readOnly: true
   })
 }
 
@@ -1575,22 +1464,24 @@ async function submitServiceEdit() {
     .map((item) => [item.key.trim(), item.value.trim()]))
   serviceEditSaving.value = true
   try {
-    await updateK8sService({
-      clusterId: cluster.value.id,
-      namespace: serviceEditForm.namespace,
-      name: serviceEditForm.name,
-      type: serviceEditForm.type === 'Headless' ? 'ClusterIP' : serviceEditForm.type,
-      headless: serviceEditForm.type === 'Headless',
-      externalName: serviceEditForm.externalName,
-      selector,
-      labels: metadataMap(serviceEditForm.labels),
-      annotations: metadataMap(serviceEditForm.annotations),
-      ports: serviceEditForm.ports.map((port) => ({
-        name: port.name?.trim() || '', protocol: port.protocol || 'TCP', port: Number(port.port),
-        targetPort: String(port.targetPort || port.port), nodePort: Number(port.nodePort) || 0
-      }))
-    })
-    ElMessage.success(kt('serviceUpdated', { name: serviceEditForm.name }))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpServiceUpdate') }), [{
+      op: K8S_OPERATIONS.serviceUpdate,
+      target: K8S_RESOURCE_TARGETS.service(serviceEditForm.namespace, '', serviceEditForm.name),
+      payload: {
+        type: serviceEditForm.type === 'Headless' ? 'ClusterIP' : serviceEditForm.type,
+        headless: serviceEditForm.type === 'Headless',
+        externalName: serviceEditForm.externalName,
+        selector,
+        labels: metadataMap(serviceEditForm.labels),
+        annotations: metadataMap(serviceEditForm.annotations),
+        ports: serviceEditForm.ports.map((port) => ({
+          name: port.name?.trim() || '', protocol: port.protocol || 'TCP', port: Number(port.port),
+          targetPort: String(port.targetPort || port.port), nodePort: Number(port.nodePort) || 0
+        }))
+      },
+      display: `${serviceEditForm.namespace}/${serviceEditForm.name}`
+    }])
+    if (ok) ElMessage.success(kt('serviceUpdated', { name: serviceEditForm.name }))
     serviceEditVisible.value = false
     await refreshCurrentClusterData()
     if (serviceDetail.value?.name === serviceEditForm.name && serviceDetail.value?.namespace === serviceEditForm.namespace) {
@@ -1617,37 +1508,6 @@ function handlePodPageSizeChange(size) {
 
 function handlePodPageChange(page) {
   podPage.value = page
-}
-
-async function handleDeletePod(row) {
-  if (!cluster.value?.id || !row?.namespace || !row?.name) return
-  await ElMessageBox.confirm(
-    kt('deletePodConfirm', { target: `${row.namespace}/${row.name}` }),
-    kt('deleteConfirmTitle'),
-    {
-      type: 'warning',
-      confirmButtonText: kt('k8sDelete'),
-      cancelButtonText: kt('cancel')
-    }
-  )
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType: 'pod',
-    namespace: row.namespace,
-    name: row.name
-  })
-  ElMessage.success(kt('podDeleted'))
-  if (podDrawerVisible.value && podDetail.value?.name === row.name && podDetail.value?.namespace === row.namespace) {
-    podDrawerVisible.value = false
-  }
-  if (podLogDrawerVisible.value && currentPodQuery.podName === row.name && currentPodQuery.namespace === row.namespace) {
-    podLogDrawerVisible.value = false
-  }
-  await refreshCurrentClusterData()
-  const maxPage = Math.max(1, Math.ceil(filteredPods.value.length / podPageSize.value))
-  if (podPage.value > maxPage) {
-    podPage.value = maxPage
-  }
 }
 
 async function openWorkloadResourceSettings(row) {
@@ -1687,8 +1547,21 @@ async function submitWorkloadResourceSettings() {
   if (!cluster.value?.id || !workloadResourceForm.containers.length) return
   workloadResourceSaving.value = true
   try {
-    await updateK8sWorkloadResources({ clusterId: cluster.value.id, ...workloadResourceForm })
-    ElMessage.success(kt('podResourceUpdated'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourcesUpdate') }), [{
+      op: K8S_OPERATIONS.resourcesUpdate,
+      target: K8S_RESOURCE_TARGETS.workload(workloadResourceForm.namespace, workloadResourceForm.workloadType, workloadResourceForm.workloadName),
+      payload: {
+        containers: workloadResourceForm.containers.map((container) => ({
+          name: container.name,
+          requests: { cpu: container.requestCPU, memory: container.requestMemory },
+          limits: { cpu: container.limitCPU, memory: container.limitMemory },
+          imagePullPolicy: container.imagePullPolicy,
+          env: (container.env || []).map((env) => ({ name: env.name, value: env.value, valueFrom: env.valueFrom }))
+        }))
+      },
+      display: `${workloadResourceForm.namespace}/${workloadResourceForm.workloadName}`
+    }])
+    if (ok) ElMessage.success(kt('podResourceUpdated'))
     workloadResourceDialogVisible.value = false
     await refreshCurrentClusterData()
     if (workloadDrawerVisible.value && workloadDetail.value?.name === workloadResourceForm.workloadName) {
@@ -1864,13 +1737,13 @@ async function deleteStorageClass(row) {
     kt('deleteStorageClassTitle'),
     { type: 'warning', confirmButtonText: kt('delete'), cancelButtonText: kt('cancel') }
   )
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType: 'pv',
-    name: row.name
-  })
-  ElMessage.success(kt('storageClassDeleted'))
-  await refreshCurrentClusterData()
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.pv('', '', row.name),
+    payload: {},
+    display: row.name
+  }])
+  if (ok) ElMessage.success(kt('storageClassDeleted'))
 }
 
 async function deleteStorageVolume(row) {
@@ -1880,17 +1753,16 @@ async function deleteStorageVolume(row) {
     kt('deleteStorageTitle'),
     { type: 'warning', confirmButtonText: kt('delete'), cancelButtonText: kt('cancel') }
   )
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType: 'pvc',
-    namespace: row.namespace,
-    name: row.name
-  })
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.pvc(row.namespace, '', row.name),
+    payload: {},
+    display: `${row.namespace}/${row.name}`
+  }])
   if (storageDrawerVisible.value && storageDetail.value?.kind === 'PVC' && storageDetail.value?.name === row.name && storageDetail.value?.namespace === row.namespace) {
     storageDrawerVisible.value = false
   }
-  ElMessage.success(kt('storageDeleted'))
-  await refreshCurrentClusterData()
+  if (ok) ElMessage.success(kt('storageDeleted'))
 }
 
 function configStorageCreateTitle() {
@@ -2001,22 +1873,20 @@ async function submitConfigStorageCreate() {
   }
 
   configStorageCreateSaving.value = true
+  let ok = true
   try {
-    const payload = {
-      clusterId: cluster.value.id,
-      resourceType: kind,
-      namespace,
-      name,
-      yaml: JSON.stringify(manifest, null, 2)
-    }
     if (configStorageEditing.value) {
-      await updateK8sResourceYAML(payload)
+      ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceApply') }), [{
+        op: K8S_OPERATIONS.resourceApply,
+        target: K8S_RESOURCE_TARGETS[kind](namespace, '', name),
+        payload: { yaml: JSON.stringify(manifest, null, 2) },
+        display: `${namespace}/${name}`
+      }])
     } else {
-      await createK8sResourceYAML(payload)
+      await createK8sResourceYAML({ clusterId: cluster.value.id, resourceType: kind, namespace, name, yaml: JSON.stringify(manifest, null, 2) })
     }
-    ElMessage.success(kt('configStorageDone', { title: configStorageCreateTitle() }))
+    if (ok) ElMessage.success(kt('configStorageDone', { title: configStorageCreateTitle() }))
     configStorageCreateVisible.value = false
-    await refreshCurrentClusterData()
   } finally {
     configStorageCreateSaving.value = false
   }
@@ -2096,8 +1966,13 @@ async function saveNodeLabels() {
   }
   nodeLabelsSaving.value = true
   try {
-    await updateK8sNodeLabels({ clusterId: cluster.value.id, nodeName: nodeLabelTarget.value.name, labels })
-    ElMessage.success(kt('nodeLabelUpdated'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpNodeLabelsUpdate') }), [{
+      op: K8S_OPERATIONS.nodeLabelsUpdate,
+      target: { kind: 'orchestration.node', displayName: nodeLabelTarget.value.name },
+      payload: { labels },
+      display: nodeLabelTarget.value.name
+    }])
+    if (ok) ElMessage.success(kt('nodeLabelUpdated'))
     nodeLabelsVisible.value = false
     await refreshCurrentClusterData()
     if (nodeDetail.value?.name === nodeLabelTarget.value.name) {
@@ -2237,6 +2112,13 @@ async function submitIstioCreate() {
 
 async function handleDeleteIstioResource(row, resourceType) {
   if (!cluster.value?.id) return
+  // gatewayapi(→network.gateway)·httproute(→network.http_route)는 V2
+  // resource.delete 면 내다. 그 밖의 종은 V2 면 밖이라 이 표에 없다.
+  const target = yamlEditorTarget(resourceType, row.namespace, row.name)
+  if (!target) {
+    ElMessage.warning(kt('k8sV2FaceUnavailable'))
+    return
+  }
   await ElMessageBox.confirm(
     kt('k8sDeleteIstioResourceConfirm', {
       resource: yamlResourceLabel(resourceType),
@@ -2249,17 +2131,16 @@ async function handleDeleteIstioResource(row, resourceType) {
       cancelButtonText: kt('cancel')
     }
   )
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType,
-    namespace: row.namespace,
-    name: row.name
-  })
-  ElMessage.success(kt('k8sIstioResourceDeletedSuccess'))
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target,
+    payload: {},
+    display: `${row.namespace || ''}${row.namespace ? '/' : ''}${row.name}`
+  }])
+  if (ok) ElMessage.success(kt('k8sIstioResourceDeletedSuccess'))
   if (istioDrawerVisible.value && istioDetail.value?.name === row.name) {
     istioDrawerVisible.value = false
   }
-  await refreshCurrentClusterData()
 }
 
 async function openTrafficDialog(row) {
@@ -2301,17 +2182,14 @@ async function submitTrafficAdjust() {
   )
   trafficSaving.value = true
   try {
-    const submitter = trafficForm.resourceType === 'httproute' ? updateK8sHTTPRouteTraffic : updateK8sIstioTraffic
-    await submitter({
-      clusterId: cluster.value.id,
-      namespace: trafficForm.namespace,
-      name: trafficForm.name,
-      routes: trafficForm.routes.map((item) => ({
-        index: item.index,
-        weight: Number(item.weight || 0)
-      }))
-    })
-    ElMessage.success(kt('k8sTrafficUpdatedSuccess'))
+    const isHTTPRoute = trafficForm.resourceType === 'httproute'
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: isHTTPRoute ? kt('k8sOpHTTPRouteTrafficUpdate') : kt('k8sOpIstioTrafficUpdate') }), [{
+      op: isHTTPRoute ? K8S_OPERATIONS.httpRouteTrafficUpdate : K8S_OPERATIONS.istioTrafficUpdate,
+      target: K8S_TRAFFIC_TARGETS[trafficForm.resourceType || 'virtualservice'](trafficForm.namespace, '', trafficForm.name),
+      payload: { routes: trafficForm.routes.map((item) => ({ index: item.index, weight: Number(item.weight || 0) })) },
+      display: `${trafficForm.namespace}/${trafficForm.name}`
+    }])
+    if (ok) ElMessage.success(kt('k8sTrafficUpdatedSuccess'))
     trafficDialogVisible.value = false
     await refreshCurrentClusterData()
     if (istioDrawerVisible.value && istioDetail.value?.name === trafficForm.name) {
@@ -2370,17 +2248,16 @@ async function deleteConfigMap(row) {
     confirmButtonText: kt('k8sDelete'),
     cancelButtonText: kt('cancel')
   })
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType: 'configmap',
-    namespace: row.namespace,
-    name: row.name
-  })
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.configmap(row.namespace, '', row.name),
+    payload: {},
+    display: `${row.namespace}/${row.name}`
+  }])
   if (configMapDetail.value?.name === row.name && configMapDetail.value?.namespace === row.namespace) {
     configMapDrawerVisible.value = false
   }
-  ElMessage.success(kt('configMapDeleted'))
-  await refreshCurrentTab()
+  if (ok) ElMessage.success(kt('configMapDeleted'))
 }
 
 async function openSecretDetail(row) {
@@ -2503,6 +2380,13 @@ async function refreshCurrentYAMLResource() {
 
 async function submitYAMLUpdate() {
   if (!cluster.value?.id) return
+  const target = yamlEditorTarget(yamlEditor.resourceType, yamlEditor.namespace, yamlEditor.name, yamlEditor.workloadType)
+  if (!target) {
+    // H1 확정(2026-09-10) — pod는 V2 apply 면 밖(opdef uid-신원 제외 원칙).
+    // 조회는 유지, 제출은 불가 안내. v1 라우트는 H2에서 삭제된다.
+    ElMessage.warning(kt('k8sV2FaceUnavailable'))
+    return
+  }
   await ElMessageBox.confirm(
     kt('k8sConfirmYamlUpdateMessage', {
       added: String(yamlChangeSummary.value.added),
@@ -2517,15 +2401,13 @@ async function submitYAMLUpdate() {
   )
   yamlSaving.value = true
   try {
-    await updateK8sResourceYAML({
-      clusterId: cluster.value.id,
-      resourceType: yamlEditor.resourceType,
-      namespace: yamlEditor.namespace,
-      name: yamlEditor.name,
-      workloadType: yamlEditor.workloadType,
-      yaml: yamlEditor.yaml
-    })
-    ElMessage.success(kt('k8sYamlUpdatedSuccess'))
+    const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceApply') }), [{
+      op: K8S_OPERATIONS.resourceApply,
+      target,
+      payload: { yaml: yamlEditor.yaml },
+      display: `${yamlEditor.namespace || ''}${yamlEditor.namespace ? '/' : ''}${yamlEditor.name}`
+    }])
+    if (ok) ElMessage.success(kt('k8sYamlUpdatedSuccess'))
     yamlDialogVisible.value = false
     await refreshCurrentYAMLResource()
   } finally {
@@ -2582,17 +2464,16 @@ async function deleteSecret(row) {
     confirmButtonText: kt('k8sDelete'),
     cancelButtonText: kt('cancel')
   })
-  await deleteK8sResource({
-    clusterId: cluster.value.id,
-    resourceType: 'secret',
-    namespace: row.namespace,
-    name: row.name
-  })
+  const ok = await runOpTasks(cluster.value.id, kt('k8sOpProgressTitle', { op: kt('k8sOpResourceDelete') }), [{
+    op: K8S_OPERATIONS.resourceDelete,
+    target: K8S_RESOURCE_TARGETS.secret(row.namespace, '', row.name),
+    payload: {},
+    display: `${row.namespace}/${row.name}`
+  }])
   if (secretDetail.value?.name === row.name && secretDetail.value?.namespace === row.namespace) {
     secretDrawerVisible.value = false
   }
-  ElMessage.success(kt('secretDeleted'))
-  await refreshCurrentTab()
+  if (ok) ElMessage.success(kt('secretDeleted'))
 }
 
 function translateIstioDetailLabel(label) {
@@ -2819,7 +2700,6 @@ const page = reactive({
   openPodTerminal,
   handlePodPageSizeChange,
   handlePodPageChange,
-  handleDeletePod,
   refreshPodLogs,
   openServiceDetail,
   openServiceYAML,
@@ -2892,17 +2772,15 @@ watch(filteredPods, () => {
     </K8sConsoleLayout>
     <K8sDrawers :page="page" />
     <K8sDialogs :page="page" />
-    <el-dialog v-model="restartProgressVisible" :title="kt('restartTaskProgressTitle')" width="720px" destroy-on-close @close="stopRestartPolling">
-      <el-progress :percentage="restartProgressPercent" :status="restartProgressPercent === 100 ? 'success' : undefined" />
-      <el-table :data="restartProgressRows" size="small">
-        <el-table-column prop="namespace" label="Namespace" min-width="120" />
-        <el-table-column min-width="180">
-          <template #header>{{ kt('workloadType') }}</template>
-          <template #default="{ row }">{{ row.type }}/{{ row.name }}</template>
+    <el-dialog v-model="opProgressVisible" :title="opProgressTitle" width="720px" destroy-on-close @close="closeOpProgress">
+      <el-progress :percentage="opProgressPercent" :status="opProgressPercent === 100 ? 'success' : undefined" />
+      <el-table :data="opProgressRows" size="small">
+        <el-table-column min-width="200">
+          <template #default="{ row }">{{ row.display }}</template>
         </el-table-column>
         <el-table-column :label="kt('k8sStatus')" min-width="130">
           <template #default="{ row }">
-            <el-tag :type="restartStatusTagType(row.status)" size="small">{{ restartStatusText(row.status) }}</el-tag>
+            <el-tag :type="opStatusTagType(row.status)" size="small">{{ opStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column :label="kt('restartTaskNoticeCol')" min-width="220">
