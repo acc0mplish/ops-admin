@@ -13,15 +13,15 @@ package slicea
 //     grace 500ms. The lease LOWER BOUND stays max(LeaseSeconds, CallTimeout=30s)
 //     + grace ≈ 30.5s (T-8) — the crash leg reads lease_expires_at from the
 //     task row and waits past it before restarting (H1 — deterministic requeue).
-//   - cluster registration goes through the same v1 k8s_cluster row the CLI
-//     backfill reads (plaintext kubeconfig, §4.4); backfill+sync run through
-//     the sync-inventory subcommand, never a parallel reimplementation.
+//   - fixture registration seeds the register-shaped V2 chain directly
+//     (provider_connection + sealed SecretRef + inventory/operations
+//     bindings — the raw v1 k8s_cluster INSERT and the backfill it fed were
+//     retired in V2 Phase 6 I-a); sync runs through the sync-inventory
+//     subcommand, never a parallel reimplementation.
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -223,7 +223,7 @@ func resolveMasterKeys() string {
 
 // bootTrace runs the remaining environment steps that need a test context:
 // child boot (migrations+seeds+engine lane), v1 cluster registration into the
-// dedicated schema, backfill+sync, and trace-target discovery.
+// dedicated schema, V2 chain seeding + sync, and trace-target discovery.
 func (h *harness) bootTrace(t *testing.T) {
 	t.Helper()
 	h.startBackend(t)
@@ -410,96 +410,6 @@ func (h *harness) dumpChildLogTail() {
 		lines = lines[len(lines)-40:]
 	}
 	fmt.Printf("---- child log tail (%s) ----\n%s\n---------------------------\n", h.childLogPath, strings.Join(lines, "\n"))
-}
-
-// --- fixture registration + sync (same paths run-fixture.sh drives) --------
-
-// registerCluster inserts the v1 k8s_cluster row (plaintext kubeconfig, §4.4)
-// into the dedicated schema and derives the deterministic backfill connection
-// UID (inventory/sync.go SourceKeyUID).
-func (h *harness) registerCluster(t *testing.T) {
-	t.Helper()
-	kubeconfig, err := exec.Command("kubectl", "config", "view", "--minify", "--flatten", "--context", h.kubeContext).Output()
-	if err != nil {
-		t.Fatalf("minify kubeconfig: %v", err)
-	}
-	apiServer, err := exec.Command("kubectl", "config", "view", "--minify", "--flatten", "--context", h.kubeContext,
-		"-o", `jsonpath={.clusters[0].cluster.server}`).Output()
-	if err != nil {
-		t.Fatalf("kubeconfig api server: %v", err)
-	}
-	verRaw, err := exec.Command("kubectl", "--context", h.kubeContext, "version", "-o", "json").Output()
-	if err != nil {
-		t.Fatalf("kubectl version: %v", err)
-	}
-	var ver struct {
-		ServerVersion struct {
-			GitVersion string `json:"gitVersion"`
-		} `json:"serverVersion"`
-	}
-	if err := json.Unmarshal(verRaw, &ver); err != nil {
-		t.Fatalf("decode kubectl version: %v", err)
-	}
-	nodesRaw, err := exec.Command("kubectl", "--context", h.kubeContext, "get", "nodes", "-o", "json").Output()
-	if err != nil {
-		t.Fatalf("kubectl get nodes: %v", err)
-	}
-	var nodes struct {
-		Items []json.RawMessage `json:"items"`
-	}
-	if err := json.Unmarshal(nodesRaw, &nodes); err != nil {
-		t.Fatalf("decode nodes: %v", err)
-	}
-
-	res, err := h.db.Exec(`INSERT INTO k8s_cluster
-		(name, status, api_server, version, node_count, env, tags, connection_mode, description, kube_config, created_at, updated_at)
-		VALUES (?, 'running', ?, ?, ?, 'dev', '[]', 'direct', 'slicea e2e fixture', ?, NOW(3), NOW(3))`,
-		h.kubeContext, strings.TrimSpace(string(apiServer)), ver.ServerVersion.GitVersion, len(nodes.Items), string(kubeconfig))
-	if err != nil {
-		t.Fatalf("insert k8s_cluster: %v", err)
-	}
-	clusterID, _ := res.LastInsertId()
-	sum := sha256.Sum256([]byte(fmt.Sprintf("backfill|k8s_cluster|%d", clusterID)))
-	h.connUID = hex.EncodeToString(sum[:])[:32]
-	fmt.Printf("slicea: cluster registered id=%d connection_uid=%s\n", clusterID, h.connUID)
-}
-
-// runSyncCLI runs the sync-inventory subcommand against the dedicated schema:
-// §5.4 backfill (operations binding included — J12(1)) then one sync run.
-func (h *harness) runSyncCLI(t *testing.T) {
-	t.Helper()
-	cmd := exec.Command(h.binPath, "sync-inventory", "--config", h.configPath, "--connection", h.connUID, "--data", h.dataDir)
-	cmd.Dir = h.runDir
-	cmd.Env = h.childEnv()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("sync-inventory failed: %v\n%s", err, string(out))
-	}
-	var report struct {
-		Status   string         `json:"status"`
-		Seen     int            `json:"seenCount"`
-		Outcomes map[string]int `json:"outcomes"`
-	}
-	// The CLI prints the JSON report first, then a trailing "report artifact"
-	// line — decode just the leading JSON value.
-	if err := json.NewDecoder(bytes.NewReader(out)).Decode(&report); err != nil {
-		t.Fatalf("decode sync report: %v\n%s", err, truncate(string(out), 300))
-	}
-	fmt.Printf("slicea: sync-inventory status=%s seen=%d outcomes=%v\n", report.Status, report.Seen, report.Outcomes)
-
-	// J12(1) evidence in the dedicated schema: the operations binding must
-	// exist or every execution would fail credential_error.
-	var purposes string
-	if err := h.db.QueryRow(`SELECT GROUP_CONCAT(purpose ORDER BY purpose)
-		FROM provider_credential_binding b
-		JOIN provider_connection c ON c.id = b.provider_connection_id
-		WHERE c.uid = ?`, h.connUID).Scan(&purposes); err != nil {
-		t.Fatalf("probe credential bindings: %v", err)
-	}
-	if !strings.Contains(purposes, "operations") {
-		t.Fatalf("operations purpose binding missing after backfill (got %q)", purposes)
-	}
-	fmt.Printf("slicea: credential purposes=%s\n", purposes)
 }
 
 // discoverResource finds the trace target through the published API (list →

@@ -74,6 +74,9 @@ func seedInfraFixture(t *testing.T, db *gorm.DB) (liveResourceUID, staleResource
 	stale := model.ProviderConnection{
 		UID: "conn-stale", ProviderType: "kubernetes", Name: "retired-cluster",
 		Endpoint: "https://127.0.0.2:6443", Status: "active",
+		// Retired chain shape (V2 Phase 6 I-a: the §5.4 backfill that produced
+		// source_model="k8s_cluster" pairs is gone). Kept as a fixture because
+		// the §5.4c read-side absence contract this suite pins is shape-free.
 		SourceModel: "k8s_cluster", SourceID: 7, StaleSource: true,
 		CreatedAt: now, UpdatedAt: now,
 	}

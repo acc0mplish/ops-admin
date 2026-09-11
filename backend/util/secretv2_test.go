@@ -255,7 +255,8 @@ func TestReadSecretFieldPlaintextPassthrough(t *testing.T) {
 }
 
 // TestSecretRegistryMatchesInventory pins the registry to the §4.1 inventory
-// (architecture r2.5): 14 rows, E-legacy rows 1-4, P rows 5-14 (row 7 removed — phantom), unique
+// (architecture r2.5): 13 rows, E-legacy rows 1-4, P rows 5-15 (row 7 was a
+// phantom; row 8 k8s_cluster.kube_config retired in V2 Phase 6 I-a), unique
 // table+column, the row 4 mixed-declaration flag and the row 14 conditional
 // webhook_url flag.
 func TestSecretRegistryMatchesInventory(t *testing.T) {
@@ -277,7 +278,6 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 		{5, "AssetCredential", "asset_credential", "passphrase", ClassPlaintext},
 		{6, "AssetCloudAccount", "asset_cloud_account", "access_key", ClassPlaintext},
 		{6, "AssetCloudAccount", "asset_cloud_account", "secret_key", ClassPlaintext},
-		{8, "K8sCluster", "k8s_cluster", "kube_config", ClassPlaintext},
 		{9, "IntegrationFinOpsAccount", "integration_finops_account", "secret_key", ClassPlaintext},
 		{9, "IntegrationFinOpsAccount", "integration_finops_account", "billing_token", ClassPlaintext},
 		{10, "MonitorDatasource", "monitor_datasource", "password", ClassPlaintext},
@@ -314,12 +314,12 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 			conditional++
 		}
 	}
-	if len(rows) != 14 {
-		t.Fatalf("registry spans %d inventory rows, want 14", len(rows))
+	if len(rows) != 13 {
+		t.Fatalf("registry spans %d inventory rows, want 13", len(rows))
 	}
 	for row := 1; row <= 15; row++ {
-		if row == 7 {
-			continue // phantom row removed in architecture r2.5
+		if row == 7 || row == 8 {
+			continue // row 7 phantom (r2.5); row 8 retired in V2 Phase 6 I-a
 		}
 		if rows[row] == 0 {
 			t.Fatalf("inventory row %d missing from the registry", row)
@@ -330,8 +330,8 @@ func TestSecretRegistryMatchesInventory(t *testing.T) {
 		classRows[field.Class][field.Row] = struct{}{}
 	}
 	eRows, pRows := len(classRows[ClassELegacy]), len(classRows[ClassPlaintext])
-	if eRows != 4 || pRows != 10 {
-		t.Fatalf("class distribution must be E=4 rows / P=11 rows, got E=%d P=%d", eRows, pRows)
+	if eRows != 4 || pRows != 9 {
+		t.Fatalf("class distribution must be E=4 rows / P=9 rows, got E=%d P=%d", eRows, pRows)
 	}
 	if mixed != 1 {
 		t.Fatalf("exactly one mixed-declaration entry expected (row 4), got %d", mixed)
