@@ -19,7 +19,7 @@ type K8sCreateFaceEntry struct {
 	ResourceKind string   // §8.5 resource kind(예: "orchestration.workload")
 	Plural       string   // 컬렉션 경로 성분(예: "deployments") — 실행기 경로 조립 원료
 	Namespaced   bool     // true면 manifest metadata.namespace 필수(§3.2.1 namespace 규칙)
-	APIVersions  []string // 컬렉션 경로 apiVersion 후보(선호 순) — istio·gateway API는 2후보
+	APIVersions  []string // 컬렉션 경로 apiVersion 후보(기본 순서 — 실행기는 매니페스트 선언 버전 선순위 재정렬) — istio·gateway API는 2후보
 }
 
 // apiV1Only — 단일 버전 group(core·apps·batch·networking.k8s.io)의 후보.

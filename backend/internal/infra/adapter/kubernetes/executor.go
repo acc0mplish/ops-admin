@@ -248,6 +248,8 @@ func (a *Adapter) Execute(ctx context.Context, req contract.OperationRequest) (c
 		return a.executeIstioTrafficUpdate(ctx, req)
 	case HTTPRouteTrafficUpdateOperationName:
 		return a.executeHTTPRouteTrafficUpdate(ctx, req)
+	case CreateOperationName:
+		return a.executeResourceCreate(ctx, req)
 	}
 	return contract.OperationHandle{}, fmt.Errorf("kubernetes: operation %q is not served by this executor (serves %s)", req.OperationName, strings.Join(servedOperations, ", "))
 }
