@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"sort"
 	"strconv"
@@ -43,15 +42,6 @@ type Service struct {
 	// Held by pointer only — the embedded mutexes and singleflight.Group must
 	// not be copied (plan §12 #12, claim C13).
 	k8sState *k8sClientState
-}
-
-type AssetTerminalSession struct {
-	Host    model.AssetHost
-	Client  *ssh.Client
-	Session *ssh.Session
-	Stdin   io.WriteCloser
-	Stdout  io.Reader
-	Stderr  io.Reader
 }
 
 func New(db *gorm.DB) *Service {
@@ -177,73 +167,6 @@ type AssetHostGroupListResult struct {
 	List  []AssetHostGroupNode  `json:"list"`
 	Tree  []*AssetHostGroupNode `json:"tree"`
 	Total int                   `json:"total"`
-}
-
-func (s *Service) OpenAssetTerminal(id uint, rows, cols int) (*AssetTerminalSession, error) {
-	var host model.AssetHost
-	if err := s.db.Preload("Credential").Preload("Gateway").Preload("Gateway.Credential").First(&host, id).Error; err != nil {
-		return nil, err
-	}
-	if rows <= 0 {
-		rows = 30
-	}
-	if cols <= 0 {
-		cols = 120
-	}
-
-	client, err := s.newSSHClient(host)
-	if err != nil {
-		return nil, err
-	}
-	session, err := client.NewSession()
-	if err != nil {
-		client.Close()
-		return nil, err
-	}
-
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		session.Close()
-		client.Close()
-		return nil, err
-	}
-	stdout, err := session.StdoutPipe()
-	if err != nil {
-		session.Close()
-		client.Close()
-		return nil, err
-	}
-	stderr, err := session.StderrPipe()
-	if err != nil {
-		session.Close()
-		client.Close()
-		return nil, err
-	}
-
-	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,
-		ssh.TTY_OP_ISPEED: 14400,
-		ssh.TTY_OP_OSPEED: 14400,
-	}
-	if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
-		session.Close()
-		client.Close()
-		return nil, err
-	}
-	if err := session.Shell(); err != nil {
-		session.Close()
-		client.Close()
-		return nil, err
-	}
-
-	return &AssetTerminalSession{
-		Host:    host,
-		Client:  client,
-		Session: session,
-		Stdin:   stdin,
-		Stdout:  stdout,
-		Stderr:  stderr,
-	}, nil
 }
 
 func (s *Service) ListAssetHostGroups(keyword string) (*AssetHostGroupListResult, error) {
