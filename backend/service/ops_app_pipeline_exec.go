@@ -506,6 +506,9 @@ func (s *Service) opsPipelineRegistryLoginCommand(config map[string]any) (string
 	return "printf %s " + shellQuote(registry.Password) + " | docker login " + shellQuote(registry.Address) + " --username " + shellQuote(registry.Username) + " --password-stdin", nil
 }
 
+// opsPipelineKubeconfigFile materializes the cluster kubeconfig as a temp file
+// (os.CreateTemp, 0600 default); the returned cleanup must be deferred, scoping
+// the file to a single kubectl session. Do not add other temp kubeconfig paths.
 func (s *Service) opsPipelineKubeconfigFile(clusterID uint) (string, func(), error) {
 	cluster, err := s.GetK8sCluster(clusterID)
 	if err != nil {
