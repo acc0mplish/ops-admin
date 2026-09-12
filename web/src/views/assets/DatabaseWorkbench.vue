@@ -1,120 +1,50 @@
 <script setup>
 import { uiT } from '../../utils/english-hardcoding-i18n'
 import { at } from '../../utils/asset-i18n'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { confirmRiskOperation } from '../../composables/useRiskConfirm'
-import { queryAssetDatabaseList } from '../../api/asset'
+import { ElMessage } from 'element-plus'
+import { createDBMSSchema, queryDBMSCharsetOptions, queryDBMSResourceData, queryDBMSTableData, queryDBMSWorkbench } from '../../api/dbms'
 import DatabaseConnectionTree from './database/DatabaseConnectionTree.vue'
-import {
-  analyzeDBMSSQL,
-  analyzeRedisCommand,
-  createDBMSSchema,
-  createDBMSExportTask,
-  createDBMSImportTask,
-  deleteDBMSTableRow,
-  downloadDBMSTaskFile,
-  executeDBMSSQL,
-  executeRedisCommand,
-  insertDBMSTableRow,
-  precheckDBMSImportTask,
-  queryDBMSSchemaTree,
-  queryDBMSCharsetOptions,
-  queryDBMSSQLHistory,
-  queryDBMSResourceData,
-  queryDBMSTableData,
-  queryDBMSTaskList,
-  queryDBMSWorkbench,
-  updateDBMSTableRow
-} from '../../api/dbms'
+import DatabaseSchemaTree from './database/DatabaseSchemaTree.vue'
+import DatabaseSqlEditor from './database/DatabaseSqlEditor.vue'
+import DatabaseWorkspacePanel from './database/DatabaseWorkspacePanel.vue'
+import DatabaseWorkbenchDialogs from './database/DatabaseWorkbenchDialogs.vue'
+import DatabaseRedisKeyDialog from './database/DatabaseRedisKeyDialog.vue'
+import { useDbmsSchemaTree } from '../../composables/useDbmsSchemaTree'
+import { useDbmsSqlEditor } from '../../composables/useDbmsSqlEditor'
+import { useDbmsTransferTasks } from '../../composables/useDbmsTransferTasks'
+import { useDbmsSqlExecution } from '../../composables/useDbmsSqlExecution'
+import { useDbmsRedis } from '../../composables/useDbmsRedis'
+import { useDbmsRowOps } from '../../composables/useDbmsRowOps'
 
+// I5-H (i5-plan §3.8·CW-WB) — DatabaseWorkbench.vue 2,456행 분할 잔류본.
+// 스크립트 본체는 composables/useDbms*.js 6종, 템플릿/CSS 덩어리는 database/
+// 자식 5종으로 이동했고 각 커밋 메시지에 원본 좌표가 있다. 자식은 `:page`
+// 주입 패턴(§5 #11 승계)으로 상태를 받는다 — 상태 소유는 뷰+컴포저블에 남고
+// 자식은 page.x 재배선만 수행한다.
 const route = useRoute()
 const router = useRouter()
 
 const databaseId = computed(() => Number(route.params.id || 0))
 
 const loading = ref(false)
-const treeLoading = ref(false)
-const sqlRunning = ref(false)
-const redisRunning = ref(false)
 const dataLoading = ref(false)
-const historyLoading = ref(false)
-const taskLoading = ref(false)
-const rowDialogVisible = ref(false)
-const redisKeyDialogVisible = ref(false)
-const rollbackDialogVisible = ref(false)
-const importDialogVisible = ref(false)
-const createDatabaseVisible = ref(false)
-const creatingDatabase = ref(false)
-const charsetOptionsLoading = ref(false)
-const sqlConfirmVisible = ref(false)
-const sqlAcknowledgement = ref('')
 const activeTab = ref('data')
-const rowDialogMode = ref('insert')
-const redisKeyDialogMode = ref('create')
 
 const connection = ref(null)
-const schemaTree = ref([])
-const resultColumns = ref([])
-const resultRows = ref([])
 const selectedColumns = ref([])
 const selectedRows = ref([])
 const selectedTotal = ref(0)
 const selectedPrimaryKeys = ref([])
 const resourceIndexes = ref([])
 const resourceType = ref('')
-const historyList = ref([])
-const historyTotal = ref(0)
-const taskList = ref([])
-const taskTotal = ref(0)
-const importDatabaseOptions = ref([])
-const importSchemaTree = ref([])
-const rollbackSQL = ref('')
-const rollbackConfidence = ref('')
-const pendingSQL = ref('')
-const sqlAnalysis = ref(null)
-const importPrecheck = ref(null)
-const importPrechecking = ref(false)
-
 const selectedSchema = ref('')
 const selectedTable = ref('')
-const treeKeyword = ref('')
-const schemaTablePages = reactive({})
-const schemaTablePageSize = 20
-const showSuggestions = ref(false)
-const currentToken = ref('')
-const activeSuggestionIndex = ref(0)
-const currentLine = ref(1)
-const sqlText = ref('SELECT *\nFROM your_table\nLIMIT 50;')
-const redisCommandText = ref('GET key')
-const sqlScrollTop = ref(0)
-const sqlScrollLeft = ref(0)
-const sqlEditorRef = ref(null)
-const editorWrapRef = ref(null)
-const treeRef = ref(null)
-const taskTimer = ref(null)
-const sqlFavorites = ref([])
-
-const execMeta = reactive({
-  sqlType: '',
-  rowsAffected: 0,
-  durationMs: 0
-})
 
 const tableQuery = reactive({
   pageNum: 1,
   pageSize: 25
-})
-
-const historyQuery = reactive({
-  pageNum: 1,
-  pageSize: 20
-})
-
-const taskQuery = reactive({
-  pageNum: 1,
-  pageSize: 20
 })
 
 const tableFilter = reactive({
@@ -122,75 +52,6 @@ const tableFilter = reactive({
   text: ''
 })
 
-const resultFilter = reactive({
-  key: '',
-  text: ''
-})
-
-const editingCell = reactive({
-  rowKey: '',
-  column: ''
-})
-
-const pendingCellValue = ref('')
-const editingOriginalRow = ref(null)
-
-const rowForm = reactive({})
-const rowOriginal = ref({})
-const redisKeyForm = reactive({
-  key: '',
-  type: 'string',
-  value: '',
-  ttl: undefined
-})
-
-const importForm = reactive({
-  sourceDatabaseId: undefined,
-  sourceSchema: '',
-  sourceTable: '',
-  createIfMissing: true,
-  truncateTarget: false
-})
-
-const createDatabaseForm = reactive({
-  name: '',
-  charset: 'utf8mb4',
-  collation: 'utf8mb4_0900_ai_ci'
-})
-
-const mysqlCharsetOptions = ref([])
-const availableCollations = ref([])
-
-const sqlKeywordPool = [
-  'SELECT', 'FROM', 'WHERE', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
-  'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE',
-  'DROP TABLE', 'SHOW TABLES', 'SHOW DATABASES', 'DESCRIBE', 'EXPLAIN', 'LEFT JOIN',
-  'RIGHT JOIN', 'INNER JOIN', 'UNION ALL', 'COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NOW()'
-]
-
-const baseSqlSnippets = [
-  { label: 'SELECT', text: 'SELECT *\nFROM table_name\nLIMIT 50;' },
-  { label: 'UPDATE', text: "UPDATE table_name\nSET column_name = 'value'\nWHERE id = 1;" },
-  { label: 'INSERT', text: "INSERT INTO table_name (column_1, column_2)\nVALUES ('value_1', 'value_2');" },
-  { label: 'DELETE', text: 'DELETE FROM table_name\nWHERE id = 1;' }
-]
-
-const redisCommandSnippets = [
-  { label: 'GET', text: 'GET key' },
-  { label: 'MGET', text: 'MGET key1 key2' },
-  { label: 'TTL', text: 'TTL key' },
-  { label: 'TYPE', text: 'TYPE key' },
-  { label: 'SCAN', text: 'SCAN 0 MATCH * COUNT 100' },
-  { label: 'HGETALL', text: 'HGETALL hash_key' },
-  { label: 'LRANGE', text: 'LRANGE list_key 0 -1' },
-  { label: 'SMEMBERS', text: 'SMEMBERS set_key' },
-  { label: 'ZRANGE', text: 'ZRANGE zset_key 0 -1 WITHSCORES' },
-  { label: 'SET', text: 'SET key value' },
-  { label: 'DEL', text: 'DEL key' },
-  { label: 'EXPIRE', text: 'EXPIRE key 3600' }
-]
-
-const sourceSchemas = computed(() => importSchemaTree.value || [])
 const isReadOnly = computed(() => connection.value?.accessMode === 'readonly')
 const capabilities = computed(() => connection.value?.capabilities || {})
 const supportsSQL = computed(() => capabilities.value.sql !== false)
@@ -198,402 +59,83 @@ const isRedis = computed(() => connection.value?.dbType === 'redis')
 const isPostgres = computed(() => connection.value?.dbType === 'postgresql')
 const supportsCreateDatabase = computed(() => !isReadOnly.value && ['mysql', 'postgresql'].includes(connection.value?.dbType))
 const createDatabaseObjectLabel = computed(() => (isPostgres.value ? 'Schema' : 'Database'))
-const sqlSnippets = computed(() => [
-  ...baseSqlSnippets,
-  isPostgres.value
-    ? {
-        label: at('viewTablesLabel'),
-        text: "SELECT table_schema, table_name\nFROM information_schema.tables\nWHERE table_type = 'BASE TABLE'\n  AND table_schema NOT IN ('pg_catalog', 'information_schema')\n  AND table_schema NOT LIKE 'pg_%'\nORDER BY table_schema, table_name;"
-      }
-    : { label: 'SHOW TABLES', text: 'SHOW TABLES;' }
-])
 const supportsTableData = computed(() => capabilities.value.tableData !== false)
 const supportsResourceData = computed(() => capabilities.value.resourceData === true)
 const supportsExport = computed(() => capabilities.value.export === true || (capabilities.value.export === undefined && capabilities.value.transfer !== false))
 const supportsImport = computed(() => capabilities.value.import === true || (capabilities.value.import === undefined && capabilities.value.transfer !== false))
 const canEditRows = computed(() => supportsTableData.value && !isReadOnly.value && selectedPrimaryKeys.value.length > 0 && capabilities.value.rowEdit !== false)
 const canManageRedisKeys = computed(() => isRedis.value && !isReadOnly.value && capabilities.value.keyEdit !== false)
-const redisKeyTypes = ['string', 'hash', 'list', 'set', 'zset']
-const redisKeyValuePlaceholder = computed(() => {
-  if (redisKeyForm.type === 'hash') return '{"field":"value"}'
-  if (redisKeyForm.type === 'zset') return '[{"member":"user:1","score":100}]'
-  if (['list', 'set'].includes(redisKeyForm.type)) return '["value-1", "value-2"]'
-  return at('enterStringValue')
-})
-const sourceTables = computed(() => {
-  const schema = sourceSchemas.value.find((item) => item.name === importForm.sourceSchema)
-  return schema?.tables || []
-})
 
 const filterableColumns = computed(() => selectedColumns.value.map((item) => item.name))
 
-const allSuggestionItems = computed(() => {
-  const pool = new Set(sqlKeywordPool)
-  for (const schema of schemaTree.value) {
-    pool.add(schema.name)
-    for (const table of schema.tables || []) {
-      pool.add(table.name)
-      pool.add(`${schema.name}.${table.name}`)
-    }
-  }
-  for (const col of selectedColumns.value) {
-    pool.add(col.name)
-  }
-  return Array.from(pool)
+const tree = useDbmsSchemaTree({ databaseId, selectedSchema })
+
+const editorBridges = {}
+const editor = useDbmsSqlEditor({
+  databaseId,
+  isPostgres,
+  schemaTree: tree.schemaTree,
+  selectedColumns,
+  bridges: editorBridges
 })
 
-const suggestions = computed(() => {
-  const keyword = currentToken.value.trim().toLowerCase()
-  if (!keyword) return []
-  return allSuggestionItems.value
-    .filter((item) => item.toLowerCase().includes(keyword))
-    .slice(0, 14)
+const transfer = useDbmsTransferTasks({ databaseId, selectedSchema, selectedTable, activeTab })
+
+const execution = useDbmsSqlExecution({
+  databaseId,
+  connection,
+  selectedSchema,
+  selectedTable,
+  sqlText: editor.sqlText,
+  selectedSQLText: editor.selectedSQLText,
+  supportsSQL,
+  activeTab,
+  loadHistory: transfer.loadHistory,
+  loadTasks: transfer.loadTasks,
+  loadTableData
 })
 
-const highlightedSQL = computed(() => highlightSQL(sqlText.value))
-const sqlLines = computed(() => Array.from({ length: Math.max(sqlText.value.split('\n').length, 1) }, (_, index) => index + 1))
+// ctrl+enter 브릿지 — 실행 도메인이 편집기 뒤에 생성되어 늦게 주입한다.
+editorBridges.runSQL = execution.runSQL
 
-const filteredResultRows = computed(() => {
-  const key = resultFilter.key.trim()
-  const text = resultFilter.text.trim().toLowerCase()
-  if (!text) return resultRows.value
-  return resultRows.value.filter((row) => {
-    if (key) return String(row[key] ?? '').toLowerCase().includes(text)
-    return Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(text))
-  })
+const redis = useDbmsRedis({
+  databaseId,
+  connection,
+  isRedis,
+  selectedSchema,
+  selectedTable,
+  selectedRows,
+  selectedColumns,
+  schemaTree: tree.schemaTree,
+  execMeta: execution.execMeta,
+  resultColumns: execution.resultColumns,
+  resultRows: execution.resultRows,
+  activeTab,
+  resetExecMeta: execution.resetExecMeta,
+  loadTree: tree.loadTree,
+  loadHistory: transfer.loadHistory,
+  loadResourceData
 })
 
-function resetExecMeta() {
-  execMeta.sqlType = ''
-  execMeta.rowsAffected = 0
-  execMeta.durationMs = 0
-}
-
-function escapeHTML(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-}
-
-function highlightSQL(source) {
-  let html = escapeHTML(source)
-  html = html.replace(/(--.*)$/gm, '<span class="token-comment">$1</span>')
-  html = html.replace(/('(?:''|[^'])*')/g, '<span class="token-string">$1</span>')
-  html = html.replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
-  html = html.replace(/\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|HAVING|LIMIT|OFFSET|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|CREATE TABLE|ALTER TABLE|DROP TABLE|SHOW|TABLES|DATABASES|DESCRIBE|EXPLAIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION ALL|COUNT|SUM|AVG|MIN|MAX|NOW)\b/gi, '<span class="token-keyword">$1</span>')
-  return html
-}
-
-function sqlFavoritesStorageKey() {
-  return `ops-admin.dbms.sql-favorites.${databaseId.value}`
-}
-
-function loadSqlFavorites() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(sqlFavoritesStorageKey()) || '[]')
-    sqlFavorites.value = Array.isArray(saved) ? saved.filter((item) => item?.name && item?.sqlText).slice(0, 30) : []
-  } catch {
-    sqlFavorites.value = []
-  }
-}
-
-function persistSqlFavorites() {
-  localStorage.setItem(sqlFavoritesStorageKey(), JSON.stringify(sqlFavorites.value.slice(0, 30)))
-}
-
-function basicFormatSQL(source) {
-  const parts = String(source || '').split(/('(?:''|[^'])*'|"(?:""|[^"])*")/g)
-  return parts.map((part, index) => {
-    if (index % 2) return part
-    return part
-      .replace(/\s+/g, ' ')
-      .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION ALL|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/gi, (_, keyword) => `\n${keyword.toUpperCase()}`)
-      .replace(/\s*,\s*/g, ', ')
-  }).join('').replace(/^\s+|\s+$/g, '').replace(/;\s*(?=\S)/g, ';\n\n')
-}
-
-function formatSQL() {
-  const editor = sqlEditorRef.value
-  const source = selectedSQLText()
-  if (!source) return ElMessage.warning(at('enterSQLToFormat'))
-  const formatted = basicFormatSQL(source)
-  if (editor && editor.selectionStart !== editor.selectionEnd) {
-    const before = sqlText.value.slice(0, editor.selectionStart)
-    const after = sqlText.value.slice(editor.selectionEnd)
-    sqlText.value = before + formatted + after
-    nextTick(() => editor.setSelectionRange(before.length, before.length + formatted.length))
-  } else {
-    sqlText.value = formatted
-  }
-  ElMessage.success(at('sqlFormatDone'))
-}
-
-async function saveCurrentSQL() {
-  const statement = selectedSQLText()
-  if (!statement) return ElMessage.warning(at('enterSQLToSave'))
-  const { value } = await ElMessageBox.prompt(at('sqlFavoritePrompt'), 'SQL Favorite', {
-    inputPlaceholder: at('sqlFavoriteNamePlaceholder'),
-    inputPattern: /\S+/,
-    inputErrorMessage: at('sqlFavoriteNameRequired'),
-    confirmButtonText: at('save'),
-    cancelButtonText: at('cancel')
-  })
-  sqlFavorites.value.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: value.trim(), sqlText: statement, updatedAt: Date.now() })
-  persistSqlFavorites()
-  ElMessage.success(at('sqlFavoriteSaved'))
-}
-
-function applySqlFavorite(item) {
-  sqlText.value = item.sqlText
-  nextTick(() => sqlEditorRef.value?.focus())
-}
-
-function removeSqlFavorite(item) {
-  sqlFavorites.value = sqlFavorites.value.filter((current) => current.id !== item.id)
-  persistSqlFavorites()
-}
-
-function reuseHistorySQL(row) {
-  sqlText.value = row.sqlText || ''
-  activeTab.value = 'result'
-  nextTick(() => sqlEditorRef.value?.focus())
-}
-
-function exportResultCSV() {
-  if (!resultColumns.value.length || !filteredResultRows.value.length) return ElMessage.warning(at('noResultToExport'))
-  const escapeCSV = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
-  const lines = [resultColumns.value, ...filteredResultRows.value.map((row) => resultColumns.value.map((column) => row[column]))]
-    .map((row) => row.map(escapeCSV).join(','))
-  const blob = new Blob(['\uFEFF', lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `sql-result-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
-  link.click()
-  URL.revokeObjectURL(link.href)
-}
-
-function normalizeTree(data) {
-  return (data.schemas || []).map((schema) => ({
-    id: `schema:${schema.name}`,
-    label: schema.name,
-    name: schema.name,
-    isSchema: true,
-    tableCount: Number(schema.tableCount || schema.tables?.length || 0),
-    tables: schema.tables || [],
-    children: (schema.tables || []).map((table) => ({
-      id: `table:${schema.name}.${table.name}`,
-      label: table.name,
-      name: table.name,
-      schema: schema.name,
-      rows: table.rows,
-      isTable: true
-    }))
-  }))
-}
-
-const pagedSchemaTree = computed(() => {
-  const keyword = treeKeyword.value.trim().toLowerCase()
-  return schemaTree.value
-    .map((schema) => {
-      const allChildren = schema.children || []
-      const schemaMatched = schema.name.toLowerCase().includes(keyword)
-      const children = keyword && !schemaMatched
-        ? allChildren.filter((table) => {
-          const fullName = `${schema.name}.${table.name}`.toLowerCase()
-          return String(table.name || '').toLowerCase().includes(keyword) || fullName.includes(keyword)
-        })
-        : allChildren
-      const totalPages = Math.max(1, Math.ceil(children.length / schemaTablePageSize))
-      const currentPage = Math.min(Math.max(Number(schemaTablePages[schema.name] || 1), 1), totalPages)
-      const start = (currentPage - 1) * schemaTablePageSize
-      return {
-        ...schema,
-        children: children.slice(start, start + schemaTablePageSize),
-        visibleTableCount: children.length,
-        currentPage,
-        totalPages
-      }
-    })
-    .filter((schema) => !keyword || schema.children.length > 0 || schema.name.toLowerCase().includes(keyword))
+const rowOps = useDbmsRowOps({
+  databaseId,
+  selectedSchema,
+  selectedTable,
+  selectedColumns,
+  selectedPrimaryKeys,
+  canEditRows,
+  isReadOnly,
+  connection,
+  loadTableData,
+  loadHistory: transfer.loadHistory
 })
 
-function syncEditorMetrics() {
-  const el = sqlEditorRef.value
-  if (!el) return
-  sqlScrollTop.value = el.scrollTop
-  sqlScrollLeft.value = el.scrollLeft
-  const before = sqlText.value.slice(0, el.selectionStart)
-  currentLine.value = before.split('\n').length
-}
-
-function treeFilterMethod() {
-  return true
-}
-
-function changeSchemaTablePage(schema, page) {
-  const nextPage = Math.min(Math.max(page, 1), schema.totalPages || 1)
-  schemaTablePages[schema.name] = nextPage
-}
-
-function rowKeyFor(row, index = 0) {
-  const keys = selectedPrimaryKeys.value || []
-  if (keys.length) {
-    return keys.map((key) => `${key}:${row[key] ?? ''}`).join('|')
-  }
-  return `${index}:${JSON.stringify(row)}`
-}
-
-function isEditingCell(row, column, index) {
-  return editingCell.rowKey === rowKeyFor(row, index) && editingCell.column === column
-}
-
-function startCellEdit(row, column, index) {
-  if (!canEditRows.value) {
-    ElMessage.warning(isReadOnly.value ? at('readOnlyDatabaseWarning') : at('noPrimaryKeyWarning'))
-    return
-  }
-  editingCell.rowKey = rowKeyFor(row, index)
-  editingCell.column = column
-  pendingCellValue.value = row[column] == null ? '' : String(row[column])
-  editingOriginalRow.value = { ...row }
-}
-
-function cancelCellEdit() {
-  editingCell.rowKey = ''
-  editingCell.column = ''
-  pendingCellValue.value = ''
-  editingOriginalRow.value = null
-}
-
-async function commitCellEdit(row, column) {
-  if (!editingOriginalRow.value) {
-    cancelCellEdit()
-    return
-  }
-  const current = { ...row, [column]: pendingCellValue.value }
-  await updateDBMSTableRow({
-    databaseId: databaseId.value,
-    schema: selectedSchema.value,
-    table: selectedTable.value,
-    original: editingOriginalRow.value,
-    current
-  })
-  ElMessage.success(at('cellUpdated'))
-  cancelCellEdit()
-  await Promise.all([loadTableData(), loadHistory()])
-}
+const { loadTree } = tree
+const { loadHistory, loadTasks } = transfer
 
 async function loadConnection() {
   connection.value = await queryDBMSWorkbench(databaseId.value)
-  loadSqlFavorites()
-}
-
-async function loadTree() {
-  treeLoading.value = true
-  try {
-    const data = await queryDBMSSchemaTree(databaseId.value)
-    schemaTree.value = normalizeTree(data)
-    Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
-    if (!selectedSchema.value && data.defaultSchema) {
-      selectedSchema.value = data.defaultSchema
-    }
-  } finally {
-    treeLoading.value = false
-  }
-}
-
-async function loadDatabaseCharsetOptions(charset = createDatabaseForm.charset) {
-  charsetOptionsLoading.value = true
-  try {
-    const data = await queryDBMSCharsetOptions({ databaseId: databaseId.value, charset })
-    mysqlCharsetOptions.value = (data.charsets || []).map((item) => ({ label: item.name, value: item.name, defaultCollation: item.defaultCollation }))
-    availableCollations.value = (data.collations || []).map((item) => ({ label: item.name, value: item.name, isDefault: item.isDefault }))
-    if (!mysqlCharsetOptions.value.some((item) => item.value === createDatabaseForm.charset)) {
-      createDatabaseForm.charset = mysqlCharsetOptions.value.find((item) => item.value === 'utf8mb4')?.value || mysqlCharsetOptions.value[0]?.value || ''
-      if (createDatabaseForm.charset && createDatabaseForm.charset !== charset) {
-        await loadDatabaseCharsetOptions(createDatabaseForm.charset)
-        return
-      }
-    }
-    if (!availableCollations.value.some((item) => item.value === createDatabaseForm.collation)) {
-      createDatabaseForm.collation = availableCollations.value.find((item) => item.isDefault)?.value || availableCollations.value[0]?.value || ''
-    }
-  } finally {
-    charsetOptionsLoading.value = false
-  }
-}
-
-async function openCreateDatabase() {
-  createDatabaseForm.name = ''
-  if (!isPostgres.value) {
-    createDatabaseForm.charset = connection.value?.charset || 'utf8mb4'
-    createDatabaseForm.collation = ''
-    createDatabaseVisible.value = true
-    await loadDatabaseCharsetOptions()
-    return
-  }
-  createDatabaseVisible.value = true
-}
-
-async function onCreateDatabaseCharsetChange() {
-  createDatabaseForm.collation = ''
-  await loadDatabaseCharsetOptions(createDatabaseForm.charset)
-}
-
-async function submitCreateDatabase() {
-  const name = createDatabaseForm.name.trim()
-  if (!name) {
-    ElMessage.warning(at('enterObjectName', { label: createDatabaseObjectLabel.value }))
-    return
-  }
-  creatingDatabase.value = true
-  try {
-    const result = await createDBMSSchema({
-      databaseId: databaseId.value,
-      name,
-      charset: isPostgres.value ? '' : createDatabaseForm.charset,
-      collation: isPostgres.value ? '' : createDatabaseForm.collation
-    })
-    selectedSchema.value = result.name || name
-    selectedTable.value = ''
-    await loadTree()
-    createDatabaseVisible.value = false
-    ElMessage.success(at('createObjectSuccess', { label: createDatabaseObjectLabel.value, name }))
-  } finally {
-    creatingDatabase.value = false
-  }
-}
-
-async function loadHistory() {
-  historyLoading.value = true
-  try {
-    const data = await queryDBMSSQLHistory({
-      databaseId: databaseId.value,
-      pageNum: historyQuery.pageNum,
-      pageSize: historyQuery.pageSize
-    })
-    historyList.value = data.list || []
-    historyTotal.value = data.total || 0
-  } finally {
-    historyLoading.value = false
-  }
-}
-
-async function loadTasks() {
-  taskLoading.value = true
-  try {
-    const data = await queryDBMSTaskList({
-      databaseId: databaseId.value,
-      pageNum: taskQuery.pageNum,
-      pageSize: taskQuery.pageSize
-    })
-    taskList.value = data.list || []
-    taskTotal.value = data.total || 0
-    setupTaskPolling()
-  } finally {
-    taskLoading.value = false
-  }
+  editor.loadSqlFavorites()
 }
 
 async function loadTableData() {
@@ -677,37 +219,27 @@ function switchDatabase(database) {
   router.replace({ name: 'DatabaseWorkbench', params: { id: database.id } })
 }
 
+// 재배선 — 트리/결과/이력/태스크 상태가 각 도메인 컴포저블로 이동했다
+// (원본 680-699의 전체 리셋 순서는 그대로 보존).
 function resetWorkbenchState() {
   selectedSchema.value = ''
   selectedTable.value = ''
-  treeKeyword.value = ''
-  Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
-  schemaTree.value = []
-  resultColumns.value = []
-  resultRows.value = []
+  tree.treeKeyword.value = ''
+  Object.keys(tree.schemaTablePages).forEach((key) => delete tree.schemaTablePages[key])
+  tree.schemaTree.value = []
+  execution.resultColumns.value = []
+  execution.resultRows.value = []
   selectedColumns.value = []
   selectedRows.value = []
   selectedTotal.value = 0
   selectedPrimaryKeys.value = []
   resourceIndexes.value = []
   resourceType.value = ''
-  historyList.value = []
-  taskList.value = []
-  execMeta.sqlType = ''
-  execMeta.rowsAffected = 0
-  execMeta.durationMs = 0
-}
-
-function setupTaskPolling() {
-  const hasRunningTask = taskList.value.some((item) => ['pending', 'running'].includes(item.status))
-  if (hasRunningTask && !taskTimer.value) {
-    taskTimer.value = window.setInterval(loadTasks, 3000)
-    return
-  }
-  if (!hasRunningTask && taskTimer.value) {
-    window.clearInterval(taskTimer.value)
-    taskTimer.value = null
-  }
+  transfer.historyList.value = []
+  transfer.taskList.value = []
+  execution.execMeta.sqlType = ''
+  execution.execMeta.rowsAffected = 0
+  execution.execMeta.durationMs = 0
 }
 
 function onTreeNodeClick(node) {
@@ -723,7 +255,7 @@ function onTreeNodeClick(node) {
       ElMessage.info(at('schemaNoTables', { name: node.name }))
       return
     }
-    treeRef.value?.setCurrentKey(firstTable.id)
+    tree.treeRef.value?.setCurrentKey(firstTable.id)
     onTreeNodeClick(firstTable)
     return
   }
@@ -743,547 +275,86 @@ function onTreeNodeClick(node) {
   loadTableData()
 }
 
-function selectedSQLText() {
-  const editor = sqlEditorRef.value
-  if (!editor) return sqlText.value.trim()
-  const selected = sqlText.value.slice(editor.selectionStart, editor.selectionEnd).trim()
-  return selected || sqlText.value.trim()
-}
-
-function isProductionEnvironment(value) {
-  const environment = String(value || '').toLowerCase()
-  return environment.includes('prod') || environment.includes('운영')
-}
-
-function sqlConfirmationText() {
-  return isProductionEnvironment(sqlAnalysis.value?.environment) ? at('prodConfirmPhrase') : at('execConfirmPhrase')
-}
-
-async function executeAnalyzedSQL(statement, confirmed = false) {
-  const data = await executeDBMSSQL({
-    databaseId: databaseId.value,
-    schema: selectedSchema.value || connection.value?.dbName || '',
-    sqlText: statement,
-    confirmed
-  })
-  resultColumns.value = data.columns || []
-  resultRows.value = data.rows || []
-  execMeta.sqlType = data.sqlType || ''
-  execMeta.rowsAffected = Number(data.rowsAffected || 0)
-  execMeta.durationMs = Number(data.durationMs || 0)
+// 재배선 — sqlText·에디터 포커스는 편집기 도메인 소관 (원본 357-361).
+function reuseHistorySQL(row) {
+  editor.sqlText.value = row.sqlText || ''
   activeTab.value = 'result'
-  ElMessage.success(at('sqlExecutionDone'))
-  await Promise.all([loadHistory(), loadTasks()])
-  if (selectedTable.value) {
-    await loadTableData()
-  }
+  nextTick(() => editor.sqlEditorRef.value?.focus())
 }
 
-async function runSQL() {
-  if (!supportsSQL.value) {
-    ElMessage.warning(at('notSQLWorkbenchWarning'))
-    return
-  }
-  const statement = selectedSQLText()
-  if (!statement) {
-    ElMessage.warning(uiT('sqlRequired'))
-    return
-  }
-  sqlRunning.value = true
-  resetExecMeta()
-  try {
-    const analysis = await analyzeDBMSSQL({
-      databaseId: databaseId.value,
-      schema: selectedSchema.value || connection.value?.dbName || '',
-      sqlText: statement
-    })
-    if (analysis.writeOperation) {
-      pendingSQL.value = statement
-      sqlAnalysis.value = analysis
-      sqlAcknowledgement.value = ''
-      sqlConfirmVisible.value = true
-      return
-    }
-    await executeAnalyzedSQL(statement)
-  } finally {
-    sqlRunning.value = false
-  }
-}
-
-async function confirmSQLExecution() {
-  if (sqlAcknowledgement.value !== sqlConfirmationText()) {
-    ElMessage.warning(at('enterConfirmationPhrase', { phrase: sqlConfirmationText() }))
-    return
-  }
-  sqlRunning.value = true
-  try {
-    await executeAnalyzedSQL(pendingSQL.value, true)
-    sqlConfirmVisible.value = false
-  } finally {
-    sqlRunning.value = false
-  }
-}
-
-async function executeRedisCommandText(confirmed = false) {
-  const data = await executeRedisCommand({
-    databaseId: databaseId.value,
-    commandText: redisCommandText.value.trim(),
-    confirmed
-  })
-  resultColumns.value = data.columns || []
-  resultRows.value = data.rows || []
-  execMeta.sqlType = `REDIS ${data.command || ''}`.trim()
-  execMeta.rowsAffected = Number(data.rowsAffected || 0)
-  execMeta.durationMs = Number(data.durationMs || 0)
-  activeTab.value = 'result'
-  ElMessage.success(at('redisCommandDone'))
-  await loadHistory()
-  if (selectedTable.value) await loadResourceData()
-}
-
-async function runRedisCommand() {
-  if (!isRedis.value) return
-  if (!redisCommandText.value.trim()) {
-    ElMessage.warning(at('enterRedisCommand'))
-    return
-  }
-  redisRunning.value = true
-  resetExecMeta()
-  try {
-    const analysis = await analyzeRedisCommand({
-      databaseId: databaseId.value,
-      commandText: redisCommandText.value.trim()
-    })
-    if (analysis.writeOperation) {
-      await confirmRiskOperation({
-        operation: `Redis Write Command: ${analysis.command}`,
-        targetSummary: `${connection.value?.databaseName || connection.value?.name || databaseId.value}`,
-        production: isProductionEnvironment(connection.value?.environment),
-        destructive: true
-      })
-    }
-    await executeRedisCommandText(analysis.writeOperation)
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') throw error
-  } finally {
-    redisRunning.value = false
-  }
-}
-
-function quoteRedisArgument(value) {
-  return JSON.stringify(String(value ?? ''))
-}
-
-function resetRedisKeyForm() {
-  redisKeyForm.key = ''
-  redisKeyForm.type = 'string'
-  redisKeyForm.value = ''
-  redisKeyForm.ttl = undefined
-}
-
-function openRedisKeyCreate() {
-  resetRedisKeyForm()
-  redisKeyDialogMode.value = 'create'
-  redisKeyDialogVisible.value = true
-}
-
-function openRedisKeyEdit(row) {
-  if (row.type === 'stream') {
-    ElMessage.warning(at('streamNotEditableWarning'))
-    return
-  }
-  redisKeyDialogMode.value = 'edit'
-  redisKeyForm.key = row.key || ''
-  redisKeyForm.type = row.type || 'string'
-  redisKeyForm.value = row.value || ''
-  redisKeyForm.ttl = Number(row.ttlSeconds) >= 0 ? Number(row.ttlSeconds) : undefined
-  redisKeyDialogVisible.value = true
-}
-
-function parseRedisValueArguments() {
-  const raw = redisKeyForm.value ?? ''
-  if (redisKeyForm.type === 'string') return [quoteRedisArgument(raw)]
-  let parsed
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error(at('invalidComplexValue'))
-  }
-  if (redisKeyForm.type === 'hash') {
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error(at('hashMustBeObject'))
-    const entries = Object.entries(parsed)
-    if (!entries.length) throw new Error(at('hashRequiresField'))
-    return entries.flatMap(([field, value]) => [quoteRedisArgument(field), quoteRedisArgument(value)])
-  }
-  if (redisKeyForm.type === 'zset') {
-    if (!Array.isArray(parsed) || !parsed.length) throw new Error(at('zsetMustBeArray'))
-    return parsed.flatMap((item) => {
-      if (!item || item.member === undefined || Number.isNaN(Number(item.score))) throw new Error(at('zsetElementRequired'))
-      return [quoteRedisArgument(item.score), quoteRedisArgument(item.member)]
-    })
-  }
-  if (!Array.isArray(parsed) || !parsed.length) throw new Error(at('listSetMustBeArray'))
-  return parsed.map((item) => quoteRedisArgument(item))
-}
-
-function redisTTLCommand(key) {
-  if (redisKeyForm.ttl === undefined || redisKeyForm.ttl === null || redisKeyForm.ttl === '') return ''
-  const ttl = Number(redisKeyForm.ttl)
-  if (!Number.isInteger(ttl) || ttl < -1) throw new Error(at('invalidTTL'))
-  return ttl === -1 ? `PERSIST ${quoteRedisArgument(key)}` : `EXPIRE ${quoteRedisArgument(key)} ${ttl}`
-}
-
-function buildRedisKeyCommands() {
-  const key = redisKeyForm.key.trim()
-  if (!key) throw new Error(at('enterKeyName'))
-  const valueArgs = parseRedisValueArguments()
-  const quotedKey = quoteRedisArgument(key)
-  const editing = redisKeyDialogMode.value === 'edit'
-  let command = ''
-  switch (redisKeyForm.type) {
-    case 'string':
-      command = `SET ${quotedKey} ${valueArgs[0]}${editing && redisKeyForm.ttl === undefined ? ' KEEPTTL' : ''}`
-      break
-    case 'hash': command = `HSET ${quotedKey} ${valueArgs.join(' ')}`; break
-    case 'list': command = `RPUSH ${quotedKey} ${valueArgs.join(' ')}`; break
-    case 'set': command = `SADD ${quotedKey} ${valueArgs.join(' ')}`; break
-    case 'zset': command = `ZADD ${quotedKey} ${valueArgs.join(' ')}`; break
-    default: throw new Error(at('unsupportedRedisKeyType'))
-  }
-  const commands = []
-  if (editing && redisKeyForm.type !== 'string') commands.push(`DEL ${quotedKey}`)
-  commands.push(command)
-  const ttlCommand = redisTTLCommand(key)
-  if (ttlCommand) commands.push(ttlCommand)
-  return commands
-}
-
-async function submitRedisKey() {
-  let commands
-  try {
-    commands = buildRedisKeyCommands()
-  } catch (error) {
-    ElMessage.warning(error.message || at('invalidKeyContent'))
-    return
-  }
-  const action = redisKeyDialogMode.value === 'create' ? at('addAction') : at('updateAction')
-  try {
-    await confirmRiskOperation({
-      operation: at('redisKeyOperation', { action }),
-      targetSummary: redisKeyForm.key,
-      production: isProductionEnvironment(connection.value?.environment),
-      destructive: redisKeyDialogMode.value === 'edit'
-    })
-  } catch {
-    return
-  }
-  redisRunning.value = true
-  try {
-    for (const commandText of commands) {
-      await executeRedisCommand({ databaseId: databaseId.value, commandText, confirmed: true })
-    }
-    redisKeyDialogVisible.value = false
-    await Promise.all([loadTree(), loadHistory()])
-    selectedSchema.value = schemaTree.value?.[0]?.name || selectedSchema.value
-    selectedTable.value = redisKeyForm.key
-    await loadResourceData()
-    ElMessage.success(at('redisKeyActionDone', { action }))
-  } finally {
-    redisRunning.value = false
-  }
-}
-
-async function deleteRedisKey(row) {
-  try {
-    await confirmRiskOperation({
-      operation: at('redisKeyDeleteOperation'),
-      targetSummary: row.key,
-      production: isProductionEnvironment(connection.value?.environment),
-      destructive: true
-    })
-  } catch {
-    return
-  }
-  redisRunning.value = true
-  try {
-    await executeRedisCommand({ databaseId: databaseId.value, commandText: `DEL ${quoteRedisArgument(row.key)}`, confirmed: true })
-    if (selectedTable.value === row.key) {
-      selectedTable.value = ''
-      selectedRows.value = []
-      selectedColumns.value = []
-    }
-    await Promise.all([loadTree(), loadHistory()])
-    ElMessage.success(at('redisKeyDeleted'))
-  } finally {
-    redisRunning.value = false
-  }
-}
-
-function riskTagType(level) {
-  if (level === 'high') return 'danger'
-  if (level === 'medium') return 'warning'
-  return 'success'
-}
-
-function insertSnippet(text) {
-  sqlText.value = text
-  nextTick(() => {
-    sqlEditorRef.value?.focus()
-    syncEditorMetrics()
-  })
-}
-
-function updateAutocomplete() {
-  const editor = sqlEditorRef.value
-  if (!editor) return
-  const before = sqlText.value.slice(0, editor.selectionStart)
-  const match = before.match(/[A-Za-z_][A-Za-z0-9_.]*$/)
-  currentToken.value = match ? match[0] : ''
-  activeSuggestionIndex.value = 0
-  showSuggestions.value = !!currentToken.value && suggestions.value.length > 0
-  syncEditorMetrics()
-}
-
-function applySuggestion(value) {
-  const editor = sqlEditorRef.value
-  if (!editor) return
-  const cursor = editor.selectionStart
-  const before = sqlText.value.slice(0, cursor)
-  const after = sqlText.value.slice(cursor)
-  const replacedBefore = before.replace(/[A-Za-z_][A-Za-z0-9_.]*$/, value)
-  sqlText.value = replacedBefore + after
-  showSuggestions.value = false
-  nextTick(() => {
-    editor.focus()
-    const pos = replacedBefore.length
-    editor.setSelectionRange(pos, pos)
-    syncEditorMetrics()
-  })
-}
-
-function onEditorKeydown(event) {
-  if (showSuggestions.value && suggestions.value.length) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      activeSuggestionIndex.value = (activeSuggestionIndex.value + 1) % suggestions.value.length
-      return
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      activeSuggestionIndex.value = (activeSuggestionIndex.value - 1 + suggestions.value.length) % suggestions.value.length
-      return
-    }
-    if (event.key === 'Tab' || event.key === 'Enter') {
-      event.preventDefault()
-      applySuggestion(suggestions.value[activeSuggestionIndex.value])
-      return
-    }
-    if (event.key === 'Escape') {
-      showSuggestions.value = false
-      return
-    }
-  }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'enter') {
-    event.preventDefault()
-    runSQL()
-  }
-}
-
-function openRollback(row) {
-  rollbackSQL.value = row.rollbackSql || ''
-  rollbackConfidence.value = row.rollbackConfidence || ''
-  rollbackDialogVisible.value = true
-}
-
-async function copyRollback(row) {
-  await navigator.clipboard.writeText(row.rollbackSql || '')
-  ElMessage.success(at('rollbackSqlCopied'))
-}
-
-function openInsertRow() {
-  rowDialogMode.value = 'insert'
-  rowOriginal.value = {}
-  Object.keys(rowForm).forEach((key) => delete rowForm[key])
-  for (const col of selectedColumns.value) {
-    rowForm[col.name] = null
-  }
-  rowDialogVisible.value = true
-}
-
-function openEditRow(row) {
-  rowDialogMode.value = 'update'
-  rowOriginal.value = { ...row }
-  Object.keys(rowForm).forEach((key) => delete rowForm[key])
-  for (const col of selectedColumns.value) {
-    rowForm[col.name] = row[col.name] ?? null
-  }
-  rowDialogVisible.value = true
-}
-
-async function submitRow() {
-  await confirmRiskOperation({
-    operation: rowDialogMode.value === 'insert' ? at('rowInsertOperation') : at('rowUpdateOperation'),
-    targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
-    production: isProductionEnvironment(connection.value?.environment),
-    destructive: rowDialogMode.value === 'update'
-  })
-  if (rowDialogMode.value === 'insert') {
-    await insertDBMSTableRow({
-      databaseId: databaseId.value,
-      schema: selectedSchema.value,
-      table: selectedTable.value,
-      row: { ...rowForm }
-    })
-    ElMessage.success(at('rowInserted'))
-  } else {
-    await updateDBMSTableRow({
-      databaseId: databaseId.value,
-      schema: selectedSchema.value,
-      table: selectedTable.value,
-      original: rowOriginal.value,
-      current: { ...rowForm }
-    })
-    ElMessage.success(at('rowUpdated'))
-  }
-  rowDialogVisible.value = false
-  await Promise.all([loadTableData(), loadHistory()])
-}
-
-async function handleDeleteRow(row) {
-  await confirmRiskOperation({
-    operation: at('rowDeleteOperation'),
-    targetSummary: `${selectedSchema.value}.${selectedTable.value}`,
-    production: isProductionEnvironment(connection.value?.environment),
-    destructive: true
-  })
-  await deleteDBMSTableRow({
-    databaseId: databaseId.value,
-    schema: selectedSchema.value,
-    table: selectedTable.value,
-    row
-  })
-  ElMessage.success(at('rowDeleted'))
-  await Promise.all([loadTableData(), loadHistory()])
-}
-
-async function createExportTask() {
-  if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning(at('selectTableToExport'))
-    return
-  }
-  await createDBMSExportTask({
-    databaseId: databaseId.value,
-    schema: selectedSchema.value,
-    table: selectedTable.value,
-    includeData: true
-  })
-  ElMessage.success(at('exportTaskCreated'))
-  activeTab.value = 'tasks'
-  await loadTasks()
-}
-
-async function openImportDialog() {
-  const list = await queryAssetDatabaseList({ pageNum: 1, pageSize: 200, keyword: '', status: '1' })
-  importDatabaseOptions.value = (list.list || []).filter((item) => ['mysql', 'postgresql'].includes(String(item.dbType || '').toLowerCase()))
-  importPrecheck.value = null
-  importDialogVisible.value = true
-}
-
-async function loadImportSchemas() {
-  importForm.sourceSchema = ''
-  importForm.sourceTable = ''
-  importSchemaTree.value = []
-  if (!importForm.sourceDatabaseId) return
-  const data = await queryDBMSSchemaTree(importForm.sourceDatabaseId)
-  importSchemaTree.value = data.schemas || []
-  importForm.sourceSchema = data.defaultSchema || importSchemaTree.value[0]?.name || ''
-}
-
-async function submitImportTask() {
-  if (!selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning(at('selectTargetTableFirst'))
-    return
-  }
-  if (!importPrecheck.value?.ready) {
-    ElMessage.warning(at('runImportPrecheckFirst'))
-    return
-  }
-  await createDBMSImportTask(importPayload())
-  importDialogVisible.value = false
-  ElMessage.success(at('importTaskCreated'))
-  activeTab.value = 'tasks'
-  await loadTasks()
-}
-
-function importPayload() {
-  return {
-    sourceDatabaseId: importForm.sourceDatabaseId,
-    sourceSchema: importForm.sourceSchema,
-    sourceTable: importForm.sourceTable,
-    targetDatabaseId: databaseId.value,
-    targetSchema: selectedSchema.value,
-    targetTable: selectedTable.value,
-    createIfMissing: importForm.createIfMissing,
-    truncateTarget: importForm.truncateTarget
-  }
-}
-
-async function runImportPrecheck() {
-  if (!importForm.sourceDatabaseId || !importForm.sourceSchema || !importForm.sourceTable || !selectedSchema.value || !selectedTable.value) {
-    ElMessage.warning(at('selectSourceAndTarget'))
-    return
-  }
-  importPrechecking.value = true
-  try {
-    importPrecheck.value = await precheckDBMSImportTask(importPayload())
-  } finally {
-    importPrechecking.value = false
-  }
-}
-
-async function downloadTask(task) {
-  const response = await downloadDBMSTaskFile({ id: task.id })
-  const blob = new Blob([response.data], { type: 'application/sql' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = task.fileName || `dbms-task-${task.id}.sql`
-  link.click()
-  URL.revokeObjectURL(link.href)
-}
-
-function taskStatusType(status) {
-  if (status === 'success') return 'success'
-  if (status === 'failed') return 'danger'
-  if (status === 'running') return 'warning'
-  return 'info'
-}
-
-function taskStatusText(status) {
-  if (status === 'success') return at('statusSuccess')
-  if (status === 'failed') return at('statusFailed')
-  if (status === 'running') return at('statusRunning')
-  return at('statusPending')
-}
-
-watch(treeKeyword, () => {
-  Object.keys(schemaTablePages).forEach((key) => delete schemaTablePages[key])
+const createDatabaseVisible = ref(false)
+const creatingDatabase = ref(false)
+const charsetOptionsLoading = ref(false)
+const createDatabaseForm = reactive({
+  name: '',
+  charset: 'utf8mb4',
+  collation: 'utf8mb4_0900_ai_ci'
 })
 
-watch(() => importForm.sourceDatabaseId, loadImportSchemas)
-watch(
-  () => [
-    importForm.sourceDatabaseId,
-    importForm.sourceSchema,
-    importForm.sourceTable,
-    importForm.createIfMissing,
-    importForm.truncateTarget,
-    selectedSchema.value,
-    selectedTable.value
-  ],
-  () => {
-    importPrecheck.value = null
+const mysqlCharsetOptions = ref([])
+const availableCollations = ref([])
+
+async function loadDatabaseCharsetOptions(charset = createDatabaseForm.charset) {
+  charsetOptionsLoading.value = true
+  try {
+    const data = await queryDBMSCharsetOptions({ databaseId: databaseId.value, charset })
+    mysqlCharsetOptions.value = (data.charsets || []).map((item) => ({ label: item.name, value: item.name, defaultCollation: item.defaultCollation }))
+    availableCollations.value = (data.collations || []).map((item) => ({ label: item.name, value: item.name, isDefault: item.isDefault }))
+    if (!mysqlCharsetOptions.value.some((item) => item.value === createDatabaseForm.charset)) {
+      createDatabaseForm.charset = mysqlCharsetOptions.value.find((item) => item.value === 'utf8mb4')?.value || mysqlCharsetOptions.value[0]?.value || ''
+      if (createDatabaseForm.charset && createDatabaseForm.charset !== charset) {
+        await loadDatabaseCharsetOptions(createDatabaseForm.charset)
+        return
+      }
+    }
+    if (!availableCollations.value.some((item) => item.value === createDatabaseForm.collation)) {
+      createDatabaseForm.collation = availableCollations.value.find((item) => item.isDefault)?.value || availableCollations.value[0]?.value || ''
+    }
+  } finally {
+    charsetOptionsLoading.value = false
   }
-)
+}
+
+async function openCreateDatabase() {
+  createDatabaseForm.name = ''
+  if (!isPostgres.value) {
+    createDatabaseForm.charset = connection.value?.charset || 'utf8mb4'
+    createDatabaseForm.collation = ''
+    createDatabaseVisible.value = true
+    await loadDatabaseCharsetOptions()
+    return
+  }
+  createDatabaseVisible.value = true
+}
+
+async function onCreateDatabaseCharsetChange() {
+  createDatabaseForm.collation = ''
+  await loadDatabaseCharsetOptions(createDatabaseForm.charset)
+}
+
+async function submitCreateDatabase() {
+  const name = createDatabaseForm.name.trim()
+  if (!name) {
+    ElMessage.warning(at('enterObjectName', { label: createDatabaseObjectLabel.value }))
+    return
+  }
+  creatingDatabase.value = true
+  try {
+    const result = await createDBMSSchema({
+      databaseId: databaseId.value,
+      name,
+      charset: isPostgres.value ? '' : createDatabaseForm.charset,
+      collation: isPostgres.value ? '' : createDatabaseForm.collation
+    })
+    selectedSchema.value = result.name || name
+    selectedTable.value = ''
+    await loadTree()
+    createDatabaseVisible.value = false
+    ElMessage.success(at('createObjectSuccess', { label: createDatabaseObjectLabel.value, name }))
+  } finally {
+    creatingDatabase.value = false
+  }
+}
 
 watch([() => tableFilter.key, () => tableFilter.text], () => {
   tableQuery.pageNum = 1
@@ -1300,10 +371,56 @@ watch(databaseId, async (next, previous) => {
   await initialize()
 })
 
-onBeforeUnmount(() => {
-  if (taskTimer.value) {
-    window.clearInterval(taskTimer.value)
-  }
+const page = reactive({
+  // 뷰 소관 상태·능력 computed
+  loading,
+  dataLoading,
+  activeTab,
+  connection,
+  selectedSchema,
+  selectedTable,
+  selectedColumns,
+  selectedRows,
+  selectedTotal,
+  selectedPrimaryKeys,
+  resourceIndexes,
+  resourceType,
+  tableQuery,
+  tableFilter,
+  isReadOnly,
+  isRedis,
+  isPostgres,
+  supportsSQL,
+  supportsCreateDatabase,
+  createDatabaseObjectLabel,
+  supportsExport,
+  supportsImport,
+  canEditRows,
+  canManageRedisKeys,
+  filterableColumns,
+  // 뷰 소관 함수
+  loadTableData,
+  loadResourceData,
+  refreshSelectedData,
+  formatResourceValue,
+  onTreeNodeClick,
+  reuseHistorySQL,
+  createDatabaseVisible,
+  creatingDatabase,
+  charsetOptionsLoading,
+  createDatabaseForm,
+  mysqlCharsetOptions,
+  availableCollations,
+  openCreateDatabase,
+  onCreateDatabaseCharsetChange,
+  submitCreateDatabase,
+  // 도메인 컴포저블
+  ...tree,
+  ...editor,
+  ...transfer,
+  ...execution,
+  ...redis,
+  ...rowOps
 })
 </script>
 
@@ -1331,553 +448,17 @@ onBeforeUnmount(() => {
           <DatabaseConnectionTree :active-id="databaseId" @select="switchDatabase" />
         </section>
 
-        <section class="sidebar-section schema-section">
-          <div class="sidebar-section-title">
-            <strong>{{ uiT('databaseTableStructure') }}</strong>
-            <div class="schema-title-actions">
-              <el-button v-if="supportsCreateDatabase" type="primary" link @click="openCreateDatabase">
-                {{ at('createObjectButton', { label: createDatabaseObjectLabel }) }}
-              </el-button>
-              <span>{{ connection?.dbName || at('allDatabases') }}</span>
-            </div>
-          </div>
-          <div class="sidebar-top">
-            <el-input v-model="treeKeyword" clearable :placeholder="at('searchDatabaseOrTable')" />
-            <el-button @click="loadTree">{{ at('refresh') }}</el-button>
-          </div>
-          <el-tree
-            ref="treeRef"
-            v-loading="treeLoading"
-            node-key="id"
-            class="schema-tree"
-            :data="pagedSchemaTree"
-            :props="{ label: 'label', children: 'children' }"
-            :filter-node-method="treeFilterMethod"
-            default-expand-all
-            :expand-on-click-node="false"
-            @node-click="onTreeNodeClick"
-          >
-            <template #default="{ data }">
-              <div class="tree-node">
-                <span>{{ data.label }}</span>
-                <small v-if="data.isTable && Number.isFinite(data.rows)">{{ data.rows }}</small>
-                <template v-else-if="data.isSchema">
-                  <span class="schema-node-meta" @click.stop>
-                    <small>{{ data.visibleTableCount ?? data.tableCount }}</small>
-                    <span v-if="data.totalPages > 1" class="schema-pagination">
-                      <el-button
-                        text
-                        size="small"
-                        :disabled="data.currentPage <= 1"
-                        :title="at('previousPage')"
-                        @click.stop="changeSchemaTablePage(data, data.currentPage - 1)"
-                      >{{ at('previousPage') }}</el-button>
-                      <span>{{ data.currentPage }}/{{ data.totalPages }}</span>
-                      <el-button
-                        text
-                        size="small"
-                        :disabled="data.currentPage >= data.totalPages"
-                        :title="at('nextPage')"
-                        @click.stop="changeSchemaTablePage(data, data.currentPage + 1)"
-                      >{{ at('nextPage') }}</el-button>
-                    </span>
-                  </span>
-                </template>
-              </div>
-            </template>
-          </el-tree>
-        </section>
+        <DatabaseSchemaTree :page="page" />
       </aside>
 
       <section class="dbms-main">
-        <div class="dbms-editor page-card">
-          <div class="panel-head">
-            <div>
-              <h3>{{ supportsSQL ? 'SQL Editor' : isRedis ? 'Redis Command Console' : `${connection?.dbType?.toUpperCase() || 'Database'} Resource Explorer` }}</h3>
-              <p v-if="supportsSQL">{{ at('sqlEditorDescription') }}</p>
-              <p v-else-if="isRedis">{{ at('redisEditorDescription') }}</p>
-              <p v-else>{{ at('genericEditorDescription') }}</p>
-            </div>
-            <div class="panel-actions">
-              <el-button v-if="supportsSQL" :loading="sqlRunning" type="primary" @click="runSQL">{{ at('runSQL') }}</el-button>
-              <el-button v-if="supportsSQL" @click="formatSQL">Format</el-button>
-              <el-button v-if="supportsSQL" @click="saveCurrentSQL">SQL Favorite</el-button>
-              <el-dropdown v-if="supportsSQL && sqlFavorites.length" trigger="click">
-                <el-button>Favorite {{ sqlFavorites.length }}</el-button>
-                <template #dropdown>
-                  <el-dropdown-menu class="sql-favorite-menu">
-                    <el-dropdown-item v-for="item in sqlFavorites" :key="item.id" class="sql-favorite-item">
-                      <span @click="applySqlFavorite(item)">{{ item.name }}</span>
-                      <el-button link type="danger" size="small" @click.stop="removeSqlFavorite(item)">{{ at('delete') }}</el-button>
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-              <el-button v-if="!supportsSQL && isRedis" :loading="redisRunning" type="primary" @click="runRedisCommand">{{ at('runRedisCommand') }}</el-button>
-              <el-button :disabled="!supportsExport || !selectedTable" @click="createExportTask">Export Task</el-button>
-              <el-button :disabled="!supportsImport || isReadOnly" @click="openImportDialog">Import Task</el-button>
-            </div>
-          </div>
-
-          <div v-if="supportsSQL" class="snippet-row">
-            <el-button v-for="item in sqlSnippets" :key="item.label" size="small" plain @click="insertSnippet(item.text)">
-              {{ item.label }}
-            </el-button>
-              <span class="snippet-hint">{{ at('snippetHint') }}</span>
-          </div>
-
-          <div v-else-if="isRedis" class="redis-command-console">
-            <div class="redis-command-head">
-              <strong>Redis Command Console</strong>
-              <span>{{ at('redisConsoleHint') }}</span>
-            </div>
-            <div class="redis-command-snippets">
-              <el-button v-for="item in redisCommandSnippets" :key="item.label" size="small" plain @click="redisCommandText = item.text">
-                {{ item.label }}
-              </el-button>
-            </div>
-            <el-input
-              v-model="redisCommandText"
-              class="redis-command-input"
-              type="textarea"
-              :rows="6"
-              spellcheck="false"
-              :placeholder="at('redisCommandPlaceholder')"
-              @keydown.ctrl.enter.prevent="runRedisCommand"
-              @keydown.meta.enter.prevent="runRedisCommand"
-            />
-            <div class="redis-command-hint">{{ at('redisCommandHint') }}</div>
-          </div>
-
-          <el-alert v-if="!supportsSQL && !isRedis" class="database-capability-alert" type="info" :closable="false" show-icon :title="at('nonSqlDatabaseAlert')">
-            {{ at('nonSqlDatabaseAlertDesc') }}
-          </el-alert>
-
-          <div v-if="supportsSQL" ref="editorWrapRef" class="editor-shell">
-            <div class="line-gutter" :style="{ transform: `translateY(-${sqlScrollTop}px)` }">
-              <div v-for="line in sqlLines" :key="line" class="line-number" :class="{ active: line === currentLine }">
-                {{ line }}
-              </div>
-            </div>
-            <div class="editor-layer">
-              <pre class="sql-highlight" :style="{ transform: `translate(${-sqlScrollLeft}px, ${-sqlScrollTop}px)` }" v-html="highlightedSQL + '\n'"></pre>
-              <textarea
-                ref="sqlEditorRef"
-                v-model="sqlText"
-                class="sql-editor"
-                spellcheck="false"
-                :placeholder="at('sqlEditorPlaceholder')"
-                @input="updateAutocomplete"
-                @click="updateAutocomplete"
-                @keyup="updateAutocomplete"
-                @keydown="onEditorKeydown"
-                @scroll="syncEditorMetrics"
-                @blur="setTimeout(() => (showSuggestions = false), 150)"
-              />
-            </div>
-            <div v-if="showSuggestions && suggestions.length" class="autocomplete-panel">
-              <button
-                v-for="(item, index) in suggestions"
-                :key="item"
-                type="button"
-                class="autocomplete-item"
-                :class="{ active: index === activeSuggestionIndex }"
-                @mousedown.prevent="applySuggestion(item)"
-              >
-                {{ item }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="execMeta.sqlType" class="exec-meta">
-            <span>Type: {{ execMeta.sqlType }}</span>
-            <span>Affected Rows: {{ execMeta.rowsAffected }}</span>
-            <span>Duration: {{ execMeta.durationMs }} ms</span>
-          </div>
-        </div>
-
-        <div class="dbms-content page-card">
-          <div class="panel-head">
-            <div>
-              <h3>Workspace</h3>
-              <p v-if="selectedTable">{{ selectedSchema }} / {{ selectedTable }}</p>
-              <p v-else>{{ at('workspaceIdleHint') }}</p>
-            </div>
-            <div v-if="selectedTable || isRedis" class="panel-actions">
-              <el-button v-if="canManageRedisKeys" type="primary" plain @click="openRedisKeyCreate">{{ at('addKey') }}</el-button>
-              <el-button v-else-if="selectedTable" type="primary" plain :disabled="!canEditRows" @click="openInsertRow">{{ at('addData') }}</el-button>
-              <el-button @click="refreshSelectedData">{{ at('refreshData') }}</el-button>
-            </div>
-          </div>
-
-          <el-tabs v-model="activeTab">
-            <el-tab-pane label="Table Data" name="data">
-              <div class="filter-row">
-                <el-select v-model="tableFilter.key" clearable placeholder="Filter Column" style="width: 180px">
-                  <el-option v-for="item in filterableColumns" :key="item" :label="item" :value="item" />
-                </el-select>
-                <el-input v-model="tableFilter.text" clearable :placeholder="at('filterValuePlaceholder')" style="width: 280px" />
-              </div>
-              <el-alert
-                v-if="supportsResourceData"
-                class="resource-readonly-alert"
-                type="info"
-                :closable="false"
-                show-icon
-                :title="isRedis && canManageRedisKeys ? at('redisKeyManageTitle') : at('resourceReadOnlyTitle')"
-              >
-                <template v-if="resourceType === 'collection'">{{ at('mongoFilterHint') }}</template>
-                <template v-else-if="resourceType === 'key'">
-                  <span v-if="canManageRedisKeys">{{ at('redisKeyWriteHint') }}</span>
-                  <span v-else>{{ at('redisKeyReadOnlyHint') }}</span>
-                </template>
-                <template v-else>{{ at('pgTableDataHint') }}</template>
-              </el-alert>
-              <el-table v-if="supportsResourceData" v-loading="dataLoading" :data="selectedRows" border height="380">
-                <el-table-column v-for="col in selectedColumns" :key="col.name" :label="col.name" min-width="180" show-overflow-tooltip>
-                  <template #default="{ row }">{{ formatResourceValue(row[col.name]) }}</template>
-                </el-table-column>
-                <el-table-column v-if="isRedis" :label="at('actions')" width="150" fixed="right">
-                  <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canManageRedisKeys || row.type === 'stream'" @click="openRedisKeyEdit(row)">{{ at('edit') }}</el-button>
-                    <el-button link type="danger" :disabled="!canManageRedisKeys" @click="deleteRedisKey(row)">{{ at('delete') }}</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              <el-table v-else v-loading="dataLoading" :data="selectedRows" border height="380">
-                <el-table-column v-for="(col, index) in selectedColumns" :key="col.name" :label="col.name" min-width="160">
-                  <template #default="{ row, $index }">
-                    <el-input
-                      v-if="isEditingCell(row, col.name, $index)"
-                      v-model="pendingCellValue"
-                      size="small"
-                      @keyup.enter="commitCellEdit(row, col.name)"
-                      @blur="commitCellEdit(row, col.name)"
-                    />
-                    <button v-else type="button" class="cell-button" :class="{ disabled: !canEditRows }" @click="startCellEdit(row, col.name, $index)">
-                      {{ row[col.name] ?? '-' }}
-                    </button>
-                  </template>
-                </el-table-column>
-                <el-table-column :label="at('actions')" width="150" fixed="right">
-                  <template #default="{ row }">
-                    <el-button link type="primary" :disabled="!canEditRows" @click="openEditRow(row)">{{ at('edit') }}</el-button>
-                    <el-button link type="danger" :disabled="!canEditRows" @click="handleDeleteRow(row)">{{ at('delete') }}</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              <div v-if="supportsResourceData && resourceIndexes.length" class="resource-indexes">
-                <strong>Collection Index</strong>
-                <el-tag v-for="(item, index) in resourceIndexes" :key="index" effect="plain">
-                  {{ formatResourceValue(item.name || item.key || item) }}
-                </el-tag>
-              </div>
-              <div class="pager">
-                <el-pagination
-                  v-model:current-page="tableQuery.pageNum"
-                  v-model:page-size="tableQuery.pageSize"
-                  :total="selectedTotal"
-                  layout="total, sizes, prev, pager, next"
-                  @current-change="refreshSelectedData"
-                  @size-change="refreshSelectedData"
-                />
-              </div>
-            </el-tab-pane>
-
-            <el-tab-pane :label="at('sqlResultsTab')" name="result">
-              <div class="filter-row result-filter-row">
-                <el-select v-model="resultFilter.key" clearable placeholder="Filter Column" style="width: 180px">
-                  <el-option v-for="item in resultColumns" :key="item" :label="item" :value="item" />
-                </el-select>
-                <el-input v-model="resultFilter.text" clearable placeholder="Result Set Filter" style="width: 280px" />
-                <el-button :disabled="!filteredResultRows.length" @click="exportResultCSV">CSV Export</el-button>
-              </div>
-              <el-table :data="filteredResultRows" border height="380">
-                <el-table-column v-for="col in resultColumns" :key="col" :prop="col" :label="col" min-width="160" />
-              </el-table>
-            </el-tab-pane>
-
-            <el-tab-pane label="Execution History" name="history">
-              <el-table v-loading="historyLoading" :data="historyList" border height="380">
-                <el-table-column prop="executionId" label="Execution ID" min-width="190" show-overflow-tooltip />
-                <el-table-column prop="sqlType" label="Type" width="100" />
-                <el-table-column prop="environment" label="Environment" width="90" />
-                <el-table-column prop="schemaName" label="Database" width="120" />
-                <el-table-column prop="tableName" label="Table" width="140" />
-                <el-table-column prop="sqlText" label="SQL" min-width="320" show-overflow-tooltip />
-                <el-table-column :label="at('status')" width="90">
-                  <template #default="{ row }">
-                    <el-tag :type="row.status === 1 ? 'success' : 'danger'" effect="light">
-                      {{ row.status === 1 ? at('statusSuccess') : at('statusFailed') }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="rowsAffected" label="Affected Rows" width="110" />
-                <el-table-column prop="durationMs" label="Duration (ms)" width="100" />
-                <el-table-column prop="operator" label="Operator" width="110" />
-                <el-table-column prop="clientIp" label="Client IP" width="140" />
-                <el-table-column prop="createTime" label="Executed At" min-width="160" />
-                <el-table-column label="Rollback SQL" width="150">
-                  <template #default="{ row }">
-                    <el-tag v-if="row.rollbackSql" :type="row.rollbackConfidence === 'high' ? 'success' : 'warning'" size="small" effect="plain">
-                      {{ row.rollbackConfidence === 'high' ? at('highConfidence') : at('reviewRequired') }}
-                    </el-tag>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="openRollback(row)">{{ at('view') }}</el-button>
-                    <el-button link type="primary" :disabled="!row.rollbackSql" @click="copyRollback(row)">{{ at('copy') }}</el-button>
-                  </template>
-                </el-table-column>
-                <el-table-column :label="at('actions')" width="80" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="reuseHistorySQL(row)">{{ at('reuse') }}</el-button></template></el-table-column>
-              </el-table>
-              <div class="pager">
-                <el-pagination
-                  v-model:current-page="historyQuery.pageNum"
-                  v-model:page-size="historyQuery.pageSize"
-                  :total="historyTotal"
-                  layout="total, sizes, prev, pager, next"
-                  @current-change="loadHistory"
-                  @size-change="loadHistory"
-                />
-              </div>
-            </el-tab-pane>
-
-            <el-tab-pane label="Import / Export Task" name="tasks">
-              <el-table v-loading="taskLoading" :data="taskList" border height="380">
-                <el-table-column prop="taskType" label="Type" width="90">
-                  <template #default="{ row }">{{ row.taskType === 'export' ? 'Export' : 'Import' }}</template>
-                </el-table-column>
-                <el-table-column label="Source" min-width="220">
-                  <template #default="{ row }">
-                    <span v-if="row.taskType === 'import'">{{ row.sourceDatabase }} / {{ row.sourceSchema }} / {{ row.sourceTable }}</span>
-                    <span v-else>{{ row.databaseName }} / {{ row.schemaName }} / {{ row.tableName }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="Target" min-width="220">
-                  <template #default="{ row }">
-                    <span v-if="row.taskType === 'import'">{{ row.targetDatabase }} / {{ row.targetSchema }} / {{ row.targetTable }}</span>
-                    <span v-else>-</span>
-                  </template>
-                </el-table-column>
-                <el-table-column :label="at('status')" width="110">
-                  <template #default="{ row }">
-                    <el-tag :type="taskStatusType(row.status)" effect="light">{{ taskStatusText(row.status) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column :label="at('progress')" width="180">
-                  <template #default="{ row }">
-                    <el-progress :percentage="Number(row.progress || 0)" :status="row.status === 'failed' ? 'exception' : row.status === 'success' ? 'success' : ''" />
-                  </template>
-                </el-table-column>
-                <el-table-column prop="rowsAffected" :label="at('rows')" width="90" />
-                <el-table-column prop="message" :label="at('description')" min-width="180" show-overflow-tooltip />
-                <el-table-column prop="createTime" label="Created At" min-width="160" />
-                <el-table-column :label="at('actions')" width="120">
-                  <template #default="{ row }">
-                    <el-button
-                      v-if="row.taskType === 'export' && row.status === 'success'"
-                      link
-                      type="primary"
-                      @click="downloadTask(row)"
-                    >
-                      Download
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              <div class="pager">
-                <el-pagination
-                  v-model:current-page="taskQuery.pageNum"
-                  v-model:page-size="taskQuery.pageSize"
-                  :total="taskTotal"
-                  layout="total, sizes, prev, pager, next"
-                  @current-change="loadTasks"
-                  @size-change="loadTasks"
-                />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </div>
+        <DatabaseSqlEditor :page="page" />
+        <DatabaseWorkspacePanel :page="page" />
       </section>
     </div>
 
-    <el-dialog v-model="createDatabaseVisible" :title="at('createObjectTitle', { label: createDatabaseObjectLabel })" width="520px" destroy-on-close>
-      <el-alert
-        :title="isPostgres ? at('postgresCreateAlert') : at('mysqlCreateAlert')"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-form label-width="112px" class="create-database-form">
-        <el-form-item :label="at('objectNameLabel', { label: createDatabaseObjectLabel })" required>
-          <el-input v-model="createDatabaseForm.name" maxlength="63" show-word-limit :placeholder="at('identifierPlaceholder')" @keyup.enter="submitCreateDatabase" />
-        </el-form-item>
-        <template v-if="!isPostgres">
-          <el-form-item label="Character Set">
-            <el-select v-model="createDatabaseForm.charset" style="width: 100%" :loading="charsetOptionsLoading" @change="onCreateDatabaseCharsetChange">
-              <el-option v-for="item in mysqlCharsetOptions" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="Collation">
-            <el-select v-model="createDatabaseForm.collation" style="width: 100%" :loading="charsetOptionsLoading" :disabled="charsetOptionsLoading">
-              <el-option v-for="item in availableCollations" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-          </el-form-item>
-        </template>
-        <p class="form-help">{{ at('identifierRuleHint') }}</p>
-      </el-form>
-      <template #footer>
-        <el-button @click="createDatabaseVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :loading="creatingDatabase" @click="submitCreateDatabase">{{ at('confirmCreate') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="sqlConfirmVisible" :title="at('sqlWriteConfirmTitle')" width="780px">
-      <div v-if="sqlAnalysis" class="sql-risk-panel">
-        <div class="sql-risk-summary">
-          <el-tag :type="riskTagType(sqlAnalysis.riskLevel)" effect="dark">
-            {{ sqlAnalysis.riskLevel === 'high' ? 'High Risk' : sqlAnalysis.riskLevel === 'medium' ? 'Medium Risk' : 'Low Risk' }}
-          </el-tag>
-          <strong>{{ sqlAnalysis.databaseName }} / {{ sqlAnalysis.schema }}</strong>
-          <span>{{ sqlAnalysis.environment || at('environmentUnassigned') }}</span>
-        </div>
-        <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="SQL Type">{{ sqlAnalysis.sqlType }}</el-descriptions-item>
-          <el-descriptions-item :label="at('statementCount')">{{ sqlAnalysis.statementCount }}</el-descriptions-item>
-          <el-descriptions-item label="Access Mode">{{ sqlAnalysis.accessMode === 'readonly' ? 'Read-only' : 'Read / Write' }}</el-descriptions-item>
-        </el-descriptions>
-        <ul class="risk-reasons">
-          <li v-for="item in sqlAnalysis.reasons" :key="item">{{ item }}</li>
-        </ul>
-        <pre class="confirm-sql">{{ pendingSQL }}</pre>
-        <el-alert
-          v-if="sqlAnalysis.accessMode === 'readonly'"
-          :title="at('readOnlyRejectAlert')"
-          type="error"
-          :closable="false"
-          show-icon
-        />
-        <el-alert v-else :title="at('writeConfirmAlert')" type="warning" :closable="false" show-icon />
-        <el-form-item class="sql-acknowledgement" :label="at('enterConfirmationPhrase', { phrase: sqlConfirmationText() })">
-          <el-input v-model="sqlAcknowledgement" :placeholder="sqlConfirmationText()" autocomplete="off" />
-        </el-form-item>
-      </div>
-      <template #footer>
-        <el-button @click="sqlConfirmVisible = false">{{ at('cancel') }}</el-button>
-        <el-button
-          type="danger"
-          :loading="sqlRunning"
-          :disabled="sqlAnalysis?.accessMode === 'readonly' || sqlAcknowledgement !== sqlConfirmationText()"
-          @click="confirmSQLExecution"
-        >
-          {{ at('execConfirmPhrase') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="redisKeyDialogVisible" :title="redisKeyDialogMode === 'create' ? at('redisKeyCreateTitle') : at('redisKeyEditTitle')" width="720px">
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
-        :title="at('redisWriteAuditAlert')"
-        class="redis-key-alert"
-      />
-      <el-form label-width="112px" class="redis-key-form">
-        <el-form-item :label="at('keyName')" required>
-          <el-input v-model="redisKeyForm.key" :disabled="redisKeyDialogMode === 'edit'" :placeholder="at('keyNamePlaceholder')" />
-        </el-form-item>
-        <el-form-item label="Data Type">
-          <el-select v-model="redisKeyForm.type" :disabled="redisKeyDialogMode === 'edit'" style="width: 100%">
-            <el-option v-for="type in redisKeyTypes" :key="type" :label="type" :value="type" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Value" required>
-          <el-input v-model="redisKeyForm.value" type="textarea" :rows="8" :placeholder="redisKeyValuePlaceholder" />
-        </el-form-item>
-        <el-form-item :label="at('ttl')">
-          <el-input-number v-model="redisKeyForm.ttl" :min="-1" :precision="0" controls-position="right" />
-          <span class="redis-key-help">{{ at('ttlHelp') }}</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="redisKeyDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :loading="redisRunning" @click="submitRedisKey">{{ at('confirmSave') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="rowDialogVisible" :title="rowDialogMode === 'insert' ? at('addRowTitle') : at('editRowTitle')" width="720px">
-      <el-form label-width="140px">
-        <el-form-item v-for="col in selectedColumns" :key="col.name" :label="`${col.name} (${col.columnType})`">
-          <el-input v-model="rowForm[col.name]" type="textarea" :rows="2" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="rowDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" @click="submitRow">{{ at('save') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="rollbackDialogVisible" title="Rollback SQL" width="860px">
-      <el-alert
-        :title="rollbackConfidence === 'high' ? at('highConfidenceAlert') : at('limitedConfidenceAlert')"
-        :type="rollbackConfidence === 'high' ? 'success' : 'warning'"
-        :closable="false"
-        show-icon
-        class="rollback-alert"
-      />
-      <pre class="rollback-box">{{ rollbackSQL || at('noRollbackSQL') }}</pre>
-    </el-dialog>
-
-    <el-dialog v-model="importDialogVisible" :title="at('createImportTaskTitle')" width="680px">
-      <el-form label-width="120px">
-        <el-form-item label="Source Database">
-          <el-select v-model="importForm.sourceDatabaseId" filterable style="width: 100%">
-              <el-option
-                v-for="item in importDatabaseOptions"
-                :key="item.id"
-                :label="`${item.name} (${String(item.dbType || 'mysql').toUpperCase()} · ${item.host}:${item.port})`"
-                :value="item.id"
-              />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Source Database">
-          <el-select v-model="importForm.sourceSchema" filterable style="width: 100%">
-            <el-option v-for="item in sourceSchemas" :key="item.name" :label="item.name" :value="item.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Source Table">
-          <el-select v-model="importForm.sourceTable" filterable style="width: 100%">
-            <el-option v-for="item in sourceTables" :key="item.name" :label="item.name" :value="item.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Target Table">
-          <div>{{ selectedSchema || '-' }} / {{ selectedTable || '-' }}</div>
-        </el-form-item>
-        <el-form-item :label="at('autoCreateTable')">
-          <el-switch v-model="importForm.createIfMissing" />
-        </el-form-item>
-        <el-form-item :label="at('truncateTargetTable')">
-          <el-switch v-model="importForm.truncateTarget" />
-        </el-form-item>
-        <el-form-item label="Precheck">
-          <el-button :loading="importPrechecking" @click="runImportPrecheck">{{ at('runPrecheck') }}</el-button>
-        </el-form-item>
-        <div v-if="importPrecheck" class="import-precheck" :class="{ danger: !importPrecheck.ready }">
-          <div class="precheck-head">
-            <strong>{{ importPrecheck.ready ? at('precheckPassed') : at('precheckFailed') }}</strong>
-            <el-tag :type="importPrecheck.ready ? 'success' : 'danger'">{{ at('estimatedRowsTag', { count: importPrecheck.estimatedRows }) }}</el-tag>
-          </div>
-          <p>{{ at('columnMappingSummary', { mapped: importPrecheck.commonColumns?.length || 0, missing: importPrecheck.missingColumns?.length || 0 }) }}</p>
-          <p v-if="importPrecheck.missingColumns?.length">{{ at('missingColumns', { columns: importPrecheck.missingColumns.join(', ') }) }}</p>
-          <ul v-if="importPrecheck.warnings?.length">
-            <li v-for="item in importPrecheck.warnings" :key="item">{{ item }}</li>
-          </ul>
-        </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :disabled="!importPrecheck?.ready" @click="submitImportTask">{{ at('startImport') }}</el-button>
-      </template>
-    </el-dialog>
+    <DatabaseWorkbenchDialogs :page="page" />
+    <DatabaseRedisKeyDialog :page="page" />
   </div>
 </template>
 
@@ -1977,13 +558,6 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.schema-section {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .sidebar-section-title {
   display: flex;
   align-items: baseline;
@@ -2005,440 +579,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.schema-title-actions {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.schema-title-actions .el-button {
-  flex: none;
-  padding: 0;
-}
-
-.create-database-form {
-  margin-top: 18px;
-}
-
-.form-help {
-  margin: -8px 0 0 112px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.sidebar-top {
-  display: flex;
-  gap: 10px;
-}
-
-.schema-tree {
-  flex: 1;
-  overflow: auto;
-}
-
-.tree-node {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.tree-node small {
-  color: var(--el-text-color-secondary);
-}
-
-.schema-node-meta,
-.schema-pagination {
-  display: inline-flex;
-  align-items: center;
-}
-
-.schema-node-meta {
-  margin-left: auto;
-  gap: 6px;
-}
-
-.schema-pagination {
-  gap: 2px;
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.schema-pagination .el-button {
-  min-width: auto;
-  height: 20px;
-  padding: 0 2px;
-  font-size: 11px;
-}
-
 .dbms-main {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.panel-head h3 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.panel-head p {
-  margin: 6px 0 0;
-  color: var(--el-text-color-secondary);
-}
-
-.panel-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.snippet-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.database-capability-alert {
-  margin-top: 16px;
-}
-
-.redis-command-console {
-  margin-top: 16px;
-  padding: 16px;
-  border: 1px solid #253653;
-  border-radius: 10px;
-  background: #0f172a;
-}
-
-.redis-command-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-  margin-bottom: 12px;
-  color: #e2e8f0;
-}
-
-.redis-command-head span,
-.redis-command-hint {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.redis-command-snippets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.redis-command-input :deep(.el-textarea__inner) {
-  min-height: 132px;
-  border-color: #334155;
-  background: #111827;
-  color: #e2e8f0;
-  font-family: Consolas, 'Courier New', monospace;
-  line-height: 1.65;
-}
-
-.redis-command-input :deep(.el-textarea__inner:focus) {
-  box-shadow: 0 0 0 1px #3b82f6 inset;
-}
-
-.redis-command-hint {
-  margin-top: 10px;
-}
-
-.resource-readonly-alert {
-  margin-bottom: 12px;
-}
-
-.resource-indexes {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
-
-.snippet-hint {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  margin-left: auto;
-}
-
-.editor-shell {
-  position: relative;
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  min-height: 260px;
-  max-height: 380px;
-  overflow: hidden;
-  border: 1px solid var(--el-border-color);
-  border-radius: 14px;
-  background: #0f172a;
-}
-
-.line-gutter {
-  padding-top: 14px;
-  background: rgba(15, 23, 42, 0.92);
-  border-right: 1px solid rgba(148, 163, 184, 0.16);
-}
-
-.line-number {
-  height: 22px;
-  padding: 0 12px 0 0;
-  text-align: right;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 22px;
-  font-family: Consolas, 'Courier New', monospace;
-}
-
-.line-number.active {
-  color: #f8fafc;
-}
-
-.editor-layer {
-  position: relative;
-  overflow: hidden;
-}
-
-.sql-highlight,
-.sql-editor {
-  margin: 0;
-  padding: 14px 16px;
-  font-size: 14px;
-  line-height: 22px;
-  font-family: Consolas, 'Courier New', monospace;
-  white-space: pre;
-}
-
-.sql-highlight {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  color: #e2e8f0;
-  pointer-events: none;
-}
-
-:deep(.token-keyword) {
-  color: #60a5fa;
-  font-weight: 600;
-}
-
-:deep(.token-string) {
-  color: #fbbf24;
-}
-
-:deep(.token-number) {
-  color: #34d399;
-}
-
-:deep(.token-comment) {
-  color: #64748b;
-}
-
-.sql-editor {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  min-height: 260px;
-  height: 100%;
-  border: none;
-  resize: none;
-  outline: none;
-  background: transparent;
-  color: transparent;
-  caret-color: #f8fafc;
-  overflow: auto;
-}
-
-.autocomplete-panel {
-  position: absolute;
-  left: 76px;
-  top: calc(100% - 6px);
-  width: 280px;
-  max-height: 240px;
-  overflow: auto;
-  background: #111827;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.38);
-  z-index: 30;
-}
-
-.autocomplete-item {
-  width: 100%;
-  display: block;
-  border: none;
-  background: transparent;
-  text-align: left;
-  padding: 10px 12px;
-  color: #e5e7eb;
-  cursor: pointer;
-}
-
-.autocomplete-item:hover,
-.autocomplete-item.active {
-  background: rgba(59, 130, 246, 0.18);
-}
-
-.exec-meta {
-  margin-top: 12px;
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  color: var(--el-text-color-secondary);
-}
-
-.filter-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.cell-button {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-  min-height: 22px;
-}
-
-.cell-button:hover {
-  color: var(--el-color-primary);
-}
-
-.cell-button.disabled {
-  color: var(--el-text-color-secondary);
-  cursor: not-allowed;
-}
-
-.sql-risk-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sql-risk-summary,
-.precheck-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.sql-risk-summary span {
-  color: var(--el-text-color-secondary);
-}
-
-.risk-reasons {
-  margin: 0;
-  padding-left: 20px;
-  color: #a16207;
-}
-
-.confirm-sql {
-  max-height: 260px;
-  margin: 0;
-  padding: 14px;
-  overflow: auto;
-  border-radius: 8px;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-family: Consolas, 'Courier New', monospace;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.pager {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.rollback-box {
-  margin: 0;
-  min-height: 240px;
-  max-height: 520px;
-  overflow: auto;
-  padding: 16px;
-  border-radius: 12px;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 13px;
-  line-height: 1.7;
-  font-family: Consolas, 'Courier New', monospace;
-  white-space: pre-wrap;
-}
-
-.rollback-alert {
-  margin-bottom: 12px;
-}
-
-.sql-acknowledgement {
-  margin: 16px 0 0;
-}
-
-.redis-key-alert {
-  margin-bottom: 18px;
-}
-
-.redis-key-form .el-form-item:last-child {
-  margin-bottom: 0;
-}
-
-.redis-key-help {
-  margin-left: 12px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.import-precheck {
-  margin: 0 0 12px 120px;
-  padding: 14px;
-  border: 1px solid #b7e4ca;
-  border-radius: 8px;
-  background: #f0f9f4;
-  color: #315947;
-}
-
-.import-precheck.danger {
-  border-color: #f2b8b5;
-  background: #fff5f5;
-  color: #8f3232;
-}
-
-.import-precheck p {
-  margin: 8px 0 0;
-}
-
-.import-precheck ul {
-  margin: 8px 0 0;
-  padding-left: 20px;
 }
 
 @media (max-width: 1080px) {
