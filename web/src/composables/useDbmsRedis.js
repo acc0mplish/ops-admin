@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { executeRedisCommand } from '../api/dbms'
+import { analyzeRedisCommand, executeRedisCommand } from '../api/dbms'
 import { at } from '../utils/asset-i18n'
 import { confirmRiskOperation } from './useRiskConfirm'
 import { isProductionEnvironment } from './useDbmsSqlExecution'

@@ -230,12 +230,6 @@ export function useK8sFilters({
     Object.keys(workloadImageMap).forEach((key) => delete workloadImageMap[key])
   }
 
-  function resetPodFilters() {
-    podWorkloadFilter.value = '__all__'
-    podScopedNames.value = []
-    podPage.value = 1
-  }
-
   function handleNamespaceFilterChange(value) {
     namespaceFilter.value = value || '__all__'
     podWorkloadFilter.value = '__all__'
@@ -280,6 +274,7 @@ export function useK8sFilters({
     podWorkloadFilter.value = hasResolvedWorkload ? workloadFilter : '__all__'
     podScopedNames.value = []
     podPage.value = 1
+    resourceKeyword.value = ''
     onTabChange('pods')
     try {
       const detail = await queryK8sWorkloadDetail(cluster.value.id, row.namespace, row.type, row.name)
@@ -412,7 +407,6 @@ export function useK8sFilters({
     restoreNamespaceFilter,
     resetNamespaceFilter,
     clearWorkloadImageCache,
-    resetPodFilters,
     handleNamespaceFilterChange,
     handlePodWorkloadFilterChange,
     handleResourceKeywordChange,

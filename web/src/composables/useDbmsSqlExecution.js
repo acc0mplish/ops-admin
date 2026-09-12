@@ -10,7 +10,7 @@ import { uiT } from '../utils/english-hardcoding-i18n'
 // 256-264 filteredResultRows · 266-270 resetExecMeta · 363-374 exportResultCSV
 // · 753-760 production phrase · 762-825 analyze/execute/confirm · 1022-1026
 // riskTagType. Free variables injected: databaseId·connection·selection refs·
-// sqlText·selectedSQLText (useDbmsSqlEditor)·load fns (view/transfer).
+// selectedSQLText (useDbmsSqlEditor)·load fns (view/transfer).
 // 원본 DatabaseWorkbench.vue:753-756 — 프로덕션 판정 순수 함수. 실행·Redis·
 // 행 편집 도메인이 공유하므로 모듈 export로 단일 원천화했다.
 export function isProductionEnvironment(value) {
@@ -23,7 +23,6 @@ export function useDbmsSqlExecution({
   connection,
   selectedSchema,
   selectedTable,
-  sqlText,
   selectedSQLText,
   supportsSQL,
   activeTab,
