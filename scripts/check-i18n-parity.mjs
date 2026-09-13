@@ -540,9 +540,27 @@ function syncAllowlist() {
     `# 생성: ${new Date().toISOString()} / 총 ${rows.length}건`,
     '',
   ]
-  const body = rows.map((r) => `${r.file}:${r.line}: ${classifyResidual(r.content)}`)
+  // 기존 등재의 수제 사유 보존(I5-I 리뷰 M-1): 동일 file:line 재스캔이면
+  // 자동 분류로 덮지 않고 기존 사유를 유지한다. 좌표가 이동한 행만 자동 분류.
+  const preserved = new Map()
+  if (existsSync(ALLOWLIST_PATH)) {
+    for (const line of readFileSync(ALLOWLIST_PATH, 'utf8').split('\n')) {
+      const m = line.match(/^(web\/src\/[^:]+):(\d+): (.+)$/)
+      if (m) preserved.set(`${m[1]}:${m[2]}`, m[3])
+    }
+  }
+  let keptCount = 0
+  const body = rows.map((r) => {
+    const key = `${r.file}:${r.line}`
+    const existing = preserved.get(key)
+    if (existing) {
+      keptCount += 1
+      return `${key}: ${existing}`
+    }
+    return `${key}: ${classifyResidual(r.content)}`
+  })
   writeFileSync(ALLOWLIST_PATH, [...header, ...body, ''].join('\n'))
-  console.log(`allowlist 재생성: ${ALLOWLIST_PATH} (${rows.length}건)`)
+  console.log(`allowlist 재생성: ${ALLOWLIST_PATH} (${rows.length}건 — 기존 사유 보존 ${keptCount}건)`)
 }
 
 function checkAllowlist() {
