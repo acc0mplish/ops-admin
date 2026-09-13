@@ -7,7 +7,6 @@
 
 web/src/views/assets/Application.vue:17: 송신값 — serviceType form 기본값 '게임 서비스'(§3-1-3 API payload, byte 불변)
 web/src/views/assets/Application.vue:27: 송신값 — serviceType form 초기화값 '게임 서비스'(§3-1-3 API payload, byte 불변)
-web/src/views/assets/DatabaseWorkbench.vue:755: 비교 상수 — backend environment 값 '운영' 매칭 includes() 피연산자(§3-0·§3-1-2 byte 불변)
 web/src/views/assets/Host.vue:243: 송신값 — 복제 Host의 hostName form value에 붙는 '-사본' 접미(§3-1-3 API payload, byte 불변)
 web/src/views/ops/OpsCommandExecute.vue:54: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
 web/src/views/ops/OpsFileDispatch.vue:71: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
