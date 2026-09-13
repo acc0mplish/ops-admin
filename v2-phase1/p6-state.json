@@ -198,7 +198,7 @@
     "next": "I10 종결. 후속 대장: CI16 dev 체인 register-k8s 멱등 재실행(운영 시점·자격 보강)·I5(hardcap 14건)·register-k8s delete 미제공·L2 문서 접촉(사멸 심볼 주석·sensitive 행번호 shift)·i18n 중복 3키 dedupe·K8s.vue 2803행 분할",
     "done": "I10 완결(2026-09-12·PR #82~#88) — §16.1 커넥션-스코프 create(plan|execute)+def 빈 ResourceKinds+엔진 conn: 합성 uid+step0008 varchar255+프론트 4콜사이트 전환+선존 결함 5건 수복(커넥션 해상 폴백·operations 바인딩·폴 래퍼·t 임포트·stack.sh 드리프트)+v1 create 원자 삭제. §19.1 step4 13/13·D-15 상환·골든 441/281·char 114/19. 계획 r1→r4(5렌즈 C1H11M17L18+uid 길이 HIGH+결함 2·3). 최종 전수 -race 30패키지 ok"
   },
-  "next": "Phase 6 블록 2 + I10 + I5 + unregister-k8s 종결(#75~#99). 잔여 대장: compare.go 분할 승인(P 산물)·경고대 3건·CI16 dev 체인 재실행(운영)·BuildMenuTree·사멸 셀렉터 sweep·i18n 중복 3키",
+  "next": "Phase6 블록2+I10+I5+unregister-k8s+compare 분할 종결(#75~#100). 백엔드+웹 >800 전소멸. 잔여: 경고대 3·CI16 운영·sweep 소항",
   "i5": {
     "phase": "done",
     "round": {
@@ -208,7 +208,7 @@
     "spawns": 27,
     "task": "I5·I6 하드캡 분할 — >800 파일 26건 실측(backend 17·web 9·계~40k줄) behavior-neutral 분할 ≤650. §3.2 row 4·7·22·OTEL 후속·M2 재판정 조건 승계",
     "bundle": "v2-phase1/i5-recon.md",
-    "next": "I5 종결. 잔여 대장: compare.go 분할(별도 승인·P 산물)·경고대 3건·CI16 dev 체인 register-k8s 멱등 재실행(운영)·register-k8s delete·BuildMenuTree 등 데드코드 sweep·K8s.vue 등 데드 셀렉터",
+    "next": "잔여: 경고대 3건(OpsScriptLibrary 698·AppBuildTaskList 683·model/ops.go 658)·CI16 dev 체인 재실행(운영)·BuildMenuTree·사멸 셀렉터·gofmt 이슈(compare_gate 등 4)·i18n 중복 3키",
     "plan": "v2-phase1/i5-plan.md r2 (421행 — 5렌즈 발견 전량 처분·산출 방식 명문·73파일·CI-B7 전수·CI-W6 스모크)",
     "adversary_r1": "종결 — 5렌즈 전 조건부 승인. 교차확인: §3 산술 ≤650 자체위반(기술C1+단순H1)·CS-1/2↔§3.2 충돌(3렌즈)·pathspec internal/ vacuous(2렌즈)·Phase 라벨(3렌즈)",
     "phase_a": "done — PR #89 병합(96eee53)·태그 i5-a. 리뷰 승인 C/H/M 0·claims 9건 verified·LOW-1 exec bit 메인 수복. 계획 errata 2건 PR 등재(CI-B2 31→30·A행 CM 배선)",
@@ -235,5 +235,18 @@
     "plan": "del-plan 확정 — 최상위 unregister-k8s·--name+--confirm·미존재 exit0 멱등·tx 역순 삭제(가드→binding→context→secret 소각→connection)·infra_resource 톰스톤·이력 보존·3파일",
     "impl": "커밋 1602c08 — 3파일(190/293/+5)·claims 9 전통과·TDD·차이 3건(키 게이트·RowsAffected 결정론·existed 앵커). 메인 -race 재실행 ok",
     "done": "완결(2026-09-13·PR #99·main 86d013b) — 최상위 unregister-k8s·tx 역순 삭제·비종단 가드(conn:+리소스 스코프)·톰스톤·소각·이력 보존. round.review 1(가드 확장). claims 9+2 전 verified"
+  },
+  "cmp_split": {
+    "phase": "done",
+    "round": {
+      "adversary": 0,
+      "review": 0
+    },
+    "spawns": 2,
+    "task": "compare.go 1,243→3분할(P 산물 §8 D-I5-1 예외 — 사용자 승인 해제) — 바이트 보존·CI-B7 게이트·레시피 승계",
+    "bundle": "v2-phase1/i5-plan.md §8",
+    "next": null,
+    "impl": "3커밋(01b39ae·cb1ae57·078e80d) — 413/546/308·CI-B7 58/66/1113 identical·>800 백엔드 완전 소멸. 메인 inventory -race·CI-B7 재실행 ok",
+    "done": "완결(2026-09-13·PR #100·dce54a2) — compare.go 1,243→413+546+308·CI-B7 identical·리뷰 승인 C/H/M 0. §8 D-I5-1 예외 해제(사용자 승인 2026-09-13). 백엔드 비테스트 >800 0건 — 하드캡 전소멸"
   }
 }
