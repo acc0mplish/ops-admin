@@ -3,48 +3,19 @@
 # 형식: <repo-relative file>:<line>: <사유>
 # 유지보수 계약: 각 레인 페이즈가 자기 파일의 해소 라인을 삭제하고, 페이즈 종료 시
 #   `node scripts/check-i18n-parity.mjs --allowlist-check` 로 등재 수 == 스캔 수 일치를 검증한다.
-# 생성: 2026-09-05T06:34:45.175Z / 총 2985건
+# 생성: 2026-09-13T04:42:10.052Z / 총 51건
 
-web/src/views/assets/Application.vue:17: 송신값 — serviceType form 기본값 '게임 서비스'(§3-1-3 API payload, byte 불변)
-web/src/views/assets/Application.vue:27: 송신값 — serviceType form 초기화값 '게임 서비스'(§3-1-3 API payload, byte 불변)
-web/src/views/assets/Host.vue:243: 송신값 — 복제 Host의 hostName form value에 붙는 '-사본' 접미(§3-1-3 API payload, byte 불변)
-web/src/views/ops/OpsCommandExecute.vue:54: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
-web/src/views/ops/OpsFileDispatch.vue:71: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
-web/src/views/ops/OpsScriptExecute.vue:82: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
-web/src/layouts/MainLayout.vue:218: 비교·송신값 후보(§3-1 검증 필요)
-web/src/views/monitor/MonitorDashboard.vue:87: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:88: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:89: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:104: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:105: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:114: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:115: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:116: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:117: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:118: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:119: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:120: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:121: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:122: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:125: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:126: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:128: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:129: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:130: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:218: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:235: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
-web/src/views/monitor/MonitorDashboard.vue:237: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
 web/src/views/applications/AppProjectList.vue:29: value·데이터값(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:51: value·데이터값(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:88: value·데이터값(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:151: value 속성(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:152: value 속성(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:153: value 속성(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
-web/src/views/monitor/MonitorSilenceRule.vue:33: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
-web/src/views/monitor/MonitorSilenceRule.vue:38: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
-web/src/views/monitor/MonitorSilenceRule.vue:39: §3-1 데이터 샘플 — matchersJson payload 예시값, 송신값 byte 유지
-web/src/views/monitor/MonitorSilenceRule.vue:42: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
-web/src/views/monitor/MonitorSilenceRule.vue:43: §3-1 데이터 샘플 — matchersJson payload 예시값, 송신값 byte 유지
+web/src/views/assets/Application.vue:17: 송신값 — serviceType form 기본값 '게임 서비스'(§3-1-3 API payload, byte 불변)
+web/src/views/assets/Application.vue:27: 송신값 — serviceType form 초기화값 '게임 서비스'(§3-1-3 API payload, byte 불변)
+web/src/views/assets/Host.vue:243: 송신값 — 복제 Host의 hostName form value에 붙는 '-사본' 접미(§3-1-3 API payload, byte 불변)
+web/src/views/monitor/MonitorAggregationRule.vue:29: §3 정규식 제외 — 한국어 Rule명 매칭 regex(^수집 대상.*), 번역 금지
+web/src/views/monitor/MonitorAggregationRule.vue:32: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:273: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:274: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:276: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
@@ -53,5 +24,35 @@ web/src/views/monitor/MonitorAlertTemplate.vue:279: §3 코드 샘플 제외 —
 web/src/views/monitor/MonitorAlertTemplate.vue:282: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:286: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:287: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지
-web/src/views/monitor/MonitorAggregationRule.vue:29: §3 정규식 제외 — 한국어 Rule명 매칭 regex(^수집 대상.*), 번역 금지
-web/src/views/monitor/MonitorAggregationRule.vue:32: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
+web/src/views/monitor/MonitorSilenceRule.vue:33: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
+web/src/views/monitor/MonitorSilenceRule.vue:38: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
+web/src/views/monitor/MonitorSilenceRule.vue:39: §3-1 데이터 샘플 — matchersJson payload 예시값, 송신값 byte 유지
+web/src/views/monitor/MonitorSilenceRule.vue:42: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
+web/src/views/monitor/MonitorSilenceRule.vue:43: §3-1 데이터 샘플 — matchersJson payload 예시값, 송신값 byte 유지
+web/src/views/ops/OpsCommandExecute.vue:54: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
+web/src/views/ops/OpsFileDispatch.vue:71: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
+web/src/views/ops/OpsScriptExecute.vue:82: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님
+web/src/composables/useDbmsSqlExecution.js:18: 백엔드 Environment 한국어값 비교 상수(§3-1-2) — 원문 byte 불변, 표시 아님(H 페이즈 useDbms* 이동분)
+web/src/composables/useLayoutMenus.js:48: 비교·송신값 후보(§3-1 검증 필요)
+web/src/composables/useMonitorDashboardPanels.js:41: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:59: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:61: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:335: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:336: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:337: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:352: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:353: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:362: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:363: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:364: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:365: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:366: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:367: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:368: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:369: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:370: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:373: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:374: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:376: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:377: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
+web/src/composables/useMonitorDashboardPanels.js:378: §3-0 비교·데이터·송신 토큰 — seed unit 값 byte 불변, 표시만 렌더 번역
