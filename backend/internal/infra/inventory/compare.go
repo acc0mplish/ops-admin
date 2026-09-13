@@ -1,6 +1,7 @@
 // Compare engine (plan §3.5 — §15 verbatim): pairing (§15.1), classification
-// (§15.3), verdict (§15.4), the marshal whitelist (R-3), and the 3-day gate
-// checker (§15.4 r2). Pure functions over captured data — no DB, no adapters.
+// (§15.3), verdict (§15.4). Pure functions over captured data — no DB, no
+// adapters. Entries/hash helpers: compare_entries.go. Marshal whitelist (R-3)
+// and the 3-day gate checker (§15.4 r2): compare_gate.go.
 package inventory
 
 import (
