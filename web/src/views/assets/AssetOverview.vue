@@ -1,10 +1,16 @@
 <script setup>
 import { uiT } from '../../utils/english-hardcoding-i18n'
 import { at } from '../../utils/asset-i18n'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Connection, FolderOpened, Key, Monitor, Coin, Warning, Grid } from '@element-plus/icons-vue'
+import { Connection, FolderOpened, Key, Monitor, Coin, Grid } from '@element-plus/icons-vue'
 import { queryAssetOverview } from '../../api/asset'
+// I5-J (i5-plan §3.8·CW-4) — 849행 분할 잔류본. 분석 패널(건강·그룹·분포·클러스터)은
+// asset-overview/AssetOverviewPanels.vue, 최근 항목(호스트·데이터베이스 테이블)은
+// AssetOverviewDetail.vue로 이동(원본 좌표는 커밋 메시지·자식 파일 헤더). 자식은
+// :page 주입(§5 #11 승계).
+import AssetOverviewPanels from './asset-overview/AssetOverviewPanels.vue'
+import AssetOverviewDetail from './asset-overview/AssetOverviewDetail.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -72,118 +78,11 @@ const summaryCards = computed(() => {
   ]
 })
 
-const healthCards = computed(() => {
-  const health = overview.value.health || {}
-  return [
-    {
-      title: at('healthOfflineTitle'),
-      value: health.offlineHosts || 0,
-      tone: health.offlineHosts ? 'danger' : 'normal',
-      desc: at('healthOfflineDesc')
-    },
-    {
-      title: at('healthAuthTitle'),
-      value: health.authFailedHosts || 0,
-      tone: health.authFailedHosts ? 'warning' : 'normal',
-      desc: at('healthAuthDesc')
-    },
-    {
-      title: at('healthDbTitle'),
-      value: health.abnormalDatabases || 0,
-      tone: health.abnormalDatabases ? 'danger' : 'normal',
-      desc: at('healthDbDesc')
-    },
-    {
-      title: at('healthClusterTitle'),
-      value: health.abnormalClusters || 0,
-      tone: health.abnormalClusters ? 'warning' : 'normal',
-      desc: at('healthClusterDesc')
-    }
-  ]
+// I5-J 자식 주입 번들 — reactive 래핑으로 ref가 언랩되어 자식 템플릿의
+// page.x 재배선이 동작한다(§5 #11).
+const page = reactive({
+  overview
 })
-
-const providerDistribution = computed(() => overview.value.distributions?.providers || [])
-const environmentDistribution = computed(() => overview.value.distributions?.environments || [])
-const hasEnvironmentDistribution = computed(() => environmentDistribution.value.length > 0)
-
-function ratio(count, list) {
-  const total = (list || []).reduce((sum, item) => sum + (item.count || 0), 0)
-  if (!total) return 0
-  return Math.max(10, Math.round((count / total) * 100))
-}
-
-function hostStatusType(value) {
-  if (value === 1) return 'success'
-  if (value === 2) return 'danger'
-  return 'info'
-}
-
-function hostStatusText(value) {
-  if (value === 1) return at('online')
-  if (value === 2) return at('offline')
-  return at('unknownStatus')
-}
-
-function authStatusText(value) {
-  if (value === 1) return at('authSuccess')
-  if (value === 2) return at('authFailed')
-  return at('verificationPending')
-}
-
-function databaseStatusType(value) {
-  if (value === 1) return 'success'
-  if (value === 2) return 'danger'
-  return 'info'
-}
-
-function databaseStatusText(value) {
-  if (value === 1) return at('dbHealthy')
-  if (value === 2) return at('dbUnhealthy')
-  return at('notInspected')
-}
-
-function clusterStatusType(value) {
-  if (value === 'running') return 'success'
-  if (value === 'warning') return 'warning'
-  if (value === 'error') return 'danger'
-  return 'info'
-}
-
-function clusterStatusText(value) {
-  if (value === 'running') return at('statusRunning')
-  if (value === 'warning') return at('attentionStatus')
-  if (value === 'error') return at('unusableStatus')
-  return at('unknownStatus')
-}
-
-function formatTime(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-function openGroupHosts(group) {
-  router.push({
-    path: '/assets/server/hosts',
-    query: {
-      groupId: group.id,
-      groupName: group.name
-    }
-  })
-}
-
-function openDatabase(item) {
-  router.push(`/assets/databases/${item.id}/detail`)
-}
-
-function openCluster(item) {
-  router.push(`/containers/k8s/clusters/${item.id}/detail`)
-}
-
-function openHost(item) {
-  router.push(`/assets/server/hosts/${item.id}/detail`)
-}
 
 async function loadOverview() {
   loading.value = true
@@ -246,219 +145,9 @@ onMounted(loadOverview)
       </article>
     </section>
 
-    <section class="overview-main">
-      <div class="overview-column">
-        <article class="page-card panel-card">
-          <div class="panel-header">
-            <div>
-              <h3>{{ at('healthAlertTitle') }}</h3>
-              <p>{{ at('healthAlertDesc') }}</p>
-            </div>
-            <div class="panel-status-chip">
-              <Warning />
-              <span>{{ at('assetHealthChip') }}</span>
-            </div>
-          </div>
-          <div class="health-grid">
-            <div v-for="item in healthCards" :key="item.title" class="health-item" :class="item.tone">
-              <span>{{ item.title }}</span>
-              <strong>{{ item.value }}</strong>
-              <small>{{ item.desc }}</small>
-            </div>
-          </div>
-        </article>
+    <AssetOverviewPanels :page="page" />
 
-        <article class="page-card panel-card">
-          <div class="panel-header">
-            <div>
-              <h3>{{ at('groupDistTitle') }}</h3>
-              <p>{{ at('groupDistDesc') }}</p>
-            </div>
-            <el-button link type="primary" @click="router.push('/assets/server/groups')">{{ at('viewAll') }}</el-button>
-          </div>
-          <div v-if="overview.topGroups?.length" class="group-list">
-            <button
-              v-for="item in overview.topGroups"
-              :key="item.id"
-              class="group-row"
-              @click="openGroupHosts(item)"
-            >
-              <div>
-                <strong>{{ item.name }}</strong>
-                <small>{{ item.code || at('noCode') }}</small>
-              </div>
-              <div class="group-meta">
-                <span>{{ at('hostCountSuffix', { count: item.hostCount }) }}</span>
-                <el-tag :type="item.status === 1 ? 'success' : 'info'" effect="light">
-                  {{ item.status === 1 ? at('groupNormal') : at('groupDisabled') }}
-                </el-tag>
-              </div>
-            </button>
-          </div>
-          <el-empty v-else :description="at('noGroupData')" />
-        </article>
-      </div>
-
-      <div class="overview-column">
-        <article class="page-card panel-card">
-          <div class="panel-header">
-            <div>
-              <h3>{{ at('distTitle') }}</h3>
-              <p>{{ at('distDesc') }}</p>
-            </div>
-          </div>
-          <div class="distribution-grid">
-            <section class="distribution-card">
-              <header>
-                <strong>{{ at('hostSourceTitle') }}</strong>
-              </header>
-              <div v-if="providerDistribution.length" class="distribution-list">
-                <div v-for="item in providerDistribution" :key="item.name" class="distribution-row">
-                  <div class="distribution-label">
-                    <span>{{ item.name }}</span>
-                    <strong>{{ item.count }}</strong>
-                  </div>
-                  <div class="distribution-track">
-                    <div class="distribution-fill" :style="{ width: `${ratio(item.count, providerDistribution)}%` }" />
-                  </div>
-                </div>
-              </div>
-              <el-empty v-else :description="at('noProviderData')" :image-size="72" />
-            </section>
-
-            <section class="distribution-card">
-              <header>
-                <strong>{{ at('envDistTitle') }}</strong>
-              </header>
-              <div v-if="hasEnvironmentDistribution" class="distribution-list">
-                <div v-for="item in environmentDistribution" :key="item.name" class="distribution-row">
-                  <div class="distribution-label">
-                    <span>{{ item.name }}</span>
-                    <strong>{{ item.count }}</strong>
-                  </div>
-                  <div class="distribution-track">
-                    <div class="distribution-fill secondary" :style="{ width: `${ratio(item.count, environmentDistribution)}%` }" />
-                  </div>
-                </div>
-              </div>
-              <div v-else class="distribution-placeholder">
-                {{ at('noEnvDistText') }}
-              </div>
-            </section>
-          </div>
-        </article>
-
-        <article class="page-card panel-card">
-          <div class="panel-header">
-            <div>
-              <h3>{{ at('clusterStatusTitle') }}</h3>
-              <p>{{ at('clusterStatusDesc') }}</p>
-            </div>
-            <el-button link type="primary" @click="router.push('/containers/k8s/clusters')">{{ at('clusterManageLink') }}</el-button>
-          </div>
-
-          <el-table :data="overview.recentClusters || []" size="small" class="compact-table">
-            <el-table-column label="Cluster" min-width="180">
-              <template #default="{ row }">
-                <button class="link-button" @click="openCluster(row)">{{ row.name }}</button>
-                <small class="sub-line">{{ row.apiServer || '-' }}</small>
-              </template>
-            </el-table-column>
-            <el-table-column :label="at('versionColumn')" width="110">
-              <template #default="{ row }">{{ row.version || '-' }}</template>
-            </el-table-column>
-            <el-table-column :label="at('nodeCountColumn')" width="90">
-              <template #default="{ row }">{{ row.nodeCount || 0 }}</template>
-            </el-table-column>
-            <el-table-column :label="at('status')" width="110">
-              <template #default="{ row }">
-                <el-tag :type="clusterStatusType(row.status)" effect="light">
-                  {{ clusterStatusText(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </article>
-      </div>
-    </section>
-
-    <section class="detail-grid">
-      <article class="page-card detail-card">
-        <div class="panel-header">
-          <div>
-            <h3>{{ at('recentHostsTitle') }}</h3>
-            <p>{{ at('recentHostsDesc') }}</p>
-          </div>
-          <el-button link type="primary" @click="router.push('/assets/server/hosts')">{{ at('hostManageLink') }}</el-button>
-        </div>
-
-        <el-table :data="overview.recentHosts || []" size="small" class="compact-table">
-          <el-table-column label="Host" min-width="180">
-            <template #default="{ row }">
-              <div class="entity-cell">
-                <button class="link-button" @click="openHost(row)">{{ row.hostName }}</button>
-                <small>{{ row.sshIp || row.privateIp || row.publicIp || '-' }}</small>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="Host Group" min-width="160">
-            <template #default="{ row }">
-              {{ row.groupNames?.length ? row.groupNames.join(' / ') : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="at('status')" width="110">
-            <template #default="{ row }">
-              <el-tag :type="hostStatusType(row.aliveStatus)" effect="light">
-                {{ hostStatusText(row.aliveStatus) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="at('authColumn')" width="110">
-            <template #default="{ row }">
-              {{ authStatusText(row.authStatus) }}
-            </template>
-          </el-table-column>
-          <el-table-column :label="at('updatedAtColumn')" min-width="140">
-            <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
-          </el-table-column>
-        </el-table>
-      </article>
-
-      <article class="page-card detail-card">
-        <div class="panel-header">
-          <div>
-            <h3>{{ at('recentDbsTitle') }}</h3>
-            <p>{{ at('recentDbsDesc') }}</p>
-          </div>
-          <el-button link type="primary" @click="router.push('/assets/databases')">{{ at('dbManageLink') }}</el-button>
-        </div>
-
-        <el-table :data="overview.recentDatabases || []" size="small" class="compact-table">
-          <el-table-column label="Database" min-width="180">
-            <template #default="{ row }">
-              <button class="link-button" @click="openDatabase(row)">{{ row.name }}</button>
-              <small class="sub-line">{{ row.dbName || '-' }}</small>
-            </template>
-          </el-table-column>
-          <el-table-column :label="at('addressColumn')" min-width="180">
-            <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
-          </el-table-column>
-          <el-table-column :label="at('typeColumn')" width="90">
-            <template #default="{ row }">{{ (row.dbType || '').toUpperCase() || '-' }}</template>
-          </el-table-column>
-          <el-table-column :label="at('connStatusColumn')" width="120">
-            <template #default="{ row }">
-              <el-tag :type="databaseStatusType(row.connectStatus)" effect="light">
-                {{ databaseStatusText(row.connectStatus) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="at('updatedAtColumn')" min-width="140">
-            <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
-          </el-table-column>
-        </el-table>
-      </article>
-    </section>
+    <AssetOverviewDetail :page="page" />
   </div>
 </template>
 
@@ -583,245 +272,16 @@ onMounted(loadOverview)
   line-height: 1.6;
 }
 
-.overview-main,
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 18px;
-}
-
-.overview-column {
-  display: grid;
-  gap: 18px;
-}
-
-.page-card,
-.panel-card,
-.detail-card {
-  padding: 20px;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid #e7edf8;
-  box-shadow: 0 2px 5px rgba(20, 34, 58, 0.035);
-}
-
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 20px;
-  color: #0f172a;
-}
-
-.panel-header p {
-  margin: 8px 0 0;
-  color: #64748b;
-  line-height: 1.7;
-}
-
-.panel-status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #fff5f5;
-  color: #dc2626;
-  flex: 0 0 auto;
-}
-
-.panel-status-chip :deep(svg) {
-  width: 14px;
-  height: 14px;
-}
-
-.health-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.health-item {
-  padding: 14px 16px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e7edf8;
-}
-
-.health-item.warning {
-  background: #fffaf0;
-  border-color: #fde7ba;
-}
-
-.health-item.danger {
-  background: #fff5f5;
-  border-color: #fecaca;
-}
-
-.health-item span,
-.health-item small {
-  display: block;
-}
-
-.health-item span {
-  color: #64748b;
-}
-
-.health-item strong {
-  display: block;
-  margin: 12px 0 8px;
-  font-size: 28px;
-  color: #0f172a;
-}
-
-.health-item small {
-  color: #94a3b8;
-  line-height: 1.6;
-}
-
-.group-list {
-  display: grid;
-  gap: 12px;
-}
-
-.group-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid #e7edf8;
-  border-radius: 8px;
-  background: #fafbfd;
-  text-align: left;
-  cursor: pointer;
-}
-
-.group-row:hover {
-  border-color: #ccd8fb;
-  background: #f7f9ff;
-}
-
-.group-row strong,
-.group-row small {
-  display: block;
-}
-
-.group-row small {
-  margin-top: 6px;
-  color: #94a3b8;
-}
-
-.group-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: #475569;
-}
-
-.distribution-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.distribution-card {
-  padding: 18px;
-  border-radius: 8px;
-  background: #fafbfd;
-  border: 1px solid #ecf1fb;
-}
-
-.distribution-card header {
-  margin-bottom: 14px;
-}
-
-.distribution-list {
-  display: grid;
-  gap: 12px;
-}
-
-.distribution-row {
-  display: grid;
-  gap: 8px;
-}
-
-.distribution-label {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: #475569;
-}
-
-.distribution-track {
-  height: 8px;
-  border-radius: 999px;
-  background: #e8eefb;
-  overflow: hidden;
-}
-
-.distribution-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #4f7dff 0%, #6ea8ff 100%);
-}
-
-.distribution-fill.secondary {
-  background: linear-gradient(90deg, #6d57d9 0%, #8d7dff 100%);
-}
-
-.distribution-placeholder {
-  padding: 18px 0;
-  color: #94a3b8;
-  line-height: 1.8;
-}
-
-.compact-table :deep(.el-table__cell) {
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-
-.entity-cell strong,
-.entity-cell small {
-  display: block;
-}
-
-.entity-cell small,
-.sub-line {
-  color: #94a3b8;
-}
-
-.link-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #3661df;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.link-button:hover {
-  color: #274fc8;
-}
-
+/* 원본 :814-818 미디어 1500 — .summary-grid 소속만 부모 잔류.
+   .overview-main/.detail-grid 규칙은 자식 2종으로 이동 */
 @media (max-width: 1500px) {
   .summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .overview-main,
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
+/* 원본 :826-834 미디어 1100 — hero 소속 셀렉터만 부모 잔류.
+   .health-grid은 AssetOverviewPanels 자식 */
 @media (max-width: 1100px) {
   .hero-card {
     flex-direction: column;
@@ -832,16 +292,12 @@ onMounted(loadOverview)
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .health-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
+/* 원본 :841-848 미디어 820 분할 — .summary-grid/.hero-side 소속만 부모 잔류.
+   .distribution-grid/.health-grid은 AssetOverviewPanels 자식 */
 @media (max-width: 820px) {
   .summary-grid,
-  .distribution-grid,
-  .health-grid,
   .hero-side {
     grid-template-columns: 1fr;
   }
