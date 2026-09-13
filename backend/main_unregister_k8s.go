@@ -33,8 +33,9 @@ import (
 
 // k8sTaskTerminalStatuses is the provider_task.Status terminal set — the
 // CASE list of the step0003 active_flag DDL (model/task.go:46) verbatim. A
-// connection with a task outside this set is still in play and must not be
-// unregistered.
+// task outside this set is still in play and must not be unregistered — on
+// either path that can reference this connection: the conn: synthetic
+// resource_uid and the resource-scope path through its infra_resource rows.
 var k8sTaskTerminalStatuses = []string{"succeeded", "failed", "timed_out", "cancelled"}
 
 // k8sManagedStateTombstoned — the ManagedState vocabulary entry for a
@@ -134,23 +135,29 @@ func unregisterK8sInDB(db *gorm.DB, name string) (k8sUnregisterReport, error) {
 	}
 
 	err = db.Transaction(func(tx *gorm.DB) error {
-		// ① 가드 — engine_resolve.go가 conn:<connectionUID>:… 합성 resource_uid를
-		// 예약하므로, 커넥션 스코프 태스크는 그 접두로 잡는다. 비종단 행이 하나라도
-		// 있으면 삭제를 거부한다(종단 집합은 model/task.go:46 DDL CASE와 동치).
+		// context 행은 가드의 리소스 스코프 경로와 톰스톤 키(context_id)에
+		// 모두 쓰이므로 삭제 전에 읽는다.
+		var pctx model.ProviderContext
+		if err := tx.Where("uid = ?", report.ContextUID).First(&pctx).Error; err != nil {
+			return fmt.Errorf("load provider_context: %w", err)
+		}
+
+		// ① 가드 — 비종단 판정은 두 경로다. engine_resolve.go가 예약한
+		// conn:<connectionUID>:… 합성 resource_uid(LIKE), 그리고 리소스 스코프
+		// 태스크(resource_uid = 이 context의 infra_resource.uid — 3단 조인 경로).
+		// 비종단 행이 하나라도 있으면 삭제를 거부한다(종단 집합은
+		// model/task.go:46 DDL CASE와 동치).
 		var active int64
 		if err := tx.Model(&model.ProviderTask{}).
-			Where("resource_uid LIKE ? AND status NOT IN ?", "conn:"+report.ConnectionUID+":%", k8sTaskTerminalStatuses).
+			Where(
+				"(resource_uid LIKE ? OR resource_uid IN (SELECT uid FROM infra_resource WHERE context_id = ?)) AND status NOT IN ?",
+				"conn:"+report.ConnectionUID+":%", pctx.ID, k8sTaskTerminalStatuses,
+			).
 			Count(&active).Error; err != nil {
 			return fmt.Errorf("count non-terminal tasks: %w", err)
 		}
 		if active > 0 {
-			return fmt.Errorf("connection has %d non-terminal task(s); settle them before unregistering", active)
-		}
-
-		// context 행은 톰스톤 키(context_id)로 쓰이므로 삭제 전에 읽는다.
-		var pctx model.ProviderContext
-		if err := tx.Where("uid = ?", report.ContextUID).First(&pctx).Error; err != nil {
-			return fmt.Errorf("load provider_context: %w", err)
+			return fmt.Errorf("connection scope has %d non-terminal task(s); settle them before unregistering", active)
 		}
 
 		// ②③④⑤ 역순 삭제 — 등록 체인의 역방향.

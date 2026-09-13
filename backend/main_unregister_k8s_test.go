@@ -16,10 +16,10 @@ import (
 // 보존 제약상 그 파일 자체는 무변경). 삭제 경로는 material을 읽지 않으므로
 // mock 서버 종료 후에도 삭제가 성공해야 한다(라이브 스캔 부재의 행동 단얫).
 
-func registerK8sForUnregister(t *testing.T, db *gorm.DB, server string) k8sRegisterReport {
+func registerK8sForUnregister(t *testing.T, db *gorm.DB, name, server string) k8sRegisterReport {
 	t.Helper()
 	report, err := registerK8sInDB(context.Background(), db, k8sRegisterOptions{
-		Name: "k8s-mock", KubeconfigPath: writeTempKubeconfig(t, kubeconfigForServer(server)),
+		Name: name, KubeconfigPath: writeTempKubeconfig(t, kubeconfigForServer(server)),
 		ConnectionMode: k8sModeDirect,
 	})
 	if err != nil {
@@ -51,7 +51,7 @@ func TestUnregisterK8sRoundTripKeepsDeterministicUID(t *testing.T) {
 	srv := mock.serve(t)
 	db := newRegisterK8sTestDB(t)
 
-	first := registerK8sForUnregister(t, db, srv.URL)
+	first := registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
 
 	// 서버 종료 후 삭제 — 라이브 스캔이 있으면 여기서 실패한다.
 	srv.Close()
@@ -85,7 +85,7 @@ func TestUnregisterK8sRoundTripKeepsDeterministicUID(t *testing.T) {
 	// 재등록 — 같은 --name이 같은 UID로 체인을 복구한다(삭제→재등록 동일 UID).
 	mock2 := &k8sRegisterMock{}
 	srv2 := mock2.serve(t)
-	second := registerK8sForUnregister(t, db, srv2.URL)
+	second := registerK8sForUnregister(t, db, "k8s-mock", srv2.URL)
 	if second.ConnectionUID != first.ConnectionUID || second.ContextUID != first.ContextUID {
 		t.Fatalf("re-register must restore the same UIDs: %+v vs %+v", first, second)
 	}
@@ -121,7 +121,7 @@ func TestUnregisterK8sGuardBlocksNonTerminalTasks(t *testing.T) {
 	mock := &k8sRegisterMock{}
 	srv := mock.serve(t)
 	db := newRegisterK8sTestDB(t)
-	report := registerK8sForUnregister(t, db, srv.URL)
+	report := registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
 	task := seedUnregisterTask(t, db, report.ConnectionUID, "queued")
 
 	if _, err := unregisterK8sInDB(db, "k8s-mock"); err == nil {
@@ -143,7 +143,7 @@ func TestUnregisterK8sTerminalTasksDoNotBlockAndHistorySurvives(t *testing.T) {
 	mock := &k8sRegisterMock{}
 	srv := mock.serve(t)
 	db := newRegisterK8sTestDB(t)
-	report := registerK8sForUnregister(t, db, srv.URL)
+	report := registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
 	task := seedUnregisterTask(t, db, report.ConnectionUID, "succeeded")
 	event := model.TaskEvent{TaskID: task.ID, Type: "status_changed", At: time.Now().UTC()}
 	if err := db.Create(&event).Error; err != nil {
@@ -184,7 +184,7 @@ func TestUnregisterK8sTombstonesResourcesPreservingObservations(t *testing.T) {
 	mock := &k8sRegisterMock{}
 	srv := mock.serve(t)
 	db := newRegisterK8sTestDB(t)
-	report := registerK8sForUnregister(t, db, srv.URL)
+	report := registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
 
 	var pctx model.ProviderContext
 	if err := db.Where("uid = ?", report.ContextUID).First(&pctx).Error; err != nil {
@@ -289,5 +289,106 @@ func TestRunUnregisterK8sRequiresNameAndConfirm(t *testing.T) {
 	})
 	if !strings.Contains(notice, "--confirm") {
 		t.Fatalf("gate notice must point at --confirm, got %q", notice)
+	}
+}
+
+// TestUnregisterK8sGuardBlocksResourceScopedTasks — 가드 양분기(리뷰 M):
+// conn: 합성 접두가 아닌 리소스 스코프(resource_uid = infra_resource.uid)의
+// 비종단 태스크도 삭제를 막고, 그 태스크가 종단으로 전이하면 통과한다.
+func TestUnregisterK8sGuardBlocksResourceScopedTasks(t *testing.T) {
+	mock := &k8sRegisterMock{}
+	srv := mock.serve(t)
+	db := newRegisterK8sTestDB(t)
+	report := registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
+
+	var pctx model.ProviderContext
+	if err := db.Where("uid = ?", report.ContextUID).First(&pctx).Error; err != nil {
+		t.Fatalf("load context: %v", err)
+	}
+	res := model.InfraResource{
+		UID: "res-task", ContextID: pctx.ID, Kind: "orchestration.node",
+		ExternalURN: "k8s://mock/node/t", Name: "res-task", ManagedState: "managed",
+	}
+	if err := db.Create(&res).Error; err != nil {
+		t.Fatalf("seed infra_resource: %v", err)
+	}
+	task := model.ProviderTask{
+		UID: "task-res-nonterminal", OperationName: "k8s.pod.restart",
+		ResourceUID: res.UID, Status: "running", MaxAttempts: 1,
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatalf("seed provider_task: %v", err)
+	}
+
+	// 비종단 → 삭제 거부·체인 보존.
+	if _, err := unregisterK8sInDB(db, "k8s-mock"); err == nil {
+		t.Fatalf("resource-scoped non-terminal task must block unregister")
+	}
+	assertChainCounts(t, db, map[string]int64{
+		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 2,
+	})
+
+	// 종단 전이 → 통과.
+	if err := db.Model(&model.ProviderTask{}).Where("id = ?", task.ID).
+		Update("status", "succeeded").Error; err != nil {
+		t.Fatalf("settle task: %v", err)
+	}
+	if _, err := unregisterK8sInDB(db, "k8s-mock"); err != nil {
+		t.Fatalf("terminal resource-scoped task must not block: %v", err)
+	}
+	assertChainCounts(t, db, map[string]int64{
+		"provider_connection": 0, "provider_context": 0, "secret_ref": 0, "provider_credential_binding": 0,
+	})
+}
+
+// TestUnregisterK8sLeavesSiblingConnectionsUntouched — 타 커넥션과 그 리소스의
+// 비종단 태스크가 있어도 본 커넥션 삭제는 성공하고, 타 체인·리소스·태스크는
+// 한 행도 건드리지 않는다(가드 서브쿼리·톰스톤 WHERE의 교차 격리 단얫).
+func TestUnregisterK8sLeavesSiblingConnectionsUntouched(t *testing.T) {
+	mock := &k8sRegisterMock{}
+	srv := mock.serve(t)
+	db := newRegisterK8sTestDB(t)
+	registerK8sForUnregister(t, db, "k8s-mock", srv.URL)
+	sibling := registerK8sForUnregister(t, db, "k8s-sibling", srv.URL)
+
+	var sibCtx model.ProviderContext
+	if err := db.Where("uid = ?", sibling.ContextUID).First(&sibCtx).Error; err != nil {
+		t.Fatalf("load sibling context: %v", err)
+	}
+	sibRes := model.InfraResource{
+		UID: "res-sibling", ContextID: sibCtx.ID, Kind: "orchestration.node",
+		ExternalURN: "k8s://mock/node/s", Name: "res-sibling", ManagedState: "managed",
+	}
+	if err := db.Create(&sibRes).Error; err != nil {
+		t.Fatalf("seed sibling resource: %v", err)
+	}
+	sibTask := model.ProviderTask{
+		UID: "task-sibling", OperationName: "k8s.pod.restart",
+		ResourceUID: sibRes.UID, Status: "queued", MaxAttempts: 1,
+	}
+	if err := db.Create(&sibTask).Error; err != nil {
+		t.Fatalf("seed sibling task: %v", err)
+	}
+
+	if _, err := unregisterK8sInDB(db, "k8s-mock"); err != nil {
+		t.Fatalf("sibling activity must not block this unregister: %v", err)
+	}
+	// 남은 체인 행은 전부 sibling 것이다(mock 소거·sibling 불변).
+	assertChainCounts(t, db, map[string]int64{
+		"provider_connection": 1, "provider_context": 1, "secret_ref": 1, "provider_credential_binding": 2,
+	})
+	var kept model.ProviderTask
+	if err := db.First(&kept, sibTask.ID).Error; err != nil {
+		t.Fatalf("sibling task must survive: %v", err)
+	}
+	if kept.Status != "queued" {
+		t.Fatalf("sibling task must be untouched: %+v", kept)
+	}
+	var alive model.InfraResource
+	if err := db.Where("uid = ?", "res-sibling").First(&alive).Error; err != nil {
+		t.Fatalf("sibling resource must survive: %v", err)
+	}
+	if alive.ManagedState != "managed" || alive.DeletedAt != nil {
+		t.Fatalf("sibling resource must stay live: %+v", alive)
 	}
 }
