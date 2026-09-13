@@ -515,7 +515,7 @@ onMounted(async () => {
 .pager { display: flex; justify-content: flex-end; padding-top: 16px; }
 
 /* 원본 :1005-1011 — 템플릿 다이얼로그(자식)와 공유 복사 6건.
-   .template-grid.static만 탭 전용 부모 잔류 */
+    * .template-grid.static만 탭 전용 부모 잔류 */
 .template-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 16px; }
 .template-grid.static { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
 .template-card, .blank-template { min-height: 140px; padding: 20px; border: 1px solid #d7e4f5; border-radius: 8px; background: #fff; cursor: pointer; }

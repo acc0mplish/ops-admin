@@ -171,7 +171,7 @@ function updateSelectedGroupIds(groupIds) {
 
 <style scoped>
 /* 원본 :955-961 합성 셀렉터 분해 — .config-panel 소속(자식 루트).
-   .left-palette은 부모·.canvas-panel은 OpsJobCanvas 자식 */
+    * .left-palette은 부모·.canvas-panel은 OpsJobCanvas 자식 */
 .config-panel {
   display: flex;
   flex-direction: column;

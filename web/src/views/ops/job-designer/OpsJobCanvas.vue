@@ -584,7 +584,7 @@ defineExpose({
 
 <style scoped>
 /* 원본 :955-961 합성 셀렉터 분해 — .canvas-panel 소속(자식 루트).
-   .left-palette은 부모·.config-panel은 OpsJobNodeForm 자식 */
+    * .left-palette은 부모·.config-panel은 OpsJobNodeForm 자식 */
 .canvas-panel {
   display: flex;
   flex-direction: column;

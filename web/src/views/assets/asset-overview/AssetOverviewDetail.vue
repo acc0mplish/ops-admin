@@ -225,7 +225,7 @@ function openHost(item) {
 }
 
 /* 원본 :819-822 미디어 1500 — .overview-main/.detail-grid 규칙
-   (AssetOverviewPanels 자식과 공유 복사 1건) */
+    * (AssetOverviewPanels 자식과 공유 복사 1건) */
 @media (max-width: 1500px) {
   .overview-main,
   .detail-grid {

@@ -273,7 +273,7 @@ onMounted(loadOverview)
 }
 
 /* 원본 :814-818 미디어 1500 — .summary-grid 소속만 부모 잔류.
-   .overview-main/.detail-grid 규칙은 자식 2종으로 이동 */
+    * .overview-main/.detail-grid 규칙은 자식 2종으로 이동 */
 @media (max-width: 1500px) {
   .summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -281,7 +281,7 @@ onMounted(loadOverview)
 }
 
 /* 원본 :826-834 미디어 1100 — hero 소속 셀렉터만 부모 잔류.
-   .health-grid은 AssetOverviewPanels 자식 */
+    * .health-grid은 AssetOverviewPanels 자식 */
 @media (max-width: 1100px) {
   .hero-card {
     flex-direction: column;
@@ -295,7 +295,7 @@ onMounted(loadOverview)
 }
 
 /* 원본 :841-848 미디어 820 분할 — .summary-grid/.hero-side 소속만 부모 잔류.
-   .distribution-grid/.health-grid은 AssetOverviewPanels 자식 */
+    * .distribution-grid/.health-grid은 AssetOverviewPanels 자식 */
 @media (max-width: 820px) {
   .summary-grid,
   .hero-side {

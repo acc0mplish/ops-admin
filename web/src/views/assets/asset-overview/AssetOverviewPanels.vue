@@ -465,7 +465,7 @@ function openCluster(item) {
 }
 
 /* 원본 :825-839 미디어 1100 중 health-grid 소속 셀렉터만 자식 귀속 —
-   .hero-card/.hero-side는 부모 잔류 */
+    * .hero-card/.hero-side는 부모 잔류 */
 @media (max-width: 1100px) {
   .health-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -473,7 +473,7 @@ function openCluster(item) {
 }
 
 /* 원본 :841-848 미디어 820 분할 — .distribution-grid/.health-grid 소속만 자식,
-   .summary-grid/.hero-side는 부모 잔류 */
+    * .summary-grid/.hero-side는 부모 잔류 */
 @media (max-width: 820px) {
   .distribution-grid,
   .health-grid {
@@ -482,7 +482,7 @@ function openCluster(item) {
 }
 
 /* 원본 :819-822 미디어 1500 — .overview-main/.detail-grid 규칙(AssetOverviewDetail
-   자식과 공유 복사 1건) */
+    * 자식과 공유 복사 1건) */
 @media (max-width: 1500px) {
   .overview-main,
   .detail-grid {

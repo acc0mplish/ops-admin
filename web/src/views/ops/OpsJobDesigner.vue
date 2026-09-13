@@ -353,7 +353,7 @@ onMounted(async () => {
 }
 
 /* 원본 :955-961 합성 셀렉터 분해 — .left-palette 소속.
-   .canvas-panel은 OpsJobCanvas·.config-panel은 OpsJobNodeForm 자식 */
+    * .canvas-panel은 OpsJobCanvas·.config-panel은 OpsJobNodeForm 자식 */
 .left-palette {
   display: flex;
   flex-direction: column;
