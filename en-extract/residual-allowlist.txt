@@ -3,7 +3,7 @@
 # 형식: <repo-relative file>:<line>: <사유>
 # 유지보수 계약: 각 레인 페이즈가 자기 파일의 해소 라인을 삭제하고, 페이즈 종료 시
 #   `node scripts/check-i18n-parity.mjs --allowlist-check` 로 등재 수 == 스캔 수 일치를 검증한다.
-# 생성: 2026-09-13T02:36:07.138Z / 총 51건
+# 생성: 2026-09-13T03:34:17.180Z / 총 51건
 
 web/src/views/applications/AppProjectList.vue:29: 표시 문자열(마이그레이션 대상)
 web/src/views/applications/AppProjectList.vue:51: 표시 문자열(마이그레이션 대상)
@@ -32,8 +32,8 @@ web/src/views/monitor/MonitorSilenceRule.vue:43: 표시 문자열(마이그레�
 web/src/views/ops/OpsCommandExecute.vue:54: 표시 문자열(마이그레이션 대상)
 web/src/views/ops/OpsFileDispatch.vue:71: 표시 문자열(마이그레이션 대상)
 web/src/views/ops/OpsScriptExecute.vue:82: 표시 문자열(마이그레이션 대상)
-web/src/layouts/MainLayout.vue:218: 비교·송신값 후보(§3-1 검증 필요)
 web/src/composables/useDbmsSqlExecution.js:18: 표시 문자열(마이그레이션 대상)
+web/src/composables/useLayoutMenus.js:48: 비교·송신값 후보(§3-1 검증 필요)
 web/src/composables/useMonitorDashboardPanels.js:41: 표시 문자열(마이그레이션 대상)
 web/src/composables/useMonitorDashboardPanels.js:59: 비교·송신값 후보(§3-1 검증 필요)
 web/src/composables/useMonitorDashboardPanels.js:61: 비교·송신값 후보(§3-1 검증 필요)
