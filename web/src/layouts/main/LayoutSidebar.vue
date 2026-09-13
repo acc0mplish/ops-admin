@@ -32,7 +32,7 @@ function switchApp(key) {
 </script>
 
 <template>
-    <el-aside :width="page.collapsed ? '78px' : '200px'" class="layout-aside" :class="{ 'is-page.collapsed': page.collapsed }">
+    <el-aside :width="page.collapsed ? '78px' : '200px'" class="layout-aside" :class="{ 'is-collapsed': page.collapsed }">
       <div class="brand-box">
         <div class="brand-row">
           <img v-if="page.logoImage" :src="page.logoImage" alt="logo" class="brand-image" />

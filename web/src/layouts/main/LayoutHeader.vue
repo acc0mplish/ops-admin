@@ -39,8 +39,8 @@ const route = useRoute()
             </el-button>
 
             <el-dropdown>
-              <div class="page.user-box">
-                <div class="page.user-avatar">{{ (page.user.nickname || page.user.username || 'A').slice(0, 1).toUpperCase() }}</div>
+              <div class="user-box">
+                <div class="user-avatar">{{ (page.user.nickname || page.user.username || 'A').slice(0, 1).toUpperCase() }}</div>
                 <span>{{ page.user.nickname || page.user.username || 'admin' }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </div>

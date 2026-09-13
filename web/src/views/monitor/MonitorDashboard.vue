@@ -104,6 +104,7 @@ const {
   panelStateType,
   panelResultCount,
   panelDisplayValue,
+  exportInspectionReportPdf,
   refreshPanel,
   refreshProblemPanels,
   refreshAllPanels
@@ -159,91 +160,6 @@ function resetPanelForm() {
   })
 }
 
-function exportInspectionReportPdf() {
-  if (!activeDashboard.value) {
-    ElMessage.warning(mt('selectInspectionFirst'))
-    return
-  }
-  const now = new Date().toLocaleString()
-  const currentDatasourceName = datasourceOptions.value.find((item) => item.id === selectedDatasourceId.value)?.name || '-'
-  const rows = panels.value.map((panel, index) => {
-    const error = panelResults[panel.id]?.error || ''
-    return `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(panel.title)}</td>
-        <td><span class="status ${panelStateType(panel)}">${escapeHtml(panelState(panel))}</span></td>
-        <td>${escapeHtml(panelDisplayValue(panel))}</td>
-        <td>${panelResultCount(panel)}</td>
-        <td>${escapeHtml(currentDatasourceName)}</td>
-        <td>${escapeHtml(panel.chartType)}</td>
-        <td><code>${escapeHtml(panel.promql)}</code>${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}</td>
-      </tr>
-    `
-  }).join('')
-  const win = window.open('', '_blank')
-  if (!win) {
-    ElMessage.warning(mt('popupBlocked'))
-    return
-  }
-  win.document.write(`
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(activeDashboard.value.name)} - Inspection Report</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { margin: 0; padding: 28px; color: #10213f; font-family: Arial, "Microsoft YaHei", sans-serif; background: #fff; }
-          h1 { margin: 0 0 8px; font-size: 26px; }
-          .meta { display: flex; gap: 20px; margin-bottom: 22px; color: #64748b; font-size: 13px; }
-          .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
-          .card { padding: 14px; border: 1px solid #dce7f7; border-radius: 10px; background: #f8fbff; }
-          .card span { display: block; color: #64748b; font-size: 12px; }
-          .card strong { display: block; margin-top: 8px; font-size: 22px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { padding: 10px; border: 1px solid #dce7f7; text-align: left; vertical-align: top; }
-          th { background: #edf4ff; color: #334155; }
-          code { display: block; max-width: 420px; white-space: pre-wrap; word-break: break-all; color: #1d4ed8; font-family: Consolas, Monaco, monospace; }
-          .status { display: inline-block; padding: 3px 8px; border-radius: 999px; }
-          .success { color: #15803d; background: #dcfce7; }
-          .warning { color: #a16207; background: #fef9c3; }
-          .danger { color: #b91c1c; background: #fee2e2; }
-          .info { color: #475569; background: #e2e8f0; }
-          .error { margin-top: 6px; color: #b91c1c; }
-          @media print { body { padding: 16px; } .no-print { display: none; } }
-        </style>
-      </head>
-      <body>
-        <button class="no-print" onclick="window.print()" style="float:right;padding:8px 14px;">${mt('printPdf')}</button>
-        <h1>${escapeHtml(activeDashboard.value.name)} Inspection Report</h1>
-        <div class="meta">
-          <span>${mt('pdfCreatedAt', { time: escapeHtml(now) })}</span>
-          <span>Query Datasource: ${escapeHtml(currentDatasourceName)}</span>
-          <span>${mt('pdfDashboardStatus', { status: escapeHtml(dashboardHealth.value.text) })}</span>
-          <span>${mt('pdfRefreshInterval', { interval: autoRefreshSeconds.value ? `${autoRefreshSeconds.value}s` : mt('off') })}</span>
-        </div>
-        <div class="summary">
-          <div class="card"><span>${mt('panelCount')}</span><strong>${panels.value.length}</strong></div>
-          <div class="card"><span>${mt('activePanels')}</span><strong>${activePanels.value.length}</strong></div>
-          <div class="card"><span>${mt('problemPanels')}</span><strong>${activePanels.value.filter((panel) => panelResults[panel.id]?.error).length}</strong></div>
-          <div class="card"><span>Inspection Type</span><strong>List Inspection</strong></div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th><th>{{ uiT('panel') }}</th><th>${mt('status')}</th><th>${mt('currentValue')}</th><th>Series</th><th>Datasource</th><th>Type</th><th>PromQL / Error</th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="8">${mt('noInspectionPanels')}</td></tr>`}</tbody>
-        </table>
-      </body>
-    </html>
-  `)
-  win.document.close()
-  win.focus()
-  setTimeout(() => win.print(), 300)
-}
 
 async function loadBase() {
   const [dashboardData, datasources] = await Promise.all([
@@ -424,7 +340,6 @@ function onFullscreenChange() {
 const page = reactive({
   // 상태·computed
   loading,
-  dashboards,
   datasourceOptions,
   selectedDatasourceId,
   activeDashboardId,
@@ -433,7 +348,6 @@ const page = reactive({
   autoRefreshSeconds,
   timeRangeSeconds,
   isFullscreen,
-  lastRefreshAt,
   inspectionFilter,
   pageTitle,
   pageDescription,
@@ -446,9 +360,6 @@ const page = reactive({
   isK8sDashboard,
   currentDatasourceName,
   lastRefreshText,
-  dashboardForm,
-  panelForm,
-  dashboardTemplates,
   panelResults,
   panelPending,
   metricText,
@@ -464,7 +375,6 @@ const page = reactive({
   gaugePercent,
   panelSpan,
   panelState,
-  panelStateKey,
   panelStateType,
   panelResultCount,
   panelDisplayValue,
@@ -640,5 +550,35 @@ onBeforeUnmount(() => {
 /* Dense fullscreen layout: prioritize the monitoring surface over page chrome. */
 .observability-canvas:fullscreen {
   padding: 8px;
+}
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.template-card {
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid #dce7f7;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #263b5f;
+  text-align: left;
+  cursor: pointer;
+}
+.template-card strong,
+.template-card span {
+  display: block;
+}
+.template-card span {
+  margin-top: 8px;
+  color: #7282a0;
+  line-height: 1.5;
+}
+.template-card.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px #3b82f6;
 }
 </style>
