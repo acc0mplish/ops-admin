@@ -198,7 +198,7 @@
     "next": "I10 종결. 후속 대장: CI16 dev 체인 register-k8s 멱등 재실행(운영 시점·자격 보강)·I5(hardcap 14건)·register-k8s delete 미제공·L2 문서 접촉(사멸 심볼 주석·sensitive 행번호 shift)·i18n 중복 3키 dedupe·K8s.vue 2803행 분할",
     "done": "I10 완결(2026-09-12·PR #82~#88) — §16.1 커넥션-스코프 create(plan|execute)+def 빈 ResourceKinds+엔진 conn: 합성 uid+step0008 varchar255+프론트 4콜사이트 전환+선존 결함 5건 수복(커넥션 해상 폴백·operations 바인딩·폴 래퍼·t 임포트·stack.sh 드리프트)+v1 create 원자 삭제. §19.1 step4 13/13·D-15 상환·골든 441/281·char 114/19. 계획 r1→r4(5렌즈 C1H11M17L18+uid 길이 HIGH+결함 2·3). 최종 전수 -race 30패키지 ok"
   },
-  "next": "Phase 6 블록 2 + I10(#82~#88) + I5 하드캡(#89~#98) 종결. 후속: register-k8s delete·compare.go 분할 승인·고아 sweep·CI16 운영",
+  "next": "Phase 6 블록 2 + I10 + I5 + unregister-k8s 종결(#75~#99). 잔여 대장: compare.go 분할 승인(P 산물)·경고대 3건·CI16 dev 체인 재실행(운영)·BuildMenuTree·사멸 셀렉터 sweep·i18n 중복 3키",
   "i5": {
     "phase": "done",
     "round": {
@@ -222,5 +222,18 @@
     "phase_i": "done — PR #97 병합(8d92cbe)·태그 i5-i(round.review 3 사용자 예외 — CSS 무음 회귀 2건 gap 후 승인·CALLSITE_DIRS 채택)",
     "phase_j": "done — PR #98 병합(bed3de2)·태그 i5-j. 리뷰 승인 C/H/M 0·LOW 2(수치 오기)",
     "done": "I5·I6 완결(2026-09-13·PR #89~#98 10개) — >800 26본 전소멸(backend 17→61파일·web 9→21+자식): 백엔드 바이트 보존(CI-B7 선언블록 멀티셋·라인 멀티셋)·웹 행동 보존+재배선(임포트 검사기·page 키·CSS 멀티셋·getComputedStyle 시각 실측). 잔존: compare.go 1,243(§8 문서화 예외)·경고대 3(OpsScriptLibrary 698·AppBuildTaskList 683·model/ops.go 658). round: adversary 0·review 3(D·H·I — I는 사용자 예외). 계획 r1→r2(5렌즈 C3·H12·M22·L22)"
+  },
+  "rk8s_delete": {
+    "phase": "done",
+    "round": {
+      "adversary": 0,
+      "review": 1
+    },
+    "spawns": 3,
+    "task": "register-k8s delete 서브커맨드 — 등록 체인 역방향 삭제(바인딩2→context→secret_ref→connection)·멱등·의존 행(infra_resource·provider_task) 처분 계약",
+    "next": null,
+    "plan": "del-plan 확정 — 최상위 unregister-k8s·--name+--confirm·미존재 exit0 멱등·tx 역순 삭제(가드→binding→context→secret 소각→connection)·infra_resource 톰스톤·이력 보존·3파일",
+    "impl": "커밋 1602c08 — 3파일(190/293/+5)·claims 9 전통과·TDD·차이 3건(키 게이트·RowsAffected 결정론·existed 앵커). 메인 -race 재실행 ok",
+    "done": "완결(2026-09-13·PR #99·main 86d013b) — 최상위 unregister-k8s·tx 역순 삭제·비종단 가드(conn:+리소스 스코프)·톰스톤·소각·이력 보존. round.review 1(가드 확장). claims 9+2 전 verified"
   }
 }
