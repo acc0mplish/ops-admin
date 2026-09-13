@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Check, House, Search } from '@element-plus/icons-vue'
 import LayoutSidebar from './main/LayoutSidebar.vue'
 import LayoutHeader from './main/LayoutHeader.vue'
-import { useLayoutMenus, findMenuTitle, flattenMenus, normalizeBackendMenus, normalizeStaticMenus } from '../composables/useLayoutMenus'
+import { useLayoutMenus, displayTitle, findMenuTitle, flattenMenus, normalizeBackendMenus, normalizeStaticMenus } from '../composables/useLayoutMenus'
 import { useLayoutTags } from '../composables/useLayoutTags'
 import { logoutSession, profile } from '../api/system'
 import {
