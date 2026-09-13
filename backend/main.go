@@ -81,6 +81,11 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "register-k8s" {
 		os.Exit(runRegisterK8s(os.Args[2:]))
 	}
+	// The unregister side of register-k8s: delete the --name registration
+	// chain in one transaction, guarded by --confirm before any IO.
+	if len(os.Args) >= 2 && os.Args[1] == "unregister-k8s" {
+		os.Exit(runUnregisterK8s(os.Args[2:]))
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("load config failed: %v", err)
