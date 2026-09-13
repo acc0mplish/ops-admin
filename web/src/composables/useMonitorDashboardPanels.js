@@ -319,9 +319,76 @@ export function useMonitorDashboardPanels({ panels, activePanels, selectedDataso
     if (version === panelRefreshVersion) lastRefreshAt.value = new Date()
   }
 
+  // 원본 MonitorDashboard.vue:75-138 — 대시보드 템플릿 프리셋(셋업 시점 mt() 평가 타이밍 유지)
+  const dashboardTemplates = [
+    {
+      key: 'blank',
+      name: mt('tplBlankName'),
+      description: mt('tplBlankDesc'),
+      panels: []
+    },
+    {
+      key: 'host',
+      name: 'Host Resource Dashboard',
+      description: mt('tplHostDesc'),
+      panels: [
+        { title: mt('tplAllHosts'), chartType: 'stat', unit: '대', span: 6, promql: 'count(up{job=~"node.*|node-exporter"})' },
+        { title: 'Online Host', chartType: 'stat', unit: '대', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 1)' },
+        { title: 'Offline Host', chartType: 'stat', unit: '대', span: 6, promql: 'sum(up{job=~"node.*|node-exporter"} == 0)' },
+        { title: mt('tplAvgCpuUsage'), chartType: 'gauge', unit: '%', span: 6, promql: '100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
+        { title: mt('tplAvgMemoryUsage'), chartType: 'gauge', unit: '%', span: 6, promql: '(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100' },
+        { title: mt('tplAvgDiskUsage'), chartType: 'gauge', unit: '%', span: 6, promql: '100 - (sum(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) / sum(node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"}) * 100)' },
+        { title: mt('tplCpuUsageTop'), chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))' },
+        { title: mt('tplMemoryUsageTop'), chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)' },
+        { title: mt('tplDiskUsageTop'), chartType: 'bar', unit: '%', span: 12, promql: 'topk(10, 100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint!~"/run.*|/boot.*"} * 100))' },
+        { title: 'System Load Top', chartType: 'bar', unit: '', span: 12, promql: 'topk(10, node_load1)' },
+        { title: mt('tplNetworkReceiveTop'), chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
+        { title: mt('tplNetworkTransmitTop'), chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])))' },
+        { title: 'Disk Read Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_read_bytes_total[5m])))' },
+        { title: 'Disk Write Rate Top', chartType: 'bar', unit: 'B/s', span: 12, promql: 'topk(10, sum by (instance) (rate(node_disk_written_bytes_total[5m])))' },
+        { title: mt('tplCpuTrend'), chartType: 'line', unit: '%', span: 12, promql: '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)' },
+        { title: mt('tplMemoryTrend'), chartType: 'line', unit: '%', span: 12, promql: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100' },
+        { title: mt('tplFileHandleUsage'), chartType: 'gauge', unit: '%', span: 6, promql: 'sum(node_filefd_allocated) / sum(node_filefd_maximum) * 100' },
+        { title: mt('tplRunningProcesses'), chartType: 'stat', unit: '개', span: 6, promql: 'sum(node_procs_running)' },
+        { title: mt('tplSystemUptimeTop'), chartType: 'bar', unit: '일', span: 12, promql: 'topk(10, (time() - node_boot_time_seconds) / 86400)' },
+        { title: mt('tplHostInfo'), chartType: 'table', unit: '', span: 12, promql: 'node_uname_info' }
+      ]
+    },
+    {
+      key: 'k8s',
+      name: 'Kubernetes Dashboard',
+      description: mt('tplK8sDesc'),
+      panels: [
+        { title: mt('tplPodCount'), chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_pod_info)' },
+        { title: 'Running Pod', chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_pod_status_phase{phase="Running"})' },
+        { title: mt('tplAbnormalPods'), chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_pod_status_phase{phase=~"Failed|Unknown|Pending"})' },
+        { title: 'Ready Node', chartType: 'stat', unit: '개', span: 8, promql: 'sum(kube_node_status_condition{condition="Ready",status="true"})' },
+        { title: 'Namespace', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_namespace_created)' },
+        { title: 'Deployment', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_deployment_created)' },
+        { title: 'Service', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_service_info)' },
+        { title: 'Ingress', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_ingress_info)' },
+        { title: 'PVC', chartType: 'stat', unit: '개', span: 8, promql: 'count(kube_persistentvolumeclaim_info)' },
+        { title: mt('tplCpuRequestUsage'), chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="cpu"}) / sum(kube_node_status_allocatable{resource="cpu"}) * 100' },
+        { title: mt('tplMemoryRequestUsage'), chartType: 'gauge', unit: '%', span: 12, promql: 'sum(kube_pod_container_resource_requests{resource="memory"}) / sum(kube_node_status_allocatable{resource="memory"}) * 100' },
+        { title: mt('tplPodsByNamespace'), chartType: 'bar', unit: '개', span: 12, promql: 'sum by (namespace) (kube_pod_info)' },
+        { title: mt('tplPodsByNode'), chartType: 'bar', unit: '개', span: 12, promql: 'sum by (node) (kube_pod_info)' },
+        { title: mt('tplReplicaAvailability'), chartType: 'bar', unit: '%', span: 12, promql: 'sum by (deployment) (kube_deployment_status_replicas_available) / sum by (deployment) (kube_deployment_spec_replicas) * 100' },
+        { title: mt('tplAbnormalReasonTop'), chartType: 'bar', unit: '개', span: 12, promql: 'sum by (reason) (kube_pod_container_status_waiting_reason)' },
+        { title: mt('tplTotalRestartsTop'), chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod!=""}))' },
+        { title: mt('tplRestartIncreaseTop'), chartType: 'bar', unit: '회', span: 12, promql: 'topk(10, sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod!=""}[1h])))' },
+        { title: mt('tplContainerCpuTrend'), chartType: 'line', unit: 'Core', span: 12, promql: 'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m]))' },
+        { title: mt('tplContainerMemoryTrend'), chartType: 'line', unit: 'B', span: 12, promql: 'sum by (namespace) (container_memory_working_set_bytes{container!="",pod!=""})' },
+        { title: mt('tplPodNetworkReceive'), chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_receive_bytes_total[5m]))' },
+        { title: mt('tplPodNetworkTransmit'), chartType: 'line', unit: 'B/s', span: 12, promql: 'sum by (namespace) (rate(container_network_transmit_bytes_total[5m]))' },
+        { title: mt('tplPodDetail'), chartType: 'table', unit: '', span: 24, promql: 'kube_pod_info' }
+      ]
+    }
+  ]
+
   return {
     panelResults,
     panelPending,
+    dashboardTemplates,
     metricText,
     metricName,
     numberValue,
