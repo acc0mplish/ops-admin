@@ -29,7 +29,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(SCRIPT_DIR, '..')
 const UTILS_DIR = join(ROOT, 'web/src/utils')
-const CALLSITE_DIRS = [join(ROOT, 'web/src/views'), join(ROOT, 'web/src/layouts')]
+const CALLSITE_DIRS = [join(ROOT, 'web/src/views'), join(ROOT, 'web/src/layouts'), join(ROOT, 'web/src/composables')]
 const ALLOWLIST_PATH = join(ROOT, 'en-extract/residual-allowlist.txt')
 const GLOSSARY_PATH = join(ROOT, 'en-extract/glossary-ko-en.json')
 const HANGUL_RE = /[가-힣]/
@@ -508,7 +508,7 @@ function isCommentAnchored(content) {
 function scanResiduals() {
   const rows = []
   for (const dir of CALLSITE_DIRS) {
-    for (const file of walkFiles(dir, ['.vue'])) {
+    for (const file of walkFiles(dir, ['.vue', '.js'])) {
       const rel = relative(ROOT, file).replaceAll('\\', '/')
       const source = readFileSync(file, 'utf8')
       const lines = source.split('\n')
