@@ -18,7 +18,7 @@ defineProps({
         <span class="brand-mark">M</span>
         <div>
           <strong>{{ uiT('monitoringDashboard') }}</strong>
-          <p>{{ pageDescription }}</p>
+          <p>{{ page.pageDescription }}</p>
         </div>
       </div>
 

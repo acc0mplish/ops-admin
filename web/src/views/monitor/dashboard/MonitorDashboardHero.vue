@@ -55,7 +55,7 @@ defineProps({
       <section class="dashboard-summary">
         <div class="summary-card">
           <span>{{ mt('panelCount') }}</span>
-          <strong>{{ panels.length }}</strong>
+          <strong>{{ page.panels.length }}</strong>
         </div>
         <div class="summary-card">
           <span>{{ mt('activePanels') }}</span>
