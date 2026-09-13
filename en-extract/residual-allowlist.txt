@@ -3,7 +3,7 @@
 # 형식: <repo-relative file>:<line>: <사유>
 # 유지보수 계약: 각 레인 페이즈가 자기 파일의 해소 라인을 삭제하고, 페이즈 종료 시
 #   `node scripts/check-i18n-parity.mjs --allowlist-check` 로 등재 수 == 스캔 수 일치를 검증한다.
-# 생성: 2026-09-13T04:42:10.052Z / 총 51건
+# 생성: 2026-09-13T05:50:31.299Z / 총 51건
 
 web/src/views/applications/AppProjectList.vue:29: value·데이터값(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/applications/AppProjectList.vue:51: value·데이터값(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
@@ -13,7 +13,7 @@ web/src/views/applications/AppProjectList.vue:152: value 속성(§3-1-3 — 백�
 web/src/views/applications/AppProjectList.vue:153: value 속성(§3-1-3 — 백엔드 한국어 enum, 번역 금지)
 web/src/views/assets/Application.vue:17: 송신값 — serviceType form 기본값 '게임 서비스'(§3-1-3 API payload, byte 불변)
 web/src/views/assets/Application.vue:27: 송신값 — serviceType form 초기화값 '게임 서비스'(§3-1-3 API payload, byte 불변)
-web/src/views/assets/Host.vue:243: 송신값 — 복제 Host의 hostName form value에 붙는 '-사본' 접미(§3-1-3 API payload, byte 불변)
+web/src/views/assets/host/HostFormDialog.vue:77: 송신값 — 복제 Host의 hostName form value에 붙는 '-사본' 접미(§3-1-3 API payload, byte 불변) — 원본 Host.vue 243행 좌표 이동(I5-J)
 web/src/views/monitor/MonitorAggregationRule.vue:29: §3 정규식 제외 — 한국어 Rule명 매칭 regex(^수집 대상.*), 번역 금지
 web/src/views/monitor/MonitorAggregationRule.vue:32: §3 정규식 제외 — 한국어 Rule명 매칭 regex, 번역 금지
 web/src/views/monitor/MonitorAlertTemplate.vue:273: §3 코드 샘플 제외 — Prometheus Rule YAML 예시 본문, 번역 금지

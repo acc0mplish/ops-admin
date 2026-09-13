@@ -6,24 +6,21 @@ import { Loading } from '@element-plus/icons-vue'
 import { useEnvironmentOptions } from '../../composables/useEnvironmentOptions'
 import { at } from '../../utils/asset-i18n'
 import {
-  addAssetHost,
-  assetHostInfo,
-  batchDeleteAssetHosts,
-  batchReplaceAssetHostCredential,
-  batchSyncAssetHosts,
   deleteAssetHost,
-  downloadAssetHostTemplate,
-  importAssetHosts,
   queryAssetCloudAccountOptions,
   queryAssetCredentialOptions,
   queryAssetGatewayOptions,
   queryAssetHostGroupList,
   queryAssetHostList,
   removeAssetHostsFromGroup,
-  syncAssetHost,
-  syncAssetHostsFromCloud,
-  updateAssetHost
+  syncAssetHost
 } from '../../api/asset'
+// I5-J (i5-plan §3.8·CW-4) — 1,070행 분할 잔류본. 호스트 폼 다이얼로그는 host/
+// HostFormDialog.vue, 가져오기·클라우드 동기화·일괄 자격증명 다이얼로그는
+// HostImportDialogs.vue로 이동(원본 좌표는 커밋 메시지·자식 파일 헤더). 자식은
+// :page 주입(§5 #11 승계)·open* 진입은 defineExpose 위임으로 보존한다.
+import HostFormDialog from './host/HostFormDialog.vue'
+import HostImportDialogs from './host/HostImportDialogs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,57 +81,10 @@ const cloudSyncForm = reactive({
 const batchCredentialForm = reactive({
   credentialId: undefined
 })
+const formDialogRef = ref(null)
+const importDialogsRef = ref(null)
 
-const filteredCloudAccounts = computed(() =>
-  cloudAccountOptions.value.filter((item) => (item.provider || '').toLowerCase() === cloudSyncForm.provider)
-)
 const isGroupView = computed(() => Number(query.groupId || 0) > 0)
-
-function resetForm() {
-  Object.assign(form, {
-    id: undefined,
-    hostName: '',
-    groupId: undefined,
-    groupIds: [],
-    sshUser: '',
-    sshIp: '',
-    sshPort: 22,
-    credentialId: undefined,
-    connectionMode: 'direct',
-    gatewayId: undefined,
-    environment: '',
-    status: 1,
-    description: ''
-  })
-}
-
-function resetImportForm() {
-  Object.assign(importForm, {
-    groupId: undefined,
-    file: null
-  })
-}
-
-function resetCloudSyncForm() {
-  Object.assign(cloudSyncForm, {
-    groupId: undefined,
-    provider: 'tencent',
-    useExistingAccount: true,
-    cloudAccountId: undefined,
-	credentialId: undefined,
-	connectionMode: 'direct',
-	gatewayId: undefined,
-	environment: '',
-    accessKey: '',
-    secretKey: '',
-    saveAccount: false,
-    accountName: ''
-  })
-}
-
-function resetBatchCredentialForm() {
-  batchCredentialForm.credentialId = undefined
-}
 
 async function loadOptions() {
   const [groups, credentials, cloudAccounts, gateways] = await Promise.all([
@@ -184,99 +134,32 @@ function applyRouteGroupFilter() {
   query.pageNum = 1
 }
 
+// 원본 :187-192 openCreate·:213-234 openEdit·:236-257 openCopy는 자식
+// (HostFormDialog)으로 이동 — 테이블·툴바 진입점은 위임 호출로 대체했다.
 function openCreate() {
-  isEdit.value = false
-  isCopy.value = false
-  resetForm()
-  dialogVisible.value = true
+  formDialogRef.value?.openCreate()
 }
 
+function openEdit(row) {
+  formDialogRef.value?.openEdit(row)
+}
+
+function openCopy(row) {
+  formDialogRef.value?.openCopy(row)
+}
+
+// 원본 :194-197 openImportDialog·:199-202 openCloudSyncDialog·:204-211
+// openBatchCredentialDialog는 자식(HostImportDialogs)으로 이동 — 위임 호출.
 function openImportDialog() {
-  resetImportForm()
-  importDialogVisible.value = true
+  importDialogsRef.value?.openImportDialog()
 }
 
 function openCloudSyncDialog() {
-  resetCloudSyncForm()
-  cloudSyncDialogVisible.value = true
+  importDialogsRef.value?.openCloudSyncDialog()
 }
 
 function openBatchCredentialDialog() {
-  if (!selectedRows.value.length) {
-    ElMessage.warning(at('selectHostFirst'))
-    return
-  }
-  resetBatchCredentialForm()
-  batchCredentialDialogVisible.value = true
-}
-
-async function openEdit(row) {
-  isEdit.value = true
-  isCopy.value = false
-  const data = await assetHostInfo(row.id)
-  resetForm()
-  Object.assign(form, {
-    id: data.id,
-    hostName: data.hostName,
-    groupId: data.groupId,
-    groupIds: (data.hostGroups || []).map((item) => item.id).length ? (data.hostGroups || []).map((item) => item.id) : (data.groupId ? [data.groupId] : []),
-    sshUser: data.sshUser,
-    sshIp: data.sshIp,
-    sshPort: data.sshPort || 22,
-    credentialId: data.credentialId,
-    connectionMode: data.connectionMode || 'direct',
-    gatewayId: data.gatewayId || undefined,
-    environment: data.environment || '',
-    status: data.status || 1,
-    description: data.description
-  })
-  dialogVisible.value = true
-}
-
-async function openCopy(row) {
-  isEdit.value = false
-  isCopy.value = true
-  const data = await assetHostInfo(row.id)
-  resetForm()
-  Object.assign(form, {
-    id: undefined,
-    hostName: `${data.hostName || row.hostName || ''}-사본`,
-    groupId: data.groupId,
-    groupIds: (data.hostGroups || []).map((item) => item.id).length ? (data.hostGroups || []).map((item) => item.id) : (data.groupId ? [data.groupId] : []),
-    sshUser: data.sshUser,
-    sshIp: data.sshIp,
-    sshPort: data.sshPort || 22,
-    credentialId: data.credentialId,
-    connectionMode: data.connectionMode || 'direct',
-    gatewayId: data.gatewayId || undefined,
-    environment: data.environment || '',
-    status: data.status || 1,
-    description: data.description
-  })
-  dialogVisible.value = true
-}
-
-async function submit() {
-  if (!form.hostName || !form.groupIds.length || !form.environment || !form.sshUser || !form.sshIp || !form.credentialId) {
-    ElMessage.warning(at('enterHostRequiredFields'))
-    return
-  }
-  if (form.connectionMode === 'gateway' && !form.gatewayId) {
-    ElMessage.warning(at('selectGatewayWarning'))
-    return
-  }
-  form.groupId = form.groupIds[0]
-
-  if (isEdit.value) {
-    await updateAssetHost(form)
-    ElMessage.success(at('hostUpdated'))
-  } else {
-    await addAssetHost(form)
-    ElMessage.success(isCopy.value ? at('hostCopied') : at('hostCreated'))
-  }
-  isCopy.value = false
-  dialogVisible.value = false
-  await loadData()
+  importDialogsRef.value?.openBatchCredentialDialog()
 }
 
 async function handleSync(row) {
@@ -312,152 +195,11 @@ function handleSelectionChange(rows) {
   selectedRows.value = rows
 }
 
-function selectedIds() {
-  return selectedRows.value.map((item) => item.id)
-}
-
-async function handleBatchSync() {
-	if (batchSyncSubmitting.value) return
-  const ids = selectedIds()
-  if (!ids.length) {
-    ElMessage.warning(at('selectHostFirst'))
-    return
-  }
-	batchSyncSubmitting.value = true
-	try {
-		const data = await batchSyncAssetHosts(ids)
-		ElMessage.success(at('batchSyncDone', { success: data.success, fail: data.fail }))
-		await loadData()
-	} finally {
-		batchSyncSubmitting.value = false
-	}
-}
-
-async function handleBatchDelete() {
-  const ids = selectedIds()
-  if (!ids.length) {
-    ElMessage.warning(at('selectHostFirst'))
-    return
-  }
-  if (isGroupView.value) {
-    await ElMessageBox.confirm(at('batchRemoveFromGroupConfirm', { count: ids.length }), at('notice'), { type: 'warning' })
-    await removeAssetHostsFromGroup({ groupId: query.groupId, hostIds: ids })
-    ElMessage.success(at('batchRemovedFromGroup'))
-    selectedRows.value = []
-    await loadData()
-    return
-  }
-  await ElMessageBox.confirm(at('batchDeleteConfirm', { count: ids.length }), at('notice'), { type: 'warning' })
-  await batchDeleteAssetHosts(ids)
-  ElMessage.success(at('batchDeleted'))
-  selectedRows.value = []
-  await loadData()
-}
-
-async function submitBatchCredential() {
-  const ids = selectedIds()
-  if (!ids.length) {
-    ElMessage.warning(at('selectHostFirst'))
-    return
-  }
-  if (!batchCredentialForm.credentialId) {
-    ElMessage.warning(at('selectCredentialWarning'))
-    return
-  }
-  batchCredentialSubmitting.value = true
-  try {
-    await batchReplaceAssetHostCredential({
-      ids,
-      credentialId: batchCredentialForm.credentialId
-    })
-    ElMessage.success(at('credentialReplaced'))
-    batchCredentialDialogVisible.value = false
-    await loadData()
-  } finally {
-    batchCredentialSubmitting.value = false
-  }
-}
-
-async function handleTemplateDownload() {
-  const response = await downloadAssetHostTemplate()
-  const blob = new Blob([response.data], { type: response.headers['content-type'] })
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'asset-host-template.xlsx'
-  link.click()
-  window.URL.revokeObjectURL(url)
-}
-
-function handleFileChange(uploadFile) {
-  importForm.file = uploadFile.raw || null
-}
-
-function clearImportFile() {
-  importForm.file = null
-}
-
-async function submitImport() {
-  if (!importForm.groupId || !importForm.file) {
-    ElMessage.warning(at('selectGroupAndExcel'))
-    return
-  }
-  importSubmitting.value = true
-  try {
-    const formData = new FormData()
-    formData.append('groupId', importForm.groupId)
-    formData.append('file', importForm.file)
-    const data = await importAssetHosts(formData)
-    const failedPreview = (data.failedHosts || []).slice(0, 3).join('; ')
-    ElMessage.success(at('importDone', { success: data.success, fail: data.fail, failedSuffix: failedPreview ? `(${failedPreview})` : '' }))
-    importDialogVisible.value = false
-    await loadData()
-  } finally {
-    importSubmitting.value = false
-  }
-}
-
-async function submitCloudSync() {
-  if (!cloudSyncForm.groupId || !cloudSyncForm.provider) {
-    ElMessage.warning(at('selectGroupAndProvider'))
-    return
-  }
-  if (cloudSyncForm.useExistingAccount && !cloudSyncForm.cloudAccountId) {
-    ElMessage.warning(at('selectExistingCloudAccount'))
-    return
-  }
-	if (!cloudSyncForm.credentialId) {
-		ElMessage.warning(at('selectCredentialWarning'))
-		return
-	}
-  if (!cloudSyncForm.environment) {
-		ElMessage.warning(at('selectEnvironmentWarning'))
-		return
-	}
-	if (cloudSyncForm.connectionMode === 'gateway' && !cloudSyncForm.gatewayId) {
-		ElMessage.warning(at('selectGatewayWarning'))
-		return
-	}
-  if (!cloudSyncForm.useExistingAccount && (!cloudSyncForm.accessKey || !cloudSyncForm.secretKey)) {
-    ElMessage.warning(at('enterAccessKeys'))
-    return
-  }
-  cloudSyncSubmitting.value = true
-  try {
-    const data = await syncAssetHostsFromCloud(cloudSyncForm)
-    const addedNames = (data.addedHosts || []).slice(0, 3).join(', ')
-    const updatedNames = (data.updatedHosts || []).slice(0, 3).join(', ')
-    const details = [
-      addedNames ? at('cloudAddedNames', { names: addedNames }) : '',
-      updatedNames ? at('cloudUpdatedNames', { names: updatedNames }) : '',
-      Object.keys(data.regionCounts || {}).length ? at('regionCountsSummary', { counts: Object.entries(data.regionCounts).map(([region, count]) => at('regionCountItem', { region, count })).join(', ') }) : ''
-    ].filter(Boolean).join('; ')
-    ElMessage.success(at('cloudSyncResult', { total: data.total || 0, added: data.added, updated: data.updated, skipped: data.skipped, detailsSuffix: details ? ` (${details})` : '' }))
-    cloudSyncDialogVisible.value = false
-    await loadData()
-  } finally {
-    cloudSyncSubmitting.value = false
-  }
+// 원본 :506-510 handleMoreCommand(+그 대상 :315-317 selectedIds·:319-334
+// handleBatchSync·:336-355 handleBatchDelete)는 자식(HostImportDialogs)으로
+// 이동 — More 드롭다운 3개 명령 전부가 자식 소속이므로 위임 호출로 대체.
+function handleMoreCommand(command) {
+  importDialogsRef.value?.handleMoreCommand(command)
 }
 
 function groupName(row) {
@@ -485,6 +227,7 @@ function configText(row) {
   return parts.length ? parts.join(' / ') : at('syncPending')
 }
 
+// 원본 :488-490 — 폼·클라우드 동기화 자식 2종이 공유(goCredential)
 function goCredential() {
   router.push('/assets/server/credentials')
 }
@@ -503,11 +246,35 @@ function handleCreateCommand(command) {
   if (command === 'cloud') openCloudSyncDialog()
 }
 
-function handleMoreCommand(command) {
-  if (command === 'batch-sync') handleBatchSync()
-  if (command === 'batch-delete') handleBatchDelete()
-  if (command === 'batch-credential') openBatchCredentialDialog()
-}
+// I5-J 자식 주입 번들 — reactive 래핑으로 ref/reactive가 언랩되어
+// 자식 템플릿의 page.x / v-model="page.x" 재배선이 동작한다(§5 #11).
+const page = reactive({
+  dialogVisible,
+  isEdit,
+  isCopy,
+  form,
+  query,
+  isGroupView,
+  batchSyncSubmitting,
+  importDialogVisible,
+  importForm,
+  importSubmitting,
+  cloudSyncDialogVisible,
+  cloudSyncForm,
+  cloudSyncSubmitting,
+  batchCredentialDialogVisible,
+  batchCredentialForm,
+  batchCredentialSubmitting,
+  selectedRows,
+  groupOptions,
+  credentialOptions,
+  gatewayOptions,
+  cloudAccountOptions,
+  environmentOptions,
+  environmentLoading,
+  goCredential,
+  loadData
+})
 
 onMounted(async () => {
   applyRouteGroupFilter()
@@ -686,178 +453,9 @@ watch(
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? at('hostEditTitle') : (isCopy ? at('hostCloneTitle') : at('hostAddTitle'))" width="640px">
-      <el-form label-width="96px">
-        <el-row :gutter="18">
-          <el-col :span="12">
-            <el-form-item :label="at('hostNameLabel')" required>
-              <el-input v-model="form.hostName" :placeholder="at('enterHostName')" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item :label="at('hostGroupLabel')" required>
-              <el-select v-model="form.groupIds" multiple collapse-tags collapse-tags-tooltip filterable :placeholder="at('selectGroup')" style="width: 100%">
-                <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item :label="at('sshConnectionLabel')" required>
-              <div class="ssh-line">
-                <el-input v-model="form.sshUser" :placeholder="at('usernamePlaceholder')" />
-                <span>@</span>
-                <el-input v-model="form.sshIp" :placeholder="at('hostAddressPlaceholder')" />
-                <span>-p</span>
-                <el-input-number v-model="form.sshPort" :min="1" :max="65535" controls-position="right" />
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item :label="at('authCredentialLabel')" required>
-              <div class="credential-line">
-                <el-select v-model="form.credentialId" clearable filterable :placeholder="at('selectCredential')">
-                  <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
-                </el-select>
-                <el-button color="#f59e0b" @click="goCredential">{{ at('createCredential') }}</el-button>
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item :label="at('environmentLabel')" required>
-              <el-select v-model="form.environment" :loading="environmentLoading" :placeholder="at('selectEnvironment')" style="width: 100%">
-                <el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item :label="at('connectionModeLabel')">
-              <el-radio-group v-model="form.connectionMode">
-                <el-radio-button label="direct">{{ at('directConnection') }}</el-radio-button>
-                <el-radio-button label="gateway">{{ at('viaGateway') }}</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="form.connectionMode === 'gateway'" :span="12">
-            <el-form-item :label="at('accessGatewayLabel')" required>
-              <el-select v-model="form.gatewayId" filterable :placeholder="at('selectGateway')" style="width: 100%">
-                <el-option v-for="item in gatewayOptions" :key="item.id" :label="item.name" :value="item.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item :label="at('noteLabel')">
-              <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="at('enterNote')" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" @click="submit">{{ at('confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <HostFormDialog ref="formDialogRef" :page="page" />
 
-    <el-dialog v-model="importDialogVisible" title="Excel Import" width="520px">
-      <el-form label-width="92px">
-        <el-form-item label="Template Download">
-          <el-button type="primary" @click="handleTemplateDownload">{{ at('downloadTemplate') }}</el-button>
-        </el-form-item>
-        <el-form-item :label="at('selectGroupLabel')">
-          <el-select v-model="importForm.groupId" filterable :placeholder="at('selectGroupLabel')" style="width: 100%">
-            <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Excel Upload">
-          <el-upload
-            :auto-upload="false"
-            :show-file-list="true"
-            :limit="1"
-            accept=".xlsx,.xls"
-            :on-change="handleFileChange"
-            :on-remove="clearImportFile"
-          >
-            <el-button type="primary">{{ at('chooseFile') }}</el-button>
-          </el-upload>
-        </el-form-item>
-        <div class="dialog-tip">{{ at('excelImportTip') }}</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :loading="importSubmitting" @click="submitImport">Host Import</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="cloudSyncDialogVisible" :title="at('syncCloudHosts')" width="620px">
-      <el-form label-width="108px">
-        <el-form-item label="Target Group">
-          <el-select v-model="cloudSyncForm.groupId" filterable :placeholder="at('selectSyncGroup')" style="width: 100%">
-            <el-option v-for="item in groupOptions" :key="item.id" :value="item.id" :label="item.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Cloud Provider">
-          <el-select v-model="cloudSyncForm.provider" :placeholder="at('selectCloudProvider')" style="width: 100%">
-            <el-option label="Tencent Cloud" value="tencent" />
-            <el-option label="Alibaba Cloud" value="aliyun" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Cloud Account">
-          <el-select v-model="cloudSyncForm.cloudAccountId" filterable clearable :placeholder="at('selectCloudAccount')" style="width: 100%">
-            <el-option
-              v-for="item in filteredCloudAccounts"
-              :key="item.id"
-              :value="item.id"
-              :label="`${item.name} (${(item.regions?.length ? item.regions : (item.region ? item.region.split(/[,，;；\s]+/).filter(Boolean) : [])).join(', ')})`"
-            />
-          </el-select>
-        </el-form-item>
-		<el-form-item :label="at('authCredentialLabel')" required>
-		  <div class="credential-line">
-			<el-select v-model="cloudSyncForm.credentialId" clearable filterable :placeholder="at('selectCredential')">
-			  <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
-			</el-select>
-			<el-button color="#f59e0b" @click="goCredential">{{ at('createCredential') }}</el-button>
-		  </div>
-		</el-form-item>
-        <el-form-item :label="at('connectionModeLabel')">
-		  <el-radio-group v-model="cloudSyncForm.connectionMode">
-			<el-radio value="direct">{{ at('directConnection') }}</el-radio>
-			<el-radio value="gateway">{{ at('viaGateway') }}</el-radio>
-		  </el-radio-group>
-		</el-form-item>
-		<el-form-item v-if="cloudSyncForm.connectionMode === 'gateway'" :label="at('accessGatewayLabel')">
-		  <el-select v-model="cloudSyncForm.gatewayId" filterable :placeholder="at('selectGateway')" style="width: 100%">
-			<el-option v-for="item in gatewayOptions" :key="item.id" :value="item.id" :label="item.name" />
-		  </el-select>
-		</el-form-item>
-		<el-form-item :label="at('environmentLabel')">
-		  <el-select v-model="cloudSyncForm.environment" filterable :placeholder="at('selectEnvironment')" :loading="environmentLoading" style="width: 100%">
-			<el-option v-for="item in environmentOptions" :key="item.code" :label="`${item.name} / ${item.code}`" :value="item.code" />
-		  </el-select>
-		</el-form-item>
-        <div class="dialog-tip">{{ at('cloudSyncTip') }}</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="cloudSyncDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :loading="cloudSyncSubmitting" @click="submitCloudSync">{{ at('startSync') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="batchCredentialDialogVisible" :title="at('batchReplaceCredentialTitle')" width="480px">
-      <el-form label-width="96px">
-        <el-form-item :label="at('selectedHostsLabel')">
-          <span>{{ at('hostCountUnit', { count: selectedRows.length }) }}</span>
-        </el-form-item>
-        <el-form-item :label="at('authCredentialLabel')">
-          <el-select v-model="batchCredentialForm.credentialId" filterable :placeholder="at('selectCredential')" style="width: 100%">
-            <el-option v-for="item in credentialOptions" :key="item.id" :value="item.id" :label="item.name" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchCredentialDialogVisible = false">{{ at('cancel') }}</el-button>
-        <el-button type="primary" :loading="batchCredentialSubmitting" @click="submitBatchCredential">{{ at('confirmReplace') }}</el-button>
-      </template>
-    </el-dialog>
+    <HostImportDialogs ref="importDialogsRef" :page="page" />
   </div>
 </template>
 
@@ -981,36 +579,6 @@ watch(
 .pager {
   display: flex;
   justify-content: flex-end;
-}
-
-.ssh-line,
-.credential-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-
-.ssh-line .el-input:first-child {
-  width: 130px;
-}
-
-.ssh-line .el-input:nth-child(3) {
-  flex: 1;
-}
-
-.ssh-line .el-input-number {
-  width: 96px;
-}
-
-.credential-line .el-select {
-  flex: 1;
-}
-
-.dialog-tip {
-  color: #7c87a6;
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 .more-action-trigger {
