@@ -5,6 +5,12 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { queryNotifyRuleOptions } from '../../api/ops'
+import MonitorAlertRuleEditor from './alert-rule/MonitorAlertRuleEditor.vue'
+import MonitorAlertRuleDialogs from './alert-rule/MonitorAlertRuleDialogs.vue'
+
+// I5-I (i5-plan §3.8·CW-DB) — 1,037행 분할 잔류본. 룰 폼은 alert-rule/
+// MonitorAlertRuleEditor.vue, 프리뷰/템플릿/일괄 다이얼로그는 ...Dialogs.vue로
+// 이동(원본 좌표는 커밋 메시지). 자식은 :page 주입(§5 #11 승계).
 import {
   batchUpdateMonitorAlertRules,
   deleteMonitorAlertRule,
@@ -45,6 +51,13 @@ const batchTimingValue = ref(undefined)
 const batchLoading = ref(false)
 const runningRuleId = ref()
 const ruleTableRef = ref()
+const ruleDialogsRef = ref(null)
+
+// 원본 :353-362 restoreTemplateSelection은 템플릿 테이블 ref가 자식
+// (MonitorAlertRuleDialogs)에 귀속되어 위임 호출로 대체했다.
+async function restoreTemplateSelection() {
+  await ruleDialogsRef.value?.restoreTemplateSelection()
+}
 const selectedRuleIds = ref([])
 const rows = ref([])
 const total = ref(0)
@@ -95,47 +108,8 @@ const availableDatasourceOptions = computed(() => {
   if (form.alertType === 'victorialogs') return victoriaLogsDatasourceOptions.value
   return metricDatasourceOptions.value
 })
-const alertTypeLabel = computed(() => alertTypeName(form.alertType))
-const isLogAlert = computed(() => ['log', 'victorialogs'].includes(form.alertType))
 const enabledOnPage = computed(() => rows.value.filter((item) => item.status === 1).length)
 const failedOnPage = computed(() => rows.value.filter((item) => item.lastEvalStatus === 'failed').length)
-const batchTimingTitle = computed(() => batchTimingAction.value === 'update_for_seconds' ? mt('batchDurationChange') : mt('batchEvalChange'))
-const batchTimingLabel = computed(() => batchTimingAction.value === 'update_for_seconds' ? 'Duration' : uiT('evaluationInterval'))
-const batchTimingTip = computed(() => batchTimingAction.value === 'update_for_seconds'
-  ? mt('batchDurationTip', { count: selectedRuleIds.value.length })
-  : mt('batchEvalTip', { count: selectedRuleIds.value.length }))
-const batchTimingMin = computed(() => batchTimingAction.value === 'update_for_seconds' ? 0 : 15)
-const batchTimingMax = computed(() => batchTimingAction.value === 'update_for_seconds' ? 86400 : 3600)
-const templateGroupTree = computed(() => {
-  const map = new Map(templateGroups.value.map((item) => [item.id, { ...item, children: [] }]))
-  const roots = []
-  map.forEach((item) => {
-    const parent = map.get(item.parentId)
-    if (parent) parent.children.push(item)
-    else roots.push(item)
-  })
-  const decorate = (item) => {
-    item.children = item.children.map(decorate)
-    item.totalCount = Number(item.count || 0) + item.children.reduce((sum, child) => sum + child.totalCount, 0)
-    return item
-  }
-  return roots.map(decorate)
-})
-const queryLabel = computed(() => {
-  if (form.alertType === 'log') return 'Elasticsearch Query'
-  if (form.alertType === 'victorialogs') return 'LogsQL Query'
-  return 'PromQL'
-})
-const queryPlaceholder = computed(() => {
-  if (form.alertType === 'log') return mt('logQueryPlaceholderEs')
-  if (form.alertType === 'victorialogs') return mt('logQueryPlaceholderVl')
-  return mt('logQueryPlaceholderProm')
-})
-const queryHint = computed(() => {
-  if (form.alertType === 'log') return mt('queryHintEs')
-  if (form.alertType === 'victorialogs') return mt('queryHintVl')
-  return mt('queryHintProm')
-})
 
 function alertTypeName(type) {
   return ({ metric: 'Metric Alert', log: 'Elasticsearch Log Alert', victorialogs: 'VictoriaLogs Log Alert' }[type] || 'Metric Alert')
@@ -161,10 +135,7 @@ function formatEvalTime(value) {
   if (!value) return mt('notEvaluated')
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
-const dialogTitle = computed(() => (copyMode.value ? mt('duplicateAlertRule') : (isEdit.value ? mt('editAlertRule') : mt('addAlertRule'))))
 
-const visibleRuleTemplates = computed(() => managedTemplates.value)
-const selectedManagedTemplates = computed(() => Array.from(selectedTemplateMap.value.values()))
 
 function formatNotifyInterval(seconds) {
   const value = Number(seconds) || 1800
@@ -180,22 +151,7 @@ function datasourceOptionsForType(type) {
   return metricDatasourceOptions.value
 }
 
-function templateGroupPath(id) {
-  const byId = new Map(templateGroups.value.map((item) => [item.id, item]))
-  const parts = []
-  let item = byId.get(id)
-  while (item) {
-    parts.unshift(item.name)
-    item = byId.get(item.parentId)
-  }
-  return parts.join(' / ') || mt('uncategorized')
-}
 
-function defaultQueryForType(type) {
-  if (type === 'log') return 'level:ERROR OR level:FATAL'
-  if (type === 'victorialogs') return '_msg:~"(?i)(error|fatal)"'
-  return ''
-}
 
 function resetForm() {
   Object.assign(form, {
@@ -226,16 +182,7 @@ function resetForm() {
   Object.assign(queryDrafts, { metric: '', log: '', victorialogs: '' })
 }
 
-function handleAlertTypeChange(type) {
-  queryDrafts[previousAlertType.value] = form.queryText
-  form.queryText = queryDrafts[type] || defaultQueryForType(type)
-  previousAlertType.value = type
-  form.datasourceId = form.datasourceScope === 'specific' ? datasourceOptionsForType(type)[0]?.id : undefined
-}
 
-function applyDatasourceScope() {
-  form.datasourceId = form.datasourceScope === 'specific' ? availableDatasourceOptions.value[0]?.id : undefined
-}
 
 async function loadOptions() {
   const [datasources, notifyRules] = await Promise.allSettled([
@@ -340,122 +287,12 @@ async function openTemplateDialog() {
   }
 }
 
-function templateAlertType(template) {
-  if (template.datasourceType === 'victorialogs') return 'victorialogs'
-  if (template.datasourceType === 'elasticsearch') return 'log'
-  return 'metric'
-}
 
-function templateWithType(template) {
-  return { ...template, type: templateAlertType(template) }
-}
 
-async function restoreTemplateSelection() {
-  if (!templateTableRef.value) return
-  restoringTemplateSelection.value = true
-  templateTableRef.value.clearSelection()
-  managedTemplates.value.forEach((item) => {
-    if (selectedTemplateMap.value.has(item.id)) templateTableRef.value.toggleRowSelection(item, true)
-  })
-  await nextTick()
-  restoringTemplateSelection.value = false
-}
 
-function handleTemplateSelectionChange(selection) {
-  if (restoringTemplateSelection.value) return
-  const next = new Map(selectedTemplateMap.value)
-  managedTemplates.value.forEach((item) => next.delete(item.id))
-  selection.forEach((item) => next.set(item.id, item))
-  selectedTemplateMap.value = next
-}
 
-function clearTemplateSelection() {
-  selectedTemplateMap.value = new Map()
-  templateTableRef.value?.clearSelection()
-}
 
-function buildTemplateImportPayload(template) {
-  const alertType = templateAlertType(template)
-  const datasource = datasourceOptionsForType(alertType)[0]
-  if (!datasource) throw new Error(mt('noDatasourceForTemplate', { name: template.name, type: alertTypeName(alertType) }))
-  return {
-    name: template.name,
-    alertType,
-    datasourceScope: 'specific',
-    datasourceId: datasource.id,
-    query: template.queryText,
-    logIndex: template.logIndex || '_all',
-    logTimeRangeSeconds: template.logTimeRangeSeconds || 300,
-    comparator: template.comparator || '>',
-    threshold: Number(template.threshold || 0),
-    forSeconds: Number(template.forSeconds || 0),
-    evalIntervalSeconds: Number(template.evalIntervalSeconds || 60),
-    severity: template.severity || 'P2',
-    labelsJson: template.labelsJson || '{}',
-    annotationsJson: template.annotationsJson || '{}',
-    notifyEnabled: false,
-    notifyRuleId: undefined,
-    notifyRecoveryEnabled: true,
-    notifyRepeatIntervalSeconds: 1800,
-    maxNotifyCount: 0,
-    status: 2,
-    description: template.description || ''
-  }
-}
 
-async function importSelectedTemplates() {
-  const templates = selectedManagedTemplates.value
-  if (!templates.length) {
-    ElMessage.warning(mt('selectTemplatesFirst'))
-    return
-  }
-  const invalid = templates.filter((item) => !datasourceOptionsForType(templateAlertType(item))[0])
-  if (invalid.length) {
-    ElMessage.error(mt('templatesNoDatasource', { names: invalid.map((item) => item.name).join(', ') }))
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      mt('batchCreateConfirm', { count: templates.length }),
-      mt('batchCreateTitle'),
-      { type: 'warning', confirmButtonText: mt('batchCreateConfirmBtn', { count: templates.length }), cancelButtonText: mt('cancel') }
-    )
-  } catch {
-    return
-  }
-  templateImporting.value = true
-  const succeeded = []
-  const failed = []
-  try {
-    for (const template of templates) {
-      try {
-        await saveMonitorAlertRule(buildTemplateImportPayload(template))
-        succeeded.push(template)
-      } catch (error) {
-        failed.push({ template, message: error?.message || mt('createFailedShort') })
-      }
-    }
-    if (succeeded.length) {
-      ElMessage.success(mt('createdDisabledRules', { count: succeeded.length }))
-      const remaining = new Map(selectedTemplateMap.value)
-      succeeded.forEach((item) => remaining.delete(item.id))
-      selectedTemplateMap.value = remaining
-      await loadData()
-    }
-    if (failed.length) {
-      await ElMessageBox.alert(
-        failed.map((item) => `${item.template.name}: ${item.message}`).join('\n'),
-        mt('failedToCreateRules', { count: failed.length }),
-        { type: 'error', confirmButtonText: mt('backToReview') }
-      )
-      restoreTemplateSelection()
-    } else {
-      templateDialogVisible.value = false
-    }
-  } finally {
-    templateImporting.value = false
-  }
-}
 
 function applyRuleTemplate(template) {
   Object.assign(form, {
@@ -500,76 +337,10 @@ async function applyManagedTemplate(id) {
   })
 }
 
-function validateJsonFields() {
-  for (const [label, value] of [['Label JSON', form.labelsJson], ['Annotation JSON', form.annotationsJson]]) {
-    try {
-      JSON.parse(value || '{}')
-    } catch {
-      ElMessage.warning(mt('invalidJsonFormat', { label }))
-      return false
-    }
-  }
-  return true
-}
 
-async function submit() {
-  if (!form.name.trim() || !form.queryText.trim() || (form.datasourceScope === 'specific' && !form.datasourceId)) {
-    ElMessage.warning(mt('enterRuleRequired', { datasource: form.datasourceScope === 'specific' ? mt('dsAnd') : '', query: form.alertType === 'log' ? mt('esQueryLabel') : mt('promqlLabel') }))
-    return
-  }
-  if (form.notifyEnabled && !form.notifyRuleId) {
-    ElMessage.warning(mt('selectNotifyRule'))
-    return
-  }
-  if (!validateJsonFields()) return
-  if (form.status === 1 && form.datasourceScope === 'all') {
-    await ElMessageBox.confirm(mt('globalRuleConfirm'), mt('globalRuleTitle'), { type: 'warning', confirmButtonText: mt('enableConfirmBtn'), cancelButtonText: mt('backToReview') })
-  }
-  saving.value = true
-  try {
-    await saveMonitorAlertRule({
-      ...form,
-      query: form.queryText,
-      notifyRepeatIntervalSeconds: form.notifyRepeatIntervalMinutes * 60
-    })
-    ElMessage.success(mt('savedMsg'))
-    dialogVisible.value = false
-    await loadData()
-  } finally {
-    saving.value = false
-  }
-}
 
-function buildRulePayload() {
-  return {
-    ...form,
-    query: form.queryText,
-    notifyRepeatIntervalSeconds: form.notifyRepeatIntervalMinutes * 60
-  }
-}
 
-async function handlePreview() {
-  if (!form.queryText.trim() || (form.datasourceScope === 'specific' && !form.datasourceId)) {
-    ElMessage.warning(mt('enterQueryFirst', { datasource: form.datasourceScope === 'specific' ? mt('dsAnd') : '', query: form.alertType === 'log' ? mt('esQueryLabel') : mt('promqlLabel') }))
-    return
-  }
-  previewVisible.value = true
-  previewLoading.value = true
-  previewError.value = ''
-  previewResult.value = { results: [] }
-  try {
-    previewResult.value = await previewMonitorAlertRule(buildRulePayload())
-  } catch (error) {
-    previewError.value = error?.message || mt('previewFailedMsg')
-  } finally {
-    previewLoading.value = false
-  }
-}
 
-function sampleLabel(labels) {
-  if (!labels || !Object.keys(labels).length) return '-'
-  return Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(', ')
-}
 
 async function handleStatus(row) {
   const nextStatus = row.status === 1 ? 2 : 1
@@ -657,59 +428,54 @@ function handleRuleCommand(command, row) {
   if (command === 'delete') handleDelete(row)
 }
 
-async function submitBatchNotify() {
-  if (!batchNotifyRuleId.value) {
-    ElMessage.warning(mt('selectNotifyRule'))
-    return
-  }
-  if (batchNotifyRepeatIntervalMinutes.value < 1 || batchNotifyRepeatIntervalMinutes.value > 10080) {
-    ElMessage.warning(mt('repeatRangeMsg'))
-    return
-  }
-  if (batchNotifyMaxCount.value < 0 || batchNotifyMaxCount.value > 1000) {
-    ElMessage.warning(mt('maxSendRangeMsg'))
-    return
-  }
-  batchNotifySaving.value = true
-  try {
-    await batchUpdateMonitorAlertRules({
-      ids: selectedRuleIds.value,
-      action: 'enable_notify',
-      notifyRuleId: batchNotifyRuleId.value,
-      notifyRepeatIntervalSeconds: batchNotifyRepeatIntervalMinutes.value * 60,
-      maxNotifyCount: batchNotifyMaxCount.value,
-      notifyRecoveryEnabled: batchNotifyRecoveryEnabled.value
-    })
-    ElMessage.success(mt('batchNotifyDone'))
-    batchNotifyVisible.value = false
-    clearSelection()
-    await loadData()
-  } finally {
-    batchNotifySaving.value = false
-  }
-}
 
-async function submitBatchTiming() {
-  if (batchTimingValue.value === undefined || batchTimingValue.value === null) {
-    ElMessage.warning(mt('enterField', { label: batchTimingLabel.value }))
-    return
-  }
-  batchTimingSaving.value = true
-  try {
-    const isDuration = batchTimingAction.value === 'update_for_seconds'
-    await batchUpdateMonitorAlertRules({
-      ids: selectedRuleIds.value,
-      action: batchTimingAction.value,
-      ...(isDuration ? { forSeconds: batchTimingValue.value } : { evalIntervalSeconds: batchTimingValue.value })
-    })
-    ElMessage.success(mt('batchChanged', { label: batchTimingLabel.value }))
-    batchTimingVisible.value = false
-    clearSelection()
-    await loadData()
-  } finally {
-    batchTimingSaving.value = false
-  }
-}
+
+// I5-I 자식 주입 번들 — reactive 래핑으로 ref/computed가 언랩되어
+// 자식 템플릿의 page.x / v-model="page.x" 재배선이 동작한다(§5 #11).
+const page = reactive({
+  dialogVisible,
+  copyMode,
+  isEdit,
+  saving,
+  form,
+  previewVisible,
+  previewLoading,
+  previewError,
+  previewResult,
+  templateDialogVisible,
+  templateKeyword,
+  templateLoading,
+  templateGroups,
+  selectedTemplateGroupId,
+  selectedTemplateMap,
+  managedTemplates,
+  templateImporting,
+  batchNotifyVisible,
+  batchNotifySaving,
+  batchNotifyRuleId,
+  batchNotifyRepeatIntervalMinutes,
+  batchNotifyMaxCount,
+  batchNotifyRecoveryEnabled,
+  batchTimingVisible,
+  batchTimingSaving,
+  batchTimingAction,
+  batchTimingValue,
+  selectedRuleIds,
+  queryDrafts,
+  previousAlertType,
+  notifyRuleOptions,
+logDatasourceOptions,
+availableDatasourceOptions,
+  datasourceOptionsForType,
+  alertTypeName,
+applyDatasourceScope,
+  applyRuleTemplate,
+  openTemplateDialog,
+  selectTemplateGroup,
+  loadManagedTemplates,
+  clearSelection,
+  loadData
+})
 
 onMounted(async () => {
   await Promise.all([loadOptions(), loadData()])
@@ -787,173 +553,9 @@ onMounted(async () => {
     <div class="pager"><el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :page-sizes="[20, 50, 100, 200]" :total="total" layout="total, sizes, prev, pager, next" @current-change="loadData" @size-change="loadData" /></div>
     </section>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(1040px, 94vw)" top="4vh" class="rule-editor-dialog" destroy-on-close>
-      <div class="editor-intro"><div><el-icon><Operation /></el-icon></div><span><strong>{{ mt('executionRuleSetup') }}</strong><small>{{ mt('editorIntroDesc') }}</small></span><el-button plain @click="openTemplateDialog">{{ mt('selectAlertTemplate') }}</el-button></div>
-      <el-form label-position="top" class="rule-editor-form">
-        <section class="form-section"><div class="section-heading"><span>01</span><div><strong>{{ mt('basicInfo') }}</strong><small>{{ mt('basicInfoDesc') }}</small></div></div>
-        <div class="form-grid"><el-form-item :label="mt('ruleName')" required><el-input v-model="form.name" :placeholder="mt('ruleNamePlaceholder')" /></el-form-item><el-form-item :label="mt('ruleStatus')"><el-radio-group v-model="form.status"><el-radio-button :label="2">{{ mt('draftRadio') }}</el-radio-button><el-radio-button :label="1">{{ mt('enabledOption') }}</el-radio-button></el-radio-group></el-form-item></div>
-        <el-form-item label="Alert Type" required>
-          <el-radio-group v-model="form.alertType" @change="handleAlertTypeChange">
-            <el-radio-button label="metric">Metric Alert / PromQL</el-radio-button>
-            <el-radio-button label="log">Log Alert / Elasticsearch</el-radio-button>
-            <el-radio-button label="victorialogs">Log Alert / VictoriaLogs</el-radio-button>
-          </el-radio-group>
-        </el-form-item></section>
+    <MonitorAlertRuleEditor :page="page" />
 
-        <section class="form-section"><div class="section-heading"><span>02</span><div><strong>{{ mt('dsAndQuery') }}</strong><small>{{ mt('dsQueryDesc') }}</small></div></div>
-        <el-form-item label="Datasource Scope" required>
-          <div class="datasource-scope">
-            <el-radio-group v-model="form.datasourceScope" @change="applyDatasourceScope">
-              <el-radio-button label="all">{{ mt('matchAllDatasources', { type: alertTypeLabel }) }}</el-radio-button>
-              <el-radio-button label="specific">{{ mt('specificDatasource') }}</el-radio-button>
-            </el-radio-group>
-            <el-select v-if="form.datasourceScope === 'specific'" v-model="form.datasourceId" filterable style="width: 360px" :placeholder="mt('selectDatasource')">
-              <el-option v-for="item in availableDatasourceOptions" :key="item.id" :label="`${item.name} (${item.type})`" :value="item.id" />
-            </el-select>
-            <span v-else class="form-tip">{{ mt('runOnAllDatasources', { type: form.alertType === 'log' ? 'Elasticsearch' : 'Prometheus / VictoriaMetrics' }) }}</span>
-          </div>
-        </el-form-item>
-        <el-form-item v-if="form.alertType === 'log'" label="Log Index" required><el-input v-model="form.logIndex" :placeholder="mt('logIndexPlaceholder')" /></el-form-item>
-        <el-form-item :label="queryLabel" required>
-          <el-input v-model="form.queryText" type="textarea" :rows="4" :placeholder="queryPlaceholder" />
-          <div class="form-tip">{{ queryHint }}</div>
-        </el-form-item></section>
-
-        <section class="form-section"><div class="section-heading"><span>03</span><div><strong>Trigger Condition</strong><small>{{ mt('triggerConditionDesc') }}</small></div></div>
-        <section class="rule-parameters">
-          <div class="parameter-card">
-            <span>Comparator</span>
-            <el-select v-model="form.comparator"><el-option v-for="item in ['>','>=','<','<=','==','!=']" :key="item" :label="item" :value="item" /></el-select>
-            <small>{{ mt('compareThreshold') }}</small>
-          </div>
-          <div class="parameter-card">
-            <span>{{ isLogAlert ? 'Match Threshold' : 'Threshold' }}</span>
-            <el-input-number v-model="form.threshold" :precision="4" :step="isLogAlert ? 1 : 0.1" controls-position="right" />
-            <small>{{ isLogAlert ? mt('windowMatchCount') : mt('seriesCurrentValue') }}</small>
-          </div>
-          <div class="parameter-card">
-            <span>{{ isLogAlert ? 'Query Window' : 'Duration' }}</span>
-            <div class="parameter-number"><el-input-number v-if="isLogAlert" v-model="form.logTimeRangeSeconds" :min="60" :max="86400" controls-position="right" /><el-input-number v-else v-model="form.forSeconds" :min="0" :max="86400" controls-position="right" /><b>{{ mt('secondUnit') }}</b></div>
-            <small>{{ isLogAlert ? mt('recentLogAgg') : mt('consecutiveMatchTrigger') }}</small>
-          </div>
-          <div class="parameter-card">
-            <span>{{ uiT('evaluationInterval') }}</span>
-            <div class="parameter-number"><el-input-number v-model="form.evalIntervalSeconds" :min="15" :max="3600" controls-position="right" /><b>{{ mt('secondUnit') }}</b></div>
-            <small>{{ mt('systemRuleInterval') }}</small>
-          </div>
-        </section>
-        <el-form-item label="Alert Severity"><el-radio-group v-model="form.severity"><el-radio-button v-for="item in ['P0','P1','P2','P3']" :key="item" :label="item" /></el-radio-group></el-form-item></section>
-
-        <section class="form-section"><div class="section-heading"><span>04</span><div><strong>{{ mt('notifyAndContext') }}</strong><small>{{ mt('notifyContextDesc') }}</small></div></div>
-        <div class="json-grid"><el-form-item label="Label JSON"><el-input v-model="form.labelsJson" type="textarea" :rows="2" :placeholder="mt('labelJsonPlaceholder')" /></el-form-item><el-form-item label="Annotation JSON"><el-input v-model="form.annotationsJson" type="textarea" :rows="2" :placeholder="mt('annotationJsonPlaceholder')" /></el-form-item></div>
-        <div class="notify-toggle" :class="{ 'is-enabled': form.notifyEnabled }">
-          <div class="notify-toggle-copy"><div class="notify-toggle-icon"><el-icon><Bell /></el-icon></div><span><strong>Notification</strong><small>{{ form.notifyEnabled ? mt('notifyOnDesc') : mt('notifyOffDesc') }}</small></span></div>
-          <div class="notify-toggle-action"><el-tag :type="form.notifyEnabled ? 'success' : 'info'" effect="light">{{ form.notifyEnabled ? mt('activeShort') : mt('inactiveShort') }}</el-tag><el-switch v-model="form.notifyEnabled" /></div>
-        </div>
-        <div v-if="form.notifyEnabled" class="notify-settings"><el-form-item label="NotificationRule" required><el-select v-model="form.notifyRuleId" filterable style="width: 100%"><el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><div class="form-grid"><el-form-item label="Repeat Notification Interval"><div class="parameter-number"><el-input-number v-model="form.notifyRepeatIntervalMinutes" :min="1" :max="10080" controls-position="right" /><b>{{ mt('minuteUnit') }}</b></div></el-form-item><el-form-item label="Maximum Send Count"><el-input-number v-model="form.maxNotifyCount" :min="0" :max="1000" controls-position="right" /><div class="form-tip">{{ mt('zeroMeansUnlimited') }}</div></el-form-item></div><el-form-item label="Recovery Notification"><el-switch v-model="form.notifyRecoveryEnabled" /></el-form-item></div>
-        <el-form-item :label="mt('descriptionLabel')"><el-input v-model="form.description" type="textarea" :rows="2" :placeholder="mt('descriptionPlaceholder')" /></el-form-item></section>
-      </el-form>
-      <template #footer><div class="rule-editor-footer"><span>{{ mt('testFirstHint') }}</span><div><el-button @click="dialogVisible = false">{{ mt('cancel') }}</el-button><el-button :loading="previewLoading" @click="handlePreview">Rule Test</el-button><el-button type="primary" :loading="saving" @click="submit">{{ mt('saveRule') }}</el-button></div></div></template>
-    </el-dialog>
-
-    <el-dialog v-model="previewVisible" title="Rule Execution Preview" width="920px" append-to-body>
-      <div v-loading="previewLoading" class="preview-body">
-        <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" show-icon />
-        <el-alert v-else :title="previewResult.explanation || mt('previewRunning')" :type="previewResult.failedDatasourceCount ? 'warning' : 'success'" :closable="false" show-icon />
-        <div class="preview-metrics">
-          <div><span>Datasource</span><strong>{{ previewResult.datasourceCount || 0 }}</strong></div>
-          <div><span>{{ mt('returnedSeries') }}</span><strong>{{ previewResult.totalSeries || 0 }}</strong></div>
-          <div><span>{{ mt('expectedAlerts') }}</span><strong class="matched">{{ previewResult.totalMatched || 0 }}</strong></div>
-          <div><span>{{ mt('stateQueryFailed') }}</span><strong>{{ previewResult.failedDatasourceCount || 0 }}</strong></div>
-        </div>
-        <div v-for="item in previewResult.results || []" :key="item.datasourceId" class="preview-source">
-          <div class="preview-source-head">
-            <strong>{{ item.datasourceName }}</strong>
-            <el-tag :type="item.status === 'success' ? 'success' : 'danger'">{{ item.status === 'success' ? mt('querySuccess') : mt('stateQueryFailed') }}</el-tag>
-          </div>
-          <el-alert v-if="item.error" :title="item.error" type="error" :closable="false" />
-          <el-table v-else :data="item.samples || []" border max-height="300" :empty-text="mt('noSeriesReturned')">
-            <el-table-column :label="mt('triggeredColumn')" width="100"><template #default="{ row }"><el-tag :type="row.matched ? 'danger' : 'success'">{{ row.matched ? mt('conditionMet') : mt('notFired') }}</el-tag></template></el-table-column>
-            <el-table-column :label="mt('currentValue')" width="140"><template #default="{ row }">{{ Number(row.value || 0).toFixed(4) }}</template></el-table-column>
-            <el-table-column label="Label" min-width="480" show-overflow-tooltip><template #default="{ row }">{{ sampleLabel(row.labels) }}</template></el-table-column>
-          </el-table>
-        </div>
-      </div>
-      <template #footer><el-button type="primary" @click="previewVisible = false">{{ mt('inactiveShort') }}</el-button></template>
-    </el-dialog>
-
-    <el-dialog v-model="templateDialogVisible" :title="mt('batchCreateFromTemplates')" width="1120px" top="5vh" class="managed-template-dialog" destroy-on-close>
-      <div class="template-dialog-head"><div><strong>Alert Template Library</strong><span>{{ mt('templateDialogDesc') }}</span></div><el-input v-model="templateKeyword" clearable :placeholder="mt('searchTemplatePlaceholder')" style="width: 300px" @keyup.enter="loadManagedTemplates()"><template #prefix><el-icon><Search /></el-icon></template><template #append><el-button :aria-label="mt('searchTemplate')" @click="loadManagedTemplates()"><el-icon><Search /></el-icon></el-button></template></el-input></div>
-      <div v-loading="templateLoading" class="template-library-layout">
-        <aside class="template-groups"><button :class="{ active: !selectedTemplateGroupId }" @click="selectTemplateGroup()"><el-icon><FolderOpened /></el-icon><span>{{ mt('allTemplates') }}</span></button><el-tree :data="templateGroupTree" node-key="id" :default-expand-all="true" :highlight-current="true" :current-node-key="selectedTemplateGroupId" @node-click="(data) => selectTemplateGroup(data.id)"><template #default="{ data }"><span class="template-group-node"><span>{{ data.name }}</span><small>{{ data.totalCount }}</small></span></template></el-tree></aside>
-        <div class="rule-template-list">
-          <el-table ref="templateTableRef" :data="visibleRuleTemplates" row-key="id" height="520" class="template-select-table" @selection-change="handleTemplateSelectionChange">
-            <el-table-column type="selection" width="48" reserve-selection />
-            <el-table-column :label="mt('templateName')" min-width="230">
-              <template #default="{ row }"><div class="template-name-cell"><strong>{{ row.name }}</strong><span>{{ row.description || mt('templateFallbackDesc') }}</span></div></template>
-            </el-table-column>
-            <el-table-column label="Template Group" min-width="170"><template #default="{ row }"><el-tag type="primary" size="small" effect="plain">{{ templateGroupPath(row.groupId) }}</el-tag></template></el-table-column>
-            <el-table-column :label="uiT('severity')" width="76"><template #default="{ row }"><el-tag :type="['P0','P1'].includes(row.severity) ? 'danger' : (row.severity === 'P2' ? 'warning' : 'info')" effect="light" size="small">{{ row.severity }}</el-tag></template></el-table-column>
-            <el-table-column label="Datasource" width="120"><template #default="{ row }"><span class="template-datasource">{{ row.datasourceType === 'victorialogs' ? 'VictoriaLogs' : (row.datasourceType === 'elasticsearch' ? 'Elasticsearch' : 'Prometheus') }}</span></template></el-table-column>
-            <el-table-column :label="mt('searchTemplate')" min-width="260" show-overflow-tooltip><template #default="{ row }"><code class="template-query">{{ row.queryText }}</code></template></el-table-column>
-            <el-table-column :label="mt('actions')" width="86" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="applyRuleTemplate(templateWithType(row))">{{ mt('configureIndividual') }}</el-button></template></el-table-column>
-            <template #empty><el-empty :description="mt('noMatchingTemplates')" /></template>
-          </el-table>
-        </div>
-      </div>
-      <template #footer>
-        <div class="template-dialog-footer">
-          <div class="template-selection-summary"><span>{{ mt('selectedTemplates', { count: selectedManagedTemplates.length }) }}</span><el-button v-if="selectedManagedTemplates.length" link type="primary" @click="clearTemplateSelection">{{ mt('resetSelection') }}</el-button></div>
-          <div><el-button @click="templateDialogVisible = false">{{ mt('cancel') }}</el-button><el-button type="primary" :loading="templateImporting" :disabled="!selectedManagedTemplates.length" @click="importSelectedTemplates">{{ mt('batchCreateRules') }}<span v-if="selectedManagedTemplates.length"> ({{ selectedManagedTemplates.length }})</span></el-button></div>
-        </div>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="batchNotifyVisible" :title="mt('batchEnableNotify')" width="640px" append-to-body>
-      <p class="batch-dialog-tip">{{ mt('batchNotifyTip', { count: selectedRuleIds.length }) }}</p>
-      <el-form label-position="top" class="batch-notify-form">
-        <el-form-item label="NotificationRule" required>
-          <el-select v-model="batchNotifyRuleId" filterable style="width: 100%" :placeholder="mt('selectNotifyRule')">
-            <el-option v-for="item in notifyRuleOptions" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-notify-grid">
-          <el-form-item label="Repeat Notification Interval" required>
-            <div class="batch-number-input">
-              <el-input-number v-model="batchNotifyRepeatIntervalMinutes" :min="1" :max="10080" :step="5" controls-position="right" />
-              <span>{{ mt('minuteUnit') }}</span>
-            </div>
-          </el-form-item>
-          <el-form-item label="Maximum Send Count" required>
-            <div class="batch-number-input">
-              <el-input-number v-model="batchNotifyMaxCount" :min="0" :max="1000" controls-position="right" />
-              <span>{{ mt('zeroMeansUnlimitedShort') }}</span>
-            </div>
-          </el-form-item>
-        </div>
-        <el-form-item class="batch-recovery-field" label="Recovery Notification">
-          <div class="batch-recovery-control">
-            <el-switch v-model="batchNotifyRecoveryEnabled" :active-text="mt('activeShort')" :inactive-text="mt('inactiveShort')" />
-            <span>{{ mt('recoverySendDesc') }}</span>
-          </div>
-        </el-form-item>
-      </el-form>
-      <template #footer><el-button @click="batchNotifyVisible = false">{{ mt('cancel') }}</el-button><el-button type="primary" :loading="batchNotifySaving" @click="submitBatchNotify">{{ mt('enableConfirmBtn') }}</el-button></template>
-    </el-dialog>
-
-    <el-dialog v-model="batchTimingVisible" :title="batchTimingTitle" width="520px" append-to-body>
-      <p class="batch-dialog-tip">{{ batchTimingTip }}</p>
-      <el-form label-width="92px">
-        <el-form-item :label="batchTimingLabel" required>
-          <div class="batch-timing-input">
-            <el-input-number v-model="batchTimingValue" :min="batchTimingMin" :max="batchTimingMax" :step="batchTimingAction === 'update_for_seconds' ? 30 : 15" controls-position="right" />
-            <span>{{ mt('secondUnit') }}</span>
-          </div>
-        </el-form-item>
-        <div class="batch-dialog-hint">{{ batchTimingAction === 'update_for_seconds' ? mt('timingDurationHint') : mt('timingEvalHint') }}</div>
-      </el-form>
-      <template #footer><el-button @click="batchTimingVisible = false">{{ mt('cancel') }}</el-button><el-button type="primary" :loading="batchTimingSaving" @click="submitBatchTiming">{{ mt('saveChanges') }}</el-button></template>
-    </el-dialog>
+    <MonitorAlertRuleDialogs ref="ruleDialogsRef" :page="page" />
   </div>
 </template>
 
